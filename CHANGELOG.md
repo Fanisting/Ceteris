@@ -2,6 +2,38 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/),版本号遵循 [SemVer](https://semver.org/)。
 
+## [Unreleased]
+
+Marina Link — 远程挂载(Windows ↔ Windows)。
+
+### 新增
+
+- **Marina Link:在另一台机器上打开这台机器正在跑的终端标签页。** 会话本身始终留在原机器运行,另一台只是"显示器":同一批 session、同一份 scrollback、同一个正在跑的 agent,在远端敲的键直接写进原机器的 PTY。与已有的 SSH 功能是两回事(SSH 是"在远端跑一个 shell",Link 是"接管远端 Marina 的全部会话")。
+
+  实现上没有引入任何新的业务层。Marina 的 renderer 本来就是无状态观察者,只通过 `invoke(channel, payload)` 与 `on(channel, handler)` 两个原语与 main 通信,所以远程访问被实现为**一次传输层替换**:远程窗口的 `cmd:*` 被转发到远端 main,远端的 `evt:*` 被注入回本地 renderer。renderer 代码零改动,它无从得知自己连的是远端。
+
+  Host 端把每个远程客户端注册成 WindowManager 里的一个"虚拟窗口",于是 session ownership、事件广播、owner-only 的字节流路由**全部复用既有代码路径**,没有一处远程专属的特例分支。客户端断开在 Host 眼里与本地关掉一个窗口是同一件事:走同一条 `handleWindowClosed`,它持有的 session 转为无主、PTY 继续跑、本机窗口可立即接管 —— 这是 Marina "会话不随窗口死"哲学在远程场景下的自然延伸。
+
+  设置入口:**设置 → 远程访问**。连通性推荐 Tailscale(个人使用免费),绑定地址默认"自动"会优先选中本机的 Tailscale 地址;找不到时退回 `127.0.0.1` 而非 `0.0.0.0`,宁可连不上也不在用户没明确要求时把终端服务暴露到局域网。完整配置步骤见 `docs/远程访问指南.md`。
+
+- **命令路由白名单。** 远程窗口里操作"我面前这块玻璃"的命令(窗口控制、剪贴板、打开链接、完全退出)留在本地执行,操作远端数据的一律转发。`cmd:app:quit` 若被误转发会杀光 Host 上所有 agent,`cmd:system:clipboard-*` 若被误转发会让复制粘贴写进用户根本访问不到的剪贴板 —— 这类失配是静默且危险的,因此 `src/shared/link-routing.test.ts` 断言白名单每一项都真实存在于 `COMMAND_CHANNELS`,防止 channel 改名后表项静默失效。白名单默认落在"转发"一侧,保证将来新增 channel 时默认是安全的。
+
+- **远程窗口的连接状态条。** 远程窗口的 renderer 不知道自己是远程的,代价是连接一断终端就完全停止响应而没有任何解释。main 端为此专门给远程窗口定向推 `evt:link:connection-state`,连接正常时组件返回 null(零视觉负担),断线 / 重连中才顶出一条状态条。
+
+### 安全
+
+- **认证与加密合一,预共享令牌从不上线路。** 令牌作为 IKM 的一部分参与 HKDF 派生会话密钥(`shared ‖ token`),因此"能解开对方的第一个加密帧"本身就是认证通过的充分证明,不需要再传一个口令去比对。被动窃听者拿不到任何可离线爆破的材料。每条连接使用一对全新的临时 X25519 密钥(前向保密),双方公钥进 HKDF 的 info 串做 transcript binding(抗降级),逐帧 AES-256-GCM 且 nonce 由接收方自己维护的计数器构成(重放 / 乱序 / 丢帧一律表现为认证失败并断开)。攻击路径逐条有测试覆盖,见 `src/main/link/link-crypto.test.ts`。
+
+- **Host 强制重写转发命令的 windowId。** 客户端传来的 windowId 一律被替换为该连接的虚拟窗口 id。若原样信任,一个恶意客户端可以冒充 Host 上的任意窗口去 claim / release 它正在用的 session。同理 `preferredWindowId`(重连时复用身份用)只在该 id 当前既不是真实窗口也不是已注册虚拟窗口时才被接受。
+
+- **配置导出剥掉远程访问凭据。** 归档的典型用途是发给别人或备份到网盘,而 `link.hostToken` 等价于这台机器上所有终端的完全访问权。导出时连同 `hostEnabled` 一并置空/置假(只清 token 不关开关会让归档自相矛盾、导入方整个导入失败)。
+
+- **分帧上限分两段。** 握手阶段 4 KiB,认证通过后放宽到 8 MiB。对端尚未证明掌握令牌时,能让我们分配的内存必须尽可能小。长度校验先于内存分配,防止伪造的长度前缀触发巨量分配(误连 HTTP 服务是最常见的触发场景:`"GET "` 的 ASCII 是 1.2 GB)。
+
+### 技术栈
+
+- 零新增依赖。传输层只用 node 内置 `net` + `crypto`,未引入 `ws` / `socket.io`(AGENTS.md 1.2 边界 2)。
+
 ## [0.2.3] — 2026-06-05
 
 issue #4 续 — hideTopTabBar 模式重选当前 path 不进 EmptyPathState 的修复。

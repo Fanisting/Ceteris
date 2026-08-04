@@ -135,6 +135,7 @@ Marina 给你:
 - ✅ **Session 生命周期**:`active / idle / exited` 三态;**已退出 session 无时限保留**,用户手动右键关闭才销毁(ADR-008)
 - ✅ **启动模板**:内置(Shell / Claude Code / Codex / OpenCode)+ 自定义
 - ✅ **多窗口**:任意数量平等窗口;关窗即托盘模式;跨窗口 session 可见
+- ✅ **Marina Link(远程挂载)**:在另一台 Windows 机器上打开这台机器正在跑的终端标签页。同一批 session、同一份 scrollback、同一个正在跑的 agent;会话始终留在原机器运行。端到端加密(X25519 + AES-256-GCM),预共享令牌**从不上线路**。见 [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD 跟踪**:OSC 1337 hook 注入 PowerShell + cmd.exe
 - ✅ **7 套主题**:Rose Pine(默认) / Rose Pine Dawn / Rose Pine Moon / Cutie / Business / Ubuntu / Windows Terminal
 - ✅ **窗口风格**:Windows / macOS 双布局(只影响标题栏 chrome,不影响配色)

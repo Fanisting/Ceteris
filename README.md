@@ -145,6 +145,7 @@ That's it. That's the product.
 - ✅ **Launch templates**: built-in (Shell / Claude Code / Codex / OpenCode) + custom
 - ✅ **SSH tmux mode**: per-launch attach-or-create tmux flow, directory-derived tmux session names, and shell fallback after tmux exits
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
+- ✅ **Marina Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD tracking**: OSC 1337 hooks for PowerShell and cmd.exe
 - ✅ **7 themes**: Rose Pine (default), Rose Pine Dawn, Rose Pine Moon, Cutie, Business, Ubuntu, Windows Terminal
 - ✅ **Window style**: Windows or macOS (sets title-bar layout — not theme colors)

@@ -13,6 +13,11 @@
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
 import type {
+  LinkClientStatus,
+  LinkConnectionState,
+  LinkHostStatus,
+} from './link-protocol';
+import type {
   AppSnapshot,
   Bookmark,
   PathTree,
@@ -158,6 +163,22 @@ export const COMMAND_CHANNELS = {
    * 不依赖 DevTools 打开。详见 src/shared/ime-probe-ring.ts。
    */
   LOGGER_IME_DUMP: 'cmd:logger:ime-dump',
+
+  // Marina Link 域(远程挂载)。全部是"配置本机"的命令,因此都在
+  // LINK_LOCAL_ONLY_CHANNELS 里 —— 远程窗口里点"断开",断的必须是本机
+  // 这条连接,而不是把命令转发到 Host 去断 Host 自己的连接。
+  /** 查询本机 Host 监听状态 + 所有 Client 连接状态 */
+  LINK_GET_STATUS: 'cmd:link:get-status',
+  /** 重新生成 Host 访问令牌(旧令牌立即失效,已连客户端在下次重连时被拒) */
+  LINK_REGENERATE_TOKEN: 'cmd:link:regenerate-token',
+  /** 连接到一台远端 Host,成功后自动开一个远程窗口 */
+  LINK_CONNECT: 'cmd:link:connect',
+  /** 断开本机发起的一条连接,并关闭对应的远程窗口 */
+  LINK_DISCONNECT: 'cmd:link:disconnect',
+  /** Host 侧踢掉一个已连入的客户端 */
+  LINK_KICK_CLIENT: 'cmd:link:kick-client',
+  /** 列出本机可绑定的 IPv4 地址(Tailscale 地址排在最前) */
+  LINK_LIST_BIND_CANDIDATES: 'cmd:link:list-bind-candidates',
 } as const;
 
 export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHANNELS];
@@ -198,6 +219,24 @@ export const EVENT_CHANNELS = {
    * Cmd+Q / App Menu Quit。
    */
   UI_SHOW_LAST_SESSION_CONFIRM: 'evt:ui:show-last-session-confirm',
+
+  /**
+   * Marina Link:本机的 Host 监听状态或任一 Client 连接状态发生变化。
+   * 设置页据此刷新状态条(连接中 / 已连接 / 重连中 + RTT)。
+   */
+  LINK_STATUS_CHANGED: 'evt:link:status-changed',
+
+  /**
+   * Marina Link:**定向**推给某个远程窗口,告诉它自己这条连接的状态。
+   *
+   * 与 LINK_STATUS_CHANGED 的区别:那条是广播给本机所有普通窗口用于刷新
+   * 设置页;这条只发给远程窗口本身,用来渲染顶部的连接状态条。
+   *
+   * 为什么必须单独有一条:远程窗口被排除在事件广播之外(它的数据来自
+   * Host),所以广播事件根本到不了它。而恰恰是它最需要知道"连接断了" ——
+   * 否则用户只会看到一个突然不响应的终端,完全不知道发生了什么。
+   */
+  LINK_CONNECTION_STATE: 'evt:link:connection-state',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];
@@ -960,4 +999,64 @@ export interface ImeProbeDumpPayload {
 
 export interface ImeProbeDumpResponse {
   ok: true;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Marina Link 域
+// ──────────────────────────────────────────────────────────────────
+
+export interface LinkStatusResponse {
+  host: LinkHostStatus;
+  clients: Array<LinkClientStatus & { linkId: string }>;
+}
+
+export interface LinkRegenerateTokenResponse {
+  token: string;
+}
+
+export interface LinkConnectPayload {
+  /** 用户给这台 Host 起的名字,仅用于 UI 与日志 */
+  label: string;
+  host: string;
+  port: number;
+  token: string;
+}
+
+export interface LinkConnectResponse {
+  /** 本进程内的连接 id,用于后续 disconnect */
+  linkId: string;
+}
+
+export interface LinkDisconnectPayload {
+  linkId: string;
+}
+
+export interface LinkKickClientPayload {
+  virtualWindowId: string;
+}
+
+export interface LinkBindCandidate {
+  address: string;
+  label: string;
+  isTailscale: boolean;
+}
+
+export interface LinkListBindCandidatesResponse {
+  candidates: LinkBindCandidate[];
+}
+
+/** evt:link:status-changed 的 payload,与 cmd:link:get-status 同构。 */
+export type LinkStatusChangedPayload = LinkStatusResponse;
+
+/**
+ * evt:link:connection-state 的 payload。只发给远程窗口自己。
+ */
+export interface LinkConnectionStatePayload {
+  state: LinkConnectionState;
+  /** Host 机器名,未连上时为空串 */
+  hostName: string;
+  /** 目标地址,形如 "100.64.0.2:8787" */
+  address: string;
+  /** 最近一次失败原因;正常时为空串 */
+  lastError: string;
 }

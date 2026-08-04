@@ -69,6 +69,7 @@ import {
   type FontEntry,
 } from './font-detection';
 import { Icon, type IconName } from './icons';
+import { LinkPanel } from './LinkPanel';
 import { useModal } from './Modal';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
@@ -81,6 +82,7 @@ type CategoryId =
   | 'behavior'
   | 'data'
   | 'remote'
+  | 'link'
   | 'system-integration'
   | 'ai'
   | 'advanced'
@@ -101,6 +103,11 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'shell', iconName: 'shell', titleKey: 'settings.category.shell' },
   { id: 'behavior', iconName: 'behavior', titleKey: 'settings.category.behavior' },
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
+  // Marina Link(远程挂载)。与 'remote'(SSH)是两回事,故独立成一类:
+  // SSH 是"在远端跑一个 shell",Link 是"接管远端 Marina 的全部会话"。
+  // 这一类**无条件显示** —— 它不像 SSH 那样需要先配 profile 才有意义,
+  // 用户第一次找"怎么在另一台机器上看我的终端"时必须能直接找到入口。
+  { id: 'link', iconName: 'server', titleKey: 'settings.category.link' },
   { id: 'system-integration', iconName: 'systemIntegration', titleKey: 'settings.category.systemIntegration' },
   { id: 'ai', iconName: 'ai', titleKey: 'settings.category.ai' },
   { id: 'advanced', iconName: 'advanced', titleKey: 'settings.category.advanced' },
@@ -239,6 +246,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
       return <DataPanel setError={setError} />;
     case 'remote':
       return <RemotePanel setError={setError} />;
+    case 'link':
+      return <LinkPanel setError={setError} />;
     case 'system-integration':
       return <SystemIntegrationPanel setError={setError} />;
     case 'ai':

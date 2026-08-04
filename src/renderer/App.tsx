@@ -16,6 +16,7 @@ import { Sidebar } from './components/Sidebar';
 import { MainPane } from './components/MainPane';
 import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
+import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
 import { ToastProvider } from './components/Toast';
 import { ModalProvider } from './components/Modal';
@@ -276,6 +277,8 @@ function ConnectedShell({
               buildVersion={buildVersion}
               buildType={buildType}
             />
+            {/* Marina Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
+            <LinkConnectionBanner />
             {state.inSettingsView ? (
               <SettingsView />
             ) : state.simpleMode ? (

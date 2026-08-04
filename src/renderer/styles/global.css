@@ -3317,3 +3317,138 @@ button:focus-visible,
     backdrop-filter: none;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Marina Link(远程访问)设置面板
+   与 .ssh-* 同属"某个设置分类专用"的样式,不进通用词表。
+   ────────────────────────────────────────────────────────────────── */
+
+.link-subsection-title {
+  margin: 20px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f0f);
+}
+
+.link-subblock {
+  margin: 8px 0 4px;
+}
+
+.link-inline-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 令牌输入框要能显示完整的 43 字符 base64url,不被按钮挤扁 */
+.link-inline-group .settings-input {
+  min-width: 180px;
+  flex: 1 1 auto;
+}
+
+.link-inline-group .settings-button {
+  min-width: 64px;
+  flex: 0 0 auto;
+}
+
+.link-input-narrow {
+  max-width: 110px;
+}
+
+.link-inline-check {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted, #f0f);
+}
+
+/* 警示文本:端口暴露到 0.0.0.0、监听失败、连接报错等 */
+.link-warn {
+  color: var(--color-warning, #f0f);
+}
+
+.link-client-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.link-client-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-bg-elevated, #f0f);
+}
+
+.link-client-item:last-child {
+  border-bottom: none;
+}
+
+.link-client-item > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.link-client-item strong {
+  font-size: 13px;
+  color: var(--color-text-primary, #f0f);
+}
+
+/* 状态徽章。三种色调对应 连接正常 / 过渡中 / 未连接 */
+.link-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.link-status-ok {
+  color: var(--color-success, #f0f);
+}
+
+.link-status-warn {
+  color: var(--color-warning, #f0f);
+}
+
+.link-status-idle {
+  color: var(--color-text-muted, #f0f);
+}
+
+/* Marina Link:远程窗口顶部的连接状态条。连接正常时组件返回 null,
+   所以这些样式只在断线 / 重连中可见。 */
+.link-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--color-bg-elevated, #f0f);
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  flex: 0 0 auto;
+}
+
+.link-banner-connecting,
+.link-banner-reconnecting {
+  color: var(--color-warning, #f0f);
+}
+
+.link-banner-closed {
+  color: var(--color-danger, #f0f);
+}
+
+.link-banner-text {
+  font-weight: 500;
+}
+
+.link-banner-detail {
+  color: var(--color-text-muted, #f0f);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

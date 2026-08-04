@@ -49,6 +49,41 @@ interface ManagedWindow {
   lastFocusedAt: number;
 }
 
+/**
+ * Marina Link:虚拟窗口的 electronWindowId 占位值。
+ *
+ * 虚拟窗口没有 BrowserWindow,自然也没有 webContents.id。用 -1 是因为
+ * Electron 的 webContents.id 恒为正整数,不会与真实窗口碰撞;
+ * getByElectronId 的线性查找因此永远不会误命中虚拟窗口。
+ */
+export const VIRTUAL_WINDOW_ELECTRON_ID = -1;
+
+/**
+ * Marina Link(Host 侧):一个远程客户端在本机 WindowManager 里的表示。
+ *
+ * @关键设计:
+ * 把远程客户端注册成"虚拟窗口"是整个 Link 特性的支点。有了它,
+ * session ownership、事件广播、owner-only 的字节流路由**全都不需要为
+ * 远程情况写特例分支** —— 远程客户端在 Host 眼里就是又一个窗口,走的
+ * 是与本地窗口完全相同的代码路径。
+ *
+ * 对应地,虚拟窗口不能做的事:
+ * - 不能被 focus(它不在本机屏幕上,focus 是 no-op)
+ * - 不能被 minimize / maximize
+ * - 不是 getMostRecentlyActive 的候选(托盘单击不该"聚焦"一个远程客户端)
+ */
+interface ManagedVirtualWindow {
+  info: WindowInfo;
+  /**
+   * 把一条事件送给该远程客户端。由 LinkServer 在注册时注入,内部实现是
+   * "序列化 → 加密 → socket.write"。
+   *
+   * 约定:实现方必须自己吞掉写失败(socket 已断等),不能向上抛 —— 事件
+   * 广播是 fire-and-forget,一个客户端断开不能影响其他窗口收事件。
+   */
+  send: (channel: string, envelope: unknown) => void;
+}
+
 /** 创建窗口时的可选初始 bounds (来自 settings.windowDefaults — M1-G)。 */
 export interface CreateWindowOptions {
   initialBounds?: {
@@ -78,6 +113,17 @@ export interface CreateWindowOptions {
    * 把 hint 透传到 renderer 启动阶段。
    */
   selectSessionId?: string;
+  /**
+   * Marina Link(Client 侧):强制使用指定的 windowId,而不是新生成一个 UUID。
+   *
+   * 远程窗口必须用 Host 分配的虚拟 windowId 作为自己的身份,原因见
+   * LinkAuth.preferredWindowId 的注释:renderer 用 `window.api.windowId` 与
+   * `session.ownerWindowId` 比对来判断"这个终端归不归我"。本地窗口若用本地
+   * UUID,这个比对永远不成立,侧栏会把所有远程终端显示成"其他窗口持有"。
+   *
+   * 只有 LinkClient 会传这个字段;普通开窗路径一律不传。
+   */
+  forcedWindowId?: string;
 }
 
 export interface IWindowManager {
@@ -93,6 +139,24 @@ export interface IWindowManager {
 
 export class WindowManager implements IWindowManager {
   private readonly windows = new Map<string, ManagedWindow>();
+
+  /**
+   * Marina Link(Host 侧):远程客户端注册成的虚拟窗口。
+   * 与 this.windows 共用同一个 windowId 命名空间(都是 UUID),两者的 key
+   * 不会碰撞。
+   */
+  private readonly virtualWindows = new Map<string, ManagedVirtualWindow>();
+
+  /**
+   * Marina Link(Client 侧):本机哪些真实窗口是"远程窗口"。
+   *
+   * 远程窗口的 renderer 展示的是**远端** Host 的数据,因此本机守护进程的
+   * 事件广播必须跳过它们 —— 否则本机的 path 树、session 列表会与远端数据
+   * 混在一起,renderer 的 store 会被两份互不相干的状态来回覆盖。
+   *
+   * 存 windowId → 该窗口绑定的 Host 连接 id。
+   */
+  private readonly remoteBoundWindows = new Map<string, string>();
   /**
    * 下一个窗口编号。从 1 开始单调递增,关闭后不复用 (软件定义书 6.7)。
    * 每次应用启动从 1 重新开始,不持久化。
@@ -142,7 +206,14 @@ export class WindowManager implements IWindowManager {
       );
     }
 
-    const windowId = randomUUID();
+    const windowId = options.forcedWindowId ?? randomUUID();
+    if (options.forcedWindowId && this.windows.has(options.forcedWindowId)) {
+      throw new Error(
+        `[WindowManager] createWindow: forcedWindowId="${options.forcedWindowId}" 已存在。` +
+          `可能原因:同一条 Link 连接重复创建了窗口。` +
+          `建议:检查 LinkClient 是否在重连时漏掉了"窗口已存在则复用"的分支。`,
+      );
+    }
     const windowNumber = this.nextWindowNumber++;
 
     // 解析初始 bounds,做多显示器越界校验 (M1-G):若上次 bounds 已超出现在可用屏幕区
@@ -416,10 +487,29 @@ export class WindowManager implements IWindowManager {
     }
   }
 
+  /**
+   * 所有窗口的简要信息,**包含** Marina Link 的虚拟窗口。
+   *
+   * 为什么虚拟窗口要出现在这个列表里:renderer 侧栏用 windows[] 判断某个
+   * session 的 owner 是"本窗口 / 其他窗口 / 无主"。远程客户端持有的 session
+   * 若不在列表里,本地窗口会把它误判成无主并尝试 claim,把远端用户正在用的
+   * 终端抢走。
+   */
   list(): WindowInfo[] {
-    return [...this.windows.values()].map((m) => ({ ...m.info }));
+    return [
+      ...[...this.windows.values()].map((m) => ({ ...m.info })),
+      ...[...this.virtualWindows.values()].map((m) => ({ ...m.info })),
+    ];
   }
 
+  /**
+   * 窗口总数,**只算真实窗口**。
+   *
+   * 与 list() 的差异是刻意的:count() 的调用方是"是否还有窗口开着 →
+   * 决定要不要进纯托盘模式 / 触发 app 生命周期"这类判断,而一个远程客户端
+   * 连着并不意味着本机屏幕上有窗口。把虚拟窗口算进来会让本机永远进不了
+   * 托盘模式。
+   */
   count(): number {
     return this.windows.size;
   }
@@ -491,6 +581,18 @@ export class WindowManager implements IWindowManager {
   }
 
   /**
+   * 取 createOptionsProvider 当前会给出的 options,但**不**创建窗口。
+   *
+   * Marina Link 的远程窗口需要在拿到 Host 分配的 windowId 之后才能创建,
+   * 没法走 createWindowFromFactory(它不接受 forcedWindowId 以外的时序),
+   * 所以这里把"取 options"单独暴露出来,保证远程窗口与本地窗口共用同一套
+   * 尺寸 / 位置 / 关窗持久化策略。
+   */
+  getCreateOptions(): CreateWindowOptions {
+    return this.createOptionsProvider ? this.createOptionsProvider() : {};
+  }
+
+  /**
    * 注册回调:每次窗口关闭后触发。
    */
   onWindowClosed(handler: (windowId: string) => void): void {
@@ -519,6 +621,199 @@ export class WindowManager implements IWindowManager {
   isMaximized(windowId: string): boolean {
     const m = this.windows.get(windowId);
     return !!m && !m.electronWindow.isDestroyed() && m.electronWindow.isMaximized();
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Marina Link:虚拟窗口(Host 侧)与远程绑定窗口(Client 侧)
+  // ────────────────────────────────────────────────────────────────
+
+  /**
+   * Host 侧:把一个远程客户端注册成虚拟窗口。
+   *
+   * 注册后该 windowId 就是 WindowManager 命名空间里的一等公民:可以持有
+   * session ownership、出现在 list() 里、收到广播事件。
+   *
+   * @param send 事件投递函数,由 LinkServer 注入(序列化 → 加密 → socket)
+   * @returns 分配的 WindowInfo(windowId 与窗口编号)
+   *
+   * @throws Error('MaxWindowsReached') 真实窗口 + 虚拟窗口已达上限
+   *
+   * @副作用:
+   * - 触发 onWindowCreated handlers,于是 evt:window:list-updated 会广播出去,
+   *   本地窗口的侧栏立刻看到多了一个窗口
+   */
+  registerVirtualWindow(
+    send: (channel: string, envelope: unknown) => void,
+    preferredWindowId?: string,
+  ): WindowInfo {
+    if (this.windows.size + this.virtualWindows.size >= MAX_WINDOWS) {
+      throw new Error(
+        `[WindowManager] MaxWindowsReached: 真实窗口 ${this.windows.size} + ` +
+          `虚拟窗口 ${this.virtualWindows.size} 已达上限 ${MAX_WINDOWS}。` +
+          `可能原因:(1) 本机开了太多窗口;(2) 远程客户端反复重连但旧连接未被清理。` +
+          `建议:检查设置 → 远程访问里的已连接客户端列表。`,
+      );
+    }
+
+    // 只有当 preferredWindowId 当前**既不是**真实窗口也不是虚拟窗口时才复用。
+    // 这条校验是安全边界:否则一个恶意客户端可以指定 Host 某个本地窗口的 id
+    // 来冒充它,进而 claim / release 该窗口正在用的 session。
+    const canReuse =
+      !!preferredWindowId &&
+      !this.windows.has(preferredWindowId) &&
+      !this.virtualWindows.has(preferredWindowId);
+    if (preferredWindowId && !canReuse) {
+      logger.warn(
+        'WindowManager',
+        `registerVirtualWindow: 拒绝复用 windowId=${preferredWindowId}(该 id 已被占用),改为新分配`,
+      );
+    }
+
+    const windowId = canReuse ? preferredWindowId! : randomUUID();
+    const windowNumber = this.nextWindowNumber++;
+    const info: WindowInfo = {
+      id: windowId,
+      number: windowNumber,
+      electronWindowId: VIRTUAL_WINDOW_ELECTRON_ID,
+    };
+
+    this.virtualWindows.set(windowId, { info, send });
+    logger.info(
+      'WindowManager',
+      `registerVirtualWindow: windowId=${windowId} number=${windowNumber} ` +
+        `(real=${this.windows.size} virtual=${this.virtualWindows.size})`,
+    );
+
+    for (const handler of this.onCreatedHandlers) {
+      try {
+        // 虚拟窗口没有 BrowserWindow。现有 onCreated handler(tray 重建、
+        // 事件广播)都不解引用第二个参数,但为类型安全仍需传值 —— 这里
+        // 传 null 并断言,是这条路径唯一的妥协点。若将来有 handler 真的
+        // 需要 BrowserWindow,应改用 registerVirtualWindow 专属的回调列表。
+        handler(info, null as unknown as BrowserWindow);
+      } catch (err) {
+        logger.error(
+          'WindowManager',
+          `onCreated handler threw for virtual window ${windowId}`,
+          err,
+        );
+      }
+    }
+
+    return info;
+  }
+
+  /**
+   * Host 侧:注销一个虚拟窗口(远程客户端断开)。
+   *
+   * @returns 是否确实存在并被移除
+   *
+   * @副作用:
+   * - 触发 onWindowClosed handlers。这一步很关键:ipc.ts 注册的 handler 会调
+   *   sessionManager.handleWindowClosed(windowId),把该客户端持有的所有 session
+   *   转为无主。于是远程用户断线后,Host 本机的窗口可以立刻接管这些终端,
+   *   agent 一直在跑,什么都没丢。
+   */
+  unregisterVirtualWindow(windowId: string): boolean {
+    if (!this.virtualWindows.delete(windowId)) return false;
+    logger.info('WindowManager', `unregisterVirtualWindow: windowId=${windowId}`);
+    for (const handler of this.onClosedHandlers) {
+      try {
+        handler(windowId);
+      } catch (err) {
+        logger.error(
+          'WindowManager',
+          `onClosed handler threw for virtual window ${windowId}`,
+          err,
+        );
+      }
+    }
+    return true;
+  }
+
+  /** 该 windowId 是否是一个远程客户端的虚拟窗口。 */
+  isVirtualWindow(windowId: string): boolean {
+    return this.virtualWindows.has(windowId);
+  }
+
+  /** 当前已注册的虚拟窗口数(供设置页显示与上限判断)。 */
+  virtualCount(): number {
+    return this.virtualWindows.size;
+  }
+
+  /**
+   * Client 侧:把一个本地真实窗口标记为"远程窗口"。
+   *
+   * @param windowId 本地窗口 id
+   * @param linkId 该窗口绑定的 Host 连接 id
+   */
+  markWindowRemote(windowId: string, linkId: string): void {
+    this.remoteBoundWindows.set(windowId, linkId);
+    logger.info('WindowManager', `markWindowRemote: windowId=${windowId} link=${linkId}`);
+  }
+
+  /** Client 侧:解除远程绑定(连接被永久关闭时)。 */
+  unmarkWindowRemote(windowId: string): void {
+    this.remoteBoundWindows.delete(windowId);
+  }
+
+  /**
+   * Client 侧:该窗口是否绑定到远端 Host。
+   *
+   * 事件广播用它来跳过远程窗口(见 remoteBoundWindows 字段注释),IPC 层用它
+   * 决定命令是本地执行还是转发。
+   */
+  isWindowRemote(windowId: string): boolean {
+    return this.remoteBoundWindows.has(windowId);
+  }
+
+  /** Client 侧:该远程窗口绑定的连接 id;非远程窗口返回 null。 */
+  getRemoteLinkId(windowId: string): string | null {
+    return this.remoteBoundWindows.get(windowId) ?? null;
+  }
+
+  /** Client 侧:某条连接当前绑定了哪些本地窗口。 */
+  listWindowsForLink(linkId: string): string[] {
+    const out: string[] = [];
+    for (const [windowId, boundLinkId] of this.remoteBoundWindows) {
+      if (boundLinkId === linkId) out.push(windowId);
+    }
+    return out;
+  }
+
+  /**
+   * 按 windowId 投递一条事件,自动区分真实窗口与虚拟窗口。
+   *
+   * 这是 ipc.ts 定向推送(如 owner-only 的 evt:session:output)的统一出口。
+   * 调用方不需要知道目标究竟是本机的一块玻璃还是一条 TCP 连接。
+   *
+   * @param envelope 已包好的 EventEnvelope
+   * @returns 是否找到了投递目标(false = 该 windowId 已不存在)
+   */
+  deliverEvent(windowId: string, channel: string, envelope: unknown): boolean {
+    const virtual = this.virtualWindows.get(windowId);
+    if (virtual) {
+      virtual.send(channel, envelope);
+      return true;
+    }
+    const real = this.windows.get(windowId);
+    if (real && !real.electronWindow.isDestroyed()) {
+      real.electronWindow.webContents.send(channel, envelope);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 遍历所有虚拟窗口,用于事件广播。
+   *
+   * ipc.ts 的 broadcastEvent 仍然直接遍历 BrowserWindow.getAllWindows() 覆盖
+   * 真实窗口(保持既有行为不变),再调这个补上虚拟窗口。
+   */
+  forEachVirtualWindow(cb: (send: (channel: string, envelope: unknown) => void) => void): void {
+    for (const v of this.virtualWindows.values()) {
+      cb(v.send);
+    }
   }
 }
 

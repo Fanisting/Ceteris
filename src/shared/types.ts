@@ -264,6 +264,60 @@ export interface PathTree {
 }
 
 // ──────────────────────────────────────────────────────────────────
+// Marina Link(远程挂载)
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * 一台已保存的远端 Host。
+ *
+ * token 明文存 settings.json,与 ai.apiKey 的处理一致。这是一个**有意识的
+ * 折衷**:safeStorage 加密后的密文无法随配置导出到第二台机器,而 Marina Link
+ * 的典型用法恰恰是"在两台机器上填同一个 token"。相应地,配置导出会剥掉
+ * token 字段(见 cmd:settings:export),避免用户把归档发给别人时连带把自己
+ * 终端的访问权一起送出去。
+ */
+export interface LinkHostEntry {
+  id: string;
+  /** 用户起的名字,如"家里台式机" */
+  label: string;
+  /** 建议填 Tailscale 的 100.x.y.z */
+  host: string;
+  port: number;
+  /** 与对端 Host 的 hostToken 必须逐字符相同 */
+  token: string;
+  /** 应用启动时是否自动连接 */
+  autoConnect: boolean;
+}
+
+/**
+ * Marina Link 设置。
+ *
+ * 一个实例可以同时是 Host(让别人连进来)和 Client(连到别人那里),
+ * 所以这里不是模式二选一,而是两组互相独立的配置。
+ */
+export interface LinkSettings {
+  /** 是否监听、允许远程客户端连入 */
+  hostEnabled: boolean;
+  /**
+   * 绑定地址。'auto' = 优先选本机的 Tailscale 地址,没有则退回 127.0.0.1。
+   *
+   * 默认不绑 0.0.0.0 是刻意的安全默认:绑到 tailnet 地址意味着这个端口只对
+   * 你自己的设备可见。用户想要局域网访问必须显式选择。
+   */
+  hostBindAddress: string;
+  hostPort: number;
+  /**
+   * 预共享 token。首次打开 Host 开关时自动生成 32 字节(base64url,43 字符)。
+   *
+   * 它从不在网络上传输:两端各自把它拌进 HKDF 派生会话密钥,"能解开对方的
+   * 帧"就是认证通过的证明。详见 src/main/link/link-crypto.ts。
+   */
+  hostToken: string;
+  /** 已保存的远端 Host 列表(Client 侧) */
+  savedHosts: LinkHostEntry[];
+}
+
+// ──────────────────────────────────────────────────────────────────
 // 持久化数据 schema (与磁盘 JSON 文件一一对应)
 // ──────────────────────────────────────────────────────────────────
 
@@ -455,6 +509,15 @@ export interface Settings {
      */
     statusRecheckSource: 'headless' | 'screenshot';
   };
+
+  /**
+   * Marina Link:远程挂载。默认全关,用户在设置 → 远程访问里主动开启。
+   *
+   * 注意与 sshProfiles 的区别:SSH 是"在远端机器上跑一个 shell",终端会话
+   * 仍然属于本机 Marina;Link 是"接管远端 Marina 的全部会话",连的是那台
+   * 机器上已经在跑的 AI agent 标签页。两者互不替代。
+   */
+  link: LinkSettings;
 }
 
 /**

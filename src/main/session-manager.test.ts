@@ -207,6 +207,15 @@ function makeStubSettingsManager(
       terminalRenderer: 'auto',
       ...overrides,
     },
+    // Marina Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
+    // 结构,缺字段会让整个 stub 类型不成立。
+    link: {
+      hostEnabled: false,
+      hostBindAddress: 'auto',
+      hostPort: 8787,
+      hostToken: '',
+      savedHosts: [],
+    },
   };
   return {
     get: (): Settings => settings,

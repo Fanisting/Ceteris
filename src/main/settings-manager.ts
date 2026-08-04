@@ -19,6 +19,7 @@
  * 完整 schema 校验 + 版本迁移 + export/import 在 CP-4。
  */
 import { EventEmitter } from 'node:events';
+import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import type { Settings, ThemeId } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
@@ -96,6 +97,17 @@ export const DEFAULT_SETTINGS: Settings = {
     // BETA-006 v2:默认走 headless(已渲染文本),消除 ANSI 噪音与 PSReadLine
     // 重绘残影。老用户升级后字段缺失也会因为 SettingsManager.merge 走 default。
     statusRecheckSource: 'headless',
+  },
+  // Marina Link 默认全关。hostToken 留空,用户第一次打开 Host 开关时
+  // 由 UI 调 cmd:link:regenerate-token 生成 —— 不在默认值里预生成,
+  // 因为那会让每个从没用过远程功能的用户的 settings.json 里凭空多一个
+  // 看起来像密钥的字符串,徒增困惑。
+  link: {
+    hostEnabled: false,
+    hostBindAddress: 'auto',
+    hostPort: LINK_DEFAULT_PORT,
+    hostToken: '',
+    savedHosts: [],
   },
 };
 
@@ -397,6 +409,52 @@ export function diffKeys<T>(prefix: string, a: T, b: T): string[] {
  *
  * @throws SettingsError InvalidSettings 任意字段越界 / 枚举错误
  */
+/**
+ * 校验 Marina Link 设置。
+ *
+ * 这里的校验比其它字段严格,理由是 link 配置直接决定"谁能连进这台机器":
+ * 一个被写坏的端口或空 token 不该被静默接受然后在运行期以难懂的方式失败。
+ *
+ * @throws SettingsError InvalidSettings
+ */
+function validateLinkSettings(s: Settings): void {
+  const link = s.link;
+  if (!link || typeof link !== 'object') {
+    throw new SettingsError('InvalidSettings', 'link 必须是对象');
+  }
+  checkRange('link.hostPort', link.hostPort, 1024, 65535);
+
+  // 开着 Host 却没有 token = 谁都连不上(密钥派生会抛错),这是配置错误
+  // 而非"更开放的模式"。必须在写入前拦下,否则用户会看到一个"已开启"的
+  // 开关配上永远失败的连接。
+  if (link.hostEnabled && !link.hostToken) {
+    throw new SettingsError(
+      'InvalidSettings',
+      'link.hostEnabled 为 true 时 link.hostToken 不能为空。请先生成访问令牌。',
+      { field: 'link.hostToken' },
+    );
+  }
+
+  if (!Array.isArray(link.savedHosts)) {
+    throw new SettingsError('InvalidSettings', 'link.savedHosts 必须是数组');
+  }
+  for (const [i, entry] of link.savedHosts.entries()) {
+    if (!entry || typeof entry !== 'object') {
+      throw new SettingsError('InvalidSettings', `link.savedHosts[${i}] 必须是对象`);
+    }
+    if (!entry.id || typeof entry.id !== 'string') {
+      throw new SettingsError('InvalidSettings', `link.savedHosts[${i}].id 必须是非空字符串`);
+    }
+    if (!entry.host || typeof entry.host !== 'string') {
+      throw new SettingsError(
+        'InvalidSettings',
+        `link.savedHosts[${i}].host 必须是非空字符串(建议填 Tailscale 的 100.x.y.z)`,
+      );
+    }
+    checkRange(`link.savedHosts[${i}].port`, entry.port, 1024, 65535);
+  }
+}
+
 export function validateSettings(s: Settings): void {
   if (!VALID_THEMES.includes(s.appearance.theme)) {
     throw new SettingsError(
@@ -438,6 +496,7 @@ export function validateSettings(s: Settings): void {
       `behavior.terminalRightClick="${s.behavior.terminalRightClick}" 必须是 menu 或 paste`,
     );
   }
+  validateLinkSettings(s);
   if (!['open-window', 'tray-only'].includes(s.behavior.startupBehavior)) {
     throw new SettingsError(
       'InvalidSettings',

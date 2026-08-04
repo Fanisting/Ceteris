@@ -195,6 +195,13 @@ function makeStubs() {
     onWindowCreated: vi.fn(),
     onWindowClosed: vi.fn(),
     on: vi.fn(),
+    // Marina Link:handleCommand 在每条命令入口都会问"发起窗口是不是远程窗口"。
+    // 这些测试跑的都是本地窗口场景,恒 false = 所有命令走本地 handler,
+    // 与 Link 出现之前的行为完全一致。
+    isWindowRemote: vi.fn(() => false),
+    getRemoteLinkId: vi.fn(() => null),
+    deliverEvent: vi.fn(() => false),
+    forEachVirtualWindow: vi.fn(),
   };
 
   const sshProfileFixture = (id: string) =>

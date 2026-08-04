@@ -29,7 +29,8 @@ import { KnownHostsManager, type KnownHostsHistoryFile } from './known-hosts-man
 import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
-import { installIpcLayer } from './ipc';
+import { broadcastLinkStatus, installIpcLayer } from './ipc';
+import { LinkManager } from './link/link-manager';
 import { getPlatformAdapter } from './platform';
 import { AIClient } from './ai-client';
 import { WindowsAdapter } from './platform/windows';
@@ -45,6 +46,15 @@ import type {
 } from '@shared/types';
 
 let isQuitting = false;
+
+/**
+ * Marina Link 的管理器引用。
+ *
+ * 它在 app.whenReady 的闭包里构造,而 will-quit 的 handler 在闭包之外,
+ * 需要一个模块级引用才能在退出前停止监听、断开所有连接。null 表示还没走到
+ * 构造那一步(启动早期就退出)。
+ */
+let linkManagerRef: LinkManager | null = null;
 
 export function setQuitting(): void {
   isQuitting = true;
@@ -367,6 +377,24 @@ function bootstrap(): void {
       const aiClient = new AIClient(() => settingsManager.get());
       sessionManager.setAiClient(aiClient);
 
+      // Marina Link:远程挂载。构造必须在 installIpcLayer **之前**,因为
+      // LinkManager 的构造函数会调 setLinkCommandForwarder 注册转发器,而
+      // installIpcLayer 注册的 handler 在运行时会用到它。
+      // eslint-disable-next-line prefer-const -- 下面的 onStatusChange 闭包引用它,
+      // 必须先声明再赋值;const 在同一语句里自引用会踩 TDZ。
+      const linkManager: LinkManager = new LinkManager({
+        windowManager,
+        getSettings: () => settingsManager.get().link,
+        // 远程窗口沿用与本地窗口相同的尺寸 / 位置策略(settings.windowDefaults)
+        getWindowOptions: () => windowManager.getCreateOptions(),
+        onStatusChange: () => {
+          broadcastLinkStatus({
+            host: linkManager.getHostStatus(),
+            clients: linkManager.getClientStatuses(),
+          });
+        },
+      });
+
       installIpcLayer({
         windowManager,
         pathManager,
@@ -376,7 +404,32 @@ function bootstrap(): void {
         knownHostsManager,
         templatesManager,
         aiClient,
+        linkManager,
       });
+
+      // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
+      // 原因记在 LinkServer.lastError 里由设置页展示。
+      void linkManager.applyHostSettings();
+      // will-quit 在 whenReady 的闭包之外,需要一个模块级引用才能关掉监听。
+      linkManagerRef = linkManager;
+
+      // 自动连接标记了 autoConnect 的已保存 Host。
+      //
+      // 放在启动流程里而不是等用户点按钮,是这个特性的核心体验:打开笔记本
+      // 的 Marina,家里台式机上那些 agent 标签页就已经在那儿了。
+      for (const entry of settingsManager.get().link.savedHosts) {
+        if (!entry.autoConnect) continue;
+        try {
+          linkManager.connectTo({
+            label: entry.label,
+            host: entry.host,
+            port: entry.port,
+            token: entry.token,
+          });
+        } catch (err) {
+          logger.warn('main', `autoConnect 到 ${entry.label} 失败`, err);
+        }
+      }
 
       // ── 设置副作用 wiring ─────────────────────────────
       // settings.behavior.autoStart 改变 → 触发 OS Run 表写入
@@ -400,6 +453,21 @@ function bootstrap(): void {
         // M1-D:日志级别即改即生效
         if (e.changedKeys.includes('advanced.logLevel')) {
           logger.setLevel(e.settings.advanced.logLevel === 'DEBUG' ? 'debug' : 'info');
+        }
+        // Marina Link:开关 / 绑定地址 / 端口任一变化都要重开监听。
+        //
+        // 刻意**不**监听 link.hostToken:换 token 时不该打断已经连着的客户端
+        // (它们用的是早先派生的会话密钥,继续有效),新 token 只影响之后的
+        // 新连接。重开监听会粗暴踢掉所有人,不是用户点"重新生成"时想要的。
+        if (
+          e.changedKeys.some(
+            (k) =>
+              k === 'link.hostEnabled' ||
+              k === 'link.hostBindAddress' ||
+              k === 'link.hostPort',
+          )
+        ) {
+          void linkManager.applyHostSettings();
         }
         // Explorer 右键集成不再走 settings — 它的开关由
         // cmd:explorer-integration:set-{classic,modern} 直接调用 platformAdapter,
@@ -574,6 +642,15 @@ function bootstrap(): void {
     if (!isQuitting) return; // 防御性:不该走到这,因为 before-quit 已 set
     logger.info('main', 'will-quit: shutting down session manager + flushing stores');
     sessionManager.shutdown();
+    // 先关 Link:停止监听并断开所有连接,让对端立刻知道我们要走了,
+    // 而不是等它们的心跳超时(最长 50 秒)才发现。
+    if (linkManagerRef) {
+      try {
+        await linkManagerRef.shutdown();
+      } catch (err) {
+        logger.warn('main', 'LinkManager shutdown failed', err);
+      }
+    }
     try {
       // 等数据落盘最多 1 秒,避免无限 block
       const flushAll = Promise.all([

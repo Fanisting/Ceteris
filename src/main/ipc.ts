@@ -22,6 +22,8 @@
  * - 所有 evt:* 广播
  */
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { shouldForwardToHost } from '@shared/link-protocol';
 import { getBuildType } from './build-type';
 import {
   getExplorerIntegrationStatus,
@@ -118,6 +120,14 @@ import {
   type WindowListUpdatedPayload,
   type ImeProbeDumpPayload,
   type ImeProbeDumpResponse,
+  type LinkConnectPayload,
+  type LinkConnectResponse,
+  type LinkDisconnectPayload,
+  type LinkKickClientPayload,
+  type LinkListBindCandidatesResponse,
+  type LinkRegenerateTokenResponse,
+  type LinkStatusChangedPayload,
+  type LinkStatusResponse,
 } from '@shared/protocol';
 import type { AppSnapshot, Settings, Template } from '@shared/types';
 import type { WindowManager } from './window-manager';
@@ -133,6 +143,8 @@ import { parseSshConfig } from './ssh-config-parser';
 import { detectSshAgent } from './ssh-agent';
 import { logger } from './logger';
 import { setQuitting } from './index';
+import { generateLinkToken } from './link/link-crypto';
+import { listBindCandidates, type LinkManager } from './link/link-manager';
 
 export interface IpcLayerDeps {
   windowManager: WindowManager;
@@ -145,10 +157,24 @@ export interface IpcLayerDeps {
   templatesManager: TemplatesManager;
   /** BETA-031:可选,未注入时 AI_TEST_CONNECTION 返回 ok:false */
   aiClient?: AIClient;
+  /**
+   * Marina Link:可选。未注入时 cmd:link:get-status 返回"未监听"的空状态,
+   * 其余 link 命令抛错。单测里的 deps 不带它。
+   */
+  linkManager?: LinkManager;
 }
 
 let installed = false;
 let aiClient: AIClient | undefined;
+
+/**
+ * Marina Link:事件广播需要感知虚拟窗口(Host 侧的远程客户端)与远程绑定
+ * 窗口(Client 侧连到远端的本地窗口)。broadcastEvent / sendEventTo 是模块级
+ * 函数,拿不到 deps,所以在 install 时把 WindowManager 存一份。
+ *
+ * installed 守卫保证只会被赋值一次,与既有的 aiClient 同一模式。
+ */
+let linkWindowManager: WindowManager | null = null;
 
 /**
  * 注册全部 IPC handler 与事件桥接。整个应用只能调用一次。
@@ -157,6 +183,7 @@ export function installIpcLayer(deps: IpcLayerDeps): void {
   if (installed) throw new Error('[ipc] installIpcLayer() already called');
   installed = true;
   aiClient = deps.aiClient;
+  linkWindowManager = deps.windowManager;
   registerCommandHandlers(deps);
   wireEventBroadcasts(deps);
 }
@@ -169,16 +196,211 @@ function wrapEvent<P>(payload: P): EventEnvelope<P> {
   return { eventId: randomUUID(), timestamp: Date.now(), payload };
 }
 
+/**
+ * 广播一条事件给所有窗口。
+ *
+ * Marina Link 之后这里有两处偏离"发给所有 BrowserWindow"的直觉:
+ *
+ * 1. **跳过远程绑定窗口(Client 侧)**。这类窗口的 renderer 显示的是远端
+ *    Host 的数据,它的 store 由 Host 推来的事件驱动。若本机守护进程也往里
+ *    塞自己的 path 树 / session 列表,两份互不相干的状态会互相覆盖,表现
+ *    为侧栏内容诡异闪烁、终端标签凭空出现又消失。
+ *
+ * 2. **补上虚拟窗口(Host 侧)**。远程客户端不是 BrowserWindow,
+ *    getAllWindows() 看不到它们,必须显式遍历。
+ */
 function broadcastEvent<P>(channel: string, payload: P): void {
   const envelope = wrapEvent(payload);
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(channel, envelope);
+  const wm = linkWindowManager;
+  // list() 提到循环外:每条广播只构建一次映射。放在循环里会变成 O(n²) 次
+  // 分配,而 path tree / settings 这类事件在用户拖动时可以打得很密。
+  const remoteElectronIds = new Set<number>();
+  if (wm) {
+    for (const info of wm.list()) {
+      if (wm.isWindowRemote(info.id)) remoteElectronIds.add(info.electronWindowId);
+    }
   }
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    if (remoteElectronIds.has(win.webContents.id)) continue;
+    win.webContents.send(channel, envelope);
+  }
+  wm?.forEachVirtualWindow((send) => send(channel, envelope));
 }
 
 function sendEventTo<P>(win: BrowserWindow, channel: string, payload: P): void {
   if (win.isDestroyed()) return;
   win.webContents.send(channel, wrapEvent(payload));
+}
+
+/**
+ * 按 windowId 定向推送一条事件。目标可以是本机窗口,也可以是 Marina Link
+ * 的远程客户端(虚拟窗口),调用方不需要区分。
+ *
+ * 用于 owner-only 的推送(evt:session:output)—— 远程客户端 claim 了某个
+ * session 之后,PTY 字节流就要顺着 socket 流到它那里,而不是留在 Host。
+ *
+ * @returns 是否找到投递目标
+ */
+function sendEventToWindowId<P>(windowId: string, channel: string, payload: P): boolean {
+  const wm = linkWindowManager;
+  if (!wm) return false;
+  return wm.deliverEvent(windowId, channel, wrapEvent(payload));
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Marina Link:命令转发
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * 把一条命令转发给远端 Host 并等待结果。由 link-client.ts 在建立连接时注入。
+ *
+ * 为什么用注入而不是直接 import LinkClient:ipc.ts 是被 link-client.ts 依赖的
+ * 下游(转发回来的命令最终要落到这里注册的 handler 上),直接 import 会形成
+ * 循环依赖。注入让依赖方向保持单向。
+ */
+type LinkCommandForwarder = (
+  windowId: string,
+  channel: string,
+  payload: unknown,
+) => Promise<unknown>;
+
+let linkCommandForwarder: LinkCommandForwarder | null = null;
+
+/**
+ * 注册 / 注销命令转发器。传 null 表示不再有任何远程连接。
+ */
+export function setLinkCommandForwarder(fn: LinkCommandForwarder | null): void {
+  linkCommandForwarder = fn;
+}
+
+/**
+ * 广播一次 Link 状态给所有窗口(设置页据此刷新状态条)。
+ *
+ * 由 LinkManager 在连接状态变化时调用。放在 ipc.ts 而不是 LinkManager 里,
+ * 是为了让"往 renderer 推事件"这件事只有 ipc.ts 一个出口。
+ */
+export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
+  broadcastEvent<LinkStatusChangedPayload>(EVENT_CHANNELS.LINK_STATUS_CHANGED, payload);
+}
+
+/**
+ * 注册一条命令 handler,并在最外层插入 Marina Link 的路由判断。
+ *
+ * 路由规则(见 @shared/link-protocol 的 LINK_LOCAL_ONLY_CHANNELS):
+ * - 发起窗口不是远程窗口 → 本地执行,行为与 Link 出现之前完全一致
+ * - 是远程窗口 + 该命令属于"操作远端数据" → 转发给 Host,返回 Host 的结果
+ * - 是远程窗口 + 该命令属于"操作本机这块玻璃"(窗口控制 / 剪贴板 / 退出)
+ *   → 仍在本地执行
+ *
+ * 为什么统一包一层而不是在 65 个 handler 里各写各的:漏掉任何一条都会造成
+ * 难以察觉的错误行为(比如漏了 cmd:session:close,远程用户点关闭会去关掉
+ * 本机一个同 id 的 session,而本机根本没有那个 id,于是静默无反应)。
+ * 集中一处 + 一张显式白名单,才能保证"新增 channel 时默认是安全的转发"。
+ */
+/**
+ * Marina Link(Host 侧):channel → 本地 handler 的直呼表。
+ *
+ * 为什么需要它:Electron 只允许 renderer 通过 ipcRenderer.invoke 触发
+ * ipcMain.handle 注册的 handler,主进程内部没有"自己调用自己 handler"的
+ * 官方 API。远程客户端的命令是从 TCP 进来的,不经过任何 renderer,所以
+ * 必须有一张自己的表。
+ *
+ * handleCommand 在注册 ipcMain.handle 的同时往这里存一份,保证两条入口
+ * (本地 renderer / 远程客户端)执行的**是同一个函数**,不存在实现漂移。
+ */
+const localCommandHandlers = new Map<
+  string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (event: IpcMainInvokeEvent, ...args: any[]) => unknown
+>();
+
+/**
+ * 这些命令会弹 Electron 原生对话框,必须挂在一个真实窗口上。
+ *
+ * 远程客户端触发它们时,对话框会出现在 **Host 的屏幕**上(路径属于 Host,
+ * 这是唯一语义正确的行为)。但如果 Host 此刻处于纯托盘模式、一个窗口都没有,
+ * 就没有可挂载的父窗口,Electron 会抛一个很难懂的错。这里提前拦下并给出
+ * 一条远程用户看得懂的提示。
+ */
+const DIALOG_PARENT_REQUIRED_CHANNELS: ReadonlySet<string> = new Set([
+  COMMAND_CHANNELS.BOOKMARK_PICK_FOLDER,
+  COMMAND_CHANNELS.SSH_PROFILE_PICK_KEY_FILE,
+  COMMAND_CHANNELS.SETTINGS_EXPORT,
+  COMMAND_CHANNELS.SETTINGS_IMPORT,
+]);
+
+/**
+ * Host 侧:执行一条来自远程客户端的命令。
+ *
+ * @param channel IPC channel 名
+ * @param envelope 已把 windowId 重写为虚拟窗口 id 的信封
+ * @returns handler 的返回值
+ *
+ * @throws Error 未知 channel(客户端版本比 Host 新)、需要对话框父窗口但
+ *   Host 无窗口、或 handler 本身抛出的业务错误
+ */
+export async function dispatchLocalCommand(
+  channel: string,
+  envelope: CommandEnvelope<unknown>,
+): Promise<unknown> {
+  const listener = localCommandHandlers.get(channel);
+  if (!listener) {
+    throw new Error(
+      `[ipc] dispatchLocalCommand: 未知 channel "${channel}"。` +
+        `可能原因:(1) 客户端版本比 Host 新,用到了 Host 还没有的命令;` +
+        `(2) channel 名拼错。建议:把两端 Marina 升级到同一版本。`,
+    );
+  }
+
+  let parentWebContents: IpcMainInvokeEvent['sender'] | null = null;
+  const hostWindow = linkWindowManager?.getMostRecentlyActive() ?? null;
+  if (hostWindow && !hostWindow.isDestroyed()) {
+    parentWebContents = hostWindow.webContents;
+  }
+
+  if (DIALOG_PARENT_REQUIRED_CHANNELS.has(channel) && !parentWebContents) {
+    throw new Error(
+      `[ipc] "${channel}" 需要在 Host 上弹出原生对话框,但 Host 当前没有打开任何窗口` +
+        `(纯托盘模式)。请在 Host 机器上先打开一个 Marina 窗口,或改为直接手动输入路径。`,
+    );
+  }
+
+  // 合成一个最小的 IpcMainInvokeEvent。只有 sender 字段会被少数几个需要
+  // 对话框父窗口的 handler 读到(已在上面校验非空),其余字段没有 handler
+  // 使用 —— 这一点由 ipc.ts 里"first param 一律写作 _e"的约定保证。
+  const syntheticEvent = { sender: parentWebContents } as unknown as IpcMainInvokeEvent;
+  return listener(syntheticEvent, envelope);
+}
+
+function handleCommand(
+  channel: string,
+  // `any[]` 是刻意的:它与 Electron 自己的 ipcMain.handle 签名一致。改成
+  // unknown[] 会在 strictFunctionTypes 下让全部 65 个带具体 envelope 类型的
+  // handler 报逆变错误 —— 那不是类型更安全,只是把 65 处都逼着加断言。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown,
+): void {
+  localCommandHandlers.set(channel, listener);
+  ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+    const envelope = args[0] as CommandEnvelope<unknown> | undefined;
+    const windowId = envelope?.windowId;
+    if (
+      windowId &&
+      linkWindowManager?.isWindowRemote(windowId) &&
+      shouldForwardToHost(channel)
+    ) {
+      if (!linkCommandForwarder) {
+        throw new Error(
+          `[ipc] ${channel}: 窗口 ${windowId} 标记为远程窗口,但没有可用的转发器。` +
+            `可能原因:(1) 连接已断开但窗口未被清理;(2) setLinkCommandForwarder 未被调用。` +
+            `建议:关闭该远程窗口重开;若反复出现请看日志里 LinkClient 的连接状态。`,
+        );
+      }
+      return linkCommandForwarder(windowId, channel, envelope?.payload);
+    }
+    return listener(event, ...args);
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -197,7 +419,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   } = deps;
 
   // App
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.APP_GET_PROTOCOL_VERSION,
     (): GetProtocolVersionResponse => ({
       protocolVersion: PROTOCOL_VERSION,
@@ -206,14 +428,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     }),
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.APP_GET_SNAPSHOT,
     (_e, envelope: CommandEnvelope<GetSnapshotPayload>): GetSnapshotResponse => {
       return buildSnapshot(deps, envelope.windowId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.APP_QUIT,
     async (_e, _envelope: CommandEnvelope<QuitPayload>): Promise<QuitResponse> => {
       // CP-2 简化:无 session 在跑时的二次确认 (CP-3 加入)
@@ -224,7 +446,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // Window
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_CREATE,
     (_e, _envelope: CommandEnvelope<CreateWindowPayload>): CreateWindowResponse => {
       const info = windowManager.createWindowFromFactory();
@@ -232,14 +454,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_CLOSE_SELF,
     (_e, envelope: CommandEnvelope<undefined>): void => {
       windowManager.closeWindow(envelope.windowId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_CLOSE_ALL,
     (_e, _envelope: CommandEnvelope<undefined>): void => {
       windowManager.closeAll();
@@ -247,28 +469,28 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // M1-A:自绘标题栏配套的窗口控制
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_MINIMIZE,
     (_e, envelope: CommandEnvelope<undefined>): void => {
       windowManager.minimizeWindow(envelope.windowId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_TOGGLE_MAXIMIZE,
     (_e, envelope: CommandEnvelope<undefined>): void => {
       windowManager.toggleMaximizeWindow(envelope.windowId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_GET_MAX_STATE,
     (_e, envelope: CommandEnvelope<undefined>) => {
       return { maximized: windowManager.isMaximized(envelope.windowId) };
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.WINDOW_FOCUS,
     (_e, envelope: CommandEnvelope<FocusWindowPayload>): void => {
       const ok = windowManager.focus(envelope.payload.windowId);
@@ -287,7 +509,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // Session
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_CREATE,
     async (
       _e,
@@ -354,7 +576,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_CLOSE,
     (_e, envelope: CommandEnvelope<CloseSessionPayload>): void => {
       sessionManager.closeSession(envelope.payload.sessionId);
@@ -362,7 +584,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // M1-C
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_RENAME,
     (_e, envelope: CommandEnvelope<{ sessionId: string; newDisplayName: string }>): void => {
       sessionManager.renameSession(envelope.payload.sessionId, envelope.payload.newDisplayName);
@@ -370,14 +592,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // STM-3:清除手动重命名标记
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_CLEAR_MANUAL_RENAME,
     (_e, envelope: CommandEnvelope<{ sessionId: string }>): void => {
       sessionManager.clearManualRename(envelope.payload.sessionId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_CLAIM,
     async (
       _e,
@@ -396,7 +618,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_GET_SCROLLBACK,
     async (
       _e,
@@ -408,7 +630,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_EXPORT_SCROLLBACK,
     async (
       _e,
@@ -420,7 +642,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_CLEAR_SCROLLBACK,
     (
       _e,
@@ -431,14 +653,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_RELEASE,
     (_e, envelope: CommandEnvelope<ReleaseSessionPayload>): void => {
       sessionManager.releaseOwner(envelope.payload.sessionId, envelope.windowId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_OPEN_IN_NEW_WINDOW,
     (
       _e,
@@ -499,7 +721,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
     (_e, envelope: CommandEnvelope<FocusSessionOwnerPayload>): void => {
       const session = sessionManager.get(envelope.payload.sessionId);
@@ -523,7 +745,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_SEND_INPUT,
     (
       _e,
@@ -555,7 +777,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SESSION_RESIZE,
     (
       _e,
@@ -570,7 +792,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // Bookmark / Path
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.BOOKMARK_ADD,
     async (
       _e,
@@ -590,28 +812,28 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.BOOKMARK_REMOVE,
     (_e, envelope: CommandEnvelope<RemoveBookmarkPayload>): void => {
       pathManager.removeBookmark(envelope.payload.pathId);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.BOOKMARK_RENAME,
     (_e, envelope: CommandEnvelope<RenameBookmarkPayload>): void => {
       pathManager.renameBookmark(envelope.payload.pathId, envelope.payload.newDisplayName);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.BOOKMARK_REORDER,
     (_e, envelope: CommandEnvelope<ReorderBookmarksPayload>): void => {
       pathManager.reorderBookmarks(envelope.payload.orderedPathIds);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.BOOKMARK_SET_DEFAULT_TEMPLATE,
     (
       _e,
@@ -624,7 +846,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.BOOKMARK_PICK_FOLDER,
     async (
       _e,
@@ -643,7 +865,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.PATH_REMOVE_FROM_RECENT,
     (_e, envelope: CommandEnvelope<RemoveFromRecentPayload>): void => {
       pathManager.removeFromRecent(envelope.payload.path);
@@ -651,14 +873,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // SSH profiles / remote bookmarks
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_PROFILE_LIST,
     (_e, _envelope: CommandEnvelope<undefined>): ListSshProfilesResponse => {
       return { profiles: sshProfileManager?.list() ?? [] };
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_PROFILE_ADD,
     (_e, envelope: CommandEnvelope<AddSshProfilePayload>): AddSshProfileResponse => {
       if (!sshProfileManager) {
@@ -674,7 +896,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_PROFILE_UPDATE,
     (_e, envelope: CommandEnvelope<UpdateSshProfilePayload>): UpdateSshProfileResponse => {
       if (!sshProfileManager) {
@@ -691,7 +913,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_PROFILE_PICK_KEY_FILE,
     async (
       _e,
@@ -715,7 +937,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_PROFILE_DELETE,
     (_e, envelope: CommandEnvelope<DeleteSshProfilePayload>): void => {
       if (!sshProfileManager) {
@@ -731,7 +953,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_PROFILE_TEST,
     async (
       _e,
@@ -748,7 +970,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.REMOTE_BOOKMARK_ADD,
     (_e, envelope: CommandEnvelope<AddRemoteBookmarkPayload>): AddBookmarkResponse => {
       const profile = sshProfileManager?.get(envelope.payload.sshProfileId);
@@ -774,7 +996,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // SSH 方案 §阶段 2.1:ssh_config 集成 — 只在 advanced.includeSshConfig 开
   // 时读 ~/.ssh/config。关时返回 enabled=false + entries=[],renderer 自动
   // 不渲染 ssh_config 区。
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_CONFIG_LIST,
     (_e, _envelope: CommandEnvelope<undefined>): SshConfigListResponse => {
       const enabled = settingsManager.get().advanced.includeSshConfig === true;
@@ -793,7 +1015,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // SSH 方案 §阶段 2.2:同步探测 ssh-agent。耗时 ~100ms 以内,不进 worker。
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SSH_AGENT_STATUS,
     (_e, _envelope: CommandEnvelope<undefined>): SshAgentStatusResponse => {
       const r = detectSshAgent();
@@ -806,7 +1028,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   // SSH 方案 §阶段 3.1:列 ~/.ssh/known_hosts 并 diff history。
   // knownHostsManager 不在 deps 时返回空,避免 renderer 出错。
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.KNOWN_HOSTS_REFRESH,
     (_e, _envelope: CommandEnvelope<undefined>): KnownHostsRefreshResponse => {
       if (!knownHostsManager) return { entries: [], changes: [] };
@@ -825,28 +1047,28 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // Settings
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_GET,
     (_e, _envelope: CommandEnvelope<undefined>): GetSettingsResponse => {
       return { settings: settingsManager.get() };
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_UPDATE,
     (_e, envelope: CommandEnvelope<UpdateSettingsPayload>): void => {
       settingsManager.update(envelope.payload.partial);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_RESET,
     (_e, _envelope: CommandEnvelope<undefined>): void => {
       settingsManager.reset();
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_LIST_SHELLS,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<ListShellsResponse> => {
       const shells = await sessionManager.listAvailableShells();
@@ -860,7 +1082,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_GET_AUTO_START,
     (_e, _envelope: CommandEnvelope<undefined>): GetAutoStartResponse => {
       // Electron 跨平台 API,Windows 上读 Run 注册表
@@ -869,7 +1091,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // System
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_SHOW_IN_EXPLORER,
     async (
       _e,
@@ -879,7 +1101,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_OPEN_DATA_DIR,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<void> => {
       // app.getPath('userData') = %APPDATA%\Marina
@@ -887,7 +1109,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_OPEN_LOGS_DIR,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<void> => {
       // logs 目录:%APPDATA%\Marina\logs (M1-D 起 logger.ts 实际会写;空目录也可打开)
@@ -902,14 +1124,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_GET_BUILD_TYPE,
     (_e, _envelope: CommandEnvelope<undefined>) => {
       return { buildType: getBuildType() };
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_GET_DATA_DIR,
     (_e, _envelope: CommandEnvelope<undefined>): { dataDir: string } => {
       // BETA-039:UI 设置页用真实绝对路径替代硬编码 %APPDATA%\Marina,
@@ -918,7 +1140,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.AI_TEST_CONNECTION,
     async (_e, _envelope: CommandEnvelope<undefined>) => {
       // BETA-031:AI 助手设置页"测试连接"按钮调用。失败信息透传 UI。
@@ -932,7 +1154,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // `%APPDATA%/Marina/logs/ime-YYYY-MM-DD.log` 查看。
   // 设计:无 throw、无大规模 stringify(已在 logger.format 内做 JSON.stringify
   // 兜底),让 renderer 的 fire-and-forget 调用永不影响主链路。
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.LOGGER_IME_DUMP,
     (
       _e,
@@ -949,14 +1171,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // Explorer 集成 —— 不读 settings,现场查 + 操作系统状态
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_GET_STATUS,
     async (_e, _envelope: CommandEnvelope<undefined>) => {
       return await getExplorerIntegrationStatus();
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_SET_CLASSIC,
     async (
       _e,
@@ -971,7 +1193,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_SET_MODERN,
     async (
       _e,
@@ -983,14 +1205,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_GET_PS_COMMANDS,
     (_e, _envelope: CommandEnvelope<undefined>) => {
       return getPsCommands(app.getPath('exe'));
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_OPEN_EXTERNAL,
     async (
       _e,
@@ -1009,7 +1231,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // 不走 navigator.clipboard.* (web Permission API 拒掉 clipboard-write,
   // 表现为选中即复制 / Ctrl+Shift+C / 右键粘贴全部静默失败,见 prelease 前
   // 勘误第二轮工作记录)。Electron clipboard 模块没有权限层。
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_CLIPBOARD_READ_TEXT,
     (
       _e,
@@ -1023,7 +1245,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SYSTEM_CLIPBOARD_WRITE_TEXT,
     (
       _e,
@@ -1039,7 +1261,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // Templates CRUD (CP-4 chunk 4)
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.TEMPLATE_ADD,
     (_e, envelope: CommandEnvelope<AddTemplatePayload>): AddTemplateResponse => {
       const t = templatesManager.add(envelope.payload);
@@ -1047,7 +1269,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.TEMPLATE_UPDATE,
     (
       _e,
@@ -1058,14 +1280,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.TEMPLATE_DELETE,
     (_e, envelope: CommandEnvelope<DeleteTemplatePayload>): void => {
       templatesManager.delete(envelope.payload.id);
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.TEMPLATE_SET_DEFAULT,
     (_e, envelope: CommandEnvelope<SetDefaultTemplatePayload>): void => {
       templatesManager.setDefault(envelope.payload.id);
@@ -1076,7 +1298,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   //
   // V1 折衷:导出/导入用单 JSON 文件而非 zip,避免引入 zip 库依赖。
   // 文档 6.6.2 描述为 zip,未来加 archiver 包可平滑升级。
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_EXPORT,
     async (
       _e,
@@ -1136,7 +1358,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  ipcMain.handle(
+  handleCommand(
     COMMAND_CHANNELS.SETTINGS_IMPORT,
     async (
       _e,
@@ -1193,6 +1415,97 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       return { status: 'imported' };
     },
   );
+
+  // ────────────────────────────────────────────────────────────────
+  // Marina Link(远程挂载)
+  //
+  // 这些命令全部操作**本机**的 Link 配置,已列入 LINK_LOCAL_ONLY_CHANNELS,
+  // 因此即使在远程窗口里调用也不会被转发出去。
+  // ────────────────────────────────────────────────────────────────
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_GET_STATUS,
+    (): LinkStatusResponse => {
+      const lm = deps.linkManager;
+      if (!lm) {
+        return {
+          host: { listening: false, boundAddress: '', port: 0, lastError: '', clients: [] },
+          clients: [],
+        };
+      }
+      return { host: lm.getHostStatus(), clients: lm.getClientStatuses() };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_REGENERATE_TOKEN,
+    (): LinkRegenerateTokenResponse => {
+      const token = generateLinkToken();
+      // 立即写进 settings。旧 token 从这一刻起失效:已建立的连接因为用的是
+      // 早先派生的会话密钥,不会立刻掉线,但它们重连时会被拒 —— 这正是
+      // "重新生成令牌"应有的语义(踢掉未来的访问,不粗暴打断当前会话)。
+      settingsManager.update({ link: { hostToken: token } });
+      return { token };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_CONNECT,
+    (_e, envelope: CommandEnvelope<LinkConnectPayload>): LinkConnectResponse => {
+      const lm = requireLinkManager(deps);
+      const p = envelope.payload;
+      if (!p.host || !p.token) {
+        throw new Error(
+          '[ipc] cmd:link:connect: host 与 token 都不能为空。' +
+            'token 需要与目标机器"设置 → 远程访问"里显示的访问令牌逐字符相同。',
+        );
+      }
+      return {
+        linkId: lm.connectTo({
+          label: p.label || p.host,
+          host: p.host,
+          port: p.port,
+          token: p.token,
+        }),
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_DISCONNECT,
+    (_e, envelope: CommandEnvelope<LinkDisconnectPayload>): void => {
+      requireLinkManager(deps).disconnect(envelope.payload.linkId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_KICK_CLIENT,
+    (_e, envelope: CommandEnvelope<LinkKickClientPayload>): void => {
+      requireLinkManager(deps).disconnectHostClient(envelope.payload.virtualWindowId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_LIST_BIND_CANDIDATES,
+    (): LinkListBindCandidatesResponse => ({ candidates: listBindCandidates() }),
+  );
+}
+
+/**
+ * 取 LinkManager,未注入时抛一条用户看得懂的错。
+ *
+ * LinkManager 是可选依赖(测试里的 IpcLayerDeps 不带它),所以每个用到它的
+ * handler 都需要这一步。抛错而不是静默返回,是因为用户点了"连接"按钮却
+ * 什么都没发生比一条错误提示更难排查。
+ */
+function requireLinkManager(deps: IpcLayerDeps): LinkManager {
+  if (!deps.linkManager) {
+    throw new Error(
+      '[ipc] Marina Link 未初始化。可能原因:主进程启动时 LinkManager 构造失败。' +
+        '建议:查看日志目录下 main.log 里 LinkManager / LinkServer 的错误。',
+    );
+  }
+  return deps.linkManager;
 }
 
 function formatDateForFilename(d: Date): string {
@@ -1218,7 +1531,24 @@ async function buildArchive(deps: IpcLayerDeps): Promise<SettingsArchiveV1> {
   };
   // 强制先 flush,以保证读盘时拿到最新写入
   await flushAllStores(deps);
+  // Marina Link:导出的归档里剥掉远程访问凭据。
+  //
+  // 理由:归档的典型用途是"发给别人"或"备份到网盘",而 link.hostToken 等价于
+  // 这台机器上所有终端的完全访问权,savedHosts[].token 则是别人机器的访问权。
+  // 把它们打进归档,一次善意的配置分享就变成了一次凭据泄露。
+  //
+  // 导入方看到的是空 token:Host 开关会因为 validateLinkSettings 的规则保持
+  // 关闭状态,用户需要重新生成 —— 这正是我们想要的默认行为。
   const settings = deps.settingsManager.get();
+  //
+  // hostEnabled 必须一并置 false:validateLinkSettings 禁止 "开启但无 token",
+  // 若只清 token 不关开关,导入方会因为归档自相矛盾而整个导入失败。
+  settings.link = {
+    ...settings.link,
+    hostEnabled: false,
+    hostToken: '',
+    savedHosts: settings.link.savedHosts.map((h) => ({ ...h, token: '' })),
+  };
   const bookmarks = await readJson<{ paths: unknown[] }>('bookmarks.json', { paths: [] });
   const recent = await readJson<{ paths: unknown[] }>('recent.json', { paths: [] });
   const templates = {
@@ -1425,13 +1755,19 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
   });
 
   // Session output → 仅推 owner
+  //
+  // Marina Link 之后 owner 可能是一个远程客户端(虚拟窗口)。走
+  // sendEventToWindowId 而非 getById + sendEventTo:前者会自动区分
+  // "本机 webContents" 与 "TCP 连接",后者对虚拟窗口返回 null,字节流会
+  // 被静默丢掉 —— 表现就是远程终端里敲了命令但屏幕永远不更新。
   sessionManager.on('sessionOutput', (payload: SessionOutputPayload) => {
     const session = sessionManager.get(payload.sessionId);
     if (!session?.ownerWindowId) return; // 无 owner 不推 (CP-3 写 scrollback)
-    const ownerWin = windowManager.getById(session.ownerWindowId);
-    if (ownerWin) {
-      sendEventTo<SessionOutputPayload>(ownerWin, EVENT_CHANNELS.SESSION_OUTPUT, payload);
-    }
+    sendEventToWindowId<SessionOutputPayload>(
+      session.ownerWindowId,
+      EVENT_CHANNELS.SESSION_OUTPUT,
+      payload,
+    );
   });
 
   // 窗口列表变化 → 广播 evt:window:list-updated

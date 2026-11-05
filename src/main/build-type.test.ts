@@ -15,7 +15,49 @@ vi.mock('electron', () => ({
 let mockIsPackaged = false;
 let origPortable: string | undefined;
 
-import { __resetBuildTypeCacheForTest, getBuildType } from './build-type';
+import {
+  __resetBuildTypeCacheForTest,
+  getAppLabel,
+  getBuildType,
+  isBetaBuild,
+} from './build-type';
+
+const realExecPath = process.execPath;
+function setExecPath(path: string): void {
+  Object.defineProperty(process, 'execPath', { value: path, configurable: true });
+}
+
+describe('beta isolation', () => {
+  afterEach(() => {
+    __resetBuildTypeCacheForTest();
+    setExecPath(realExecPath);
+    delete process.env['PORTABLE_EXECUTABLE_DIR'];
+  });
+
+  it('a directly launched MarinaBeta.exe is never treated as installed', () => {
+    mockIsPackaged = true;
+    delete process.env['PORTABLE_EXECUTABLE_DIR'];
+    setExecPath('C:\\tmp\\win-unpacked\\MarinaBeta.exe');
+    expect(isBetaBuild()).toBe(true);
+    expect(getBuildType()).toBe('portable');
+    expect(getAppLabel()).toBe('Marina Beta');
+  });
+
+  it('the installed Marina.exe is not a beta', () => {
+    mockIsPackaged = true;
+    delete process.env['PORTABLE_EXECUTABLE_DIR'];
+    setExecPath('C:\\Users\\me\\AppData\\Local\\Programs\\Marina\\Marina.exe');
+    expect(isBetaBuild()).toBe(false);
+    expect(getBuildType()).toBe('installed');
+    expect(getAppLabel()).toBe('Marina');
+  });
+
+  it('an unpackaged run is not a beta even with that exe name', () => {
+    mockIsPackaged = false;
+    setExecPath('C:\\tmp\\MarinaBeta.exe');
+    expect(isBetaBuild()).toBe(false);
+  });
+});
 
 describe('getBuildType', () => {
   afterEach(() => {

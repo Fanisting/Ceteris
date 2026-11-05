@@ -35,7 +35,7 @@ import { getPlatformAdapter } from './platform';
 import { AIClient } from './ai-client';
 import { WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
-import { getBuildType } from './build-type';
+import { getBuildType, isBetaBuild } from './build-type';
 import { logger } from './logger';
 import type {
   BookmarksFile,
@@ -110,6 +110,9 @@ function bootstrap(): void {
   // settings.json / 单实例锁。仅 installed 形态使用 "Marina" 原名。
   if (!app.isPackaged) {
     app.setName('Marina (dev)');
+  } else if (isBetaBuild()) {
+    // The beta gets its own data dir and single-instance lock however it is launched.
+    app.setName('Marina Beta');
   } else if (process.env['PORTABLE_EXECUTABLE_DIR']) {
     app.setName('Marina (portable)');
   }

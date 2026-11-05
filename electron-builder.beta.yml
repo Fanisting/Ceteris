@@ -1,0 +1,66 @@
+# electron-builder 配置 —— Marina Link beta 测试专用
+#
+# 与 electron-builder.yml 的两点差异,都是为了让这个包能在**没有离线构建
+# 产物**的机器上直接打出来:
+#
+# 1. 只出 portable,不出 NSIS 安装器。
+#    portable 形态下 index.ts 会 app.setName('Marina (portable)'),于是它拿到
+#    独立的 %APPDATA%\Marina (portable)\ 数据目录与独立的单实例锁,可以与已
+#    安装的正式版 Marina 同时运行、互不干扰。测试远程功能时这一点是必需的。
+#
+# 2. extraResources 去掉 Win11 新右键菜单的三件套(MSIX / 证书 / install.ps1)。
+#    那些文件由 native/context-menu/scripts/build.ps1 离线生成(需要 Rust +
+#    Windows SDK),仓库里不入库。它们只服务于 Explorer 右键集成,与 Marina
+#    Link 完全无关;缺失时主配置会让打包直接失败,所以这里剥掉。
+#    代价:本包内 "设置 → 系统集成" 的 Win11 新菜单开关不可用(会报缺资源)。
+#
+# 用法:npm run build:beta
+#
+# Isolation from the installed Marina: appId, productName and executableName all
+# differ on purpose. Do not change them back.
+# - executableName: Windows tools match processes by image name. The NSIS installer
+#   and uninstaller run `taskkill /f /im Marina.exe`, which hits every Marina.exe the
+#   user owns regardless of its path. MarinaBeta.exe is out of reach of that.
+#   build-type.ts keys beta detection on this name, so keep the two in sync.
+# - productName / appId: separate taskbar group, tray entry and login item.
+# - Data dir and single-instance lock: %APPDATA%\Marina Beta, set in index.ts.
+# Never add an nsis target here: a beta installer would close the installed Marina.
+#
+# 这个文件是测试构建脚手架,不进 release 流程;正式发布仍走 electron-builder.yml。
+
+appId: com.liyue-cheng.marina.beta
+productName: Marina Beta
+executableName: MarinaBeta
+copyright: Copyright (c) 2026 Liyue-Cheng
+
+directories:
+  output: release/${version}
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+  - '!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme}'
+  - '!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}'
+  - '!**/node_modules/*.d.ts'
+  - '!**/node_modules/.bin'
+
+asar: true
+asarUnpack:
+  - node_modules/node-pty/**
+
+# shell hook 脚本必须留在 asar 之外:pwsh.exe / bash.exe 是外部进程,
+# 读不了 asar 虚拟文件系统。
+extraResources:
+  - from: src/shell-hooks
+    to: shell-hooks
+
+win:
+  target:
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
+
+portable:
+  artifactName: MarinaBeta-${version}-${arch}.${ext}

@@ -38,6 +38,7 @@ import type { WindowManager } from './window-manager';
 import type { SessionInfo } from '@shared/types';
 import type { SessionManager } from './session-manager';
 import type { SettingsManager } from './settings-manager';
+import { getAppLabel } from './build-type';
 import { logger } from './logger';
 import { setQuitting } from './index';
 
@@ -135,7 +136,7 @@ export class TrayManager {
     }
 
     this.tray = new Tray(generateTrayIcon('default'));
-    this.tray.setToolTip('Marina');
+    this.tray.setToolTip(getAppLabel());
 
     this.tray.on('click', () => this.handleSingleClick());
     // 双击在 Windows 等同于单击 (软件定义书 6.5.2: "避免双击意外行为")
@@ -181,7 +182,7 @@ export class TrayManager {
       }
     }
     this.tray.setToolTip(
-      `Marina — ${total} 个会话${total > 0 ? ` (${live} 运行中,${active} 活跃)` : ''}`,
+      `${getAppLabel()}: ${total} 个会话${total > 0 ? ` (${live} 运行中,${active} 活跃)` : ''}`,
     );
   }
 
@@ -288,7 +289,7 @@ export class TrayManager {
     items.push({ type: 'separator' });
 
     items.push({
-      label: `完全退出 Marina${liveSessions.length > 0 ? ` (${liveSessions.length} 个会话运行中)` : ''}`,
+      label: `完全退出 ${getAppLabel()}${liveSessions.length > 0 ? ` (${liveSessions.length} 个会话运行中)` : ''}`,
       click: () => this.quitApp(),
     });
 
@@ -386,7 +387,7 @@ export class TrayManager {
       const owner = this.windowManager.getMostRecentlyActive();
       const result = await dialog.showMessageBox(owner ?? undefined as never, {
         type: 'warning',
-        title: '完全退出 Marina?',
+        title: `完全退出 ${getAppLabel()}?`,
         message: `还有 ${liveCount} 个终端在运行,完全退出会关掉它们。`,
         detail: '如果只想隐藏窗口,请关闭窗口而不是"完全退出"。',
         buttons: ['取消', '完全退出'],

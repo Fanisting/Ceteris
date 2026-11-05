@@ -75,7 +75,15 @@ import { buildSpawnEnv, injectTerminalHintEnv, validateDimensions } from './pty-
 import { logger } from './logger';
 import { activateMarinaUnicodeWidth } from '@shared/terminal-unicode-width';
 
-const SPAWN_ENV_SKIP = ['ELECTRON_RUN_AS_NODE', 'ELECTRON_RENDERER_URL'];
+// The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
+// Marina launched from that shell would misidentify itself as a portable build.
+const SPAWN_ENV_SKIP = [
+  'ELECTRON_RUN_AS_NODE',
+  'ELECTRON_RENDERER_URL',
+  'PORTABLE_EXECUTABLE_DIR',
+  'PORTABLE_EXECUTABLE_FILE',
+  'PORTABLE_EXECUTABLE_APP_FILENAME',
+];
 
 /**
  * cwd 兜底参数:

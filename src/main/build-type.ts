@@ -19,13 +19,33 @@ import { app } from 'electron';
 
 export type BuildType = 'dev' | 'portable' | 'installed';
 
+/** Must match executableName in electron-builder.beta.yml (compared in lower case). */
+const BETA_EXECUTABLE = 'marinabeta.exe';
+
 let cached: BuildType | null = null;
+
+/**
+ * True for packages built from electron-builder.beta.yml.
+ *
+ * Detection uses the exe name, not an env var: the portable wrapper is not always
+ * in the launch path (running win-unpacked directly skips it), and env vars leak
+ * into child shells. A beta must never be mistaken for the installed Marina.
+ */
+export function isBetaBuild(): boolean {
+  if (!app.isPackaged) return false;
+  return process.execPath.split(/[\\/]/).pop()?.toLowerCase() === BETA_EXECUTABLE;
+}
+
+/** User-facing app name, so the tray can tell a beta from the installed Marina. */
+export function getAppLabel(): string {
+  return isBetaBuild() ? 'Marina Beta' : 'Marina';
+}
 
 export function getBuildType(): BuildType {
   if (cached) return cached;
   if (!app.isPackaged) {
     cached = 'dev';
-  } else if (process.env['PORTABLE_EXECUTABLE_DIR']) {
+  } else if (isBetaBuild() || process.env['PORTABLE_EXECUTABLE_DIR']) {
     cached = 'portable';
   } else {
     cached = 'installed';

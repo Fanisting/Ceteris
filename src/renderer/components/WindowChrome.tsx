@@ -3,7 +3,7 @@
  * @purpose 自绘标题栏 (M1-A) — 取代 OS frame。
  *
  *   两套布局,由 settings.appearance.windowStyle 决定:
- *   - 'windows':传统右侧三按钮 — 最小化 / 最大化-还原 / 关闭。lucide 图标。
+ *   - 'windows':传统右侧三按钮:最小化 / 最大化-还原 / 关闭。Material Symbols 图标。
  *   - 'macos':左侧 traffic light — 红黄绿圆点。点击红=关闭,黄=最小化,绿=切最大化。
  *     hover 时显示 × / − / ⤢ 内部符号(macOS 一致)。
  *
@@ -25,12 +25,8 @@ import {
   type WindowMaxStateChangedPayload,
 } from '@shared/protocol';
 import type { WindowStyle } from '@shared/types';
-import {
-  Minus,
-  Square,
-  Copy as RestoreIcon,
-  X,
-} from 'lucide-react';
+import { MarinaMark } from './icons';
+import { Close, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
 import { focusTerminalDom } from '../focus';
 import { useAppState } from '../store';
 
@@ -132,6 +128,7 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
       onDoubleClick={handleDragRegionDblClick}
     >
       <div className="titlebar-title titlebar-drag">
+        <MarinaMark />
         <span className="titlebar-app-name">{appLabel}</span>
         <span className="titlebar-window-badge">Window {windowNumber || '?'}</span>
       </div>
@@ -145,7 +142,7 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
           title="最小化"
           aria-label="最小化窗口"
         >
-          <Minus size={14} strokeWidth={1.6} />
+          <WindowMinimize size={16} />
         </button>
         <button
           type="button"
@@ -154,7 +151,7 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
           title={maximized ? '还原' : '最大化'}
           aria-label={maximized ? '还原窗口' : '最大化窗口'}
         >
-          {maximized ? <RestoreIcon size={13} strokeWidth={1.6} /> : <Square size={13} strokeWidth={1.6} />}
+          {maximized ? <WindowRestore size={14} /> : <WindowMaximize size={15} />}
         </button>
         <button
           type="button"
@@ -163,7 +160,7 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
           title="关闭"
           aria-label="关闭窗口"
         >
-          <X size={15} strokeWidth={1.6} />
+          <Close size={17} />
         </button>
       </div>
     </div>
@@ -254,6 +251,7 @@ function MacosTitlebar({
       </div>
       <div className="titlebar-spacer titlebar-drag" />
       <div className="titlebar-title titlebar-drag">
+        <MarinaMark />
         <span className="titlebar-app-name">{appLabel}</span>
         <span className="titlebar-window-badge">Window {windowNumber || '?'}</span>
       </div>

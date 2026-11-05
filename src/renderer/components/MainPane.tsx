@@ -456,7 +456,7 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           onClick={handleClickBlankTab}
           title={tx('新建终端 — 选择 Shell 或模板', 'New terminal — pick a shell or template')}
         >
-          <span className="tab-blank-icon" aria-hidden="true">+</span>
+          <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={16} /></span>
           <span className="tab-name">{tx('新建', 'New')}</span>
         </button>
       </div>
@@ -650,7 +650,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
           title={tx('关闭', 'Close')}
           role="button"
         >
-          ×
+          <Icon name="close" size={14} />
         </span>
       )}
     </button>

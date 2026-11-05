@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "generate-icon": "node scripts/generate-icon.cjs",
+    "vendor-symbols": "node scripts/vendor-material-symbols.cjs",
     "build": "electron-vite build && electron-builder --win --x64",
     "build:unpack": "electron-vite build && electron-builder --win --x64 --dir",
     "build:linux": "electron-vite build && electron-builder --linux deb rpm AppImage --x64",
@@ -43,7 +44,6 @@
     "@xterm/addon-webgl": "0.20.0-beta.255",
     "@xterm/headless": "6.1.0-beta.256",
     "@xterm/xterm": "6.1.0-beta.256",
-    "lucide-react": "^1.14.0",
     "node-pty": "^1.0.0",
     "openai": "^6.37.0",
     "uuid": "^11.0.0"

@@ -2775,7 +2775,7 @@ const ACKNOWLEDGEMENTS: Array<{ name: string; url: string; tone: string }> = [
   { name: 'electron-vite + Vite', url: 'https://electron-vite.org/', tone: '构建工具 (MIT)' },
   { name: 'xterm.js', url: 'https://xtermjs.org/', tone: '终端模拟器 (MIT)' },
   { name: 'node-pty', url: 'https://github.com/microsoft/node-pty', tone: 'PTY 绑定 (MIT)' },
-  { name: 'lucide-react', url: 'https://lucide.dev/', tone: 'UI 图标库 (ISC)' },
+  { name: 'Material Symbols', url: 'https://fonts.google.com/icons', tone: 'UI 图标 (Apache 2.0)' },
   { name: 'Rose Pine theme', url: 'https://rosepinetheme.com/', tone: '默认主题灵感 (MIT)' },
   { name: '霞鹜文楷 (LXGW WenKai)', url: 'https://github.com/lxgw/LxgwWenKai', tone: '中文字体 (OFL)' },
 ];

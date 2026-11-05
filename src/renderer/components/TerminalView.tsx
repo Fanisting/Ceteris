@@ -86,7 +86,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { Check, Maximize2, Minimize2, X } from 'lucide-react';
+import { CheckBold, CloseBold, CloseFullscreen, OpenInFull } from './material-symbols';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -1950,12 +1950,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       <div className="terminal-statusbar">
         <span className={statusDotClass}>
           {session.state === 'exited' && session.exitCode === 0 && (
-            <Check size={8} className="status-dot-icon ok" />
+            <CheckBold size={10} className="status-dot-icon ok" />
           )}
           {session.state === 'exited' &&
             typeof session.exitCode === 'number' &&
             session.exitCode !== 0 && (
-              <X size={8} className="status-dot-icon fail" />
+              <CloseBold size={10} className="status-dot-icon fail" />
             )}
         </span>
         <span className="status-text">
@@ -1981,7 +1981,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
               : t('terminal.toolbar.toSimple')
           }
         >
-          {simpleMode ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
+          {simpleMode ? <OpenInFull size={13} /> : <CloseFullscreen size={13} />}
         </button>
         <span
           className="status-cwd"

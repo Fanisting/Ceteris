@@ -28,7 +28,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { AlertTriangle, Check, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { CheckBold, ChevronRight, CloseBold, ExpandMore, Warning } from './material-symbols';
 import {
   COMMAND_CHANNELS,
   type AddBookmarkResponse,
@@ -571,7 +571,7 @@ function Category({
         title={collapsed ? '展开分组' : '折叠分组'}
       >
         <span className="sidebar-category-chevron" aria-hidden="true">
-          {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          {collapsed ? <ChevronRight size={16} /> : <ExpandMore size={16} />}
         </span>
         <span className="sidebar-category-title">
           <span className="sidebar-category-icon" aria-hidden="true">
@@ -873,11 +873,11 @@ function PathItem({
             onClick={handleToggleExpand}
             aria-label={expanded ? '收起' : '展开'}
           >
-            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {expanded ? <ExpandMore size={16} /> : <ChevronRight size={16} />}
           </span>
         ) : node.invalid ? (
           <span className="path-expand-arrow path-invalid-slot" aria-label="路径不可访问">
-            <AlertTriangle size={12} className="path-invalid-icon" />
+            <Warning size={14} className="path-invalid-icon" />
           </span>
         ) : (
           <span className="path-expand-arrow placeholder" />
@@ -1096,12 +1096,12 @@ function SessionItemImpl({
         aria-label={`状态: ${session.state}`}
       >
         {session.state === 'exited' && session.exitCode === 0 && (
-          <Check size={9} className="session-state-dot-icon ok" />
+          <CheckBold size={11} className="session-state-dot-icon ok" />
         )}
         {session.state === 'exited' &&
           typeof session.exitCode === 'number' &&
           session.exitCode !== 0 && (
-            <X size={9} className="session-state-dot-icon fail" />
+            <CloseBold size={11} className="session-state-dot-icon fail" />
           )}
       </span>
       {renaming ? (

@@ -38,6 +38,7 @@ const OUT_FILE = path.resolve(
   'material-symbols.tsx',
 );
 const BASE_URL = 'https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded';
+const VIEW_BOX = '0 -960 960 960';
 
 /** [导出组件名, Material Symbols 名, 轴变体] */
 const SYMBOLS = [
@@ -113,7 +114,9 @@ async function fetchSymbol(name, axes) {
   }
   const svg = await res.text();
   const match = svg.match(/<path[^>]*\sd="([^"]+)"/);
-  if (!match || !PATH_DATA.test(match[1])) {
+  // 组件假定单一路径和固定坐标系,不符时必须报错,否则图标会缺一部分或错位
+  const singlePath = (svg.match(/<path\b/g) ?? []).length === 1;
+  if (!match || !singlePath || !svg.includes(`viewBox="${VIEW_BOX}"`) || !PATH_DATA.test(match[1])) {
     throw new Error(
       `[vendor-symbols] unexpected path data for "${name}" (${axes}). ` +
         `Possible causes: (1) upstream changed the SVG structure, ` +

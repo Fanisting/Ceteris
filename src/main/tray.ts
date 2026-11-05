@@ -87,9 +87,11 @@ function generateTrayIcon(variant: 'default' | 'active'): NativeImage {
 
   const setPixel = (x: number, y: number, rgb: readonly [number, number, number]): void => {
     const i = (y * size + x) * 4;
-    buf[i] = rgb[0];
+    // createFromBitmap 按 BGRA 读取。旧图标接近中性色,看不出通道反了;海青底
+    // 写成 RGBA 会显示成橄榄色。
+    buf[i] = rgb[2];
     buf[i + 1] = rgb[1];
-    buf[i + 2] = rgb[2];
+    buf[i + 2] = rgb[0];
     buf[i + 3] = 0xff;
   };
 

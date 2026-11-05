@@ -407,7 +407,7 @@ Marina 的开发被切分成 **N 个检查点**,与 `软件定义书.md` 第 15 
 - [ ] Ctrl+F / Esc 通过 `term.attachCustomKeyEventHandler` 拦截,**不**透传成 ^F / 0x1B 给 PTY
 - [ ] 多行粘贴前弹原生 `confirm`(行数 + 200 字预览),用户确认后再写 PTY
 - [ ] 字体下拉枚举 `window.queryLocalFonts()`,推荐组置顶 + 系统已装组(main 端 `setPermissionRequestHandler` 自动放行 `local-fonts`)
-- [ ] UI 系统图标走 lucide-react(不再 emoji);用户数据(Template.icon)保持 emoji
+- [ ] UI 系统图标走 vendored Material Symbols(不再 emoji);用户数据(Template.icon)保持 emoji
 - [ ] 选中即复制 + 右键弹菜单的两种行为都工作
 - [ ] 完全退出前的二次确认弹窗工作
 - [ ] 关闭单个窗口绝不弹任何对话框(已验证)

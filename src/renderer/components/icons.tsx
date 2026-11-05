@@ -125,8 +125,8 @@ export function Icon({
 }
 
 /**
- * Marina 品牌标记,用于标题栏。几何与配色和 scripts/generate-icon.cjs 同源,
- * 改应用图标时两处要一起改。
+ * Marina 品牌标记,用于标题栏。配色和几何取自 scripts/generate-icon.cjs 的 SMALL
+ * 版本,这个尺寸下完整版的波浪会糊成直线。改应用图标时两处要一起改。
  */
 export function MarinaMark({ size = 18 }: { size?: number }): ReactElement {
   return (
@@ -138,14 +138,16 @@ export function MarinaMark({ size = 18 }: { size?: number }): ReactElement {
       aria-hidden
       className="marina-mark"
     >
-      <rect width="256" height="256" rx="72" fill="#006a6a" />
+      <defs>
+        <linearGradient id="marina-mark-bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#007a79" />
+          <stop offset="100%" stopColor="#005353" />
+        </linearGradient>
+      </defs>
+      <rect width="256" height="256" rx="72" fill="url(#marina-mark-bg)" />
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="66,54 122,96 66,138" stroke="#ffffff" strokeWidth="28" />
-        <path
-          d="M62 192 q16.5 -24 33 0 q16.5 24 33 0 q16.5 -24 33 0 q16.5 24 33 0"
-          stroke="#9cf1f0"
-          strokeWidth="20"
-        />
+        <path d="M62 206 q33 -30 66 0 q33 30 66 0" stroke="#9cf1f0" strokeWidth="30" />
+        <polyline points="64,40 124,88 64,136" stroke="#ffffff" strokeWidth="40" />
       </g>
     </svg>
   );

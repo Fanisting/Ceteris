@@ -47,7 +47,16 @@
      必须写在这段之后,它们的精确色值才能生效。 */
   --md-primary: var(--color-accent-special, #f0f);
   --md-on-primary: var(--color-bg-primary, #f0f);
-  --md-primary-text: var(--md-primary, #f0f);
+  --md-primary-text: color-mix(
+    in srgb,
+    var(--md-primary, #f0f) var(--md-primary-text-weight, 100%),
+    var(--md-on-surface, #f0f)
+  );
+  --md-error-text: color-mix(
+    in srgb,
+    var(--md-error, #f0f) var(--md-error-text-weight, 100%),
+    var(--md-on-surface, #f0f)
+  );
   --md-secondary-container: color-mix(
     in srgb,
     var(--color-accent-special, #f0f) 24%,
@@ -56,7 +65,8 @@
   --md-on-secondary-container: var(--color-text-primary, #f0f);
   --md-surface: var(--color-bg-primary, #f0f);
   --md-surface-container: var(--color-bg-secondary, #f0f);
-  --md-surface-container-high: var(--color-bg-elevated, #f0f);
+  /* 菜单和对话框用 bg-secondary:bg-elevated 上状态色对比度明显下降 */
+  --md-surface-container-high: var(--color-bg-secondary, #f0f);
   --md-surface-container-highest: var(--color-bg-active, #f0f);
   --md-on-surface: var(--color-text-primary, #f0f);
   --md-on-surface-variant: var(--color-text-secondary, #f0f);
@@ -103,6 +113,7 @@
   --md-on-primary: #003737;
   --md-secondary-container: #324b4b;
   --md-on-secondary-container: #cce8e7;
+  --md-surface-container-high: #242b2b;
   --md-surface-container-highest: #2f3636;
   --md-outline: #889392;
   --md-outline-variant: #3f4948;
@@ -131,6 +142,7 @@
   --md-on-primary: #fff;
   --md-secondary-container: #cce8e7;
   --md-on-secondary-container: #051f1f;
+  --md-surface-container-high: #eef5f4;
   --md-surface-container-highest: #dde4e3;
   --md-outline: #6f7979;
   --md-outline-variant: #bec9c8;
@@ -141,9 +153,59 @@
   color-scheme: light;
 }
 
-/* 这些主题的强调色对比度不足 4.5:1。填充控件上的文字改用纯黑,强调色作文字时向
-   前景色混合。它们的强调色用于状态点等小面积时没问题,所以不改调色板本身。
-   数值用脚本按 WCAG 公式算过,改这些主题的配色时要重新核对。 */
+/* 强调色和错误色作文字时的对比度修正。权重是该颜色与前景色混合时保留的比例,
+   取能让文字在 bg-primary 和 bg-secondary 上都达到 4.5:1 的最大值,数值按 WCAG
+   公式算出,改这些主题的配色时要重新核对。
+   tokyo-night-day 的正文色在 bg-secondary 上也只有 3.99:1,权重 0 已是上限。 */
+[data-theme='catppuccin-latte'] {
+  --md-primary-text-weight: 80%;
+  --md-error-text-weight: 80%;
+}
+
+[data-theme='cutie'] {
+  --md-primary-text-weight: 60%;
+  --md-error-text-weight: 80%;
+}
+
+[data-theme='fairyfloss'] {
+  --md-primary-text-weight: 50%;
+  --md-error-text-weight: 40%;
+}
+
+[data-theme='light-pink'] {
+  --md-primary-text-weight: 30%;
+  --md-error-text-weight: 80%;
+}
+
+[data-theme='rose-pine-dawn'] {
+  --md-primary-text-weight: 50%;
+  --md-error-text-weight: 60%;
+}
+
+[data-theme='tokyo-night-day'] {
+  --md-primary-text-weight: 0%;
+  --md-error-text-weight: 0%;
+}
+
+[data-theme='ubuntu'] {
+  --md-primary-text-weight: 80%;
+  --md-error-text-weight: 60%;
+}
+
+[data-theme='windows-terminal'] {
+  --md-primary-text-weight: 80%;
+  --md-error-text-weight: 80%;
+}
+
+[data-theme='business'] {
+  --md-error-text-weight: 60%;
+}
+
+[data-theme='one-dark-pro'] {
+  --md-error-text-weight: 80%;
+}
+
+/* 这些主题的强调色或错误色配 bg-primary 文字不足 4.5:1,填充控件上改用纯黑 */
 [data-theme='light-pink'],
 [data-theme='tokyo-night-day'],
 [data-theme='fairyfloss'],
@@ -151,7 +213,16 @@
 [data-theme='cutie'],
 [data-theme='ubuntu'] {
   --md-on-primary: #000;
-  --md-primary-text: color-mix(in srgb, var(--md-primary, #f0f) 40%, var(--md-on-surface, #f0f));
+}
+
+[data-theme='business'],
+[data-theme='one-dark-pro'],
+[data-theme='tokyo-night-day'],
+[data-theme='fairyfloss'],
+[data-theme='rose-pine-dawn'],
+[data-theme='cutie'],
+[data-theme='ubuntu'] {
+  --md-on-error: #000;
 }
 
 html,
@@ -241,7 +312,7 @@ button:focus-visible,
 }
 
 .settings-detail {
-  overflow-y: auto;
+  overflow: auto;
   padding: 28px 36px;
 }
 
@@ -307,6 +378,11 @@ button:focus-visible,
 .sidebar-segmented-item:hover {
   background-color: var(--md-state-hover, transparent);
   color: var(--md-on-surface, #f0f);
+}
+
+/* 容器 overflow:hidden 会裁掉向外的焦点框 */
+.sidebar-segmented-item:focus-visible {
+  outline-offset: -2px;
 }
 
 .sidebar-segmented-item.active {
@@ -381,12 +457,8 @@ button:focus-visible,
   min-height: 32px;
   padding: 0 12px 0 8px;
   border-radius: var(--md-shape-full, 999px);
-  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
-}
-
-.path-item-row,
-.session-item {
   margin-block: 1px;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
 }
 
 .session-item {
@@ -477,6 +549,9 @@ button:focus-visible,
 
 .tab {
   position: relative;
+
+  /* 内边距 22 + 关闭按钮 22 + 间距 6。再窄关闭按钮会盖到下一个标签 */
+  min-width: 50px;
   padding: 0 8px 0 14px;
   color: var(--md-on-surface-variant, #f0f);
   font-size: 13px;
@@ -495,6 +570,17 @@ button:focus-visible,
   background-color: transparent;
   border-bottom: none;
   color: var(--md-primary-text, #f0f);
+}
+
+/* hover 与 selected 规则在 global.css 的语义色之后加载,这里补回 */
+.tab.orphan,
+.tab.orphan:hover {
+  color: var(--color-warning, #f0f);
+}
+
+.tab.owned-by-other,
+.tab.owned-by-other:hover {
+  color: var(--md-on-surface-variant, #f0f);
 }
 
 /* 活动指示条:贴底 3px,上方圆角。不用 border-bottom,切换时标签不会抖动 */
@@ -679,7 +765,7 @@ button:focus-visible,
 
 .template-button:hover:not(:disabled) {
   border: none;
-  background-color: var(--md-surface-container-high, #f0f);
+  background-color: var(--color-bg-hover, #f0f);
   box-shadow: var(--md-elevation-1, none);
 }
 
@@ -701,18 +787,17 @@ button:focus-visible,
   box-shadow: var(--md-elevation-2, none);
   font-size: 13px;
   animation: md-menu-in var(--md-duration-medium, 200ms) var(--md-easing-decelerate, ease-out);
-  transform-origin: top left;
 }
 
+/* 只做淡入。ContextMenu 在挂载瞬间用 getBoundingClientRect 判断是否越界,
+   带 scale 的动画会让它量到缩小后的尺寸。 */
 @keyframes md-menu-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
   }
 
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -738,6 +823,11 @@ button:focus-visible,
   background-color: var(--md-state-hover, transparent);
 }
 
+.ctx-menu-item:focus-visible:not(:disabled) {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: -2px;
+}
+
 .ctx-menu-item:active:not(:disabled) {
   background-color: var(--md-state-pressed, transparent);
 }
@@ -747,12 +837,12 @@ button:focus-visible,
 }
 
 .ctx-menu-item.danger {
-  color: var(--md-error, #f0f);
+  color: var(--md-error-text, #f0f);
 }
 
 .ctx-menu-item.danger:hover:not(:disabled) {
   background-color: var(--md-state-hover, transparent);
-  color: var(--md-error, #f0f);
+  color: var(--md-error-text, #f0f);
 }
 
 .ctx-menu-divider {
@@ -1004,12 +1094,12 @@ select.settings-input option {
 
 .settings-button.danger {
   border-color: var(--md-error, #f0f);
-  color: var(--md-error, #f0f);
+  color: var(--md-error-text, #f0f);
 }
 
 .settings-button.danger:hover:not(:disabled) {
   background-color: var(--md-state-hover, transparent);
-  color: var(--md-error, #f0f);
+  color: var(--md-error-text, #f0f);
 }
 
 .explorer-integration-card,

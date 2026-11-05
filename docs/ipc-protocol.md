@@ -1056,11 +1056,13 @@ interface ShowInExplorerPayload {
 #### `cmd:fs:list-dir`
 ```typescript
 interface ListDirPayload {
-  path: string;                 // 目录绝对路径
+  path: string;                 // 目录绝对路径;SFTP 时可以是 ~ 开头
+  sshProfileId?: string;        // 有值时通过 SFTP 列这个 profile 上的目录
+  fresh?: boolean;              // 用户主动操作时为 true,跳过 SFTP 失败缓存。轮询不要设置
 }
 type ListDirResponse =
-  | { ok: true; entries: FileTreeEntry[]; truncated: boolean }
-  | { ok: false; reason: FileTreeFailure };
+  | { ok: true; entries: FileTreeEntry[]; truncated: boolean; path?: string }  // path: 展开 ~ 后的目录,只有 SFTP 返回
+  | { ok: false; reason: DirFailure };   // FileTreeFailure 或 'no-client' | 'auth' | 'host-key' | 'connect' | 'no-sftp'
 ```
 
 **Errors**:无。常规失败走 `reason`,不 reject
@@ -1078,7 +1080,23 @@ type RenameEntryResponse =
 
 **Errors**:无。目标已存在时返回 `exists`,绝不覆盖
 
-**Side Effects**:在原目录内改名。两条命令在 Link 远程窗口里都转发给 Host,因为路径是 Host 的路径
+**Side Effects**:在原目录内改名。本节的命令在 Link 远程窗口里都转发给 Host,因为路径和 SSH profile 都在 Host 上
+
+#### `cmd:fs:read-pdf`
+```typescript
+interface ReadPdfPayload {
+  path: string;                 // 本地或远端绝对路径,必须以 .pdf 结尾
+  sshProfileId?: string;        // 有值时通过 SFTP 读
+  offset: number;               // 字节偏移,从 0 开始,之后用上次的 nextOffset
+}
+type ReadPdfResponse =
+  | { ok: true; base64: string; size: number; nextOffset: number | null }  // null 表示读完
+  | { ok: false; reason: DirFailure | 'not-pdf' | 'too-large' };
+```
+
+**Errors**:无。常规失败走 `reason`。非 .pdf 路径或非普通文件返回 `not-found`,文件头不是 `%PDF-` 返回 `not-pdf`,超过 256 MiB 返回 `too-large`
+
+**Notes**:每块 1 MiB,放得进 Link 的 8 MiB 帧,慢速线路也不会超过 30 秒的命令超时
 
 ---
 

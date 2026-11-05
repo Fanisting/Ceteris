@@ -1,23 +1,30 @@
 #!/usr/bin/env node
 /**
- * Marina 应用图标生成器 — 从托盘图标设计 (tray.ts generateTrayIcon) 升级
- * 到 256x256,作为 win.icon。
+ * @file scripts/generate-icon.cjs
+ * @purpose Marina 应用图标生成器。一份几何定义同时产出 SVG、PNG 和多尺寸 ICO。
  *
  * 用法:
- *   node scripts/generate-icon.cjs
+ *   npm run generate-icon
  *
- * 产物:build/icon.png (256x256 RGBA)
+ * 产物:
+ *   build/icon.svg                     矢量源图(由本脚本写出,不要手改)
+ *   build/icon.png                     1024×1024,Linux 与跨平台打包用
+ *   build/icon.ico                     16 到 256 共 7 档,exe 与 NSIS 用
+ *   native/context-menu/package/assets Win11 右键菜单 MSIX 用的 PNG 与 ICO
  *
- * electron-builder 在 build:win 时接受 PNG ≥256×256,自动转成多尺寸 ICO。
+ * @设计: 海青色块 + 白色 ">" 提示符 + 浅青波浪。提示符表明这是终端,波浪取
+ *   marina(港湾)的意象。配色取自 Marina Material 主题的种子色 #006a6a。
  *
- * 不依赖任何 npm 包(AGENTS.md 1.2 边界 2):内置一个最小 PNG 编码器,
- * 渲染管线纯 JS。
+ * @关键设计:
+ * - 不依赖任何 npm 包(AGENTS.md 1.2 边界 2):用 SDF 算覆盖率实现抗锯齿,
+ *   内置最小 PNG / ICO 编码器。
+ * - 24px 及以下换用 SMALL 几何。大图的波浪振幅缩到 16px 只剩不到 1px,
+ *   线条会糊成一条直线,所以小尺寸加粗并减少波峰数量。
+ * - ICO 里小于 256 的帧用 DIB,256 帧用 PNG。NSIS 与部分 Windows Shell 路径
+ *   对 PNG 帧的小尺寸支持不可靠,这是 Windows 图标的传统布局。
  *
- * 设计与 build/icon.svg 同源 — Rose Pine 深紫底 + Iris ">_" 提示符。
- *
- * BETA-026:原先 ">" 与下划线之间有一块 Gold 金色光标方块,beta 用户反馈
- * 视觉怪(与 ">_" 提示符语义重复),已删。当时只动了 SVG 没改本脚本,
- * 导致 PNG/ICO 仍含金块直到 2026-05-17 才同步。
+ * @同步点: 改几何或配色时,同步 src/renderer/components/icons.tsx 的 MarinaMark
+ *   和 src/main/tray.ts 的像素图。
  */
 'use strict';
 
@@ -25,257 +32,284 @@ const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
 
-const SIZE = 256;
-const OUT_PNG = path.resolve(__dirname, '..', 'build', 'icon.png');
-const OUT_ICO = path.resolve(__dirname, '..', 'build', 'icon.ico');
+const ROOT = path.resolve(__dirname, '..');
+const BUILD_DIR = path.join(ROOT, 'build');
+const NATIVE_ASSETS = path.join(ROOT, 'native', 'context-menu', 'package', 'assets');
 
-// 调色板(与 src/main/tray.ts 同源,从 SVG 取色)
-const BG_TOP = rgb('#1f1d2e');
-const BG_BOTTOM = rgb('#191724');
-const INNER_BORDER = rgb('#26233a');
-const IRIS = rgb('#c4a7e7');
+const PNG_SIZE = 1024;
+const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
+const NATIVE_PNG_SIZE = 256;
+const SMALL_ICON_MAX = 24;
 
-// 圆角矩形参数(对应 SVG 256x256, rx=56)
-const CORNER_RADIUS = 56;
-const INNER_INSET = 8;
-const INNER_BORDER_WIDTH = 2;
-const INNER_CORNER_RADIUS = 48;
+/** 所有几何都定义在 256×256 坐标系里,渲染时按目标尺寸缩放。 */
+const DESIGN_SIZE = 256;
+const CORNER_RADIUS = 72;
+const BG_TOP = '#007a79';
+const BG_BOTTOM = '#005353';
+const PROMPT_COLOR = '#ffffff';
+const WAVE_COLOR = '#9cf1f0';
 
-// ">" 提示符 polyline
-const PROMPT_POINTS = [
-  [72, 92],
-  [116, 128],
-  [72, 164],
-];
-const PROMPT_STROKE = 20;
+const FULL = {
+  prompt: { points: [[66, 54], [122, 96], [66, 138]], width: 28 },
+  wave: { start: [62, 192], segmentLength: 33, control: 24, segments: 4, width: 20 },
+};
 
-// "_" 下划线
-const UNDERSCORE = { x1: 140, y1: 172, x2: 196, y2: 172, stroke: 20 };
+const SMALL = {
+  prompt: { points: [[64, 40], [124, 88], [64, 136]], width: 40 },
+  wave: { start: [62, 206], segmentLength: 66, control: 30, segments: 2, width: 30 },
+};
+
+function rgb(hex) {
+  return [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ];
+}
 
 // ────────────────────────────────────────────────────────────────
-// PNG 编码 (无依赖) — 先声明,后面 main() 用
+// 几何
 // ────────────────────────────────────────────────────────────────
 
-const CRC_TABLE = makeCrcTable();
+/** 波浪是上下交替的二次贝塞尔,展平成折线用于距离计算。 */
+function flattenWave(wave) {
+  const points = [wave.start];
+  let [x, y] = wave.start;
+  for (let s = 0; s < wave.segments; s++) {
+    const sign = s % 2 === 0 ? -1 : 1;
+    const x0 = x;
+    const cx = x + wave.segmentLength / 2;
+    const cy = y + sign * wave.control;
+    const x1 = x + wave.segmentLength;
+    for (let i = 1; i <= 16; i++) {
+      const t = i / 16;
+      const u = 1 - t;
+      points.push([u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y + 2 * u * t * cy + t * t * y]);
+    }
+    x = x1;
+  }
+  return points;
+}
 
-function makeCrcTable() {
+function waveToSvgPath(wave) {
+  const half = wave.segmentLength / 2;
+  const segments = [];
+  for (let s = 0; s < wave.segments; s++) {
+    const sign = s % 2 === 0 ? -1 : 1;
+    segments.push(`q${half} ${sign * wave.control} ${wave.segmentLength} 0`);
+  }
+  return `M${wave.start[0]} ${wave.start[1]} ${segments.join(' ')}`;
+}
+
+/** 点到折线的最短距离。 */
+function distanceToPolyline(px, py, points) {
+  let best = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const [ax, ay] = points[i];
+    const [bx, by] = points[i + 1];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    const ex = px - (ax + t * dx);
+    const ey = py - (ay + t * dy);
+    const d = ex * ex + ey * ey;
+    if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
+
+/** 圆角矩形的有符号距离,内部为负。 */
+function roundedRectSdf(px, py, size, radius) {
+  const qx = Math.abs(px - size / 2) - size / 2 + radius;
+  const qy = Math.abs(py - size / 2) - size / 2 + radius;
+  const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0));
+  return outside + Math.min(Math.max(qx, qy), 0) - radius;
+}
+
+// ────────────────────────────────────────────────────────────────
+// 光栅化
+// ────────────────────────────────────────────────────────────────
+
+/** 把有符号距离(目标像素单位)转成 0..1 的覆盖率,实现 1px 抗锯齿。 */
+function coverage(signedDistance) {
+  return Math.max(0, Math.min(1, 0.5 - signedDistance));
+}
+
+/** 渲染一张 RGBA 图,返回 Buffer(自上而下,行内 RGBA)。 */
+function renderIcon(size) {
+  const geometry = size <= SMALL_ICON_MAX ? SMALL : FULL;
+  const scale = size / DESIGN_SIZE;
+  const wavePoints = flattenWave(geometry.wave);
+  const promptHalf = geometry.prompt.width / 2;
+  const waveHalf = geometry.wave.width / 2;
+  const top = rgb(BG_TOP);
+  const bottom = rgb(BG_BOTTOM);
+  const promptRgb = rgb(PROMPT_COLOR);
+  const waveRgb = rgb(WAVE_COLOR);
+  const buf = Buffer.alloc(size * size * 4);
+
+  for (let y = 0; y < size; y++) {
+    const v = size === 1 ? 0 : y / (size - 1);
+    const bg = top.map((c, i) => c * (1 - v) + bottom[i] * v);
+    for (let x = 0; x < size; x++) {
+      const gx = (x + 0.5) / scale;
+      const gy = (y + 0.5) / scale;
+      const bgCoverage = coverage(roundedRectSdf(gx, gy, DESIGN_SIZE, CORNER_RADIUS) * scale);
+      if (bgCoverage === 0) continue;
+
+      const promptCoverage = coverage(
+        (distanceToPolyline(gx, gy, geometry.prompt.points) - promptHalf) * scale,
+      );
+      const waveCoverage = coverage((distanceToPolyline(gx, gy, wavePoints) - waveHalf) * scale);
+
+      const color = bg.slice();
+      for (let c = 0; c < 3; c++) {
+        color[c] = color[c] * (1 - waveCoverage) + waveRgb[c] * waveCoverage;
+        color[c] = color[c] * (1 - promptCoverage) + promptRgb[c] * promptCoverage;
+      }
+      const i = (y * size + x) * 4;
+      buf[i] = Math.round(color[0]);
+      buf[i + 1] = Math.round(color[1]);
+      buf[i + 2] = Math.round(color[2]);
+      buf[i + 3] = Math.round(bgCoverage * 255);
+    }
+  }
+  return buf;
+}
+
+// ────────────────────────────────────────────────────────────────
+// 编码
+// ────────────────────────────────────────────────────────────────
+
+const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
     let c = n;
-    for (let k = 0; k < 8; k++) {
-      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    }
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     table[n] = c >>> 0;
   }
   return table;
-}
+})();
 
 function crc32(data) {
   let crc = 0xffffffff;
-  for (let i = 0; i < data.length; i++) {
-    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ data[i]) & 0xff];
-  }
+  for (let i = 0; i < data.length; i++) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ data[i]) & 0xff];
   return (crc ^ 0xffffffff) >>> 0;
 }
 
 function pngChunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
   const typeBuf = Buffer.from(type, 'ascii');
-  const crcBuf = Buffer.alloc(4);
-  crcBuf.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
-  return Buffer.concat([len, typeBuf, data, crcBuf]);
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([length, typeBuf, data, crc]);
 }
 
-function encodePng(rgbaBuf, w, h) {
-  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+function encodePng(rgba, size) {
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0);
-  ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8;   // bit depth
-  ihdr[9] = 6;   // color type 6 = RGBA
-  ihdr[10] = 0;  // compression
-  ihdr[11] = 0;  // filter
-  ihdr[12] = 0;  // interlace
-  const rowBytes = w * 4;
-  const raw = Buffer.alloc(h * (rowBytes + 1));
-  for (let y = 0; y < h; y++) {
-    raw[y * (rowBytes + 1)] = 0;
-    rgbaBuf.copy(raw, y * (rowBytes + 1) + 1, y * rowBytes, (y + 1) * rowBytes);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type: RGBA
+  const raw = Buffer.alloc(size * (size * 4 + 1));
+  for (let y = 0; y < size; y++) {
+    const offset = y * (size * 4 + 1);
+    raw[offset] = 0; // filter: none
+    rgba.copy(raw, offset + 1, y * size * 4, (y + 1) * size * 4);
   }
-  const idat = zlib.deflateSync(raw, { level: 9 });
   return Buffer.concat([
-    sig,
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk('IHDR', ihdr),
-    pngChunk('IDAT', idat),
+    pngChunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
 }
 
-// ────────────────────────────────────────────────────────────────
-// 几何 helper
-// ────────────────────────────────────────────────────────────────
+/** ICO 内的 DIB 帧:BITMAPINFOHEADER + 自下而上 BGRA + 1bpp AND 掩码。 */
+function encodeDib(rgba, size) {
+  const header = Buffer.alloc(40);
+  header.writeUInt32LE(40, 0);
+  header.writeInt32LE(size, 4);
+  header.writeInt32LE(size * 2, 8); // ICO 约定:高度含 AND 掩码,写两倍
+  header.writeUInt16LE(1, 12);
+  header.writeUInt16LE(32, 14);
 
-function rgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-}
-
-function makePixelOps() {
-  const buf = Buffer.alloc(SIZE * SIZE * 4);
-  function setPixel(x, y, [r, g, b], a) {
-    if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return;
-    const i = (y * SIZE + x) * 4;
-    buf[i] = r;
-    buf[i + 1] = g;
-    buf[i + 2] = b;
-    buf[i + 3] = a;
-  }
-  return { buf, setPixel };
-}
-
-function insideRoundedRect(x, y, x0, y0, w, h, r) {
-  if (x < x0 || y < y0 || x >= x0 + w || y >= y0 + h) return false;
-  const lx = x0 + r;
-  const ry = y0 + r;
-  const rx = x0 + w - 1 - r;
-  const by = y0 + h - 1 - r;
-  let cx;
-  let cy;
-  if (x < lx && y < ry) { cx = lx; cy = ry; }
-  else if (x > rx && y < ry) { cx = rx; cy = ry; }
-  else if (x < lx && y > by) { cx = lx; cy = by; }
-  else if (x > rx && y > by) { cx = rx; cy = by; }
-  else return true;
-  const dx = x - cx;
-  const dy = y - cy;
-  return dx * dx + dy * dy <= r * r;
-}
-
-function strokeRoundedRect(setPixel, x0, y0, w, h, r, sw, color) {
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const inside = insideRoundedRect(x, y, x0, y0, w, h, r);
-      const innerInside = insideRoundedRect(
-        x, y, x0 + sw, y0 + sw, w - 2 * sw, h - 2 * sw, Math.max(0, r - sw),
-      );
-      if (inside && !innerInside) setPixel(x, y, color, 0xff);
+  const pixels = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const src = (y * size + x) * 4;
+      const dst = ((size - 1 - y) * size + x) * 4;
+      pixels[dst] = rgba[src + 2];
+      pixels[dst + 1] = rgba[src + 1];
+      pixels[dst + 2] = rgba[src];
+      pixels[dst + 3] = rgba[src + 3];
     }
   }
+
+  // 32bpp 帧靠 alpha 通道透明,掩码全 0 即可,但这段数据必须存在。每行按 4 字节对齐。
+  const maskRowBytes = Math.ceil(size / 32) * 4;
+  return Buffer.concat([header, pixels, Buffer.alloc(maskRowBytes * size)]);
 }
 
-function strokeSegment(setPixel, [x1, y1], [x2, y2], stroke, color) {
-  const half = stroke / 2;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len2 = dx * dx + dy * dy;
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      let t = ((x - x1) * dx + (y - y1) * dy) / len2;
-      if (t < 0) t = 0;
-      if (t > 1) t = 1;
-      const px = x1 + t * dx;
-      const py = y1 + t * dy;
-      const ddx = x - px;
-      const ddy = y - py;
-      if (ddx * ddx + ddy * ddy <= half * half) {
-        setPixel(x, y, color, 0xff);
-      }
-    }
-  }
+function encodeIco(frames) {
+  const dir = Buffer.alloc(6 + 16 * frames.length);
+  dir.writeUInt16LE(1, 2); // type: ICO
+  dir.writeUInt16LE(frames.length, 4);
+  let offset = dir.length;
+  frames.forEach(({ size, data }, index) => {
+    const entry = 6 + index * 16;
+    dir.writeUInt8(size === 256 ? 0 : size, entry);
+    dir.writeUInt8(size === 256 ? 0 : size, entry + 1);
+    dir.writeUInt16LE(1, entry + 4);
+    dir.writeUInt16LE(32, entry + 6);
+    dir.writeUInt32LE(data.length, entry + 8);
+    dir.writeUInt32LE(offset, entry + 12);
+    offset += data.length;
+  });
+  return Buffer.concat([dir, ...frames.map((frame) => frame.data)]);
 }
 
-// ────────────────────────────────────────────────────────────────
-// 主流程
-// ────────────────────────────────────────────────────────────────
+function buildSvg() {
+  const points = FULL.prompt.points.map((p) => p.join(',')).join(' ');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${DESIGN_SIZE} ${DESIGN_SIZE}" width="${DESIGN_SIZE}" height="${DESIGN_SIZE}">
+  <!-- 由 scripts/generate-icon.cjs 生成,不要手改。海青底 + ">" 提示符 + 波浪。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${BG_TOP}"/>
+      <stop offset="100%" stop-color="${BG_BOTTOM}"/>
+    </linearGradient>
+  </defs>
+  <rect width="${DESIGN_SIZE}" height="${DESIGN_SIZE}" rx="${CORNER_RADIUS}" ry="${CORNER_RADIUS}" fill="url(#bg)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="${waveToSvgPath(FULL.wave)}" stroke="${WAVE_COLOR}" stroke-width="${FULL.wave.width}"/>
+    <polyline points="${points}" stroke="${PROMPT_COLOR}" stroke-width="${FULL.prompt.width}"/>
+  </g>
+</svg>
+`;
+}
+
+function write(file, data) {
+  fs.writeFileSync(file, data);
+  console.log(`[generate-icon] wrote ${path.relative(ROOT, file)} (${data.length} bytes)`);
+}
 
 function main() {
-  const { buf, setPixel } = makePixelOps();
+  const ico = encodeIco(
+    ICO_SIZES.map((size) => {
+      const rgba = renderIcon(size);
+      return { size, data: size === 256 ? encodePng(rgba, size) : encodeDib(rgba, size) };
+    }),
+  );
+  const nativePng = encodePng(renderIcon(NATIVE_PNG_SIZE), NATIVE_PNG_SIZE);
 
-  // 1. 圆角矩形背景(线性渐变 top → bottom)
-  for (let y = 0; y < SIZE; y++) {
-    const t = y / (SIZE - 1);
-    const r = (BG_TOP[0] * (1 - t) + BG_BOTTOM[0] * t) | 0;
-    const g = (BG_TOP[1] * (1 - t) + BG_BOTTOM[1] * t) | 0;
-    const b = (BG_TOP[2] * (1 - t) + BG_BOTTOM[2] * t) | 0;
-    for (let x = 0; x < SIZE; x++) {
-      if (insideRoundedRect(x, y, 0, 0, SIZE, SIZE, CORNER_RADIUS)) {
-        setPixel(x, y, [r, g, b], 0xff);
-      }
-    }
+  write(path.join(BUILD_DIR, 'icon.svg'), buildSvg());
+  write(path.join(BUILD_DIR, 'icon.png'), encodePng(renderIcon(PNG_SIZE), PNG_SIZE));
+  write(path.join(BUILD_DIR, 'icon.ico'), ico);
+  write(path.join(NATIVE_ASSETS, 'menu-icon.ico'), ico);
+  for (const name of ['Square150x150Logo.png', 'Square44x44Logo.png', 'StoreLogo.png']) {
+    write(path.join(NATIVE_ASSETS, name), nativePng);
   }
-
-  // 2. 内边框 — (8,8)-(248,248) 圆角 48 上画 2px stroke
-  strokeRoundedRect(
-    setPixel,
-    INNER_INSET,
-    INNER_INSET,
-    SIZE - 2 * INNER_INSET,
-    SIZE - 2 * INNER_INSET,
-    INNER_CORNER_RADIUS,
-    INNER_BORDER_WIDTH,
-    INNER_BORDER,
-  );
-
-  // 3. ">" 提示符 — 两段 polyline
-  strokeSegment(setPixel, PROMPT_POINTS[0], PROMPT_POINTS[1], PROMPT_STROKE, IRIS);
-  strokeSegment(setPixel, PROMPT_POINTS[1], PROMPT_POINTS[2], PROMPT_STROKE, IRIS);
-
-  // 4. "_" 下划线
-  strokeSegment(
-    setPixel,
-    [UNDERSCORE.x1, UNDERSCORE.y1],
-    [UNDERSCORE.x2, UNDERSCORE.y2],
-    UNDERSCORE.stroke,
-    IRIS,
-  );
-
-  const pngData = encodePng(buf, SIZE, SIZE);
-  fs.mkdirSync(path.dirname(OUT_PNG), { recursive: true });
-  fs.writeFileSync(OUT_PNG, pngData);
-  console.log(`[generate-icon] wrote ${OUT_PNG} (${SIZE}x${SIZE})`);
-
-  // 同时输出 ICO (PNG-in-ICO 容器):NSIS 的 installerIcon / uninstallerIcon
-  // 不接 PNG,必须 ICO。Windows Vista+ 支持 ICO 内嵌 PNG,直接把上面 PNG
-  // 包一层就能复用同一资源。
-  fs.writeFileSync(OUT_ICO, encodeIco(pngData, SIZE));
-  console.log(`[generate-icon] wrote ${OUT_ICO} (PNG-in-ICO, ${SIZE}x${SIZE})`);
-}
-
-/**
- * 把单张 PNG 包装为 ICO 文件(Windows Vista+ 接受 PNG payload)。
- * ICONDIR (6 bytes) + ICONDIRENTRY (16 bytes) + PNG payload。
- *
- * ICONDIR:
- *   uint16 reserved = 0
- *   uint16 type = 1 (ICO)
- *   uint16 count = 1
- * ICONDIRENTRY:
- *   uint8  width  (0 = 256)
- *   uint8  height (0 = 256)
- *   uint8  colorCount = 0 (无调色板)
- *   uint8  reserved = 0
- *   uint16 planes = 1
- *   uint16 bitCount = 32
- *   uint32 bytesInRes = PNG length
- *   uint32 imageOffset = 22 (sizeof header)
- */
-function encodeIco(pngBuf, sizePx) {
-  const header = Buffer.alloc(6 + 16);
-  // ICONDIR
-  header.writeUInt16LE(0, 0);
-  header.writeUInt16LE(1, 2);
-  header.writeUInt16LE(1, 4);
-  // ICONDIRENTRY
-  header.writeUInt8(sizePx === 256 ? 0 : sizePx, 6);
-  header.writeUInt8(sizePx === 256 ? 0 : sizePx, 7);
-  header.writeUInt8(0, 8);
-  header.writeUInt8(0, 9);
-  header.writeUInt16LE(1, 10);
-  header.writeUInt16LE(32, 12);
-  header.writeUInt32LE(pngBuf.length, 14);
-  header.writeUInt32LE(22, 18);
-  return Buffer.concat([header, pngBuf]);
 }
 
 main();

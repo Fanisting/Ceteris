@@ -12,8 +12,8 @@
  * - 完全退出: 设置 isQuitting → 显式 app.quit(),让 Electron 走标准退出
  *   (before-quit → will-quit → quit)。这样 window-all-closed 不会被
  *   误解为纯托盘模式。
- * - 图标: CP-1 用 nativeImage.createFromBitmap 程序化生成 16x16 Rose Pine
- *   紫色方块,避免引入二进制 .ico 资源。CP-4 阶段会换成 build/icon.ico。
+ * - 图标: 用 nativeImage.createFromBitmap 程序化生成 16x16 像素图,
+ *   与 build/icon.svg 同一设计,避免托盘依赖打包资源路径。
  *
  * @对应文档章节: 软件定义书.md 6.5、7.4 节;AGENTS.md CP-1 完成标志
  *
@@ -42,76 +42,68 @@ import { logger } from './logger';
 import { setQuitting } from './index';
 
 /**
- * 程序化生成 16×16 RGBA 托盘占位图标。
+ * 16×16 托盘图标的像素图。设计与 build/icon.svg 同源:海青底、白色 ">"、
+ * 浅青波浪。16px 下矢量缩放会糊,这里按像素手工对齐。
+ *   . 透明   b 底色   f 提示符   w 波浪
+ */
+const TRAY_PIXELS = [
+  '..bbbbbbbbbbbb..',
+  '.bbbbbbbbbbbbbb.',
+  'bbbffbbbbbbbbbbb',
+  'bbbfffbbbbbbbbbb',
+  'bbbbfffbbbbbbbbb',
+  'bbbbbfffbbbbbbbb',
+  'bbbbbbfffbbbbbbb',
+  'bbbbbfffbbbbbbbb',
+  'bbbbfffbbbbbbbbb',
+  'bbbfffbbbbbbbbbb',
+  'bbbffbbbbbbbbbbb',
+  'bbbbbbbbbbbbbbbb',
+  'bbbbwwbbbbwwbbbb',
+  'bbbwwwwbbwwwwbbb',
+  '.bwwbbwwwwbbwwb.',
+  '..bbbbbbbbbbbb..',
+] as const;
+
+const TRAY_PALETTE: Record<string, readonly [number, number, number]> = {
+  b: [0x00, 0x6a, 0x6a],
+  f: [0xff, 0xff, 0xff],
+  w: [0x9c, 0xf1, 0xf0],
+};
+
+/** active 状态光点,在海青底上保持可辨 */
+const TRAY_ACTIVE_DOT: readonly [number, number, number] = [0xff, 0xd3, 0x7a];
+
+/**
+ * 程序化生成 16×16 RGBA 托盘图标,不依赖打包资源路径,dev 与生产行为一致。
  *
  * M1-E 起,接受 variant 区分三态(spec 6.5.1):
- *   - 'default':静态深紫,Iris 紫色 ">" 内填 — 无 session 或 idle
- *   - 'active':绿色光点 — 至少一个 session 处于 active
- *
- * variant='build-icon' 时优先尝试从 build/icon.ico 读取真实设计图标(打包后用)。
- * 读取失败统一 fallback 到 default 程序生成版,确保始终有图标显示。
+ *   - 'default':无 session 或 idle
+ *   - 'active':右上角琥珀色光点,至少一个 session 处于 active
  */
 function generateTrayIcon(variant: 'default' | 'active'): NativeImage {
   const size = 16;
   const buf = Buffer.alloc(size * size * 4);
 
-  // Rose Pine 色板
-  const BASE = [0x19, 0x17, 0x24]; // 背景
-  const IRIS = [0xc4, 0xa7, 0xe7]; // 提示符
-  const PINE = [0x31, 0x74, 0x8f]; // active 光点
-
-  // 圆角矩形背景
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4;
-      // 四角去角
-      const corner =
-        (x < 2 && y < 2) ||
-        (x >= size - 2 && y < 2) ||
-        (x < 2 && y >= size - 2) ||
-        (x >= size - 2 && y >= size - 2);
-      if (corner) {
-        buf[i] = 0;
-        buf[i + 1] = 0;
-        buf[i + 2] = 0;
-        buf[i + 3] = 0;
-      } else {
-        buf[i] = BASE[0]!;
-        buf[i + 1] = BASE[1]!;
-        buf[i + 2] = BASE[2]!;
-        buf[i + 3] = 0xff;
-      }
-    }
-  }
-
-  // 画 ">" 提示符 (在 (4-9, 5-11) 区域用 IRIS 色)
-  const promptPixels: ReadonlyArray<readonly [number, number]> = [
-    [4, 5], [5, 6], [6, 7], [7, 8], [6, 9], [5, 10], [4, 11],
-  ];
-  for (const [px, py] of promptPixels) {
-    const i = (py * size + px) * 4;
-    buf[i] = IRIS[0]!;
-    buf[i + 1] = IRIS[1]!;
-    buf[i + 2] = IRIS[2]!;
+  const setPixel = (x: number, y: number, rgb: readonly [number, number, number]): void => {
+    const i = (y * size + x) * 4;
+    buf[i] = rgb[0];
+    buf[i + 1] = rgb[1];
+    buf[i + 2] = rgb[2];
     buf[i + 3] = 0xff;
-    // 加粗一像素
-    const i2 = (py * size + px + 1) * 4;
-    buf[i2] = IRIS[0]!;
-    buf[i2 + 1] = IRIS[1]!;
-    buf[i2 + 2] = IRIS[2]!;
-    buf[i2 + 3] = 0xff;
-  }
+  };
 
-  // active 时右下角加 3×3 绿光点
+  TRAY_PIXELS.forEach((row, y) => {
+    for (let x = 0; x < size; x++) {
+      const color = TRAY_PALETTE[row[x]!];
+      if (color) setPixel(x, y, color);
+    }
+  });
+
+  // 光点放右上角:那里没有提示符和波浪,4×4 在 16px 下才看得出来
   if (variant === 'active') {
-    for (let y = 11; y < 14; y++) {
-      for (let x = 11; x < 14; x++) {
-        const i = (y * size + x) * 4;
-        buf[i] = PINE[0]!;
-        buf[i + 1] = PINE[1]!;
-        buf[i + 2] = PINE[2]!;
-        buf[i + 3] = 0xff;
-      }
+    for (let y = 2; y < 6; y++) {
+      for (let x = 10; x < 14; x++) setPixel(x, y, TRAY_ACTIVE_DOT);
     }
   }
 

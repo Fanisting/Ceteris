@@ -1,7 +1,8 @@
 /**
  * @file src/shared/link-theme.ts
  * @purpose Link 远程窗口的主题规则:主题跟随用户面前的这台机器,其余设置仍以 Host 为准。
- *   这样同一台机器上的本地窗口和远程窗口颜色一致,切换时一起变,也不会改动 Host。
+ *   这样同一台机器上的本地窗口和远程窗口颜色一致,切换时一起变,切换也不会改动 Host。
+ *   在远程窗口里恢复默认或导入设置是对 Host 的显式操作,仍会改写 Host 的主题。
  *
  * @关键设计:
  * - 只有 appearance.theme 走本机。字体、模板等仍来自 Host,见 link-protocol.ts。

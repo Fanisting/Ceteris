@@ -90,6 +90,17 @@ describe('resolveFileTreeRoot', () => {
     expect(resolveFileTreeRoot({ currentCwd: 'C:\\home\\x', originalCwd }, local)).toBe(originalCwd);
   });
 
+  it('WSL 内切到另一个 UNC 目录时跟随', () => {
+    const originalCwd = '\\\\wsl$\\Ubuntu\\home\\x';
+    const currentCwd = '\\\\wsl$\\Ubuntu\\home\\x\\src';
+    expect(resolveFileTreeRoot({ currentCwd, originalCwd }, local)).toBe(currentCwd);
+  });
+
+  it('从盘符路径切到网络共享时跟随,不停留在旧目录', () => {
+    const currentCwd = '\\\\nas\\share';
+    expect(resolveFileTreeRoot({ currentCwd, originalCwd: 'C:\\p' }, local)).toBe(currentCwd);
+  });
+
   it('currentCwd 为空时用 originalCwd', () => {
     expect(resolveFileTreeRoot({ currentCwd: '', originalCwd: 'C:\\p' }, local)).toBe('C:\\p');
   });

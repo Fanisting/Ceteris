@@ -157,6 +157,8 @@ export function QuickLaunchOverlay({ pathId, anchor, onClose }: Props): JSX.Elem
       focusTerminalDom();
     } catch (err) {
       console.error('[QuickLaunch] create-session failed', err);
+      // 覆盖层关闭时带走了焦点,启动失败也要还给终端
+      focusTerminalDom();
       const reason = err instanceof Error ? err.message : String(err);
       toast.push({
         kind: 'error',

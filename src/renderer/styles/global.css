@@ -1479,7 +1479,8 @@ html[data-maximized='true'] .app-root.with-shell {
   text-align: center;
 }
 
-.empty-hint code {
+/* 选择器多一层,否则 material.css 的同名规则靠加载顺序盖掉这里的颜色和圆角 */
+.empty-path-state .empty-hint code {
   display: inline-block;
   max-width: 100%;
   font-family: var(--terminal-font-family, monospace);

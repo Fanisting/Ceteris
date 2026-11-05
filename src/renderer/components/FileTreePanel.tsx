@@ -106,6 +106,8 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
   const renameTimerRef = useRef<number | null>(null);
   const refreshingRef = useRef(false);
   const mountedRef = useRef(false);
+  // 每个目录只采用最新一次请求的结果,否则改名前发出的轮询会把旧名字写回来
+  const loadSeqRef = useRef(new Map<string, number>());
 
   const setExpanded = useCallback(
     (next: ReadonlySet<string>): void => {
@@ -118,6 +120,8 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
 
   const loadDir = useCallback(
     async (dir: string): Promise<void> => {
+      const seq = (loadSeqRef.current.get(dir) ?? 0) + 1;
+      loadSeqRef.current.set(dir, seq);
       let res: ListDirResponse;
       try {
         res = await window.api.invoke<ListDirPayload, ListDirResponse>(
@@ -128,7 +132,7 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
         // Link 断线时 invoke 会 reject,当作普通失败显示,不打断轮询
         res = { ok: false, reason: 'unknown' };
       }
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || loadSeqRef.current.get(dir) !== seq) return;
       if (!res.ok && res.reason === 'not-found' && dir !== root) {
         const next = new Set(expandedRef.current);
         if (next.delete(dir)) setExpanded(next);
@@ -255,9 +259,10 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
   const commitRename = async (row: FileTreeRow): Promise<void> => {
     if (renamingRef.current !== row.entry.path) return;
     endRename();
+    // 先还焦点再等结果:链接慢时用户可能已开始下一次重命名,等完再还会抢走它的焦点
+    focusTerminalDom();
     const newName = renameText.trim();
     if (newName && newName !== row.entry.name) await applyRename(row, newName);
-    focusTerminalDom();
   };
 
   const handleRowClick = (e: MouseEvent<HTMLDivElement>, row: FileTreeRow): void => {
@@ -337,9 +342,15 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
                   aria-label={t('fileTree.rename')}
                   value={renameText}
                   onChange={(e) => setRenameText(e.target.value)}
-                  onBlur={() => void commitRename(row)}
+                  onBlur={() => {
+                    // 切到别的窗口也会 blur。这里提交的是磁盘改名,不能把打到一半的名字写下去
+                    if (document.hasFocus()) void commitRename(row);
+                  }}
                   onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
+                    // 输入法组合期间的回车是确认候选词,不是提交重命名
+                    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       void commitRename(row);

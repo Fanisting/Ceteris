@@ -437,22 +437,25 @@ async function syncThemeToRemoteWindows(theme: ThemeId): Promise<void> {
   const wm = linkWindowManager;
   const forward = linkCommandForwarder;
   if (!wm || !forward) return;
-  for (const info of wm.list()) {
-    if (!wm.isWindowRemote(info.id)) continue;
-    try {
-      const res = (await forward(
-        info.id,
-        COMMAND_CHANNELS.SETTINGS_GET,
-        undefined,
-      )) as GetSettingsResponse;
-      sendEventToWindowId<SettingsChangedPayload>(info.id, EVENT_CHANNELS.SETTINGS_CHANGED, {
-        settings: withLocalTheme(res.settings, theme),
-        changedKeys: ['appearance.theme'],
-      });
-    } catch (err) {
-      logger.warn('ipc', `syncThemeToRemoteWindows failed: window=${info.id}`, err);
-    }
-  }
+  // 并行:一台 Host 卡住时不能拖慢连到其它 Host 的窗口
+  const remoteWindows = wm.list().filter((info) => wm.isWindowRemote(info.id));
+  await Promise.allSettled(
+    remoteWindows.map(async (info) => {
+      try {
+        const res = (await forward(
+          info.id,
+          COMMAND_CHANNELS.SETTINGS_GET,
+          undefined,
+        )) as GetSettingsResponse;
+        sendEventToWindowId<SettingsChangedPayload>(info.id, EVENT_CHANNELS.SETTINGS_CHANGED, {
+          settings: withLocalTheme(res.settings, theme),
+          changedKeys: ['appearance.theme'],
+        });
+      } catch (err) {
+        logger.warn('ipc', `syncThemeToRemoteWindows failed: window=${info.id}`, err);
+      }
+    }),
+  );
 }
 
 function handleCommand(

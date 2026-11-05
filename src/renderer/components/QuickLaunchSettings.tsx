@@ -5,7 +5,8 @@
  *
  * @关键设计:
  * - 即改即生效,没有保存按钮 (软件定义书 13.2)。
- * - 已删除的模板仍留在设置里时不显示,快捷启动渲染时也会跳过它。
+ * - 已删除的模板或已卸载的 shell 仍占名额,所以要显示出来让用户能取消勾选。
+ *   不自动清理:列 shell 失败时会误删有效选项。
  */
 import { useEffect, useState } from 'react';
 import { COMMAND_CHANNELS, type ListShellsResponse } from '@shared/protocol';
@@ -56,10 +57,14 @@ export function QuickLaunchSettings({ onChange }: Props): JSX.Element {
       label: s.displayName,
     })),
   ];
+  const known = new Set(candidates.map(({ item }) => quickLaunchItemKey(item)));
+  const unavailable = selected
+    .filter((item) => !known.has(quickLaunchItemKey(item)))
+    .map((item) => ({ item, label: `${item.id} ${tx('(不可用)', '(unavailable)')}` }));
 
   return (
     <div className="quick-launch-settings">
-      {candidates.map(({ item, label }) => {
+      {[...candidates, ...unavailable].map(({ item, label }) => {
         const key = quickLaunchItemKey(item);
         const checked = selectedKeys.has(key);
         return (

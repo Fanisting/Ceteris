@@ -78,6 +78,8 @@ export function isValidEntryName(name: string): boolean {
   return !RESERVED_DEVICE_NAME.test(name);
 }
 
+const WSL_UNC_PATH = /^\\\\(?:wsl\$|wsl\.localhost)\\/i;
+
 function pathStyle(p: string): 'unc' | 'posix' | 'drive' {
   if (p.startsWith('\\\\')) return 'unc';
   return p.startsWith('/') ? 'posix' : 'drive';
@@ -88,9 +90,10 @@ function pathStyle(p: string): 'unc' | 'posix' | 'drive' {
  *
  * SSH session 一律返回 null:软件定义书 14.6 明确不做远端文件浏览。
  *
- * 风格判断是为 WSL:shell 上报的 /home/x 经 normalizeCwd 的 path.resolve 后变成
+ * WSL 要特殊处理:shell 上报的 /home/x 经 normalizeCwd 的 path.resolve 后变成
  * C:\home\x,这个路径在 Windows 上不存在或者指向别的目录。此时 originalCwd
- * (\\wsl$\... 这样的 UNC 路径) 才是可信的。
+ * (\\wsl$\... 这样的 UNC 路径) 才是可信的。从 C:\proj cd 到 \\nas\share 这种
+ * 普通的跨盘切换不受影响,树照常跟随。
  */
 export function resolveFileTreeRoot(
   session: Pick<SessionInfo, 'currentCwd' | 'originalCwd'> | null,
@@ -99,7 +102,11 @@ export function resolveFileTreeRoot(
   if (!session || !node || node.kind === 'ssh') return null;
   const { currentCwd, originalCwd } = session;
   if (!currentCwd) return originalCwd || null;
-  return pathStyle(currentCwd) === pathStyle(originalCwd) ? currentCwd : originalCwd;
+  const currentStyle = pathStyle(currentCwd);
+  if (WSL_UNC_PATH.test(originalCwd)) return currentStyle === 'unc' ? currentCwd : originalCwd;
+  return (currentStyle === 'posix') === (pathStyle(originalCwd) === 'posix')
+    ? currentCwd
+    : originalCwd;
 }
 
 export interface LastRowClick {

@@ -24,7 +24,7 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 - **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 42 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
 - **新建页只显示路径。** 去掉了“在 X 新建终端”的句子,路径框加大并描边。
-- **远程窗口的主题与本机一致。** 主题跟随你面前的这台机器:本地窗口和远程窗口颜色相同,在任一窗口切换都会一起变,Host 的主题不受影响。字体等其余设置仍来自 Host。
+- **远程窗口的主题与本机一致。** 主题跟随你面前的这台机器:本地窗口和远程窗口颜色相同,在任一窗口切换都会一起变,切换不改动 Host 的主题。字体等其余设置仍来自 Host。
 
 ### 修复
 

@@ -86,6 +86,7 @@ export async function listDirectory(
  *
  * foo 改成 Foo 在大小写不敏感的文件系统上 lstat(target) 会命中自身,这种情况要放行。
  * 名字大小写相同还要比 inode:大小写敏感的文件系统上 foo 和 Foo 可以是两个文件。
+ * 部分网络共享的 inode 恒为 0,无法证明是同一文件,此时按冲突处理,宁可拒绝也不覆盖。
  */
 async function targetBlocksRename(sourcePath: string, targetPath: string): Promise<boolean> {
   let target;
@@ -97,7 +98,7 @@ async function targetBlocksRename(sourcePath: string, targetPath: string): Promi
   }
   if (sourcePath.toLowerCase() !== targetPath.toLowerCase()) return true;
   const source = await fs.lstat(sourcePath, { bigint: true });
-  return source.ino !== target.ino || source.dev !== target.dev;
+  return source.ino === 0n || source.ino !== target.ino || source.dev !== target.dev;
 }
 
 /**

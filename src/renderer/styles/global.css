@@ -1480,11 +1480,17 @@ html[data-maximized='true'] .app-root.with-shell {
 }
 
 .empty-hint code {
+  display: inline-block;
+  max-width: 100%;
   font-family: var(--terminal-font-family, monospace);
+  font-size: 15px;
+  font-weight: 500;
   background-color: var(--color-bg-elevated, #f0f);
-  padding: 2px 6px;
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--color-warning, #f0f) 45%, transparent);
+  padding: 6px 14px;
+  border-radius: 8px;
   color: var(--color-warning, #f0f);
+  overflow-wrap: anywhere;
 }
 
 .empty-section {

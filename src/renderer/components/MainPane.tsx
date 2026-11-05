@@ -304,8 +304,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   return (
     <div className="empty-path-state">
       <p className="empty-hint">
-        {tx('在', 'New terminal in')} <code>{displayPath}</code>
-        {tx(' 新建终端', '')}
+        <code>{displayPath}</code>
       </p>
 
       {isSshPath && (

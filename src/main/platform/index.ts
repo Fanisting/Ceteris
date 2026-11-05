@@ -150,12 +150,11 @@ export interface PlatformAdapter {
    *
    * - Linux/macOS:返回 `~/.ssh/cm-%r@%h:%p`(OpenSSH 自动展开 %r/%h/%p,
    *   ~ 由 OpenSSH 而非 shell 展开 — OpenSSH 文档明示)。
-   * - Windows:返回固定模板字符串即可。Windows OpenSSH 8.x+ 走 named pipe,
-   *   ControlPath 值被忽略,实际不读;传它只是为了 args 一致。
+   * - Windows:返回 null,表示平台的 OpenSSH 不支持 ControlMaster,不能传这组参数。
    *
    * 可选 — 旧 PlatformAdapter 实现不提供则 SessionManager 用默认值。
    */
-  getSshControlPath?(): string;
+  getSshControlPath?(): string | null;
 }
 
 /**

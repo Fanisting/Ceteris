@@ -651,13 +651,12 @@ export class WindowsAdapter implements PlatformAdapter {
   }
 
   /**
-   * SSH 方案 v2.1 §阶段 3.5:Windows OpenSSH 8.x+ ControlMaster 走 named pipe
-   * (\\.\pipe\openssh-ssh-*),不读 ControlPath 参数 — Marina 传它它就忽略,
-   * 实际复用走 pipe。返回 `~/.ssh/cm-%r@%h:%p` 跟 POSIX 行为对齐,方便用户
-   * 把 Marina 配置导出后在 macOS / Linux 等价运行。
+   * Windows 版 OpenSSH 不支持 ControlMaster:传 ControlMaster=auto 时,无论
+   * ControlPath 写什么,ssh.exe 都报 "getsockname failed: Not a socket" 并退出,
+   * 终端连不上。这里返回 null,SessionManager 就不传这组参数。
    */
-  getSshControlPath(): string {
-    return '~/.ssh/cm-%r@%h:%p';
+  getSshControlPath(): null {
+    return null;
   }
 }
 

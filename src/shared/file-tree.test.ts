@@ -74,10 +74,20 @@ describe('resolveFileTreeRoot', () => {
     ).toBe('C:\\p\\src');
   });
 
-  it('SSH session 不提供文件树 (软件定义书 14.6)', () => {
+  it('SSH session 用上报的绝对路径', () => {
     expect(
-      resolveFileTreeRoot({ currentCwd: '/home/x', originalCwd: '/home/x' }, { kind: 'ssh' }),
-    ).toBeNull();
+      resolveFileTreeRoot({ currentCwd: '/home/x', originalCwd: '~' }, { kind: 'ssh' }),
+    ).toBe('/home/x');
+  });
+
+  it('SSH 的 cwd 被解析成盘符路径时退回远程路径', () => {
+    expect(
+      resolveFileTreeRoot({ currentCwd: 'C:\\home\\x', originalCwd: '~/p' }, { kind: 'ssh' }),
+    ).toBe('~/p');
+  });
+
+  it('SSH 没有 cwd 时从 home 开始', () => {
+    expect(resolveFileTreeRoot({ currentCwd: '', originalCwd: '' }, { kind: 'ssh' })).toBe('~');
   });
 
   it('没有 session 或 path 时返回 null', () => {
@@ -103,6 +113,14 @@ describe('resolveFileTreeRoot', () => {
 
   it('currentCwd 为空时用 originalCwd', () => {
     expect(resolveFileTreeRoot({ currentCwd: '', originalCwd: 'C:\\p' }, local)).toBe('C:\\p');
+  });
+});
+
+describe('flattenVisibleRows: 防御远端数据', () => {
+  it('条目路径等于父目录时不会无限递归', () => {
+    const loop: FileTreeEntry = { name: '', path: '/x', isDirectory: true };
+    const rows = flattenVisibleRows('/x', new Map([['/x', [loop]]]), new Set(['/x']));
+    expect(rows).toHaveLength(1);
   });
 });
 

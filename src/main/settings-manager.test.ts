@@ -14,6 +14,7 @@ import {
   deepMerge,
   diffKeys,
   validateSettings,
+  stripUnknownLegacyFields,
 } from './settings-manager';
 import type { Settings } from '@shared/types';
 import type { JsonStore } from './persistence';
@@ -334,5 +335,13 @@ describe('SettingsError', () => {
     const err = new SettingsError('InvalidSettings', 'foo', { field: 'theme' });
     expect(err.code).toBe('InvalidSettings');
     expect(err.details).toEqual({ field: 'theme' });
+  });
+});
+
+describe('stripUnknownLegacyFields: advanced.enableRemote', () => {
+  it('丢弃老文件里的开关,保留其它高级设置', () => {
+    const raw = { advanced: { enableRemote: false, logLevel: 'DEBUG' } };
+    expect(stripUnknownLegacyFields(raw)).toEqual({ advanced: { logLevel: 'DEBUG' } });
+    expect(raw.advanced.enableRemote).toBe(false);
   });
 });

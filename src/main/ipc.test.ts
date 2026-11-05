@@ -29,12 +29,23 @@ import { makePathId } from './path-manager';
 // electron mock — ipcMain.handle 捕获 handler 到 handlers Map
 // ──────────────────────────────────────────────────────────────────
 
+vi.stubEnv('ELECTRON_RENDERER_URL', 'http://marina.test');
+
 const { handlers, mockApp, mockBrowserWindow, mockClipboard, mockDialog, mockShell, mockIpcMain } =
   vi.hoisted(() => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     const mockIpcMain = {
       handle: (channel: string, handler: (...args: unknown[]) => unknown): void => {
-        handlers.set(channel, handler);
+        // 真实 event 都带 senderFrame。测试传 {} 时补上应用页面,
+        // 显式给 senderFrame 的用例用来测来源检查
+        handlers.set(channel, (event: unknown, ...rest: unknown[]) => {
+          const given = (event ?? {}) as Record<string, unknown>;
+          const withFrame =
+            'senderFrame' in given
+              ? given
+              : { senderFrame: { url: 'http://marina.test/' }, ...given };
+          return handler(withFrame, ...rest);
+        });
       },
       removeHandler: (channel: string): void => {
         handlers.delete(channel);
@@ -513,5 +524,21 @@ describe('Link 远程窗口的主题跟随本机', () => {
     );
 
     expect(forward).not.toHaveBeenCalled();
+  });
+});
+
+describe('IPC 来源检查', () => {
+  const channel = COMMAND_CHANNELS.SESSION_CREATE;
+
+  it.each([
+    ['外部网页', { senderFrame: { url: 'http://127.0.0.1:18765/link-click' } }],
+    ['已销毁的 frame (undefined)', { senderFrame: undefined }],
+    ['已销毁的 frame (null)', { senderFrame: null }],
+  ])('拒绝%s', async (_name, event) => {
+    const { installIpcLayer } = await freshIpc();
+    const { createCalls, deps } = makeStubs();
+    installIpcLayer(deps as Parameters<typeof installIpcLayer>[0]);
+    await expect(handlers.get(channel)!(event, { payload: {} })).rejects.toThrow(/ForbiddenSender/);
+    expect(createCalls).toHaveLength(0);
   });
 });

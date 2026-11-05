@@ -21,6 +21,7 @@
  * - cmd:session:create / close / claim / release / focus-owner / send-input / resize
  * - 所有 evt:* 广播
  */
+import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
@@ -33,7 +34,7 @@ import {
 } from './explorer-integration';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { join as joinPath } from 'node:path';
+import { resolve, join as joinPath } from 'node:path';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -146,10 +147,15 @@ import { detectSshAgent } from './ssh-agent';
 import type {
   ListDirPayload,
   ListDirResponse,
+  ReadPdfPayload,
+  ReadPdfResponse,
   RenameEntryPayload,
   RenameEntryResponse,
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
+import { isAppPageUrl } from './ipc-sender';
+import { readPdfChunk, readRemotePdfChunk } from './pdf-reader';
+import type { SftpPool } from './sftp-client';
 import {
   applyLocalThemeToResult,
   splitThemeUpdate,
@@ -176,6 +182,8 @@ export interface IpcLayerDeps {
    * 其余 link 命令抛错。单测里的 deps 不带它。
    */
   linkManager?: LinkManager;
+  /** SSH 路径的文件树和文件夹选择。未注入时远端请求返回 no-client */
+  sftpPool?: SftpPool;
 }
 
 let installed = false;
@@ -458,6 +466,9 @@ async function syncThemeToRemoteWindows(theme: ThemeId): Promise<void> {
   );
 }
 
+/** 与 window-manager.ts 加载的页面是同一个文件。 */
+const APP_PAGE_URL = pathToFileURL(resolve(__dirname, '../renderer/index.html')).href;
+
 function handleCommand(
   channel: string,
   // `any[]` 是刻意的:它与 Electron 自己的 ipcMain.handle 签名一致。改成
@@ -468,6 +479,12 @@ function handleCommand(
 ): void {
   localCommandHandlers.set(channel, listener);
   ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+    // 拿不到 frame 也要拒绝:frame 已销毁时 Electron 31 给的是 undefined,不是 null
+    const frame = event.senderFrame;
+    if (!(frame && isAppPageUrl(frame.url, APP_PAGE_URL, process.env['ELECTRON_RENDERER_URL']))) {
+      logger.error('ipc', `refused ${channel} from "${frame?.url ?? 'destroyed frame'}"`);
+      throw makeIpcError('ForbiddenSender', `channel="${channel}"`);
+    }
     const envelope = args[0] as CommandEnvelope<unknown> | undefined;
     const windowId = envelope?.windowId;
     if (
@@ -1201,8 +1218,24 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.FS_LIST_DIR,
-    (_e, envelope: CommandEnvelope<ListDirPayload>): Promise<ListDirResponse> =>
-      listDirectory(envelope.payload.path),
+    async (_e, envelope: CommandEnvelope<ListDirPayload>): Promise<ListDirResponse> => {
+      const { path, sshProfileId, fresh } = envelope.payload;
+      if (!sshProfileId) return listDirectory(path);
+      return deps.sftpPool
+        ? deps.sftpPool.list(sshProfileId, path, fresh)
+        : { ok: false, reason: 'no-client' };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_READ_PDF,
+    async (_e, envelope: CommandEnvelope<ReadPdfPayload>): Promise<ReadPdfResponse> => {
+      const { path, sshProfileId, offset } = envelope.payload;
+      if (!sshProfileId) return readPdfChunk(path, offset);
+      return deps.sftpPool
+        ? readRemotePdfChunk(deps.sftpPool, sshProfileId, path, offset)
+        : { ok: false, reason: 'no-client' };
+    },
   );
 
   handleCommand(
@@ -1970,7 +2003,7 @@ function encryptPasswordOrThrow(plaintext: string): string {
   return safeStorage.encryptString(plaintext).toString('base64');
 }
 
-function decryptStoredPassword(blob: string): { password?: string } {
+export function decryptStoredPassword(blob: string): { password?: string } {
   if (!safeStorage.isEncryptionAvailable()) return {};
   try {
     const buf = Buffer.from(blob, 'base64');

@@ -98,7 +98,6 @@ interface CategoryDef {
 // CP-4 勘误 #11:用 lucide 图标替换原有 Emoji。BETA-031 新增 'AI 助手'。
 // BETA-004:title 改 i18n key,渲染时由 t() 转。
 // SSH 方案 v2.1 §II.6:'remote' 分类条件渲染(见 buildVisibleCategories);
-// 本地用户(无 SshProfile 且未开 enableRemote)视野永远是 8 个分类。
 const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'appearance', iconName: 'appearance', titleKey: 'settings.category.appearance' },
   { id: 'shell', iconName: 'shell', titleKey: 'settings.category.shell' },
@@ -122,28 +121,12 @@ const REMOTE_CATEGORY: CategoryDef = {
 };
 
 /**
- * SSH 方案 v2.1 §II.6:本地用户视野守护。'remote' 分类只在以下任一条件下
- * 显示:
- *   1. 已有至少一个 SshProfile(用户已经在配置远程)
- *   2. advanced.enableRemote === true(用户主动想看远程入口)
- *
- * 否则隐藏 — 设置页永远是 8 个分类,跟 beta.9 一致。
- * 'remote' 插入位置:放在 'data' 之后、'system-integration' 之前,语义上跟
- * "数据"分类的"远程文件夹"延续。
+ * 'remote' 放在 'data' 之后、'system-integration' 之前,语义上跟"数据"分类的
+ * "远程文件夹"延续。
  */
-function buildVisibleCategories(input: {
-  hasSshProfiles: boolean;
-  enableRemote: boolean;
-}): CategoryDef[] {
-  const showRemote = input.hasSshProfiles || input.enableRemote;
-  if (!showRemote) return BASE_CATEGORIES;
-  const result: CategoryDef[] = [];
-  for (const c of BASE_CATEGORIES) {
-    result.push(c);
-    if (c.id === 'data') result.push(REMOTE_CATEGORY);
-  }
-  return result;
-}
+const VISIBLE_CATEGORIES: CategoryDef[] = BASE_CATEGORIES.flatMap((c) =>
+  c.id === 'data' ? [c, REMOTE_CATEGORY] : [c],
+);
 
 // 把 settings update 走 IPC 的副作用集中,所有控件都用这个
 async function updateSettings(
@@ -161,26 +144,8 @@ async function updateSettings(
 export function SettingsView(): JSX.Element {
   const dispatch = useAppDispatch();
   const { t } = useTranslation();
-  const state = useAppState();
   const [active, setActive] = useState<CategoryId>('appearance');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const visibleCategories = useMemo(
-    () =>
-      buildVisibleCategories({
-        hasSshProfiles: state.sshProfiles.length > 0,
-        enableRemote: state.settings?.advanced?.enableRemote === true,
-      }),
-    [state.sshProfiles.length, state.settings?.advanced?.enableRemote],
-  );
-
-  // 当前 active 分类被移除时(例如用户在 remote 面板把 enableRemote 关掉且
-  // 没 profile),回退到 appearance。
-  useEffect(() => {
-    if (!visibleCategories.some((c) => c.id === active)) {
-      setActive('appearance');
-    }
-  }, [visibleCategories, active]);
 
   const handleClose = useCallback(() => {
     dispatch({ type: 'view/exit-settings' });
@@ -207,7 +172,7 @@ export function SettingsView(): JSX.Element {
       </header>
       <div className="settings-body">
         <nav className="settings-nav" aria-label={t('settings.title')}>
-          {visibleCategories.map((c) => (
+          {VISIBLE_CATEGORIES.map((c) => (
             <button
               key={c.id}
               type="button"
@@ -1486,12 +1451,9 @@ function DataPanel({
 }
 
 // ──────────────────────────────────────────────────────────────────
-// 远程分类(SSH 方案 v2.1 §II.6)— 条件渲染,只在 hasSshProfiles ||
-// advanced.enableRemote === true 时由 SettingsView 决定挂载。本面板承载:
+// 远程分类(SSH 方案 v2.1 §II.6)。本面板承载:
 //   - SSH 服务器(CRUD + edit + 文件选择器 + 保存密码)
 //   - 远程文件夹收藏(挂在某个 profile 下的 RemoteBookmark)
-//   - 远程相关高级开关入口(`advanced.enableRemote` 关掉后,若无 profile 则
-//     本面板下次进设置不再显示)
 // ──────────────────────────────────────────────────────────────────
 
 function RemotePanel({
@@ -1516,7 +1478,6 @@ function RemotePanel({
   const [remotePath, setRemotePath] = useState('~');
   const [remoteName, setRemoteName] = useState('');
 
-  const enableRemote = state.settings?.advanced?.enableRemote === true;
   const includeSshConfig = state.settings?.advanced?.includeSshConfig === true;
   const enableControlMaster = state.settings?.advanced?.enableControlMaster !== false;
 
@@ -2092,28 +2053,6 @@ function RemotePanel({
           )}
         </div>
       </SettingRow>
-
-      <SettingRow
-        label={tx('始终显示远程入口', 'Always show remote entry')}
-        hint={tx(
-          '即使没有 SSH 服务器,也在 sidebar 顶部和设置页保留远程入口。关闭后,如果当前没有 profile,本面板会被隐藏(刷新设置后生效)。',
-          'Show the remote entry in the sidebar and settings even without any SSH server. Turning this off hides this panel if no profile exists (takes effect after re-entering settings).',
-        )}
-      >
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={enableRemote}
-            onChange={(e) =>
-              void updateSettings(
-                { advanced: { enableRemote: e.target.checked } },
-                setError,
-              )
-            }
-          />
-          <span>{tx('启用远程入口', 'Enable remote entry')}</span>
-        </label>
-      </SettingRow>
     </section>
   );
 }
@@ -2608,11 +2547,6 @@ function AdvancedPanel({
   const adv = state.settings.advanced;
   const logLevel = adv?.logLevel ?? 'INFO';
   const terminalRenderer = adv?.terminalRenderer ?? 'auto';
-  // SSH 入口发现性兜底:RemotePanel 自身只在 hasSshProfiles || enableRemote
-  // 时显示,全新用户没 profile 也没开关 → 永远见不到"远程"分类。
-  // 解法:把同一个 enableRemote 开关也放在"高级"分类里(始终可见),
-  // 让用户能从"高级"主动启用远程模式,RemotePanel 随之出现可加 profile。
-  const enableRemote = adv?.enableRemote === true;
 
   const [confirmingReset, setConfirmingReset] = useState(false);
 
@@ -2680,28 +2614,6 @@ function AdvancedPanel({
         <button type="button" className="settings-button" onClick={handleOpenLogs}>
           {tx('打开日志目录', 'Open log directory')}
         </button>
-      </SettingRow>
-
-      <SettingRow
-        label={tx('启用 SSH / 远程模式', 'Enable SSH / Remote mode')}
-        hint={tx(
-          '勾选后,sidebar 顶部出现 [本地] [远程] 切换,设置页第 5 位多一个"远程"分类,可在那里添加 SSH 服务器、配置 ssh_config 集成、查看 known_hosts。不勾或无 SSH 服务器时,Marina 跟 beta.9 完全一致(本地用户视野不变)。',
-          'When on, the sidebar shows a [Local] [Remote] toggle and Settings gains a "Remote" category where you can add SSH servers, integrate ssh_config, view known_hosts, etc. When off and no SSH server is configured, Marina behaves exactly like beta.9 (local-only view is preserved).',
-        )}
-      >
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={enableRemote}
-            onChange={(e) =>
-              void updateSettings(
-                { advanced: { enableRemote: e.target.checked } },
-                setError,
-              )
-            }
-          />
-          <span>{tx('启用远程入口(看 ↑ hint)', 'Enable remote entry (see hint above)')}</span>
-        </label>
       </SettingRow>
 
       <SettingRow

@@ -127,3 +127,173 @@
   padding-top: 2px;
   padding-bottom: 2px;
 }
+
+/* 终端区域:PdfOverlay 以它为定位基准,盖在终端上 */
+.session-stage {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pdf-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-primary, #f0f);
+}
+
+.pdf-overlay-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px 0 12px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  font-size: 12px;
+}
+
+.pdf-overlay-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-overlay-close {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+  cursor: pointer;
+}
+
+.pdf-overlay-close:hover {
+  background-color: var(--color-danger, #f0f);
+  color: var(--color-bg-primary, #f0f);
+}
+
+.pdf-overlay-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  border: none;
+}
+
+.pdf-overlay-status {
+  margin: auto;
+  color: var(--color-text-muted, #f0f);
+}
+
+.remote-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(520px, calc(100vw - 32px));
+}
+
+.remote-picker:focus {
+  outline: none;
+}
+
+.remote-picker-server {
+  padding: 4px 6px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: 4px;
+}
+
+.remote-picker-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.remote-picker-path code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-picker-up {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  cursor: pointer;
+}
+
+.remote-picker-up:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.remote-picker-list {
+  height: 280px;
+  overflow: auto;
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: 4px;
+}
+
+.remote-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  text-align: left;
+  cursor: pointer;
+}
+
+.remote-picker-row span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-picker-row:hover {
+  background-color: var(--color-bg-secondary, #f0f);
+}
+
+.remote-picker-up-icon {
+  transform: rotate(180deg);
+}
+
+.file-tree-retry {
+  margin: 0 12px 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  cursor: pointer;
+}

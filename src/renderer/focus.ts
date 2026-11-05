@@ -51,6 +51,12 @@ export function focusTerminalDom(): void {
     if (document.querySelector('.app-modal-backdrop')) return;
     // 设置视图打开时跳过(用户在编辑设置)
     if (document.querySelector('.settings-view')) return;
+    // PDF 盖着终端时,焦点留在终端上,敲键会进看不见的 shell
+    const pdfClose = document.querySelector<HTMLButtonElement>('.pdf-overlay-close');
+    if (pdfClose) {
+      pdfClose.focus();
+      return;
+    }
     const ta = document.querySelector<HTMLTextAreaElement>(
       '.xterm-helper-textarea',
     );

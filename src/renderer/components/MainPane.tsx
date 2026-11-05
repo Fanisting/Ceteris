@@ -43,7 +43,9 @@ import {
   useAppDispatch,
   useAppState,
 } from '../store';
+import { PdfOverlay } from './PdfOverlay';
 import { TerminalView } from './TerminalView';
+import { prunePdfViews } from '../pdf-view-store';
 import { focusTerminalDom } from '../focus';
 import { Icon } from './icons';
 import { TemplateIcon } from './TemplateIcon';
@@ -83,6 +85,10 @@ export function MainPane(): JSX.Element {
   const state = useAppState();
   const dispatch = useAppDispatch();
   const sessions = getSessionsInSelectedPath(state);
+
+  useEffect(() => {
+    prunePdfViews(new Set(state.sessions.keys()));
+  }, [state.sessions]);
   const displayable = getDisplayableSession(state);
 
   const containerRef = useRef<HTMLElement | null>(null);
@@ -154,11 +160,14 @@ export function MainPane(): JSX.Element {
         />
       )}
       {displayable ? (
-        <TerminalView
-          // 用 sessionId 作 key,确保切换时彻底重建 xterm 实例
-          key={displayable.id}
-          session={displayable}
-        />
+        <div className="session-stage">
+          <TerminalView
+            // 用 sessionId 作 key,确保切换时彻底重建 xterm 实例
+            key={displayable.id}
+            session={displayable}
+          />
+          <PdfOverlay sessionId={displayable.id} />
+        </div>
       ) : (
         <EmptyPathState pathId={state.selectedPathId} />
       )}

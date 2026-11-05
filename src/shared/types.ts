@@ -432,7 +432,7 @@ export interface Settings {
      *   只读不能编辑/删除(改请直接编辑 ~/.ssh/config)。
      * - false(默认):只显示 Marina 自管 profile。
      *
-     * 设置入口在 RemotePanel(advanced.enableRemote → 'remote' 分类内)。
+     * 设置入口在 RemotePanel。
      */
     includeSshConfig: boolean;
 
@@ -441,8 +441,7 @@ export interface Settings {
      *
      * true(默认):同一 host:port:user 的多个 session 复用第一个连接,
      * 启动后 ControlPersist=10m,期间新 session 0 握手(从 ~3s 降到 <100ms)。
-     * Windows OpenSSH 8.x+ 支持但 socket 走 named pipe,部分老版本不稳定 —
-     * OpenSSH 自身在 master 不可用时会回退到新连接,Marina 不需要兜底。
+     * 只在 Linux / macOS 生效:Windows 版 OpenSSH 不支持,开着也不会传这组参数。
      *
      * false:每个 session 独立握手(beta.9 行为)。
      *
@@ -450,19 +449,6 @@ export interface Settings {
      */
     enableControlMaster: boolean;
 
-    /**
-     * SSH 方案 v2.1 §II.6:本地用户视野守护开关。
-     *
-     * - false(默认):未添加任何 SshProfile 时,设置页"远程"分类完全隐藏,
-     *   sidebar 顶部 segmented control 也按本地 + WSL 排列(SSH 段空时不渲染)。
-     *   全新用户进 Marina = 体验跟 beta.9 一致。
-     * - true:即使没有 profile 也显示"远程"分类入口(给试图先看怎么配置
-     *   再加 profile 的用户)。
-     *
-     * 不变式:`sshProfiles.length > 0 || advanced.enableRemote === true`
-     * 是"渲染远程相关 UI"的唯一触发条件。
-     */
-    enableRemote: boolean;
     /**
      * 终端渲染器选择(影响 xterm.js 渲染层)。
      * - 'auto' = 平台默认:Windows / macOS 用 WebGL(性能 10-50× DOM),Linux

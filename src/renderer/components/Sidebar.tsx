@@ -11,9 +11,7 @@
  *   是否被其他窗口持有 (灰显 + ↗ 图标)
  * - 拖 Explorer 文件夹到 .sidebar-bookmarks-dropzone (CP-2 完成标志):
  *   先校验 file:// path 是否存在且是目录,然后调 cmd:bookmark:add
- * - SSH 方案 v2.1 §II.3:顶部 [本地] [远程] segmented control(仅在
- *   hasSshProfiles || advanced.enableRemote 时显示),按 kind 过滤三栏内容。
- *   本地用户(无 profile 且未启用远程)的 UI 与 beta.9 完全一致。
+ * - SSH 方案 v2.1 §II.3:顶部 [本地] [远程] segmented control,按 kind 过滤三栏内容。
  * - 设置入口固定在底部 (CP-2 占位,CP-4 接入完整设置)
  *
  * @对应文档章节: 软件定义书.md 6.2 (左侧栏)、7.3 (拖拽规格)
@@ -30,6 +28,7 @@ import {
 } from 'react';
 import { AccountTree, CheckBold, ChevronRight, CloseBold, ExpandMore, Warning } from './material-symbols';
 import { FileTreePanel } from './FileTreePanel';
+import { RemoteFolderPicker } from './RemoteFolderPicker';
 import { focusTerminalDom } from '../focus';
 import {
   COMMAND_CHANNELS,
@@ -38,7 +37,8 @@ import {
   type PickFolderResponse,
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
-import type { PathNode, SessionInfo } from '@shared/types';
+import type {
+  SshProfile, PathNode, SessionInfo } from '@shared/types';
 import { disambiguatePathNames } from '@shared/path-display';
 import { useTranslation } from './LanguageProvider';
 import {
@@ -77,9 +77,7 @@ const STATE_DOT_COLOR: Record<SessionInfo['state'], string> = {
 /**
  * SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。
  * 'local' = 本机 + 所有 WSL 发行版,'remote' = 所有 SSH profile。
- * 持久化到 localStorage,跨重启保留;但 segmented control 本身只在用户已
- * 加 SSH profile 或勾了 advanced.enableRemote 时才渲染 — 否则 UI 与
- * beta.9 完全一致(本地视野不变式)。
+ * 持久化到 localStorage,跨重启保留。
  */
 type SidebarSegment = 'local' | 'remote';
 const SIDEBAR_SEGMENT_LS_KEY = 'marina.sidebar.segment';
@@ -132,6 +130,7 @@ export function Sidebar(): JSX.Element {
   const modal = useModal();
   const { t } = useTranslation();
   const [dragOver, setDragOver] = useState(false);
+  const [remotePickerOpen, setRemotePickerOpen] = useState(false);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -217,18 +216,10 @@ export function Sidebar(): JSX.Element {
     }
   };
 
-  const enableRemote = state.settings?.advanced?.enableRemote === true;
-  const hasSshProfiles = state.sshProfiles.length > 0;
-  /**
-   * 本地不变式的核心:没 profile 且没勾 enableRemote 时,segmented control
-   * 整体不渲染,segment 强制视为 'local',sidebar 跟 beta.9 完全一致。
-   */
-  const showSegmented = hasSshProfiles || enableRemote;
-  const effectiveSegment: SidebarSegment = showSegmented ? segment : 'local';
+  const effectiveSegment: SidebarSegment = segment;
 
   // SSH 方案 v2.1 §II.3:三栏按 segment 过滤(本地 = kind==='local',包含
-  // WSL UNC 路径;远程 = kind==='ssh')。本地用户无 profile + 未启 enableRemote
-  // 时 effectiveSegment 强制 'local',跟 beta.9 一样。
+  // WSL UNC 路径;远程 = kind==='ssh')。
   const filterNodesBySegment = (nodes: PathNode[]): PathNode[] =>
     effectiveSegment === 'remote'
       ? nodes.filter((n) => n.kind === 'ssh')
@@ -264,14 +255,40 @@ export function Sidebar(): JSX.Element {
     });
   };
 
+  const addRemoteBookmark = async (profile: SshProfile, path: string): Promise<void> => {
+    try {
+      await window.api.invoke<unknown, AddBookmarkResponse>(
+        COMMAND_CHANNELS.REMOTE_BOOKMARK_ADD,
+        { sshProfileId: profile.id, remotePath: path },
+      );
+      toast.push({ kind: 'success', message: `已添加远程文件夹 ${path}` });
+    } catch (err) {
+      toast.push({
+        kind: 'error',
+        message: `添加远程文件夹失败:${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  };
+
+  /** SFTP 连不上时的退路:服务器可能只开了 shell,这时只能键入路径。 */
+  const typeRemotePath = async (profile: SshProfile): Promise<void> => {
+    const remotePath = await modal.prompt({
+      title: `添加远程文件夹 — ${profile.name}`,
+      message: `输入 ${profile.username}@${profile.host} 上的目录路径。`,
+      placeholder: '~/project',
+      defaultValue: '~',
+      confirmLabel: '加入',
+    });
+    const path = remotePath?.trim();
+    if (path) await addRemoteBookmark(profile, path);
+  };
+
   /**
    * 收藏栏 "+" 按钮。按当前 segment 走不同流程:
    *
    * - 本地段:beta.9 行为 — 系统 folder picker → BOOKMARK_ADD
-   * - 远程段:用首个 SSH profile 弹 prompt 让用户输远端路径。多 profile
-   *   时提示"用 X profile;要别的请去 设置 → 远程"。零 profile 时 toast
-   *   引导用户去设置(showSegmented 已经保证不会出现 0 profile + 不能切
-   *   远程段的状态,但 enableRemote=true 仍可能 0 profile)。
+   * - 远程段:RemoteFolderPicker 通过 SFTP 选目录。零 profile 时 toast 引导
+   *   用户去设置。
    */
   const handleAddBookmark = async (): Promise<void> => {
     if (effectiveSegment === 'remote') {
@@ -283,31 +300,7 @@ export function Sidebar(): JSX.Element {
         });
         return;
       }
-      const profile = profiles[0]!;
-      const remotePath = await modal.prompt({
-        title: `添加远程文件夹 — ${profile.name}`,
-        message:
-          profiles.length > 1
-            ? `用 ${profile.name}(${profile.username}@${profile.host}) 添加。改用其他服务器请去 设置 → 远程`
-            : `输入 ${profile.username}@${profile.host} 上的目录路径。`,
-        placeholder: '~/project',
-        defaultValue: '~',
-        confirmLabel: '加入',
-      });
-      const path = remotePath?.trim();
-      if (!path) return;
-      try {
-        await window.api.invoke<unknown, AddBookmarkResponse>(
-          COMMAND_CHANNELS.REMOTE_BOOKMARK_ADD,
-          { sshProfileId: profile.id, remotePath: path },
-        );
-        toast.push({ kind: 'success', message: `已添加远程文件夹 ${path}` });
-      } catch (err) {
-        toast.push({
-          kind: 'error',
-          message: `添加远程文件夹失败:${err instanceof Error ? err.message : String(err)}`,
-        });
-      }
+      setRemotePickerOpen(true);
       return;
     }
     // 本地段:beta.9 行为
@@ -469,35 +462,33 @@ export function Sidebar(): JSX.Element {
         <span className="sidebar-drop-hint-icon">📁</span>
         <span className="sidebar-drop-hint-label">{t('sidebar.dropHint')}</span>
       </div>
-      {showSegmented && (
-        <div
-          className="sidebar-segmented"
-          role="tablist"
-          aria-label={t('sidebar.segment.label') || '路径来源'}
-          data-testid="sidebar-segmented"
+      <div
+        className="sidebar-segmented"
+        role="tablist"
+        aria-label={t('sidebar.segment.label') || '路径来源'}
+        data-testid="sidebar-segmented"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={effectiveSegment === 'local'}
+          className={`sidebar-segmented-item${effectiveSegment === 'local' ? ' active' : ''}`}
+          onClick={() => setSegment('local')}
+          data-testid="sidebar-segment-local"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={effectiveSegment === 'local'}
-            className={`sidebar-segmented-item${effectiveSegment === 'local' ? ' active' : ''}`}
-            onClick={() => setSegment('local')}
-            data-testid="sidebar-segment-local"
-          >
-            {t('sidebar.segment.local') || '本地'}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={effectiveSegment === 'remote'}
-            className={`sidebar-segmented-item${effectiveSegment === 'remote' ? ' active' : ''}`}
-            onClick={() => setSegment('remote')}
-            data-testid="sidebar-segment-remote"
-          >
-            {t('sidebar.segment.remote') || '远程'}
-          </button>
-        </div>
-      )}
+          {t('sidebar.segment.local') || '本地'}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={effectiveSegment === 'remote'}
+          className={`sidebar-segmented-item${effectiveSegment === 'remote' ? ' active' : ''}`}
+          onClick={() => setSegment('remote')}
+          data-testid="sidebar-segment-remote"
+        >
+          {t('sidebar.segment.remote') || '远程'}
+        </button>
+      </div>
       <div className="sidebar-bookmarks-dropzone" data-segment={effectiveSegment}>
         <Category
           categoryId="bookmark"
@@ -531,6 +522,20 @@ export function Sidebar(): JSX.Element {
         />
       </div>
       {fileTreeOpen && <FileTreePanel />}
+      {remotePickerOpen && (
+        <RemoteFolderPicker
+          profiles={state.sshProfiles}
+          onPick={(profile, path) => {
+            setRemotePickerOpen(false);
+            void addRemoteBookmark(profile, path);
+          }}
+          onManual={(profile) => {
+            setRemotePickerOpen(false);
+            void typeRemotePath(profile);
+          }}
+          onCancel={() => setRemotePickerOpen(false)}
+        />
+      )}
       <div className="sidebar-footer">
         <button
           type="button"

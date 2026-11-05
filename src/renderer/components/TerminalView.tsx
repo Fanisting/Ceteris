@@ -85,6 +85,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { focusTerminalDom } from '../focus';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { CheckBold, CloseBold, CloseFullscreen, OpenInFull } from './material-symbols';
 import {
@@ -1694,6 +1695,11 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     if (!hostRevealed) return;
     if (searchVisibleRef.current) return; // 搜索栏在,焦点留搜索 input
     requestAnimationFrame(() => {
+      // PDF 盖着终端时不能聚焦这里,敲键会进看不见的 shell
+      if (document.querySelector('.pdf-overlay')) {
+        focusTerminalDom();
+        return;
+      }
       termRef.current?.focus();
     });
   }, [hostRevealed]);

@@ -1019,8 +1019,7 @@ html[data-maximized='true'] .app-root.with-shell {
   transition: background-color 100ms ease;
 }
 
-/* SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。本地用户(无 profile
-   且未启用远程)看不到这段 — 仅在 hasSshProfiles || enableRemote 时渲染。 */
+/* SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。 */
 .sidebar-segmented {
   display: flex;
   gap: 2px;

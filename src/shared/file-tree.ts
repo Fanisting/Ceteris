@@ -9,7 +9,7 @@
  * - 慢速双击与 Windows 资源管理器一致:第二次点在同一行的文件名上才进入重命名。
  *   快速双击不重命名,太晚的第二次点击当作普通点击。
  *
- * @对应文档章节: 软件定义书.md 14.6 (文件树只覆盖本地路径)
+ * @对应文档章节: 软件定义书.md 14.6
  *
  * @不要在这里做的事:
  * - 不要在这里做真实文件操作(那是 src/main/file-tree.ts 的职责)
@@ -33,10 +33,17 @@ export interface FileTreeEntry {
 
 export type FileTreeFailure = 'invalid-name' | 'exists' | 'not-found' | 'denied' | 'unknown';
 
+/** SFTP 连接层面的失败原因。显示文案在 fileTree.error.<reason>。 */
+export type SftpFailure = 'no-client' | 'auth' | 'host-key' | 'connect' | 'no-sftp';
+
+/** 列目录可能的失败:本地的文件错误,或者 SFTP 连接错误。 */
+export type DirFailure = FileTreeFailure | SftpFailure;
+
 /** 这些是用户操作的常规失败结果,用返回值而不是 throw,renderer 按 reason 显示文案。 */
 export type ListDirResponse =
-  | { ok: true; entries: FileTreeEntry[]; truncated: boolean }
-  | { ok: false; reason: FileTreeFailure };
+  /** path 是展开 ~ 后的目录,只有 SFTP 会返回 */
+  | { ok: true; entries: FileTreeEntry[]; truncated: boolean; path?: string }
+  | { ok: false; reason: DirFailure };
 
 export type RenameEntryResponse =
   | { ok: true; path: string }
@@ -44,7 +51,28 @@ export type RenameEntryResponse =
 
 export interface ListDirPayload {
   path: string;
+  /** 有值时通过 SFTP 列这个 profile 上的目录,没有时列本机目录 */
+  sshProfileId?: string;
+  /** 用户主动操作时为 true:跳过 SFTP 失败缓存立即重连。轮询不要设置 */
+  fresh?: boolean;
 }
+
+export type ReadPdfFailure = DirFailure | 'not-pdf' | 'too-large';
+
+/** 能打开的 PDF 上限。main 和 renderer 都检查:renderer 不能信任 Link 对端。 */
+export const PDF_MAX_BYTES = 256 * 1024 * 1024;
+
+export interface ReadPdfPayload {
+  path: string;
+  sshProfileId?: string;
+  /** 字节偏移,从 0 开始,之后用上一次返回的 nextOffset */
+  offset: number;
+}
+
+export type ReadPdfResponse =
+  /** base64 是这一块的内容;nextOffset 为 null 表示读完了 */
+  | { ok: true; base64: string; size: number; nextOffset: number | null }
+  | { ok: false; reason: ReadPdfFailure };
 
 export interface RenameEntryPayload {
   path: string;
@@ -52,6 +80,11 @@ export interface RenameEntryPayload {
 }
 
 const entryCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+/** 文件树里点击后用 PDF 查看器打开的文件。 */
+export function isPdfName(name: string): boolean {
+  return /\.pdf$/i.test(name);
+}
 
 /** 文件夹在前,同类按自然顺序排 (file2 排在 file10 之前)。不修改入参。 */
 export function sortEntries(entries: readonly FileTreeEntry[]): FileTreeEntry[] {
@@ -86,9 +119,11 @@ function pathStyle(p: string): 'unc' | 'posix' | 'drive' {
 }
 
 /**
- * 推导文件树要显示的根目录。返回 null 表示没有可浏览的本地目录。
+ * 推导文件树要显示的根目录。返回 null 表示没有可浏览的目录。
  *
- * SSH session 一律返回 null:软件定义书 14.6 明确不做远端文件浏览。
+ * SSH session 的 currentCwd 只有在远端 shell 上报过时才是绝对路径。上报的路径在
+ * Windows 上可能被 normalizeCwd 改成 C:\home\x,所以不是 / 开头就用 originalCwd,
+ * 也就是路径节点上的远程路径。
  *
  * WSL 要特殊处理:shell 上报的 /home/x 经 normalizeCwd 的 path.resolve 后变成
  * C:\home\x,这个路径在 Windows 上不存在或者指向别的目录。此时 originalCwd
@@ -99,8 +134,9 @@ export function resolveFileTreeRoot(
   session: Pick<SessionInfo, 'currentCwd' | 'originalCwd'> | null,
   node: Pick<PathNode, 'kind'> | null,
 ): string | null {
-  if (!session || !node || node.kind === 'ssh') return null;
+  if (!session || !node) return null;
   const { currentCwd, originalCwd } = session;
+  if (node.kind === 'ssh') return currentCwd.startsWith('/') ? currentCwd : originalCwd || '~';
   if (!currentCwd) return originalCwd || null;
   const currentStyle = pathStyle(currentCwd);
   if (WSL_UNC_PATH.test(originalCwd)) return currentStyle === 'unc' ? currentCwd : originalCwd;
@@ -151,7 +187,11 @@ export function flattenVisibleRows(
   expanded: ReadonlySet<string>,
 ): FileTreeRow[] {
   const rows: FileTreeRow[] = [];
+  // 防御远端数据:一个条目的路径等于祖先目录时不能无限递归
+  const visited = new Set<string>();
   const visit = (dir: string, depth: number): void => {
+    if (visited.has(dir)) return;
+    visited.add(dir);
     for (const entry of entriesByDir.get(dir) ?? []) {
       rows.push({ entry, depth, parentPath: dir });
       if (entry.isDirectory && expanded.has(entry.path)) visit(entry.path, depth + 1);

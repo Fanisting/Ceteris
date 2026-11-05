@@ -1,6 +1,7 @@
 /**
  * @file src/renderer/components/FileTreePanel.tsx
- * @purpose 侧栏底部的文件树面板,显示当前选中 session 所在目录,支持重命名。
+ * @purpose 侧栏底部的文件树面板,显示当前选中 session 所在目录。本地目录支持重命名,
+ *   SSH session 通过 SFTP 只读浏览。点击 PDF 在终端区域打开。
  *
  * @关键设计:
  * - 根目录变化时靠 key 重新挂载 FileTreeBody,旧目录的异步结果随卸载丢弃。
@@ -14,7 +15,7 @@
  * @对应文档章节: 软件定义书.md 13.2、14.6
  *
  * @不要在这里做的事:
- * - 不要打开或编辑文件内容 (内置文件编辑器永远不做)
+ * - 不要编辑文件内容 (内置文件编辑器永远不做)。PDF 是只读显示,见 PdfOverlay
  * - 不要自己拼接路径,路径一律用 main 返回的绝对路径
  */
 import {
@@ -30,10 +31,11 @@ import { COMMAND_CHANNELS } from '@shared/protocol';
 import {
   classifyRowClick,
   flattenVisibleRows,
+  isPdfName,
   remapPath,
   resolveFileTreeRoot,
+  type DirFailure,
   type FileTreeEntry,
-  type FileTreeFailure,
   type FileTreeRow,
   type LastRowClick,
   type ListDirPayload,
@@ -42,17 +44,28 @@ import {
   type RenameEntryResponse,
 } from '@shared/file-tree';
 import { focusTerminalDom } from '../focus';
-import { findPathNode, getSelectedSession, useAppState } from '../store';
+import { openPdf } from '../pdf-view-store';
+import { findPathNode, getDisplayableSession, getSelectedSession, useAppState } from '../store';
 import { useContextMenuApi } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
 import { ChevronRight, Draft, ExpandMore, Folder, FolderOpen } from './material-symbols';
 import { useToast } from './Toast';
 
 const POLL_INTERVAL_MS = 3000;
+/** 远端每轮都要走网络,慢一些。 */
+const REMOTE_POLL_INTERVAL_MS = 10_000;
 const RENAME_DELAY_MS = 250;
 const INDENT_PX = 14;
 
-type DirState = { entries: FileTreeEntry[]; truncated: boolean } | { failure: FileTreeFailure };
+type DirState = { entries: FileTreeEntry[]; truncated: boolean } | { failure: DirFailure };
+
+interface FileTreeBodyProps {
+  root: string;
+  /** 能显示 PDF 的 session。别的窗口持有的 session 不显示终端区域,这里是 null */
+  pdfSessionId: string | null;
+  /** 有值时是 SFTP 浏览,只读 */
+  sshProfileId: string | undefined;
+}
 
 const expandedByRoot = new Map<string, ReadonlySet<string>>();
 
@@ -66,6 +79,7 @@ export function FileTreePanel(): JSX.Element {
   const session = getSelectedSession(state);
   const node = session ? (findPathNode(state.pathTree, session.pathId) ?? null) : null;
   const root = resolveFileTreeRoot(session, node);
+  const sshProfileId = node?.kind === 'ssh' ? node.sshProfileId : undefined;
 
   return (
     <section className="file-tree-panel" aria-label={t('fileTree.title')}>
@@ -75,24 +89,28 @@ export function FileTreePanel(): JSX.Element {
           {root ? folderLabel(root) : t('fileTree.title')}
         </span>
       </div>
-      {root ? (
-        <FileTreeBody key={root} root={root} />
+      {root && session ? (
+        <FileTreeBody
+          key={`${sshProfileId ?? ''}|${root}`}
+          root={root}
+          pdfSessionId={getDisplayableSession(state)?.id ?? null}
+          sshProfileId={sshProfileId}
+        />
       ) : (
-        <p className="file-tree-hint">
-          {t(session ? 'fileTree.empty.remote' : 'fileTree.empty.noSession')}
-        </p>
+        <p className="file-tree-hint">{t('fileTree.empty.noSession')}</p>
       )}
     </section>
   );
 }
 
-function FileTreeBody({ root }: { root: string }): JSX.Element {
+function FileTreeBody({ root, pdfSessionId, sshProfileId }: FileTreeBodyProps): JSX.Element {
+  const expansionKey = `${sshProfileId ?? ''}|${root}`;
   const { t } = useTranslation();
   const toast = useToast();
   const menu = useContextMenuApi();
   const [dirs, setDirs] = useState<ReadonlyMap<string, DirState>>(() => new Map());
   const [expanded, setExpandedState] = useState<ReadonlySet<string>>(
-    () => expandedByRoot.get(root) ?? new Set(),
+    () => expandedByRoot.get(expansionKey) ?? new Set(),
   );
   const [selected, setSelected] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -112,21 +130,21 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
   const setExpanded = useCallback(
     (next: ReadonlySet<string>): void => {
       expandedRef.current = next;
-      expandedByRoot.set(root, next);
+      expandedByRoot.set(expansionKey, next);
       setExpandedState(next);
     },
-    [root],
+    [expansionKey],
   );
 
   const loadDir = useCallback(
-    async (dir: string): Promise<void> => {
+    async (dir: string, fresh = false): Promise<void> => {
       const seq = (loadSeqRef.current.get(dir) ?? 0) + 1;
       loadSeqRef.current.set(dir, seq);
       let res: ListDirResponse;
       try {
         res = await window.api.invoke<ListDirPayload, ListDirResponse>(
           COMMAND_CHANNELS.FS_LIST_DIR,
-          { path: dir },
+          { path: dir, ...(sshProfileId ? { sshProfileId, fresh } : {}) },
         );
       } catch {
         // Link 断线时 invoke 会 reject,当作普通失败显示,不打断轮询
@@ -147,7 +165,7 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
           : new Map(prev).set(dir, nextState),
       );
     },
-    [root, setExpanded],
+    [root, sshProfileId, setExpanded],
   );
 
   const refreshAll = useCallback(async (): Promise<void> => {
@@ -167,8 +185,13 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
 
   useEffect(() => {
     mountedRef.current = true;
+    // 挂载时不传 fresh:切 tab 或 cd 都会重新挂载,自动重试等于反复登录。
+    // 失败后显示缓存的原因,由重试按钮决定何时再登录
     void refreshAll();
-    const interval = window.setInterval(() => void refreshAll(), POLL_INTERVAL_MS);
+    const interval = window.setInterval(
+      () => void refreshAll(),
+      sshProfileId ? REMOTE_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+    );
     const onFocus = (): void => void refreshAll();
     window.addEventListener('focus', onFocus);
     return () => {
@@ -177,7 +200,7 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
       window.removeEventListener('focus', onFocus);
       clearRenameTimer();
     };
-  }, [refreshAll]);
+  }, [refreshAll, sshProfileId]);
 
   const rows = useMemo(() => {
     const entriesByDir = new Map<string, FileTreeEntry[]>();
@@ -273,11 +296,19 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
     const action = classifyRowClick(lastClickRef.current, entry.path, now, onName);
     lastClickRef.current = { path: entry.path, at: now };
     if (action === 'ignore') return;
-    if (action === 'rename') {
+    if (action === 'rename' && !sshProfileId) {
       renameTimerRef.current = window.setTimeout(() => beginRename(entry), RENAME_DELAY_MS);
       return;
     }
     setSelected(entry.path);
+    if (!entry.isDirectory && isPdfName(entry.name) && pdfSessionId) {
+      void openPdf(pdfSessionId, {
+        name: entry.name,
+        path: entry.path,
+        ...(sshProfileId ? { sshProfileId } : {}),
+      });
+      return;
+    }
     if (entry.isDirectory) toggleFolder(entry.path);
     focusTerminalDom();
   };
@@ -297,6 +328,8 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
     e.stopPropagation();
     clearRenameTimer();
     setSelected(row.entry.path);
+    // 远端文件树只读,没有菜单项
+    if (sshProfileId) return;
     menu.open({
       x: e.clientX,
       y: e.clientY,
@@ -304,11 +337,21 @@ function FileTreeBody({ root }: { root: string }): JSX.Element {
     });
   };
 
-  const rootHint = hintFor(dirs.get(root));
+  const rootState = dirs.get(root);
+  const rootHint = !rootState && sshProfileId ? t('fileTree.connecting') : hintFor(rootState);
 
   return (
     <div className="file-tree-list" role="tree">
       {rootHint && <p className="file-tree-hint">{rootHint}</p>}
+      {sshProfileId && rootState && 'failure' in rootState && (
+        <button
+          type="button"
+          className="file-tree-retry"
+          onClick={() => void loadDir(root, true)}
+        >
+          {t('fileTree.retry')}
+        </button>
+      )}
       {rows.map((row) => {
         const { entry, depth } = row;
         const isExpanded = entry.isDirectory && expanded.has(entry.path);

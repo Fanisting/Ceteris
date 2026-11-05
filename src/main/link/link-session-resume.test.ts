@@ -81,6 +81,7 @@ const ipcMock = vi.hoisted(() => ({
 vi.mock('../ipc', () => ({
   dispatchLocalCommand: (channel: string, envelope: CommandEnvelope<unknown>) =>
     ipcMock.host!.dispatch(channel, envelope),
+  applyLocalThemeToLinkEvent: (_channel: string, envelope: unknown) => envelope,
 }));
 
 const { LinkServer } = await import('./link-server');

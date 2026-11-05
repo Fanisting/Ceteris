@@ -68,6 +68,7 @@ import {
 } from './link-crypto';
 import type { CreateWindowOptions, WindowManager } from '../window-manager';
 import { logger } from '../logger';
+import { applyLocalThemeToLinkEvent } from '../ipc';
 
 /** 单条 Link 连接的配置。 */
 export interface LinkClientConfig {
@@ -515,7 +516,7 @@ export class LinkClient {
     if (!this.windowId) return;
     const win = this.deps.windowManager.getById(this.windowId);
     if (!win || win.isDestroyed()) return;
-    win.webContents.send(msg.channel, msg.envelope);
+    win.webContents.send(msg.channel, applyLocalThemeToLinkEvent(msg.channel, msg.envelope));
   }
 
   private startHeartbeat(): void {

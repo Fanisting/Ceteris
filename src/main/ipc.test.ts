@@ -398,3 +398,120 @@ describe('IPC SESSION_CREATE', () => {
     });
   });
 });
+
+describe('Link 远程窗口的主题跟随本机', () => {
+  const REMOTE = 'win-remote';
+  const hostSettings = {
+    appearance: { theme: 'dracula', terminalFontSize: 18 },
+  };
+
+  async function setup() {
+    const ipc = await freshIpc();
+    const { deps, stubs } = makeStubs();
+    const localSettings = { appearance: { theme: 'marina-dark' } };
+    const settingsListeners: Array<(e: unknown) => void> = [];
+    const update = vi.fn();
+    Object.assign(stubs.settingsManager, {
+      get: vi.fn(() => localSettings),
+      update,
+      on: vi.fn((name: string, fn: (e: unknown) => void) => {
+        if (name === 'settingsChanged') settingsListeners.push(fn);
+      }),
+    });
+    stubs.windowManager.isWindowRemote.mockImplementation(((id: string) => id === REMOTE) as never);
+    stubs.windowManager.list.mockReturnValue([
+      { id: REMOTE, electronWindowId: 2 },
+      { id: 'win-local', electronWindowId: 1 },
+    ] as never);
+    const forward = vi.fn(
+      async (_windowId: string, channel: string, _payload: unknown): Promise<unknown> =>
+        channel === COMMAND_CHANNELS.SETTINGS_GET ? { settings: hostSettings } : undefined,
+    );
+    ipc.installIpcLayer(deps as Parameters<typeof ipc.installIpcLayer>[0]);
+    ipc.setLinkCommandForwarder(forward);
+    const invoke = (channel: string, payload: unknown): Promise<unknown> =>
+      Promise.resolve(handlers.get(channel)!({}, { windowId: REMOTE, requestId: 'r', payload }));
+    return { ipc, stubs, update, forward, invoke, settingsListeners };
+  }
+
+  it('在远程窗口切主题:写到本机,不转发给 Host', async () => {
+    const { update, forward, invoke } = await setup();
+
+    await invoke(COMMAND_CHANNELS.SETTINGS_UPDATE, { partial: { appearance: { theme: 'cutie' } } });
+
+    expect(update).toHaveBeenCalledWith({ appearance: { theme: 'cutie' } });
+    expect(forward).not.toHaveBeenCalled();
+  });
+
+  it('混合更新:主题留在本机,其余转发给 Host', async () => {
+    const { update, forward, invoke } = await setup();
+
+    await invoke(COMMAND_CHANNELS.SETTINGS_UPDATE, {
+      partial: { appearance: { theme: 'cutie', terminalFontSize: 14 } },
+    });
+
+    expect(update).toHaveBeenCalledWith({ appearance: { theme: 'cutie' } });
+    expect(forward).toHaveBeenCalledWith(REMOTE, COMMAND_CHANNELS.SETTINGS_UPDATE, {
+      partial: { appearance: { terminalFontSize: 14 } },
+    });
+  });
+
+  it('不含主题的更新:本机设置不动,整体转发', async () => {
+    const { update, forward, invoke } = await setup();
+    const partial = { appearance: { terminalFontSize: 14 } };
+
+    await invoke(COMMAND_CHANNELS.SETTINGS_UPDATE, { partial });
+
+    expect(update).not.toHaveBeenCalled();
+    expect(forward).toHaveBeenCalledWith(REMOTE, COMMAND_CHANNELS.SETTINGS_UPDATE, { partial });
+  });
+
+  it('读设置:返回 Host 的设置,但主题是本机的', async () => {
+    const { invoke } = await setup();
+
+    const res = (await invoke(COMMAND_CHANNELS.SETTINGS_GET, undefined)) as {
+      settings: typeof hostSettings;
+    };
+
+    expect(res.settings.appearance).toEqual({ theme: 'marina-dark', terminalFontSize: 18 });
+  });
+
+  it('Host 推来的 settings 事件被覆盖,其它事件原样通过', async () => {
+    const { ipc } = await setup();
+    const envelope = { eventId: 'e', timestamp: 1, payload: { settings: hostSettings, changedKeys: [] } };
+
+    const result = ipc.applyLocalThemeToLinkEvent('evt:settings:changed', envelope) as typeof envelope;
+
+    expect(result.payload.settings.appearance.theme).toBe('marina-dark');
+    expect(ipc.applyLocalThemeToLinkEvent('evt:session:output', envelope)).toBe(envelope);
+  });
+
+  it('本机切主题:推给远程窗口,不推给本地窗口', async () => {
+    const { stubs, settingsListeners } = await setup();
+
+    settingsListeners.forEach((fn) =>
+      fn({ settings: { appearance: { theme: 'cutie' } }, changedKeys: ['appearance.theme'] }),
+    );
+    await vi.waitFor(() => expect(stubs.windowManager.deliverEvent).toHaveBeenCalled());
+
+    expect(stubs.windowManager.deliverEvent).toHaveBeenCalledTimes(1);
+    const [windowId, channel, envelope] = stubs.windowManager.deliverEvent.mock.calls[0] as unknown as [
+      string,
+      string,
+      { payload: { settings: typeof hostSettings } },
+    ];
+    expect(windowId).toBe(REMOTE);
+    expect(channel).toBe('evt:settings:changed');
+    expect(envelope.payload.settings.appearance).toEqual({ theme: 'cutie', terminalFontSize: 18 });
+  });
+
+  it('本机其它设置变化不打扰远程窗口', async () => {
+    const { forward, settingsListeners } = await setup();
+
+    settingsListeners.forEach((fn) =>
+      fn({ settings: { appearance: { theme: 'cutie' } }, changedKeys: ['behavior.selectOnCopy'] }),
+    );
+
+    expect(forward).not.toHaveBeenCalled();
+  });
+});

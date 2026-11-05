@@ -131,7 +131,7 @@ import {
   type LinkStatusChangedPayload,
   type LinkStatusResponse,
 } from '@shared/protocol';
-import type { AppSnapshot, Settings, Template } from '@shared/types';
+import type { AppSnapshot, Settings, Template, ThemeId } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -150,6 +150,11 @@ import type {
   RenameEntryResponse,
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
+import {
+  applyLocalThemeToResult,
+  splitThemeUpdate,
+  withLocalTheme,
+} from '@shared/link-theme';
 import { logger } from './logger';
 import { setQuitting } from './index';
 import { generateLinkToken } from './link/link-crypto';
@@ -184,6 +189,7 @@ let aiClient: AIClient | undefined;
  * installed 守卫保证只会被赋值一次,与既有的 aiClient 同一模式。
  */
 let linkWindowManager: WindowManager | null = null;
+let linkSettingsManager: SettingsManager | null = null;
 
 /**
  * 注册全部 IPC handler 与事件桥接。整个应用只能调用一次。
@@ -193,6 +199,7 @@ export function installIpcLayer(deps: IpcLayerDeps): void {
   installed = true;
   aiClient = deps.aiClient;
   linkWindowManager = deps.windowManager;
+  linkSettingsManager = deps.settingsManager;
   registerCommandHandlers(deps);
   wireEventBroadcasts(deps);
 }
@@ -382,6 +389,72 @@ export async function dispatchLocalCommand(
   return listener(syntheticEvent, envelope);
 }
 
+/**
+ * 转发一条远程窗口的命令,并应用"主题跟随本机"的规则 (见 @shared/link-theme)。
+ * 主题写到本机设置,其余部分照常转发;读设置的结果覆盖成本机主题。
+ */
+async function forwardWithLocalTheme(
+  forward: LinkCommandForwarder,
+  windowId: string,
+  channel: string,
+  payload: unknown,
+): Promise<unknown> {
+  if (channel === COMMAND_CHANNELS.SETTINGS_UPDATE) {
+    const { partial } = payload as UpdateSettingsPayload;
+    const { theme, rest } = splitThemeUpdate(partial);
+    if (theme) linkSettingsManager?.update({ appearance: { theme } });
+    return rest ? forward(windowId, channel, { partial: rest }) : undefined;
+  }
+  const result = await forward(windowId, channel, payload);
+  const theme = linkSettingsManager?.get().appearance.theme;
+  return theme ? applyLocalThemeToResult(channel, result, theme) : result;
+}
+
+/**
+ * Client 侧:Host 推来的 settings 事件也要覆盖主题,否则 Host 改任何一项设置
+ * 都会把远程窗口的主题换回 Host 的。由 link-client.ts 在注入事件前调用。
+ *
+ * @param channel 事件 channel
+ * @param envelope Host 包好的事件信封
+ * @returns 要发给 renderer 的信封
+ */
+export function applyLocalThemeToLinkEvent(channel: string, envelope: unknown): unknown {
+  const theme = linkSettingsManager?.get().appearance.theme;
+  if (channel !== EVENT_CHANNELS.SETTINGS_CHANGED || !theme) return envelope;
+  const typed = envelope as EventEnvelope<SettingsChangedPayload>;
+  return {
+    ...typed,
+    payload: { ...typed.payload, settings: withLocalTheme(typed.payload.settings, theme) },
+  };
+}
+
+/**
+ * 本机主题变化后推给所有远程窗口。broadcastEvent 故意跳过它们,而且它们的
+ * settings 来自 Host,所以要先取 Host 的最新设置再覆盖主题。单个窗口失败
+ * (连接正断开) 只记日志,重连后 renderer 重新拉 snapshot 就会拿到正确主题。
+ */
+async function syncThemeToRemoteWindows(theme: ThemeId): Promise<void> {
+  const wm = linkWindowManager;
+  const forward = linkCommandForwarder;
+  if (!wm || !forward) return;
+  for (const info of wm.list()) {
+    if (!wm.isWindowRemote(info.id)) continue;
+    try {
+      const res = (await forward(
+        info.id,
+        COMMAND_CHANNELS.SETTINGS_GET,
+        undefined,
+      )) as GetSettingsResponse;
+      sendEventToWindowId<SettingsChangedPayload>(info.id, EVENT_CHANNELS.SETTINGS_CHANGED, {
+        settings: withLocalTheme(res.settings, theme),
+        changedKeys: ['appearance.theme'],
+      });
+    } catch (err) {
+      logger.warn('ipc', `syncThemeToRemoteWindows failed: window=${info.id}`, err);
+    }
+  }
+}
+
 function handleCommand(
   channel: string,
   // `any[]` 是刻意的:它与 Electron 自己的 ipcMain.handle 签名一致。改成
@@ -406,7 +479,7 @@ function handleCommand(
             `建议:关闭该远程窗口重开;若反复出现请看日志里 LinkClient 的连接状态。`,
         );
       }
-      return linkCommandForwarder(windowId, channel, envelope?.payload);
+      return forwardWithLocalTheme(linkCommandForwarder, windowId, channel, envelope?.payload);
     }
     return listener(event, ...args);
   });
@@ -1757,6 +1830,9 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
         settings: e.settings,
         changedKeys: e.changedKeys,
       });
+      if (e.changedKeys.includes('appearance.theme')) {
+        void syncThemeToRemoteWindows(e.settings.appearance.theme);
+      }
     },
   );
 

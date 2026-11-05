@@ -364,8 +364,9 @@ export const LINK_BIND_RECHECK_MS = 30_000;
  * - BOOKMARK_PICK_FOLDER · 要选的是 Host 上的目录。Host 会在自己屏幕上弹
  *   原生文件夹选择器。这在 Host 无人值守时体验不好,已在 docs 里记为已知
  *   限制(远程建议直接手输路径)。
- * - SETTINGS_* · Host 是设置的唯一可信源,这样远程窗口的主题 / 字体 / 模板
- *   与 Host 完全一致,符合"在另一台机器上得到一模一样的访问"这个目标。
+ * - SETTINGS_* · Host 是设置的唯一可信源,这样远程窗口的字体 / 模板与 Host
+ *   完全一致,符合"在另一台机器上得到一模一样的访问"这个目标。唯一的例外是
+ *   appearance.theme:主题跟随用户面前的机器,见 link-theme.ts。
  *
  * 注意:这里存的是 channel 字符串字面量。ipc-protocol.md 附录 A 要求业务
  * 代码通过 COMMAND_CHANNELS 常量引用,本文件是**协议定义**而非业务代码,

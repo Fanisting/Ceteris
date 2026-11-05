@@ -35,7 +35,7 @@ Marina 重新思考了"终端会话应该怎么管理"这个问题:
 
 ## 截图
 
-> 第一个稳定版会附正式截图。下面是布局示意(实际侧栏图标用 lucide-react,这里仅 ASCII 占位)。
+> 第一个稳定版会附正式截图。下面是布局示意(实际侧栏图标用 Material Symbols,这里仅 ASCII 占位)。
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -137,7 +137,7 @@ Marina 给你:
 - ✅ **多窗口**:任意数量平等窗口;关窗即托盘模式;跨窗口 session 可见
 - ✅ **Marina Link(远程挂载)**:在另一台 Windows 机器上打开这台机器正在跑的终端标签页。同一批 session、同一份 scrollback、同一个正在跑的 agent;会话始终留在原机器运行。端到端加密(X25519 + AES-256-GCM),预共享令牌**从不上线路**。见 [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD 跟踪**:OSC 1337 hook 注入 PowerShell + cmd.exe
-- ✅ **7 套主题**:Rose Pine(默认) / Rose Pine Dawn / Rose Pine Moon / Cutie / Business / Ubuntu / Windows Terminal
+- ✅ **17 套主题**:Marina Dark(默认) / Marina Light / Rose Pine(3 款) / Catppuccin(2 款) / Tokyo Night(2 款) / Dracula / One Dark Pro / Cutie / Light Pink / Fairyfloss / Business / Ubuntu / Windows Terminal
 - ✅ **窗口风格**:Windows / macOS 双布局(只影响标题栏 chrome,不影响配色)
 - ✅ **设置即改即生效**,无保存按钮;导出 / 导入归档(支持敏感字段擦除选项)
 - ✅ **系统托盘**:常驻,含"正在运行的会话"子菜单 + 设置 + 完全退出二次确认
@@ -266,7 +266,7 @@ Marina 站在这些项目的肩膀上:
 - [xterm.js](https://xtermjs.org/) — 终端渲染器
 - [node-pty](https://github.com/microsoft/node-pty) — PTY 绑定(Microsoft)
 - [React](https://react.dev/) — UI 框架
-- [lucide-react](https://lucide.dev/) — 图标库
+- [Material Symbols](https://fonts.google.com/icons):UI 图标(Apache 2.0)
 - [Rose Pine](https://rosepinetheme.com/) — 配色灵感
 - [霞鹜文楷 (LXGW WenKai)](https://github.com/lxgw/LxgwWenKai) — UI 中文字体
 

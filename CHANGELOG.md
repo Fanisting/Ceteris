@@ -8,6 +8,22 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
+- **Material Design 3 外观。** 窗口改为一整块外壳上嵌圆角内容卡片,侧栏和设置导航用胶囊式活动项,标签改为 MD3 primary tabs,设置项开关改为 Switch,文本框改为 outlined text field,对话框、菜单、通知都换成 MD3 的形状、阴影和动效。尺寸按鼠标为主的桌面密度收缩,没有照搬触屏的 56px 行高。
+
+  外观集中在 `src/renderer/styles/material.css`,在 `global.css` 之后加载,`global.css` 本身没有改动。所有主题都走这一层:没有 MD3 色板的主题从现有语义 token 推导颜色角色。
+
+- **Marina Dark / Marina Light 主题,新安装默认 Marina Dark。** 配色由海青种子色 `#006a6a` 生成,终端 ANSI 色同步调整。已有 `settings.json` 的用户保持原主题和原字体。新安装的 UI 默认字体改为 Segoe UI。
+
+- **新应用图标。** 海青底上的 `>` 提示符加波浪,托盘、标题栏、安装包和 Win11 右键菜单同步更换。ICO 从单张 256px 改为 7 档尺寸,24px 及以下使用加粗的小尺寸几何,任务栏和托盘不再靠系统缩放。图标由 `npm run generate-icon` 从同一份几何定义生成。
+
+### 变更
+
+- **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 38 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
+
+### 修复
+
+- 6 套旧主题的填充按钮文字对比度提到 4.5:1 以上(Light Pink、Tokyo Night Day、Fairyfloss、Rose Pine Dawn、Cutie、Ubuntu),强调色作文字时也按主题调深。Tokyo Night Day 的强调色文字约 4.15:1,受该主题正文色本身限制。
+
 - **Marina Link:在另一台机器上打开这台机器正在跑的终端标签页。** 会话本身始终留在原机器运行,另一台只是"显示器":同一批 session、同一份 scrollback、同一个正在跑的 agent,在远端敲的键直接写进原机器的 PTY。与已有的 SSH 功能是两回事(SSH 是"在远端跑一个 shell",Link 是"接管远端 Marina 的全部会话")。
 
   实现上没有引入任何新的业务层。Marina 的 renderer 本来就是无状态观察者,只通过 `invoke(channel, payload)` 与 `on(channel, handler)` 两个原语与 main 通信,所以远程访问被实现为**一次传输层替换**:远程窗口的 `cmd:*` 被转发到远端 main,远端的 `evt:*` 被注入回本地 renderer。renderer 代码零改动,它无从得知自己连的是远端。

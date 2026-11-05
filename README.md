@@ -147,7 +147,7 @@ That's it. That's the product.
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
 - ✅ **Marina Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD tracking**: OSC 1337 hooks for PowerShell and cmd.exe
-- ✅ **7 themes**: Rose Pine (default), Rose Pine Dawn, Rose Pine Moon, Cutie, Business, Ubuntu, Windows Terminal
+- ✅ **17 themes**: Marina Dark (default), Marina Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal
 - ✅ **Window style**: Windows or macOS (sets title-bar layout — not theme colors)
 - ✅ **Settings**: live-applied, no save button; export/import config (with secrets-redaction option)
 - ✅ **System tray**: persistent menu with running-sessions submenu; honest quit confirmation
@@ -276,7 +276,7 @@ Marina stands on the shoulders of:
 - [xterm.js](https://xtermjs.org/) — the terminal renderer
 - [node-pty](https://github.com/microsoft/node-pty) — PTY bindings (Microsoft)
 - [React](https://react.dev/) — UI framework
-- [lucide-react](https://lucide.dev/) — icon library
+- [Material Symbols](https://fonts.google.com/icons): UI icons (Apache 2.0)
 - [Rose Pine](https://rosepinetheme.com/) — color palette inspiration
 - [LXGW WenKai (霞鹜文楷)](https://github.com/lxgw/LxgwWenKai) — UI font
 

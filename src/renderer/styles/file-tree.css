@@ -1,0 +1,129 @@
+/*
+ * 侧栏文件树与底部开关按钮。独立成文件,加载顺序在 material.css 之后,
+ * 这样 .sidebar-footer 的布局改动不必去动 global.css / material.css。
+ */
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-footer .settings-entry {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.file-tree-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: transparent;
+  color: var(--md-on-surface-variant, #f0f);
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.file-tree-toggle:hover {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
+}
+
+.file-tree-toggle.active {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.file-tree-panel {
+  flex: 0 0 45%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--md-outline-variant, #f0f);
+}
+
+.file-tree-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.file-tree-header svg {
+  flex: 0 0 auto;
+}
+
+.file-tree-header-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.file-tree-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 4px 6px;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding-right: 6px;
+  border-radius: 6px;
+  color: var(--md-on-surface, #f0f);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.file-tree-row:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.file-tree-row.selected {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.file-tree-chevron {
+  flex: 0 0 16px;
+  display: inline-flex;
+  width: 16px;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.file-tree-icon {
+  flex: 0 0 auto;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-hint {
+  margin: 0;
+  padding: 4px 12px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+}
+
+.file-tree-hint.nested {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}

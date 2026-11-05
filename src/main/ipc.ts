@@ -143,6 +143,13 @@ import type { AIClient } from './ai-client';
 import type { KnownHostsManager } from './known-hosts-manager';
 import { parseSshConfig } from './ssh-config-parser';
 import { detectSshAgent } from './ssh-agent';
+import type {
+  ListDirPayload,
+  ListDirResponse,
+  RenameEntryPayload,
+  RenameEntryResponse,
+} from '@shared/file-tree';
+import { listDirectory, renameEntry } from './file-tree';
 import { logger } from './logger';
 import { setQuitting } from './index';
 import { generateLinkToken } from './link/link-crypto';
@@ -1114,6 +1121,18 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     ): Promise<void> => {
       shell.showItemInFolder(envelope.payload.path);
     },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_LIST_DIR,
+    (_e, envelope: CommandEnvelope<ListDirPayload>): Promise<ListDirResponse> =>
+      listDirectory(envelope.payload.path),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_RENAME,
+    (_e, envelope: CommandEnvelope<RenameEntryPayload>): Promise<RenameEntryResponse> =>
+      renameEntry(envelope.payload.path, envelope.payload.newName),
   );
 
   handleCommand(

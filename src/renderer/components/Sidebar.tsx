@@ -28,7 +28,9 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { CheckBold, ChevronRight, CloseBold, ExpandMore, Warning } from './material-symbols';
+import { AccountTree, CheckBold, ChevronRight, CloseBold, ExpandMore, Warning } from './material-symbols';
+import { FileTreePanel } from './FileTreePanel';
+import { focusTerminalDom } from '../focus';
 import {
   COMMAND_CHANNELS,
   type AddBookmarkResponse,
@@ -81,6 +83,15 @@ const STATE_DOT_COLOR: Record<SessionInfo['state'], string> = {
  */
 type SidebarSegment = 'local' | 'remote';
 const SIDEBAR_SEGMENT_LS_KEY = 'marina.sidebar.segment';
+const FILE_TREE_OPEN_LS_KEY = 'marina.sidebar.fileTreeOpen';
+
+function readFileTreeOpenFromStorage(): boolean {
+  try {
+    return window.localStorage?.getItem(FILE_TREE_OPEN_LS_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 function readSegmentFromStorage(): SidebarSegment {
   if (typeof window === 'undefined' || !window.localStorage) return 'local';
@@ -134,6 +145,18 @@ export function Sidebar(): JSX.Element {
     } catch {
       // localStorage 在 incognito / 严格模式下可能抛 SecurityError,忽略即可
     }
+  };
+
+  const [fileTreeOpen, setFileTreeOpen] = useState<boolean>(() => readFileTreeOpenFromStorage());
+  const toggleFileTree = (): void => {
+    const next = !fileTreeOpen;
+    setFileTreeOpen(next);
+    try {
+      window.localStorage?.setItem(FILE_TREE_OPEN_LS_KEY, String(next));
+    } catch {
+      // localStorage 不可用时只影响下次启动的默认状态
+    }
+    focusTerminalDom();
   };
 
   // ── Sidebar 宽度可拖动 + 持久化 ──
@@ -507,6 +530,7 @@ export function Sidebar(): JSX.Element {
           onToggleCollapsed={handleToggleCategory}
         />
       </div>
+      {fileTreeOpen && <FileTreePanel />}
       <div className="sidebar-footer">
         <button
           type="button"
@@ -516,6 +540,17 @@ export function Sidebar(): JSX.Element {
         >
           <Icon name="settings" size={14} />
           <span>设置</span>
+        </button>
+        <button
+          type="button"
+          className={`file-tree-toggle${fileTreeOpen ? ' active' : ''}`}
+          onClick={toggleFileTree}
+          title={t('fileTree.toggle')}
+          aria-label={t('fileTree.toggle')}
+          aria-pressed={fileTreeOpen}
+          data-testid="file-tree-toggle"
+        >
+          <AccountTree size={18} />
         </button>
       </div>
       {/*

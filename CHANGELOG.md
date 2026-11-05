@@ -16,9 +16,11 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 - **新应用图标。** 海青底上的 `>` 提示符加波浪,托盘、标题栏、安装包和 Win11 右键菜单同步更换。ICO 从单张 256px 改为 7 档尺寸,24px 及以下使用加粗的小尺寸几何,任务栏和托盘不再靠系统缩放。图标由 `npm run generate-icon` 从同一份几何定义生成。
 
+- **侧栏文件树。** 点设置行最右侧的图标,在会话列表下方显示当前会话所在的文件夹。右键或慢速点击两次文件名可以重命名,同名时不会覆盖。SSH 会话不提供文件树。
+
 ### 变更
 
-- **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 38 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
+- **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 42 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
 
 ### 修复
 

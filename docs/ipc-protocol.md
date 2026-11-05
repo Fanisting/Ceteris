@@ -1053,6 +1053,33 @@ interface ShowInExplorerPayload {
 
 **Side Effects**:调 `shell.showItemInFolder()`
 
+#### `cmd:fs:list-dir`
+```typescript
+interface ListDirPayload {
+  path: string;                 // 目录绝对路径
+}
+type ListDirResponse =
+  | { ok: true; entries: FileTreeEntry[]; truncated: boolean }
+  | { ok: false; reason: FileTreeFailure };
+```
+
+**Errors**:无。常规失败走 `reason`,不 reject
+
+#### `cmd:fs:rename`
+```typescript
+interface RenameEntryPayload {
+  path: string;                 // 条目绝对路径
+  newName: string;              // 新文件名,不含路径
+}
+type RenameEntryResponse =
+  | { ok: true; path: string }
+  | { ok: false; reason: FileTreeFailure };
+```
+
+**Errors**:无。目标已存在时返回 `exists`,绝不覆盖
+
+**Side Effects**:在原目录内改名。两条命令在 Link 远程窗口里都转发给 Host,因为路径是 Host 的路径
+
 ---
 
 #### `cmd:system:show-context-menu`

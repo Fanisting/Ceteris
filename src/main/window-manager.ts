@@ -250,6 +250,8 @@ export class WindowManager implements IWindowManager {
         preload: resolve(__dirname, '../preload/index.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
+        // Chromium 内置 PDF 查看器需要它,PdfOverlay 靠这个显示 PDF。
+        plugins: true,
         // SEC-1 回退(2026-05-14):sandbox 暂留 false。
         //
         // SEC-1(4d245f7)曾尝试启用 sandbox=true,但运行时 preload 立刻
@@ -447,11 +449,23 @@ export class WindowManager implements IWindowManager {
     //
     // 白名单:http / https / mailto。拒绝 file:// / javascript: / chrome: 等
     // 本地协议(防 OSC 8 注入打开本地文件 / 触发 webview 漏洞)。
-    win.webContents.setWindowOpenHandler(({ url }) => {
+    const openExternalIfAllowed = (url: string): void => {
       if (/^(https?|mailto):/i.test(url)) {
         void shell.openExternal(url);
       }
+    };
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      openExternalIfAllowed(url);
       return { action: 'deny' };
+    });
+
+    // 窗口永远只显示应用页面。PDF 查看器点链接走的是顶层导航,setWindowOpenHandler
+    // 管不到,而 preload 导航后依然生效,外部页面会拿到 window.api。
+    // 同地址放行是给 dev 模式的整页刷新。
+    win.webContents.on('will-navigate', (event, url) => {
+      if (url === win.webContents.getURL()) return;
+      event.preventDefault();
+      openExternalIfAllowed(url);
     });
 
     for (const handler of this.onCreatedHandlers) {

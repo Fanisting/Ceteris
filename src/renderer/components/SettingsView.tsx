@@ -266,7 +266,9 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
 // ──────────────────────────────────────────────────────────────────
 
 const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; note?: string }> = [
-  { id: 'rose-pine', label: 'Rose Pine', tone: '深色', note: '默认' },
+  { id: 'marina-dark', label: 'Marina Dark', tone: '深色', note: '默认' },
+  { id: 'marina-light', label: 'Marina Light', tone: '浅色' },
+  { id: 'rose-pine', label: 'Rose Pine', tone: '深色' },
   { id: 'rose-pine-dawn', label: 'Rose Pine Dawn', tone: '浅色' },
   { id: 'rose-pine-moon', label: 'Rose Pine Moon', tone: '深色' },
   { id: 'cutie', label: 'Cutie', tone: '浅色', note: 'Kawaii' },
@@ -292,7 +294,7 @@ function AppearancePanel({
   const { tx } = useTranslation();
   const state = useAppState();
   const a = state.settings.appearance;
-  const theme = a?.theme ?? 'rose-pine';
+  const theme = a?.theme ?? 'marina-dark';
   const windowStyle: WindowStyle = a?.windowStyle ?? 'windows';
   const terminalFontFamily = a?.terminalFontFamily ?? '';
   const terminalFontSize = a?.terminalFontSize ?? 13;

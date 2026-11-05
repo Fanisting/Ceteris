@@ -21,6 +21,8 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles/global.css';
+// 必须在 global.css 之后:Material 外观层靠加载顺序覆写同名选择器
+import './styles/material.css';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {

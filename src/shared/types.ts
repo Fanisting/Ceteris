@@ -85,6 +85,9 @@ export type PostExitAction = 'close_session' | 'keep_shell' | 'hold';
  * 主题 ID (软件定义书 5.1.9)。
  */
 export type ThemeId =
+  // Material Design 3 主题,默认主题。配色由海青种子色 #006a6a 生成
+  | 'marina-dark'
+  | 'marina-light'
   | 'rose-pine'
   | 'rose-pine-dawn'
   | 'rose-pine-moon'

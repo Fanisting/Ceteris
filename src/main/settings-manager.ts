@@ -35,14 +35,15 @@ export type { DeepPartial };
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   appearance: {
-    theme: 'rose-pine',
+    theme: 'marina-dark',
     windowStyle: 'windows',
     language: 'system',
     terminalFontFamily:
       "'Cascadia Mono', 'JetBrains Mono', 'Consolas', 'LXGW WenKai Mono', monospace",
     terminalFontSize: 13,
     terminalLineHeight: 1.2,
-    uiFontFamily: "'LXGW WenKai', system-ui, sans-serif",
+    uiFontFamily:
+      "'Segoe UI', Roboto, 'Microsoft YaHei UI', system-ui, sans-serif",
     uiZoom: 1.0,
     // BETA-023 macOS 红绿灯悬浮符号,默认关(与 CP-4 勘误第二轮决策一致)
     macOSTrafficLightHoverSymbols: false,
@@ -112,6 +113,8 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const VALID_THEMES: ThemeId[] = [
+  'marina-dark',
+  'marina-light',
   'rose-pine',
   'rose-pine-dawn',
   'rose-pine-moon',

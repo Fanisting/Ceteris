@@ -206,7 +206,7 @@ describe('SettingsManager — initialize', () => {
     await mgr.initialize();
     const s = mgr.get();
     s.appearance.theme = 'business';
-    expect(mgr.get().appearance.theme).toBe('rose-pine'); // 内部仍是默认
+    expect(mgr.get().appearance.theme).toBe('marina-dark'); // 内部仍是默认
   });
 });
 
@@ -233,7 +233,7 @@ describe('SettingsManager — update', () => {
     const listener = vi.fn();
     mgr.on('settingsChanged', listener);
 
-    mgr.update({ appearance: { theme: 'rose-pine' } }); // 与默认相同
+    mgr.update({ appearance: { theme: 'marina-dark' } }); // 与默认相同
     expect(listener).not.toHaveBeenCalled();
     expect(store.setHistory).toHaveLength(0);
   });
@@ -246,12 +246,14 @@ describe('SettingsManager — update', () => {
       mgr.update({ appearance: { theme: 'nonexistent' as never } }),
     ).toThrowError(/InvalidSettings/);
     // 仍是原值
-    expect(mgr.get().appearance.theme).toBe('rose-pine');
+    expect(mgr.get().appearance.theme).toBe('marina-dark');
     // 没写盘
     expect(store.setHistory).toHaveLength(0);
   });
 
   it.each([
+    'marina-dark',
+    'marina-light',
     'rose-pine',
     'rose-pine-dawn',
     'rose-pine-moon',

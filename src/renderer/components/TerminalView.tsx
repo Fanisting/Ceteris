@@ -155,6 +155,53 @@ const LIGHT_EXTENDED_ANSI = buildLightExtendedAnsi();
  * 同时更新这两处。
  */
 const XTERM_THEMES: Record<ThemeId, ITheme> = {
+  'marina-dark': {
+    background: '#0e1514',
+    foreground: '#dde4e3',
+    cursor: '#80d5d4',
+    cursorAccent: '#0e1514',
+    selectionBackground: '#004f4f',
+    black: '#2f3636',
+    red: '#ffb4ab',
+    green: '#8bd6a3',
+    yellow: '#e9c46a',
+    blue: '#a8c8ff',
+    magenta: '#d3bbff',
+    cyan: '#80d5d4',
+    white: '#dde4e3',
+    brightBlack: '#889392',
+    brightRed: '#ffdad6',
+    brightGreen: '#a6f2be',
+    brightYellow: '#ffe08e',
+    brightBlue: '#d3e4ff',
+    brightMagenta: '#eaddff',
+    brightCyan: '#9cf1f0',
+    brightWhite: '#ffffff',
+  },
+  'marina-light': {
+    background: '#f4fbfa',
+    foreground: '#161d1d',
+    cursor: '#006a6a',
+    cursorAccent: '#f4fbfa',
+    selectionBackground: '#9cf1f0',
+    black: '#2b3231',
+    red: '#ba1a1a',
+    green: '#1b6e3c',
+    yellow: '#7a5900',
+    blue: '#2a5db0',
+    magenta: '#6a4fa3',
+    cyan: '#006a6a',
+    white: '#3f4948',
+    brightBlack: '#5b6564',
+    brightRed: '#93000a',
+    brightGreen: '#15562f',
+    brightYellow: '#5e4400',
+    brightBlue: '#1e4a92',
+    brightMagenta: '#553a8c',
+    brightCyan: '#004f4f',
+    brightWhite: '#161d1d',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
   'rose-pine': {
     background: '#191724',
     foreground: '#e0def4',
@@ -535,7 +582,7 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
 };
 
 function getXtermTheme(themeId: ThemeId | undefined): ITheme {
-  return XTERM_THEMES[themeId ?? 'rose-pine'] ?? XTERM_THEMES['rose-pine'];
+  return XTERM_THEMES[themeId ?? 'marina-dark'] ?? XTERM_THEMES['marina-dark'];
 }
 
 /**

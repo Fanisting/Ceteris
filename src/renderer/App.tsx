@@ -161,7 +161,7 @@ function ConnectedShell({
   const state = useAppState();
   const dispatch = useAppDispatch();
 
-  const currentTheme = state.settings.appearance?.theme ?? 'rose-pine';
+  const currentTheme = state.settings.appearance?.theme ?? 'marina-dark';
   const windowStyle = state.settings.appearance?.windowStyle ?? 'windows';
   const uiZoom = state.settings.appearance?.uiZoom ?? 1;
   const uiFontFamily = state.settings.appearance?.uiFontFamily ?? '';

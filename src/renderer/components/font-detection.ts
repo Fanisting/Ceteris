@@ -93,6 +93,7 @@ export const RECOMMENDED_TERMINAL_FONTS: string[] = [
  * UI 推荐字体。
  */
 export const RECOMMENDED_UI_FONTS: string[] = [
+  'Roboto',
   'LXGW WenKai',
   'Microsoft YaHei UI',
   'Microsoft YaHei',

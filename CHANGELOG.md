@@ -18,6 +18,8 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 - **侧栏文件树。** 点设置行最右侧的图标,在会话列表下方显示当前会话所在的文件夹。右键或慢速点击两次文件名可以重命名,同名时不会覆盖。SSH 会话不提供文件树。
 
+- **右键 + 号快捷启动。** 在标签栏右键 + 号,周围弹出一圈小圆,点一下就在当前路径启动。默认是 Claude Code 和 Codex,可在 设置 → 行为 里改成新建页上的任意模板或 shell,最多 8 项。
+
 ### 变更
 
 - **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 42 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。

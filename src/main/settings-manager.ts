@@ -20,6 +20,11 @@
  */
 import { EventEmitter } from 'node:events';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
+import {
+  DEFAULT_QUICK_LAUNCH_ITEMS,
+  QUICK_LAUNCH_MAX_ITEMS,
+  isValidQuickLaunchItems,
+} from '@shared/quick-launch';
 import type { Settings, ThemeId } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
@@ -60,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
     confirmOnQuit: true,
     selectOnCopy: true,
     terminalRightClick: 'menu',
+    quickLaunch: [...DEFAULT_QUICK_LAUNCH_ITEMS],
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Marina 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
@@ -504,6 +510,14 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `behavior.startupBehavior="${s.behavior.startupBehavior}" 必须是 open-window 或 tray-only`,
+    );
+  }
+  if (!isValidQuickLaunchItems(s.behavior.quickLaunch)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.quickLaunch 无效:必须是最多 ${QUICK_LAUNCH_MAX_ITEMS} 项的不重复列表,` +
+        `每项为 { kind: 'template' | 'shell', id }。`,
+      { field: 'behavior.quickLaunch', got: s.behavior.quickLaunch },
     );
   }
   if (!['default', 'last-used'].includes(s.shell.newTerminalShellPolicy)) {

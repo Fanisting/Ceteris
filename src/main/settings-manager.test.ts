@@ -126,6 +126,19 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/InvalidSettings/);
   });
 
+  it('quickLaunch 默认是 Claude Code 和 Codex', () => {
+    expect(DEFAULT_SETTINGS.behavior.quickLaunch).toEqual([
+      { kind: 'template', id: 'claude-code' },
+      { kind: 'template', id: 'codex' },
+    ]);
+  });
+
+  it('非法 quickLaunch throw', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    (bad.behavior as { quickLaunch: unknown }).quickLaunch = [{ kind: 'command', id: 'x' }];
+    expect(() => validateSettings(bad)).toThrowError(/behavior\.quickLaunch/);
+  });
+
   it('字号越界 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     bad.appearance.terminalFontSize = 5;

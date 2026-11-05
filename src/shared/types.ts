@@ -11,6 +11,7 @@
  *
  * @对应文档章节: 软件定义书.md 第 8 章 (状态机)、第 11 章 (数据模型)
  */
+import type { QuickLaunchItem } from './quick-launch';
 
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
@@ -388,6 +389,8 @@ export interface Settings {
     confirmOnQuit: boolean;
     selectOnCopy: boolean;
     terminalRightClick: TerminalRightClick;
+    /** 右键 + 号时环绕显示的快捷启动选项,在 设置 → 行为 里编辑 */
+    quickLaunch: QuickLaunchItem[];
     /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell

@@ -70,6 +70,7 @@ import {
 } from './font-detection';
 import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
+import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
@@ -1125,6 +1126,15 @@ function BehaviorPanel({
           />
           <span>{tx('启用', 'Enable')}</span>
         </label>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('快捷启动', 'Quick launch')}
+        hint={tx('右键标签栏的 + 时显示这些选项', 'Shown around the + button when you right-click it')}
+      >
+        <QuickLaunchSettings
+          onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}
+        />
       </SettingRow>
 
       <SettingRow label={tx('终端右键行为', 'Terminal right-click action')} hint={tx('弹菜单 或 直接粘贴', 'Show menu or paste directly')}>

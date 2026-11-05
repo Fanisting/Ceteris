@@ -58,6 +58,8 @@ import {
   type CreateWindowResponse,
   type EventEnvelope,
   type FocusSessionOwnerPayload,
+  type FocusSessionOwnerResponse,
+  type LinkConnectionStatePayload,
   type FocusWindowPayload,
   type AddTemplatePayload,
   type AddTemplateResponse,
@@ -723,7 +725,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
-    (_e, envelope: CommandEnvelope<FocusSessionOwnerPayload>): void => {
+    (
+      _e,
+      envelope: CommandEnvelope<FocusSessionOwnerPayload>,
+    ): FocusSessionOwnerResponse => {
       const session = sessionManager.get(envelope.payload.sessionId);
       if (!session) {
         throw makeIpcError(
@@ -731,9 +736,18 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
           `sessionId="${envelope.payload.sessionId}"`,
         );
       }
-      if (!session.ownerWindowId) return; // 无主无可聚焦
+      if (!session.ownerWindowId) return { transferred: false }; // 无主无可聚焦
+      // 虚拟窗口代表另一台机器。任一方是虚拟窗口,都没有一个能浮到用户面前的
+      // 窗口,所以改为交接。两个本地窗口之间仍是聚焦,所有权不变。
+      if (
+        windowManager.isVirtualWindow(session.ownerWindowId) ||
+        windowManager.isVirtualWindow(envelope.windowId)
+      ) {
+        sessionManager.transferOwner(session.id, envelope.windowId);
+        return { transferred: true };
+      }
       const ok = windowManager.focus(session.ownerWindowId);
-      if (!ok) return; // owner 窗口已不存在,静默
+      if (!ok) return { transferred: false }; // owner 窗口已不存在,静默
       const ownerWin = windowManager.getById(session.ownerWindowId);
       if (ownerWin) {
         sendEventTo<WindowFocusRequestedPayload>(
@@ -742,6 +756,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
           { reason: 'session-click', selectSessionId: session.id },
         );
       }
+      return { transferred: false };
     },
   );
 
@@ -1488,6 +1503,19 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.LINK_LIST_BIND_CANDIDATES,
     (): LinkListBindCandidatesResponse => ({ candidates: listBindCandidates() }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
+    (_e, envelope: CommandEnvelope<undefined>): LinkConnectionStatePayload | null =>
+      deps.linkManager?.getWindowConnectionState(envelope.windowId) ?? null,
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_ACK_UNCONFIRMED,
+    (_e, envelope: CommandEnvelope<undefined>): void => {
+      deps.linkManager?.acknowledgeUnconfirmed(envelope.windowId);
+    },
   );
 }
 

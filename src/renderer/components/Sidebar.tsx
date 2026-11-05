@@ -34,6 +34,7 @@ import {
   type AddBookmarkResponse,
   type CreateSessionResponse,
   type PickFolderResponse,
+  type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import type { PathNode, SessionInfo } from '@shared/types';
 import { disambiguatePathNames } from '@shared/path-display';
@@ -1019,11 +1020,16 @@ function SessionItemImpl({
       dispatch({ type: 'view/select-session', sessionId: session.id });
       return;
     }
-    // 其他窗口持有 → 聚焦那个窗口,所有权不变 (软件定义书 8.4)
+    // 其他窗口持有 → 聚焦那个窗口,所有权不变 (软件定义书 8.4)。
+    // 持有方在另一台机器上时无法聚焦,main 会交接给本窗口,这里跟着选中。
     if (ownedByOther) {
       window.api
-        .invoke(COMMAND_CHANNELS.SESSION_FOCUS_OWNER, {
-          sessionId: session.id,
+        .invoke<{ sessionId: string }, FocusSessionOwnerResponse>(
+          COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
+          { sessionId: session.id },
+        )
+        .then((res) => {
+          if (res.transferred) dispatch({ type: 'view/select-session', sessionId: session.id });
         })
         .catch((err) => console.error('[Sidebar] focus-owner failed', err));
       return;

@@ -179,6 +179,10 @@ export const COMMAND_CHANNELS = {
   LINK_KICK_CLIENT: 'cmd:link:kick-client',
   /** 列出本机可绑定的 IPv4 地址(Tailscale 地址排在最前) */
   LINK_LIST_BIND_CANDIDATES: 'cmd:link:list-bind-candidates',
+  /** 远程窗口挂载时拉取连接状态。reload 期间推送的事件 renderer 收不到 */
+  LINK_GET_WINDOW_STATE: 'cmd:link:get-window-state',
+  /** 用户确认已看过"输入未确认"提示 */
+  LINK_ACK_UNCONFIRMED: 'cmd:link:ack-unconfirmed',
 } as const;
 
 export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHANNELS];
@@ -1051,12 +1055,27 @@ export type LinkStatusChangedPayload = LinkStatusResponse;
 /**
  * evt:link:connection-state 的 payload。只发给远程窗口自己。
  */
+export interface FocusSessionOwnerResponse {
+  /**
+   * true 表示持有方在另一台机器上,无法聚焦,session 已交接给调用方。
+   * 调用方应当选中该 session。
+   */
+  transferred: boolean;
+}
+
 export interface LinkConnectionStatePayload {
   state: LinkConnectionState;
   /** Host 机器名,未连上时为空串 */
   hostName: string;
-  /** 目标地址,形如 "100.64.0.2:8787" */
+  /** 目标地址,形如 "100.64.0.2:38787" */
   address: string;
   /** 最近一次失败原因;正常时为空串 */
   lastError: string;
+  /**
+   * 已发给 Host、但连接断开前没收到确认的终端输入条数。
+   *
+   * 这些输入可能已经写进 PTY,也可能没有,客户端无从得知,所以绝不自动重发:
+   * 重发一条已执行的命令比让用户自己看一眼终端危险得多。
+   */
+  unconfirmedInputs: number;
 }

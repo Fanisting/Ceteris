@@ -945,6 +945,30 @@ export class SessionManager extends EventEmitter {
     this.releaseAllOwnedBy(windowId, { exceptSessionId: sessionId });
   }
 
+  /**
+   * 跨机器交接:把 session 从当前 owner 转给 windowId。
+   *
+   * 这是"不强制抢占"规则的唯一例外,只用于 owner 与调用方不在同一台机器的情况。
+   * 同机窗口可以用聚焦解决,跨机器时持有方的窗口根本不在用户面前,不交接就只能
+   * 走到另一台机器前面操作。调用方决定是否属于这种情况,见 ipc.ts 的
+   * SESSION_FOCUS_OWNER。
+   *
+   * 同步完成,所以旧 owner 之后到达的输入一定被 not-owner 拒绝,不会与新 owner
+   * 的输入交错。PTY 不受影响。
+   *
+   * @throws SessionManagerError SessionNotFound
+   */
+  transferOwner(sessionId: string, windowId: string): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) {
+      throw new SessionManagerError('SessionNotFound', `sessionId="${sessionId}"`);
+    }
+    const oldOwner = managed.info.ownerWindowId;
+    if (oldOwner === windowId) return;
+    if (oldOwner !== null) this.releaseOwner(sessionId, oldOwner);
+    this.claimOwner(sessionId, windowId);
+  }
+
   private releaseAllOwnedBy(
     windowId: string,
     options?: { exceptSessionId?: string },

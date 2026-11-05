@@ -30,6 +30,7 @@ import {
   COMMAND_CHANNELS,
   type CreateSessionResponse,
   type ListShellsResponse,
+  type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
 import type { SessionInfo, Template } from '@shared/types';
@@ -533,10 +534,17 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
   const handleClick = (e: MouseEvent<HTMLButtonElement>): void => {
     e.preventDefault();
     if (variant === 'other') {
-      // 其他窗口持有 → 聚焦那个窗口,所有权不变 (软件定义书 8.4)
+      // 其他窗口持有 → 聚焦那个窗口,所有权不变 (软件定义书 8.4)。
+      // 持有方在另一台机器上时无法聚焦,main 会交接给本窗口,这里跟着选中。
       window.api
-        .invoke(COMMAND_CHANNELS.SESSION_FOCUS_OWNER, {
-          sessionId: session.id,
+        .invoke<{ sessionId: string }, FocusSessionOwnerResponse>(
+          COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
+          { sessionId: session.id },
+        )
+        .then((res) => {
+          if (!res.transferred) return;
+          dispatch({ type: 'view/select-session', sessionId: session.id });
+          focusTerminalDom();
         })
         .catch((err) => console.error('[Tab] focus-owner failed', err));
       return;

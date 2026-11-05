@@ -153,6 +153,9 @@ function reducer(state: AppState, action: AppAction): AppState {
       const sessionsMap = new Map(s.sessions.map((sess) => [sess.id, sess]));
       // 默认选中第一个收藏路径 (若有);否则不选
       const firstBookmark = s.pathTree.bookmarks[0];
+      // 本窗口已持有 session 时直接回到它。Marina Link 重连会整页 reload,没有这一步
+      // 窗口会停在空白页,用户要重新找到刚才的会话。
+      const owned = s.sessions.find((sess) => sess.ownerWindowId === state.myWindowId);
       return {
         ...state,
         pathTree: s.pathTree,
@@ -165,7 +168,11 @@ function reducer(state: AppState, action: AppAction): AppState {
         // bookmarks 不从 pathTree 派生 — 完整列表由 evt:bookmarks:updated
         // 单独同步,snapshot 期先置空,等首个 bookmarks/update 来填。
         bookmarks: [],
-        selectedPathId: state.selectedPathId ?? firstBookmark?.id ?? null,
+        selectedPathId: state.selectedPathId ?? owned?.pathId ?? firstBookmark?.id ?? null,
+        selectedSessionId: state.selectedSessionId ?? owned?.id ?? null,
+        expandedPathIds: owned
+          ? new Set([...state.expandedPathIds, owned.pathId])
+          : state.expandedPathIds,
       };
     }
     case 'pathTree/update': {

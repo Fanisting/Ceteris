@@ -17,9 +17,16 @@
  *   不需要任何"我是不是远程窗口"的条件判断。
  * - 不提供"手动重连"按钮:LinkClient 已经在按退避序列自动重连,再加一个
  *   按钮只会让用户在它已经在重试时反复点。
+ * - 挂载时主动拉一次状态:重连会 reload 窗口,reload 期间推送的事件收不到。
+ * - 重连后如果有未确认的输入,保留一条提示直到用户确认。这些输入可能已经执行,
+ *   只有用户看过终端才知道要不要重发,所以 Marina 不替用户重发。
  */
 import { useEffect, useState } from 'react';
-import { EVENT_CHANNELS, type LinkConnectionStatePayload } from '@shared/protocol';
+import {
+  COMMAND_CHANNELS,
+  EVENT_CHANNELS,
+  type LinkConnectionStatePayload,
+} from '@shared/protocol';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
 
@@ -27,17 +34,55 @@ export function LinkConnectionBanner(): JSX.Element | null {
   const { tx } = useTranslation();
   const [conn, setConn] = useState<LinkConnectionStatePayload | null>(null);
 
-  useEffect(
-    () =>
-      window.api.on<LinkConnectionStatePayload>(EVENT_CHANNELS.LINK_CONNECTION_STATE, (payload) =>
-        setConn(payload),
-      ),
-    [],
-  );
+  useEffect(() => {
+    const unsubscribe = window.api.on<LinkConnectionStatePayload>(
+      EVENT_CHANNELS.LINK_CONNECTION_STATE,
+      (payload) => setConn(payload),
+    );
+    window.api
+      .invoke<undefined, LinkConnectionStatePayload | null>(
+        COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
+        undefined,
+      )
+      .then((state) => {
+        if (state) setConn(state);
+      })
+      .catch((err) => console.error('[LinkBanner] get-window-state failed', err));
+    return unsubscribe;
+  }, []);
 
-  // 从没收到过事件 = 这是个普通本地窗口,什么都不渲染。
-  // 已连接 = 一切正常,也不打扰用户。
-  if (!conn || conn.state === 'connected') return null;
+  // 普通本地窗口拿到的是 null,什么都不渲染。
+  if (!conn) return null;
+
+  const unconfirmedNotice =
+    conn.unconfirmedInputs > 0
+      ? tx(
+          `断线时有 ${conn.unconfirmedInputs} 次输入没有收到确认,可能已执行,也可能没有。请先看终端内容,再决定是否重新输入。`,
+          `${conn.unconfirmedInputs} input(s) were not confirmed before the connection dropped. They may or may not have run. Check the terminal before sending them again.`,
+        )
+      : null;
+
+  // 已连接且没有待确认的输入 = 一切正常,不打扰用户。
+  if (conn.state === 'connected') {
+    if (!unconfirmedNotice) return null;
+    return (
+      <div className="link-banner link-banner-reconnecting" role="status">
+        <Icon name="alertTriangle" size={14} />
+        <span className="link-banner-text">{unconfirmedNotice}</span>
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => {
+            window.api
+              .invoke(COMMAND_CHANNELS.LINK_ACK_UNCONFIRMED, undefined)
+              .catch((err) => console.error('[LinkBanner] ack failed', err));
+          }}
+        >
+          {tx('知道了', 'Got it')}
+        </button>
+      </div>
+    );
+  }
 
   const message = ((): string => {
     switch (conn.state) {
@@ -45,8 +90,8 @@ export function LinkConnectionBanner(): JSX.Element | null {
         return tx(`正在连接 ${conn.address}…`, `Connecting to ${conn.address}…`);
       case 'reconnecting':
         return tx(
-          `与 ${conn.hostName || conn.address} 的连接已断开,正在自动重连…`,
-          `Lost connection to ${conn.hostName || conn.address}. Reconnecting…`,
+          `与 ${conn.hostName || conn.address} 的连接已断开,正在自动重连。远端会话继续运行,此时的输入不会发送,也不会在重连后补发。`,
+          `Lost connection to ${conn.hostName || conn.address}. Reconnecting. Remote sessions keep running. Input typed now is not sent, and is not replayed after reconnecting.`,
         );
       case 'closed':
         return tx(

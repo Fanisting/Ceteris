@@ -53,6 +53,7 @@ import {
   type LinkPing,
 } from '@shared/link-protocol';
 import {
+  COMMAND_CHANNELS,
   EVENT_CHANNELS,
   PROTOCOL_VERSION,
   type LinkConnectionStatePayload,
@@ -113,6 +114,8 @@ export class LinkClient {
   private hostName = '';
   private lastError = '';
   private rttMs: number | null = null;
+  /** TCP is up but auth-ok has not arrived. A close in this window is a rejection. */
+  private awaitingAuthOk = false;
 
   /**
    * Host 分配的虚拟 windowId,同时也是本地那个远程窗口的 id。
@@ -125,8 +128,15 @@ export class LinkClient {
   private nextCommandId = 1;
   private readonly pending = new Map<
     number,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
+    {
+      channel: string;
+      resolve: (v: unknown) => void;
+      reject: (e: Error) => void;
+      timer: NodeJS.Timeout;
+    }
   >();
+  /** 见 LinkConnectionStatePayload.unconfirmedInputs */
+  private unconfirmedInputs = 0;
 
   private reconnectAttempt = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -178,6 +188,23 @@ export class LinkClient {
     };
   }
 
+  /** 远程窗口展示连接状态所需的全部信息。 */
+  getConnectionState(): LinkConnectionStatePayload {
+    return {
+      state: this.state,
+      hostName: this.hostName,
+      address: this.targetAddress,
+      lastError: this.lastError,
+      unconfirmedInputs: this.unconfirmedInputs,
+    };
+  }
+
+  /** 用户确认已看过"输入未确认"提示。 */
+  acknowledgeUnconfirmed(): void {
+    this.unconfirmedInputs = 0;
+    this.pushConnectionStateToWindow();
+  }
+
   /**
    * 发起连接。幂等:已连接或正在连接时直接返回。
    */
@@ -202,6 +229,7 @@ export class LinkClient {
     socket.on('connect', () => {
       this.lastInboundAt = Date.now();
       logger.info('LinkClient', `TCP 已连上 ${this.targetAddress},开始握手`);
+      this.awaitingAuthOk = true;
       this.writePlain<LinkHello>({
         type: 'hello',
         linkVersion: LINK_PROTOCOL_VERSION,
@@ -220,7 +248,14 @@ export class LinkClient {
       this.fail(describeConnectError(err, this.config));
     });
     socket.on('close', () => {
-      if (this.state !== 'closed') this.fail(this.lastError || '连接已断开');
+      if (this.state === 'closed') return;
+      // A wrong token only shows up on the Host: it cannot decrypt our first frame
+      // and hangs up without a reply, so a silent close here is the only signal.
+      this.fail(
+        this.awaitingAuthOk
+          ? 'Host 在认证阶段断开了连接,最常见的原因是两端令牌不一致。请重新复制 Host 的访问令牌。'
+          : this.lastError || '连接已断开',
+      );
     });
   }
 
@@ -247,6 +282,10 @@ export class LinkClient {
   /**
    * 转发一条命令到 Host 并等待结果。
    *
+   * 命令只发送一次,不排队、不重试。未连接时直接失败,所以断线期间的按键不会在
+   * 重连后补发;发出后没收到确认的命令结果未知,也不重发。这样重连不可能造成
+   * 同一条命令执行两次。
+   *
    * @throws Error 未连接、超时,或 Host 侧 handler 抛出的业务错误
    *   (错误的 code 字段会被保留,renderer 的 try/catch 分支因此仍然有效)
    */
@@ -264,6 +303,8 @@ export class LinkClient {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        this.noteUnconfirmed(channel);
+        this.pushConnectionStateToWindow();
         reject(
           new Error(
             `[LinkClient] 命令 ${channel} 等待 Host 响应超过 ${COMMAND_TIMEOUT_MS}ms。` +
@@ -273,7 +314,7 @@ export class LinkClient {
         );
       }, COMMAND_TIMEOUT_MS);
 
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { channel, resolve, reject, timer });
       this.writeEncrypted<LinkCommandForward>({ type: 'cmd', id, channel, payload });
     });
   }
@@ -281,6 +322,10 @@ export class LinkClient {
   // ────────────────────────────────────────────────────────────────
   // 内部
   // ────────────────────────────────────────────────────────────────
+
+  private noteUnconfirmed(channel: string): void {
+    if (channel === COMMAND_CHANNELS.SESSION_SEND_INPUT) this.unconfirmedInputs++;
+  }
 
   private handleData(chunk: Buffer): void {
     if (this.state === 'closed') return;
@@ -383,6 +428,16 @@ export class LinkClient {
    * 认证成功:建立(或复用)本地窗口,并把它标记为远程窗口。
    */
   private completeAuth(msg: LinkAuthOk): void {
+    // 本地窗口的 id 在创建时固定,换不了。Host 应当总是归还原 id,对不上时必须
+    // 报错:继续下去窗口收不到任何事件,却显示"已连接"。
+    if (this.windowCreated && msg.virtualWindowId !== this.windowId) {
+      throw new Error(
+        `Host 分配了新的窗口 id(${msg.virtualWindowId}),与本地窗口 ${this.windowId} ` +
+          `不一致。可能原因:(1) Host 拒绝复用该 id;(2) 两端版本不一致。` +
+          `建议:关闭这个远程窗口后重新连接。`,
+      );
+    }
+
     if (this.handshakeTimer) {
       clearTimeout(this.handshakeTimer);
       this.handshakeTimer = null;
@@ -390,6 +445,7 @@ export class LinkClient {
 
     this.hostName = msg.hostName;
     this.lastError = '';
+    this.awaitingAuthOk = false;
     this.reconnectAttempt = 0;
     this.windowId = msg.virtualWindowId;
     this.setState('connected');
@@ -498,13 +554,15 @@ export class LinkClient {
   private fail(reason: string): void {
     if (this.state === 'closed') return;
     this.lastError = reason;
+    this.awaitingAuthOk = false;
     logger.warn('LinkClient', `${this.config.label}(${this.targetAddress}):${reason}`);
 
     this.teardownSocket('fail');
 
     for (const [, entry] of this.pending) {
       clearTimeout(entry.timer);
-      entry.reject(new Error(`[LinkClient] 连接中断,命令未完成:${reason}`));
+      this.noteUnconfirmed(entry.channel);
+      entry.reject(new Error(`[LinkClient] 连接中断,命令结果未知:${reason}`));
     }
     this.pending.clear();
 
@@ -560,16 +618,10 @@ export class LinkClient {
     if (!this.windowId) return;
     const win = this.deps.windowManager.getById(this.windowId);
     if (!win || win.isDestroyed()) return;
-    const payload: LinkConnectionStatePayload = {
-      state: this.state,
-      hostName: this.hostName,
-      address: this.targetAddress,
-      lastError: this.lastError,
-    };
     win.webContents.send(EVENT_CHANNELS.LINK_CONNECTION_STATE, {
       eventId: `link-${Date.now()}`,
       timestamp: Date.now(),
-      payload,
+      payload: this.getConnectionState(),
     });
   }
 }
@@ -592,7 +644,10 @@ function describeConnectError(err: NodeJS.ErrnoException, config: LinkClientConf
         `先在客户端跑 \`tailscale ping <host>\` 确认两台机器能互通。`
       );
     case 'ENOTFOUND':
-      return `找不到主机 ${config.host}。检查地址是否拼错;建议直接填 Tailscale 的 100.x.y.z。`;
+      return (
+        `找不到主机 ${config.host}。检查地址是否拼错;使用 MagicDNS 名称时确认本机 ` +
+        `Tailscale 已连接,或改填 Host 的 100.x.y.z。`
+      );
     case 'EHOSTUNREACH':
     case 'ENETUNREACH':
       return `无法路由到 ${config.host}。检查 Tailscale 是否在两端都已连接。`;

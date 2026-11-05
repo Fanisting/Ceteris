@@ -1826,6 +1826,82 @@ describe('SessionManager — owner 切换', () => {
   });
 });
 
+describe('SessionManager — 跨机器交接', () => {
+  async function makeOwned(ownerWindowId: string) {
+    const made = makeManager();
+    const info = await made.mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId,
+      cols: 80,
+      rows: 24,
+    });
+    return { ...made, info };
+  }
+
+  it('transferOwner 把别的窗口持有的 session 交给调用方', async () => {
+    const { mgr, info } = await makeOwned('host-window');
+    mgr.transferOwner(info.id, 'virtual-window');
+    expect(mgr.get(info.id)?.ownerWindowId).toBe('virtual-window');
+  });
+
+  it('transferOwner 广播释放和接管两次变更,旧 owner 能看到自己失去 session', async () => {
+    const { mgr, info } = await makeOwned('host-window');
+    const changes: Array<{ oldOwnerWindowId: string | null; newOwnerWindowId: string | null }> = [];
+    mgr.on('sessionOwnerChanged', (c) => changes.push(c));
+
+    mgr.transferOwner(info.id, 'virtual-window');
+
+    expect(changes.map((c) => [c.oldOwnerWindowId, c.newOwnerWindowId])).toEqual([
+      ['host-window', null],
+      [null, 'virtual-window'],
+    ]);
+  });
+
+  it('transferOwner 不影响 PTY', async () => {
+    const { mgr, info } = await makeOwned('host-window');
+    const pid = mgr.get(info.id)?.pid;
+    mgr.transferOwner(info.id, 'virtual-window');
+    expect(mgr.get(info.id)?.state).not.toBe('exited');
+    expect(mgr.get(info.id)?.pid).toBe(pid);
+  });
+
+  it('transferOwner 释放接收方原来持有的 session,保持单焦点不变量', async () => {
+    const { mgr, info } = await makeOwned('host-window');
+    const other = await mgr.createSession({
+      pathId: '/q',
+      templateId: 'shell',
+      ownerWindowId: 'virtual-window',
+      cols: 80,
+      rows: 24,
+    });
+
+    mgr.transferOwner(info.id, 'virtual-window');
+
+    expect(mgr.get(other.id)?.ownerWindowId).toBeNull();
+    expect(mgr.get(info.id)?.ownerWindowId).toBe('virtual-window');
+  });
+
+  it('transferOwner 接收方已是 owner 时不产生事件', async () => {
+    const { mgr, info } = await makeOwned('host-window');
+    const onChange = vi.fn();
+    mgr.on('sessionOwnerChanged', onChange);
+    mgr.transferOwner(info.id, 'host-window');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('transferOwner 也能接管无主 session', async () => {
+    const { mgr, info } = await makeOwned('');
+    mgr.transferOwner(info.id, 'virtual-window');
+    expect(mgr.get(info.id)?.ownerWindowId).toBe('virtual-window');
+  });
+
+  it('transferOwner session 不存在 → throw SessionNotFound', async () => {
+    const { mgr } = makeManager();
+    expect(() => mgr.transferOwner('missing', 'w')).toThrowError(/SessionNotFound/);
+  });
+});
+
 describe('SessionManager — sendInput / resize', () => {
   it('sendInput 把 base64 解码后 write 到 PTY', async () => {
     const { mgr } = makeManager();

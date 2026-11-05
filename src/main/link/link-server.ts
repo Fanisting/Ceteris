@@ -14,6 +14,12 @@
  * - **断开 = 关窗**。socket 断掉时注销虚拟窗口,ipc.ts 注册的 onWindowClosed
  *   会把它持有的 session 全部转为无主。PTY 一直在跑,Host 本机窗口可以立刻
  *   接管 —— 这正是 Marina "会话不随窗口死" 哲学在远程场景下的自然延伸。
+ * - **重连恢复归属**。意外断线时记下该客户端持有的 session,同一 windowId 重连后
+ *   重新接管。这里不保留"挂起的虚拟窗口",因为那样 Host 本机在客户端回来之前
+ *   无法使用这些 session。只恢复仍然无主的 session,已被别处接管的不抢。
+ * - **新连接取代旧连接**。Wi-Fi 切换或休眠唤醒后,客户端重连往往早于 Host 判定
+ *   旧连接超时。新连接带着相同 windowId 通过认证时立即断开旧连接,否则客户端
+ *   窗口与 Host 分配的 id 对不上,窗口会静默失效。
  * - **每条连接一个状态机**,见 LinkConnection。握手超时、心跳超时、帧过大、
  *   解密失败,任一发生都是直接 destroy socket,不做任何"尝试恢复"。
  *
@@ -39,7 +45,9 @@ import {
   LINK_HEARTBEAT_INTERVAL_MS,
   LINK_HEARTBEAT_TIMEOUT_MS,
   LINK_MAX_CLIENTS,
+  LINK_MAX_WRITE_BACKLOG_BYTES,
   LINK_PROTOCOL_VERSION,
+  LINK_RESUME_TTL_MS,
   type LinkAuth,
   type LinkAuthOk,
   type LinkAuthRejected,
@@ -53,8 +61,9 @@ import {
   type LinkHostStatus,
   type LinkMessage,
   type LinkPong,
+  LINK_DEFAULT_PORT,
 } from '@shared/link-protocol';
-import { PROTOCOL_VERSION, type CommandEnvelope } from '@shared/protocol';
+import { COMMAND_CHANNELS, PROTOCOL_VERSION, type CommandEnvelope } from '@shared/protocol';
 import { encodeFrame, FrameDecodeError, FrameDecoder } from './frame-codec';
 import {
   createCipherPair,
@@ -72,7 +81,26 @@ export interface LinkServerDeps {
   windowManager: WindowManager;
   /** 取当前 token。用回调而非值,这样用户在设置里重新生成 token 后立即生效。 */
   getToken: () => string;
+  /** 列出某窗口持有的 session,意外断线时记下,重连后恢复。 */
+  getOwnedSessionIds: (windowId: string) => string[];
+  /** 覆盖写缓冲上限,仅测试使用。 */
+  maxWriteBacklogBytes?: number;
 }
+
+/** LinkConnection 需要 LinkServer 提供的能力。 */
+interface ConnectionHooks {
+  onClosed: (conn: LinkConnection) => void;
+  /** 断开占用该 windowId 的旧连接(如果有)。 */
+  releaseWindow: (windowId: string) => void;
+  rememberOwned: (windowId: string, sessionIds: string[]) => void;
+  /** 取出并清除某 windowId 的待恢复记录,过期视为不存在。 */
+  takeResumable: (windowId: string) => string[];
+}
+
+/**
+ * 这些断开是用户的明确意图,重连后不恢复归属。其余都是意外断线。
+ */
+const NON_RESUMABLE_REASONS: ReadonlySet<string> = new Set(['client-bye', 'kicked-by-host']);
 
 /** 启动监听的参数。 */
 export interface LinkServerStartOptions {
@@ -91,10 +119,11 @@ export interface LinkServerStartOptions {
  * 连接的生命周期状态。
  *
  *   handshaking ──收到 hello,回 hello-ack,派生密钥──> awaiting-auth
- *   awaiting-auth ──首个加密帧解开且是 auth──> ready
+ *   awaiting-auth ──首个加密帧解开且是 auth──> authenticating
+ *   authenticating ──虚拟窗口注册完毕、归属恢复完毕──> ready
  *   任一阶段出错 / socket 断 ──> closed(终态,不可回退)
  */
-type ConnectionState = 'handshaking' | 'awaiting-auth' | 'ready' | 'closed';
+type ConnectionState = 'handshaking' | 'awaiting-auth' | 'authenticating' | 'ready' | 'closed';
 
 /**
  * 一条远程客户端连接。
@@ -127,7 +156,7 @@ class LinkConnection {
   constructor(
     private readonly socket: Socket,
     private readonly deps: LinkServerDeps,
-    private readonly onClosed: (conn: LinkConnection) => void,
+    private readonly hooks: ConnectionHooks,
   ) {
     this.remoteAddress = socket.remoteAddress ?? 'unknown';
 
@@ -165,6 +194,11 @@ class LinkConnection {
    */
   private isClosed(): boolean {
     return this.state === 'closed';
+  }
+
+  /** 这条连接是否占着指定的虚拟 windowId(含认证中的连接)。 */
+  holdsWindow(windowId: string): boolean {
+    return this.virtualWindowId === windowId;
   }
 
   /** 供设置页展示。未完成认证的连接不会出现在列表里。 */
@@ -277,8 +311,16 @@ class LinkConnection {
       if (msg.type !== 'auth') {
         throw new Error(`认证阶段收到非 auth 消息:type=${msg.type}`);
       }
-      this.completeAuth(msg);
+      this.state = 'authenticating';
+      void this.completeAuth(msg).catch((err: unknown) => {
+        logger.error('LinkServer', `完成认证失败(${this.remoteAddress})`, err);
+        this.destroy('auth-failed');
+      });
       return;
+    }
+
+    if (this.state === 'authenticating') {
+      throw new Error(`收到 auth-ok 之前客户端不应发送帧:type=${msg.type}`);
     }
 
     switch (msg.type) {
@@ -303,9 +345,12 @@ class LinkConnection {
   }
 
   /**
-   * 完成认证:校验内层 IPC 协议版本,注册虚拟窗口,回 auth-ok。
+   * 完成认证:校验内层 IPC 协议版本,注册虚拟窗口,恢复归属,回 auth-ok。
+   *
+   * 归属必须在 auth-ok 之前恢复:客户端收到 auth-ok 就会 reload 窗口并拉
+   * snapshot,那一刻 session 必须已经归它所有,否则窗口会打开成空白页。
    */
-  private completeAuth(msg: LinkAuth): void {
+  private async completeAuth(msg: LinkAuth): Promise<void> {
     if (msg.ipcProtocolVersion !== PROTOCOL_VERSION) {
       this.writeEncrypted<LinkAuthRejected>({
         type: 'auth-rejected',
@@ -320,6 +365,8 @@ class LinkConnection {
 
     this.clientName = msg.clientName || 'unknown';
     this.clientVersion = msg.clientVersion || 'unknown';
+
+    if (msg.preferredWindowId) this.hooks.releaseWindow(msg.preferredWindowId);
 
     let info;
     try {
@@ -338,6 +385,9 @@ class LinkConnection {
 
     this.virtualWindowId = info.id;
     this.virtualWindowNumber = info.number;
+
+    await this.restoreOwnership(info.id);
+    if (this.isClosed()) return;
     this.state = 'ready';
 
     if (this.handshakeTimer) {
@@ -360,6 +410,31 @@ class LinkConnection {
       `客户端认证通过:name="${this.clientName}" addr=${this.remoteAddress} ` +
         `虚拟窗口=${info.id} (Window ${info.number})`,
     );
+  }
+
+  /**
+   * 重新接管这个客户端断线前持有的 session。
+   *
+   * 走 SESSION_CLAIM 而不是直接改 SessionManager,与普通接管同一条路径。
+   * 接管失败是正常情况:session 可能已被 Host 本机接管或已经关闭,此时尊重现状。
+   */
+  private async restoreOwnership(windowId: string): Promise<void> {
+    for (const sessionId of this.hooks.takeResumable(windowId)) {
+      try {
+        await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_CLAIM, {
+          windowId,
+          requestId: randomUUID(),
+          payload: { sessionId },
+        });
+        logger.info('LinkServer', `重连恢复归属:session=${sessionId} window=${windowId}`);
+      } catch (err) {
+        logger.info(
+          'LinkServer',
+          `未恢复 session=${sessionId} 的归属:` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -436,6 +511,16 @@ class LinkConnection {
   /** 写一个加密帧。 */
   private writeEncrypted<T>(msg: T): void {
     if (this.socket.destroyed || !this.send) return;
+    const backlogLimit = this.deps.maxWriteBacklogBytes ?? LINK_MAX_WRITE_BACKLOG_BYTES;
+    if (this.socket.writableLength > backlogLimit) {
+      logger.warn(
+        'LinkServer',
+        `写缓冲积压 ${this.socket.writableLength} 字节超过上限 ${backlogLimit}(` +
+          `${this.remoteAddress}),断开连接。客户端重连后会回放完整终端状态。`,
+      );
+      this.destroy('write-backlog');
+      return;
+    }
     try {
       const plaintext = Buffer.from(JSON.stringify(msg), 'utf8');
       this.socket.write(encodeFrame(this.send.encrypt(plaintext)));
@@ -471,12 +556,19 @@ class LinkConnection {
         'LinkServer',
         `注销虚拟窗口 ${this.virtualWindowId}(reason=${reason}),` + `其持有的 session 将转为无主`,
       );
+      // 必须在注销之前读:注销会触发 handleWindowClosed 清空归属
+      if (!NON_RESUMABLE_REASONS.has(reason)) {
+        this.hooks.rememberOwned(
+          this.virtualWindowId,
+          this.deps.getOwnedSessionIds(this.virtualWindowId),
+        );
+      }
       this.deps.windowManager.unregisterVirtualWindow(this.virtualWindowId);
       this.virtualWindowId = null;
     }
 
     if (!this.socket.destroyed) this.socket.destroy();
-    this.onClosed(this);
+    this.hooks.onClosed(this);
   }
 }
 
@@ -489,6 +581,8 @@ class LinkConnection {
 export class LinkServer {
   private server: Server | null = null;
   private readonly connections = new Set<LinkConnection>();
+  /** windowId → 断线时持有的 session。跨 stop/start 保留:换绑定地址也会断开客户端。 */
+  private readonly resumable = new Map<string, { sessionIds: string[]; expiresAt: number }>();
   private boundAddress = '';
   private boundPort = 0;
   private lastError = '';
@@ -591,10 +685,41 @@ export class LinkServer {
       return;
     }
     logger.info('LinkServer', `新连接来自 ${socket.remoteAddress}`);
-    const conn = new LinkConnection(socket, this.deps, (c) => {
-      this.connections.delete(c);
+    const conn = new LinkConnection(socket, this.deps, {
+      onClosed: (c) => this.connections.delete(c),
+      releaseWindow: (windowId) => this.releaseWindow(windowId),
+      rememberOwned: (windowId, sessionIds) => this.rememberOwned(windowId, sessionIds),
+      takeResumable: (windowId) => this.takeResumable(windowId),
     });
     this.connections.add(conn);
+  }
+
+  private releaseWindow(windowId: string): void {
+    for (const conn of [...this.connections]) {
+      if (conn.holdsWindow(windowId)) {
+        logger.info('LinkServer', `虚拟窗口 ${windowId} 的新连接取代旧连接`);
+        conn.destroy('superseded');
+      }
+    }
+  }
+
+  private rememberOwned(windowId: string, sessionIds: string[]): void {
+    const now = Date.now();
+    for (const [id, entry] of this.resumable) {
+      if (entry.expiresAt <= now) this.resumable.delete(id);
+    }
+    if (sessionIds.length === 0) {
+      this.resumable.delete(windowId);
+      return;
+    }
+    this.resumable.set(windowId, { sessionIds, expiresAt: now + LINK_RESUME_TTL_MS });
+  }
+
+  private takeResumable(windowId: string): string[] {
+    const entry = this.resumable.get(windowId);
+    this.resumable.delete(windowId);
+    if (!entry || entry.expiresAt <= Date.now()) return [];
+    return entry.sessionIds;
   }
 }
 
@@ -602,7 +727,7 @@ export class LinkServer {
  * 把 node 的 listen 错误翻译成用户能据以行动的中文说明。
  *
  * 这几个 errno 是远程功能配置失败的绝大多数来源,泛泛地显示
- * "listen EADDRNOTAVAIL 100.64.1.2:8787" 对普通用户毫无帮助。
+ * "listen EADDRNOTAVAIL 100.64.1.2:38787" 对普通用户毫无帮助。
  */
 function describeListenError(err: NodeJS.ErrnoException, options: LinkServerStartOptions): string {
   switch (err.code) {
@@ -619,8 +744,10 @@ function describeListenError(err: NodeJS.ErrnoException, options: LinkServerStar
       );
     case 'EACCES':
       return (
-        `没有权限绑定端口 ${options.port}。1024 以下的端口在部分系统上需要管理员权限,` +
-        `请改用 1024 以上的端口(默认 8787)。`
+        `系统拒绝绑定端口 ${options.port}。在 Windows 上最常见的原因是这个端口落在` +
+        `系统保留范围内(Hyper-V、WSL、Docker 常见),管理员权限也绑不上。` +
+        `用 netsh int ipv4 show excludedportrange protocol=tcp 查看保留范围,` +
+        `换一个范围外的端口(默认 ${LINK_DEFAULT_PORT})。`
       );
     default:
       return `监听 ${options.bindAddress}:${options.port} 失败:${err.message}`;

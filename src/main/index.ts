@@ -390,6 +390,11 @@ function bootstrap(): void {
         getSettings: () => settingsManager.get().link,
         // 远程窗口沿用与本地窗口相同的尺寸 / 位置策略(settings.windowDefaults)
         getWindowOptions: () => windowManager.getCreateOptions(),
+        getOwnedSessionIds: (windowId) =>
+          sessionManager
+            .list()
+            .filter((s) => s.ownerWindowId === windowId)
+            .map((s) => s.id),
         onStatusChange: () => {
           broadcastLinkStatus({
             host: linkManager.getHostStatus(),

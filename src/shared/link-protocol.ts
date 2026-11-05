@@ -31,10 +31,14 @@
 export const LINK_PROTOCOL_VERSION = 1 as const;
 
 /**
- * 默认监听端口。选 8787 的理由:避开 IANA 常用段与开发者常占端口
- * (3000/5173/8080/8000),同时好记。用户可在设置里改。
+ * 默认监听端口,用户可在设置里改。
+ *
+ * 选 38787 是为了避开 Windows 的动态端口范围:Hyper-V / WinNAT 会在这个范围里
+ * 保留成段的端口,被保留的端口连管理员也绑不上,而且重启后位置会变。原默认值
+ * 8787 就在一台实机上落进了 8765-8864 的保留段。动态范围的系统默认从 49152 开始,
+ * 个别机器被改成从 1024 开始的 13977 个端口(到 15000),38787 两种情况都在外面。
  */
-export const LINK_DEFAULT_PORT = 8787;
+export const LINK_DEFAULT_PORT = 38787;
 
 /**
  * 单帧密文的上限(字节)。超过即判定为恶意 / 损坏并断开,防止一个伪造的
@@ -153,9 +157,9 @@ export interface LinkAuth {
    * SessionAlreadyOwned 报错。复用 id 让重连对 renderer 完全透明,只要
    * reload 一次就回到原状。
    *
-   * Host 只在该 id 当前**既不是**真实窗口、**也不是**已注册虚拟窗口时才接受,
-   * 否则忽略并另行分配。这条校验防止恶意客户端指定一个 Host 本地窗口的 id
-   * 去冒充它、进而抢走该窗口持有的 session。
+   * Host 拒绝 Host 本地真实窗口的 id,防止客户端冒充本地窗口抢走它的 session。
+   * 如果该 id 被另一条 Link 连接占着,说明那是本客户端尚未超时的旧连接(Wi-Fi
+   * 切换、休眠唤醒后常见),Host 会断开旧连接并把 id 交给新连接。
    */
   preferredWindowId?: string;
 }
@@ -302,6 +306,31 @@ export const LINK_HANDSHAKE_TIMEOUT_MS = 10_000;
  */
 export const LINK_MAX_CLIENTS = 8;
 
+/**
+ * Host 记住"断线客户端持有哪些 session"的时长。
+ *
+ * 取 24 小时是为了覆盖笔记本合盖过夜。过期或记录错误都不会造成抢占:恢复时
+ * 只接管当时仍然无主的 session。
+ */
+export const LINK_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 单条连接允许积压在 socket 写缓冲里的字节数,超过就断开。
+ *
+ * 客户端休眠后要等最多 50 秒才判定心跳超时,这期间 agent 的输出全部堆在 Host
+ * 内存里。断开是安全的:客户端重连后从 Host 的 headless 终端回放完整状态,
+ * 不依赖这些字节。
+ */
+export const LINK_MAX_WRITE_BACKLOG_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Host 复查绑定地址的间隔。
+ *
+ * Marina 随系统启动时 Tailscale 往往还没连上,"自动"只能先绑 127.0.0.1。
+ * 复查让它在 Tailscale 就绪后自己换到 100.x.y.z,无人值守的机器才能重启后恢复。
+ */
+export const LINK_BIND_RECHECK_MS = 30_000;
+
 // ──────────────────────────────────────────────────────────────────
 // 命令路由策略
 // ──────────────────────────────────────────────────────────────────
@@ -368,6 +397,8 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:link:disconnect',
   'cmd:link:kick-client',
   'cmd:link:list-bind-candidates',
+  'cmd:link:get-window-state',
+  'cmd:link:ack-unconfirmed',
 ]);
 
 /**
@@ -409,7 +440,7 @@ export interface LinkClientStatus {
   state: LinkConnectionState;
   /** 已连接时的 Host 机器名,未连接为空串 */
   hostName: string;
-  /** 目标地址,形如 "100.101.102.103:8787" */
+  /** 目标地址,形如 "100.101.102.103:38787" */
   address: string;
   /** 最近一次心跳往返(ms);未测得为 null */
   rttMs: number | null;

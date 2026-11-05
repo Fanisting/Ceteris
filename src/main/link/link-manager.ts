@@ -22,7 +22,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
-import type { LinkClientStatus, LinkHostStatus } from '@shared/link-protocol';
+import {
+  LINK_BIND_RECHECK_MS,
+  type LinkClientStatus,
+  type LinkHostStatus,
+} from '@shared/link-protocol';
+import type { LinkConnectionStatePayload } from '@shared/protocol';
 import type { LinkSettings } from '@shared/types';
 import { LinkClient, type LinkClientConfig } from './link-client';
 import { LinkServer } from './link-server';
@@ -34,6 +39,8 @@ export interface LinkManagerDeps {
   windowManager: WindowManager;
   getSettings: () => LinkSettings;
   getWindowOptions: () => CreateWindowOptions;
+  /** 列出某窗口持有的 session,LinkServer 用它在重连后恢复归属。 */
+  getOwnedSessionIds: (windowId: string) => string[];
   /** 连接状态变化时通知 renderer(设置页的状态条)。 */
   onStatusChange: () => void;
 }
@@ -42,11 +49,14 @@ export class LinkManager {
   private readonly server: LinkServer;
   /** linkId → LinkClient。linkId 是本进程内的临时 id,不持久化。 */
   private readonly clients = new Map<string, LinkClient>();
+  private bindWatchTimer: NodeJS.Timeout | null = null;
+  private rebinding = false;
 
   constructor(private readonly deps: LinkManagerDeps) {
     this.server = new LinkServer({
       windowManager: deps.windowManager,
       getToken: () => this.deps.getSettings().hostToken,
+      getOwnedSessionIds: deps.getOwnedSessionIds,
     });
 
     // ipc.ts 的 handleCommand 判定"这是远程窗口且该命令要转发"之后,会调这个
@@ -95,7 +105,36 @@ export class LinkManager {
     }
     const bindAddress = resolveBindAddress(s.hostBindAddress);
     await this.server.start({ bindAddress, port: s.hostPort });
+    this.startBindWatch();
     this.deps.onStatusChange();
+  }
+
+  /**
+   * 定期复查监听状态。覆盖两种无人值守时的故障:Marina 先于 Tailscale 启动,
+   * 以及 Tailscale 地址变化或监听失败。
+   */
+  private startBindWatch(): void {
+    if (this.bindWatchTimer) return;
+    this.bindWatchTimer = setInterval(() => {
+      void this.recheckBinding();
+    }, LINK_BIND_RECHECK_MS);
+    // 这个定时器不该阻止进程退出
+    this.bindWatchTimer.unref();
+  }
+
+  private async recheckBinding(): Promise<void> {
+    const s = this.deps.getSettings();
+    if (!s.hostEnabled || !s.hostToken || this.rebinding) return;
+    const desired = resolveBindAddress(s.hostBindAddress);
+    if (!needsRebind(this.server.getStatus(), desired)) return;
+
+    logger.info('LinkManager', `绑定地址需要更新,重新监听 ${desired}:${s.hostPort}`);
+    this.rebinding = true;
+    try {
+      await this.applyHostSettings();
+    } finally {
+      this.rebinding = false;
+    }
   }
 
   /**
@@ -132,7 +171,38 @@ export class LinkManager {
 
   /** Host 侧状态,供设置页展示。 */
   getHostStatus(): LinkHostStatus {
-    return this.server.getStatus();
+    const status = this.server.getStatus();
+    const s = this.deps.getSettings();
+    // 监听本身成功了,不提示的话用户只会看到"正在监听 127.0.0.1"并以为配置完成
+    if (
+      s.hostEnabled &&
+      s.hostBindAddress === 'auto' &&
+      status.listening &&
+      status.boundAddress === '127.0.0.1' &&
+      !status.lastError
+    ) {
+      return {
+        ...status,
+        lastError:
+          '未检测到 Tailscale 地址,其他设备暂时无法连接。Tailscale 连上后最多 30 秒内会自动切换。',
+      };
+    }
+    return status;
+  }
+
+  /** 某个远程窗口的连接状态;普通本地窗口返回 null。 */
+  getWindowConnectionState(windowId: string): LinkConnectionStatePayload | null {
+    return this.findClientByWindow(windowId)?.getConnectionState() ?? null;
+  }
+
+  /** 用户确认已看过某个远程窗口的"输入未确认"提示。 */
+  acknowledgeUnconfirmed(windowId: string): void {
+    this.findClientByWindow(windowId)?.acknowledgeUnconfirmed();
+  }
+
+  private findClientByWindow(windowId: string): LinkClient | null {
+    const linkId = this.deps.windowManager.getRemoteLinkId(windowId);
+    return linkId ? (this.clients.get(linkId) ?? null) : null;
   }
 
   /** Client 侧所有连接的状态,供设置页展示。 */
@@ -149,6 +219,8 @@ export class LinkManager {
 
   /** 应用退出时清理。 */
   async shutdown(): Promise<void> {
+    if (this.bindWatchTimer) clearInterval(this.bindWatchTimer);
+    this.bindWatchTimer = null;
     setLinkCommandForwarder(null);
     for (const client of this.clients.values()) {
       client.disconnect('app-quit');
@@ -156,6 +228,16 @@ export class LinkManager {
     this.clients.clear();
     await this.server.stop();
   }
+}
+
+/**
+ * 当前监听状态是否与期望地址不符。没在监听也算不符,这样监听失败后会自动重试。
+ */
+export function needsRebind(
+  status: Pick<LinkHostStatus, 'listening' | 'boundAddress'>,
+  desiredAddress: string,
+): boolean {
+  return !status.listening || status.boundAddress !== desiredAddress;
 }
 
 /**

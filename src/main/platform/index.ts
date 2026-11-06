@@ -78,6 +78,14 @@ export interface PlatformAdapter {
    *   - bash: 在 rcfile 后追加 -c "..."
    * 命令不存在 / 报错由 shell 自然吐到 PTY 字节流 (不弹对话框)。
    */
+  /**
+   * Writes a helper that hands ssh the password in ASKPASS_PASSWORD_ENV, for SSH_ASKPASS.
+   * Optional: without it SFTP falls back to sshpass.
+   *
+   * @returns the helper's path
+   */
+  prepareSshAskpass?(): string;
+
   buildShellLaunchParams(
     shell: ShellInfo,
     hookFilePath: string,

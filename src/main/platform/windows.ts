@@ -19,11 +19,12 @@
  * @对应文档章节: 软件定义书.md 5.1.8、12.2、ADR-003、ADR-008
  */
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
+import { WINDOWS_ASKPASS_HELPER } from './askpass';
 import type { DefaultBookmarkSeed, PlatformAdapter, ShellInfo } from './index';
 import {
   expandWindowsEnvPlaceholders,
@@ -179,6 +180,14 @@ export function __getShellCandidatesForTest(): Array<{
 }
 
 export class WindowsAdapter implements PlatformAdapter {
+  /** The file holds no secret. It is left alone when current, as a running ssh may be using it. */
+  prepareSshAskpass(): string {
+    const helper = join(tmpdir(), 'ceteris-ssh-askpass.cmd');
+    const current = existsSync(helper) ? readFileSync(helper, 'utf8') : '';
+    if (current !== WINDOWS_ASKPASS_HELPER) writeFileSync(helper, WINDOWS_ASKPASS_HELPER);
+    return helper;
+  }
+
   /** 软件定义书 12.2 (v1.6) — Windows 走托盘心智 */
   readonly lifecycleModel = 'tray-resident' as const;
 

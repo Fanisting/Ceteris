@@ -13,7 +13,10 @@
  * - 服务器不可信:长度、数量、文件名都按恶意输入处理,读超限的数据直接失败,
  *   stderr 只留末尾。
  * - BatchMode=yes:后台进程没有地方输入密码,必须立刻失败而不是挂住。
- *   保存了密码且有 sshpass 时才关掉,与终端的登录方式一致。
+ *   保存了密码时才关掉。
+ * - A saved password goes through SSH_ASKPASS where the platform offers it. On Windows
+ *   sshpass runs ssh on a console, which corrupts the binary SFTP stream: the login succeeds
+ *   and the connection then drops. Askpass leaves ssh on plain pipes.
  *
  * @对应文档章节: 软件定义书.md 14.6
  *
@@ -21,12 +24,13 @@
  * - 不要提供写入、删除、改名 (远端文件树是只读的,OPEN 只用 FXF_READ)
  *
  * @常见问题排查:
- * - 文件树显示认证失败 → 这个 profile 能否免密登录?密码登录需要 sshpass
+ * - 文件树显示认证失败 → 这个 profile 能否免密登录?密码登录需要 askpass 或 sshpass
  * - 显示主机密钥失败 → 先在终端连一次,接受并保存主机密钥
  * - 日志有 bad packet length → 远端 .bashrc 往 stdout 打印了内容,破坏了 SFTP 流
  * - 显示连接失败但终端能连 → 看 main.log 里 [Sftp] 那行 ssh 的 stderr
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { ASKPASS_PASSWORD_ENV } from './platform/askpass';
 import { createHash } from 'node:crypto';
 import {
   FILE_TREE_MAX_ENTRIES,
@@ -85,7 +89,7 @@ export interface SftpProfile {
   authType: 'agent' | 'keyFile' | 'password';
   keyFilePath?: string;
   proxyJump?: string[];
-  /** 已解密的明文密码,只用于交给 sshpass */
+  /** 已解密的明文密码,只用于交给 askpass 或 sshpass */
   password?: string;
 }
 
@@ -116,7 +120,7 @@ export function failureFrom(err: unknown, operation: string): SftpFailure | Sftp
 }
 
 /** 组装 ssh 参数。连接选项与 buildSshLaunchParams 保持一致。 */
-export function buildSftpArgs(profile: SftpProfile, useSshpass: boolean): string[] {
+export function buildSftpArgs(profile: SftpProfile, hasPassword: boolean): string[] {
   const args = [
     '-T',
     '-s',
@@ -127,7 +131,9 @@ export function buildSftpArgs(profile: SftpProfile, useSshpass: boolean): string
     '-o',
     'ServerAliveInterval=30',
     '-o',
-    `BatchMode=${useSshpass ? 'no' : 'yes'}`,
+    `BatchMode=${hasPassword ? 'no' : 'yes'}`,
+    // A wrong saved password must count as one failure, not three against the account.
+    ...(hasPassword ? ['-o', 'NumberOfPasswordPrompts=1'] : []),
   ];
   if (profile.authType === 'keyFile' && profile.keyFilePath) {
     args.push('-i', profile.keyFilePath);
@@ -427,6 +433,8 @@ export interface SftpPoolDeps {
   /** 返回带明文密码的 profile,不存在时返回 null */
   getProfile: (profileId: string) => SftpProfile | null;
   resolveExecutable: (name: string, env: Record<string, string>) => string | null;
+  /** Path of a helper for SSH_ASKPASS, or null where the platform has none. */
+  prepareAskpass?: () => string | null;
   /** 测试注入点 */
   spawnProcess?: (
     file: string,
@@ -596,12 +604,16 @@ export class SftpPool {
     if (!ssh) {
       throw this.remember(profileId, fingerprint, new SftpError('no-client', 'ssh not on PATH'));
     }
-    const sshpass =
-      profile.authType === 'password' && profile.password
-        ? this.deps.resolveExecutable('sshpass', env)
-        : null;
-    const args = buildSftpArgs(profile, sshpass !== null);
-    if (sshpass) env['SSHPASS'] = profile.password as string;
+    const password = profile.authType === 'password' ? profile.password : undefined;
+    const askpass = password ? (this.deps.prepareAskpass?.() ?? null) : null;
+    const sshpass = password && !askpass ? this.deps.resolveExecutable('sshpass', env) : null;
+    const args = buildSftpArgs(profile, askpass !== null || sshpass !== null);
+    if (askpass) {
+      env['SSH_ASKPASS'] = askpass;
+      env['SSH_ASKPASS_REQUIRE'] = 'force';
+      env[ASKPASS_PASSWORD_ENV] = password as string;
+    }
+    if (sshpass) env['SSHPASS'] = password as string;
     logger.info('Sftp', `connect: ${profile.username}@${profile.host}:${profile.port}`);
     const proc = sshpass
       ? this.spawnProcess(sshpass, ['-e', ssh, ...args], env)

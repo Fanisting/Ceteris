@@ -215,6 +215,7 @@ function bootstrap(): void {
       return { ...rest, ...(passwordEncrypted ? decryptStoredPassword(passwordEncrypted) : {}) };
     },
     resolveExecutable: (name, env) => getPlatformAdapter().resolveExecutable(name, env),
+    prepareAskpass: () => getPlatformAdapter().prepareSshAskpass?.() ?? null,
   });
   const templatesManager = new TemplatesManager(templatesStore);
   const sessionManager = new SessionManager(

@@ -618,6 +618,29 @@ describe('连接失败', () => {
 });
 
 describe('密码登录', () => {
+  it('有 askpass 时直接运行 ssh,不经过 sshpass,密码不进命令行', async () => {
+    const spawned: Array<{ file: string; args: string[]; env: Record<string, string> }> = [];
+    const pool = new SftpPool({
+      getProfile: () => ({ ...PROFILE, authType: 'password', password: 'hunter2' }),
+      resolveExecutable: (name) => `/bin/${name}`,
+      prepareAskpass: () => '/tmp/askpass.cmd',
+      spawnProcess: (file, args, env) => {
+        spawned.push({ file, args, env });
+        return asChild(new FakeServer(TREE));
+      },
+    });
+    await pool.list('p1', '~');
+    pool.shutdown();
+    expect(spawned[0]?.file).toBe('/bin/ssh');
+    expect(spawned[0]?.args.join(' ')).not.toContain('hunter2');
+    expect(spawned[0]?.args).toContain('BatchMode=no');
+    expect(spawned[0]?.env).toMatchObject({
+      SSH_ASKPASS: '/tmp/askpass.cmd',
+      SSH_ASKPASS_REQUIRE: 'force',
+      CETERIS_SSH_PASSWORD: 'hunter2',
+    });
+  });
+
   it('有 sshpass 时用环境变量传密码,不进命令行', async () => {
     const spawned: Array<{ file: string; args: string[]; env: Record<string, string> }> = [];
     const pool = new SftpPool({

@@ -65,6 +65,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 修复
 
+- 修复 Windows 上用保存的密码时文件浏览提示“无法通过 SFTP 连接”。现在通过 SSH 自带的 askpass 传密码,文件浏览不再需要 sshpass。
+
 - 从 Claude Code 里启动 Ceteris 时,终端不再继承那个会话的环境变量。此前在这些终端里运行 Claude Code 会提示不保存对话记录。
 
 - **Windows 上 SSH 终端连不上。** ControlMaster 默认开启,而 Windows 版 OpenSSH 不支持,所有 SSH 会话都以 `getsockname failed: Not a socket` 退出。现在 Windows 上不再传这组参数。

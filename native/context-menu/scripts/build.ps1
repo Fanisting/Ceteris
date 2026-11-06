@@ -3,7 +3,7 @@
 # 步骤:
 #   1. cargo build --release  -> target\release\marina_context_menu.dll
 #   2. 收集 DLL + manifest + assets 到 build\staging\
-#   3. MakeAppx.exe pack       -> build\MarinaContextMenu.msix
+#   3. MakeAppx.exe pack       -> build\CeterisContextMenu.msix
 #   4. SignTool.exe sign       -> 同一个 MSIX (in-place)
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +43,7 @@ Copy-Item "$root\target\release\marina-context-menu-host.exe" $staging
 Copy-Item "$root\package\AppxManifest.xml" $staging
 Copy-Item "$root\package\assets" $staging -Recurse
 
-$msix = Join-Path $root 'build\MarinaContextMenu.msix'
+$msix = Join-Path $root 'build\CeterisContextMenu.msix'
 
 Write-Host "[3/4] MakeAppx pack -> $msix" -ForegroundColor Cyan
 & $makeAppx pack /d $staging /p $msix /o

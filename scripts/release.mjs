@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/release.mjs
- * @purpose Marina 发布打包总入口(2026-05-20)。
+ * @purpose Ceteris 发布打包总入口(2026-05-20)。
  *
  * @背景
  * 截止 beta.9,每次发版流程都是作者手工跑一串命令:`npm run typecheck`,
@@ -123,7 +123,7 @@ for (const a of args) {
 }
 
 if (opts.help) {
-  console.log(`Marina 发布打包总入口
+  console.log(`Ceteris 发布打包总入口
 
 用法:
   node scripts/release.mjs --win | --linux | --all  [选项]
@@ -267,7 +267,7 @@ function readPackageJson() {
 
 /**
  * SemVer-lite 的 bump 实现。支持 X.Y.Z-tag.N。
- * Marina 阶段够用 — 不引入 semver npm 包(避开 AGENTS.md 1.2 边界 2)。
+ * Ceteris 阶段够用 — 不引入 semver npm 包(避开 AGENTS.md 1.2 边界 2)。
  */
 function bumpVersion(current, strategy) {
   // X.Y.Z 或 X.Y.Z-prerel.N
@@ -527,11 +527,11 @@ process.exit(0);
 // ============================================================
 function listInstallers(releaseDir) {
   const candidates = [
-    'Marina-Setup-${v}-x64.exe',
-    'Marina-Portable-${v}-x64.exe',
-    'Marina-${v}-amd64.deb',
-    'Marina-${v}-x86_64.rpm',
-    'Marina-${v}-x86_64.AppImage',
+    'Ceteris-Setup-${v}-x64.exe',
+    'Ceteris-Portable-${v}-x64.exe',
+    'Ceteris-${v}-amd64.deb',
+    'Ceteris-${v}-x86_64.rpm',
+    'Ceteris-${v}-x86_64.AppImage',
     'latest.yml',
     'latest-linux.yml',
   ];

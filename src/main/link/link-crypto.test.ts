@@ -96,7 +96,7 @@ describe('X25519 公钥编解码', () => {
     expect(() => importRawPublicKey(kp.publicKeyRaw)).not.toThrow();
   });
 
-  it('长度不对的公钥被拒绝(对端不是 Marina 或 base64 被截断)', () => {
+  it('长度不对的公钥被拒绝(对端不是 Ceteris 或 base64 被截断)', () => {
     expect(() => importRawPublicKey(Buffer.alloc(31))).toThrow(/公钥长度非法/);
     expect(() => importRawPublicKey(Buffer.alloc(33))).toThrow(/公钥长度非法/);
     expect(() => importRawPublicKey(Buffer.alloc(0))).toThrow(/公钥长度非法/);

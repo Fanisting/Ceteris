@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { isAppPageUrl } from './ipc-sender';
 
-const APP = 'file:///C:/Program%20Files/Marina/resources/app.asar/out/renderer/index.html';
+const APP = 'file:///C:/Program%20Files/Ceteris/resources/app.asar/out/renderer/index.html';
 const DEV = 'http://127.0.0.1:5173';
 
 describe('isAppPageUrl', () => {
@@ -31,7 +31,7 @@ describe('isAppPageUrl', () => {
     'https://example.com/renderer/index.html',
     'file:///C:/Users/x/Downloads/evil.html',
     'file:///C:/Users/x/Downloads/evil/out/renderer/index.html',
-    'file://attacker-host/C:/Program%20Files/Marina/resources/app.asar/out/renderer/index.html',
+    'file://attacker-host/C:/Program%20Files/Ceteris/resources/app.asar/out/renderer/index.html',
     'data:text/html,<script>1</script>',
     'blob:file:///3d63e291-25c2-47be-8f01-db885b24aed2',
     'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html',

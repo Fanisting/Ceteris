@@ -8,7 +8,7 @@
  * - 加载: 主文件 JSON 解析失败 → 尝试 .bak → 都失败用默认值
  * - 写入 debounce 500ms 合并高频变更 (软件定义书 6.6.1 即改即生效但不写
  *   过快;以及 PathManager 在多个改动后只写一次)
- * - 数据目录: app.getPath('userData') (跨平台,Win 下是 %APPDATA%\Marina)
+ * - 数据目录: app.getPath('userData') (跨平台,Win 下是 %APPDATA%\Ceteris)
  *
  * @对应文档章节: 软件定义书.md 11.1、11.3;AGENTS.md 5.3 (持久化必测)
  *

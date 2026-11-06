@@ -560,7 +560,7 @@ describe('SessionManager — createSession', () => {
     expect(command).toContain("'\\''it'\\''\\'\\'''\\''s-ok'\\''");
     expect(command).toContain('marina_template_status=$?;');
     expect(command).toContain('if [ "$marina_template_status" -eq 127 ]; then');
-    expect(command).toContain('Marina: remote template command not found or not in PATH: codex');
+    expect(command).toContain('Ceteris: remote template command not found or not in PATH: codex');
     expect(command).toContain('exec "${SHELL:-/bin/sh}" -l');
   });
 
@@ -613,7 +613,7 @@ describe('SessionManager — createSession', () => {
     expect(command).toContain('else exec "${SHELL:-/bin/sh}" -l; fi');
   });
 
-  it('SSH tmux 正常退出后回到远端登录 shell,不让 ssh.exe 结束 Marina session', async () => {
+  it('SSH tmux 正常退出后回到远端登录 shell,不让 ssh.exe 结束 Ceteris session', async () => {
     const adapter: PlatformAdapter = {
       ...makeFakeAdapter(),
       resolveExecutable(commandName: string) {
@@ -726,7 +726,7 @@ describe('SessionManager — createSession', () => {
     });
 
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
-    expect(command).toContain('Marina: tmux attach/create failed on the remote host.');
+    expect(command).toContain('Ceteris: tmux attach/create failed on the remote host.');
     expect(command).toContain('exit 127');
   });
 

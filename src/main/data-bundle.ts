@@ -240,11 +240,11 @@ export async function writeBundle(options: {
 export async function readManifest(dir: string): Promise<BundleManifest> {
   const path = join(dir, MANIFEST);
   if (!(await exists(path))) {
-    throw new Error('这个文件夹不是 Marina 导出,或导出没有完成(缺少 manifest.json)。');
+    throw new Error('这个文件夹不是 Ceteris 导出,或导出没有完成(缺少 manifest.json)。');
   }
   const manifest = JSON.parse(await fs.readFile(path, 'utf-8')) as BundleManifest;
   if (manifest.format !== FORMAT || manifest.version !== VERSION) {
-    throw new Error(`不支持的导出格式:${manifest.format} v${manifest.version}。请升级 Marina。`);
+    throw new Error(`不支持的导出格式:${manifest.format} v${manifest.version}。请升级 Ceteris。`);
   }
   return manifest;
 }

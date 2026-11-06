@@ -3,7 +3,7 @@
  * @purpose 覆盖 SSH profile 持久化管理器的字段归一化与校验。
  *
  * @关键设计:
- * - 不访问真实 %APPDATA%\Marina,用内存 JsonStore mock
+ * - 不访问真实 %APPDATA%\Ceteris,用内存 JsonStore mock
  * - tmux 配置是 SSH 启动链路的轻量增强,旧 profile 缺字段时默认关闭
  *
  * @对应文档章节: 软件定义书.md 第 11 章数据模型;AGENTS.md 第 9 章数据安全

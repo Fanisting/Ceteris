@@ -325,7 +325,7 @@ function WelcomeState(): JSX.Element {
   const { tx } = useTranslation();
   return (
     <div className="welcome-state">
-      <h2>Marina</h2>
+      <h2>Ceteris</h2>
       <p>
         {tx('从左侧选一个路径开始,或点击', 'Pick a path on the left, or click')}{' '}
         <strong>{tx('收藏 +', 'Bookmark +')}</strong>{' '}

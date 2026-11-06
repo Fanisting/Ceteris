@@ -128,7 +128,7 @@ function carryOverLegacyData(dataDir: string): void {
 function bootstrap(): void {
   // DEV-COEXIST(2026-05-16):dev 模式下改 app 名,让 npm run dev 与打包版
   // Marina.exe 互不冲突。Electron 把以下 4 类资源全部按 `productName` 派生:
-  //   - app.getPath('userData') → %APPDATA%\Marina (dev) vs %APPDATA%\Marina
+  //   - app.getPath('userData') → %APPDATA%\Ceteris (dev) vs %APPDATA%\Ceteris
   //   - requestSingleInstanceLock 的锁键(底层用 userData 目录)
   //   - 日志目录(logger 走 join(userData, 'logs'))
   //   - 任务栏 AppUserModelID(影响 Windows 任务栏分组)
@@ -138,12 +138,12 @@ function bootstrap(): void {
   // 同样的 portable 形态也独立一份,避免运行中的 portable 与已安装版互踩
   // settings.json / 单实例锁。仅 installed 形态使用 "Marina" 原名。
   if (!app.isPackaged) {
-    app.setName('Marina (dev)');
+    app.setName('Ceteris (dev)');
   } else if (isBetaBuild()) {
     // The beta gets its own data dir and single-instance lock however it is launched.
-    app.setName('Marina Beta');
+    app.setName('Ceteris Beta');
   } else if (process.env['PORTABLE_EXECUTABLE_DIR']) {
-    app.setName('Marina (portable)');
+    app.setName('Ceteris (portable)');
   }
 
   // M1-D:全局崩溃兜底 — daily driver 最大风险是"未捕获异常让主进程死掉,
@@ -188,7 +188,7 @@ function bootstrap(): void {
 
   const windowManager = new WindowManager();
 
-  // 数据目录:%APPDATA%\Marina (Electron 由 productName 自动派生;v1.5 改名后从 EasyTerm 切到 Marina,见 ADR-012)
+  // 数据目录:%APPDATA%\Ceteris (Electron 由 productName 自动派生;v1.5 改名后从 EasyTerm 切到 Marina,见 ADR-012)
   // 注:在 app.whenReady 之前调 app.getPath('userData') 是合法的,
   // Electron 31 在 ready 前就把它解析好了
   const dataDir = app.getPath('userData');

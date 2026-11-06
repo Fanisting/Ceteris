@@ -3,13 +3,13 @@
 # alternatives 而非 update-alternatives。
 set -e
 
-# /usr/bin/marina 符号链接,与 deb-postinst 同理
-ln -sf /opt/Marina/marina /usr/bin/marina
+# /usr/bin/ceteris 符号链接,与 deb-postinst 同理
+ln -sf /opt/Ceteris/ceteris /usr/bin/ceteris
 
 if [ -x /usr/sbin/alternatives ]; then
-    /usr/sbin/alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/marina 50
+    /usr/sbin/alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/ceteris 50
 elif [ -x /usr/bin/alternatives ]; then
-    /usr/bin/alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/marina 50
+    /usr/bin/alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator /usr/bin/ceteris 50
 fi
 
 if [ -x /usr/bin/update-desktop-database ]; then

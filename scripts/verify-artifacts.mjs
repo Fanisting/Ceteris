@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/verify-artifacts.mjs
- * @purpose Marina 打包产物校验(2026-05-20)。
+ * @purpose Ceteris 打包产物校验(2026-05-20)。
  *
  * @背景
  * ISO-1 工单(docs/issues/iso-1-cross-platform-build-pollution.md)发现 beta.5
@@ -246,7 +246,7 @@ const report = {
 // 包目录约定:
 //   release/<v>/win-unpacked    — Windows
 //   release/<v>/linux-unpacked  — Linux(electron-builder 默认就用单一目录)
-//   release/<v>/mac/Marina.app  — macOS(future)
+//   release/<v>/mac/Ceteris.app  — macOS(future)
 const platformDirs = [
   { platform: 'win', dir: 'win-unpacked', resourcesPath: ['resources'] },
   { platform: 'linux', dir: 'linux-unpacked', resourcesPath: ['resources'] },
@@ -338,7 +338,7 @@ for (const pd of platformDirs) {
     }
   }
 
-  // ─── 体积合理性(经验阈值,Electron 31 + Marina 当前规模)───
+  // ─── 体积合理性(经验阈值,Electron 31 + Ceteris 当前规模)───
   const MIN = 80 * 1024 * 1024;
   const MAX = 500 * 1024 * 1024;
   if (pkgReport.sizeBytes < MIN) {
@@ -362,7 +362,7 @@ for (const pd of platformDirs) {
 }
 
 // ─── 安装器文件 SHA256 + 大小 ───
-const installerPatterns = /^Marina-.+\.(exe|deb|rpm|AppImage|dmg|blockmap)$/;
+const installerPatterns = /^Ceteris-.+\.(exe|deb|rpm|AppImage|dmg|blockmap)$/;
 const installerFiles = walkFiles(releaseDir, installerPatterns)
   .filter((p) => !p.includes(`${sep}win-unpacked${sep}`) && !p.includes(`${sep}linux-unpacked${sep}`));
 for (const f of installerFiles) {
@@ -387,7 +387,7 @@ if (flags.has('json')) {
   process.exit(report.summary.errors > 0 ? 1 : 0);
 }
 
-console.log(`\n${C.bold}=== Marina 产物校验 · ${version} ===${C.reset}`);
+console.log(`\n${C.bold}=== Ceteris 产物校验 · ${version} ===${C.reset}`);
 console.log(`${C.dim}${releaseDir}${C.reset}`);
 
 if (report.packages.length === 0) {

@@ -234,7 +234,7 @@ export class WindowManager implements IWindowManager {
       minWidth: 600,
       minHeight: 400,
       show: false,
-      title: `Marina — Window ${windowNumber}`,
+      title: `Ceteris — Window ${windowNumber}`,
       // 历史:BETA-003b 曾在 Linux 上启用 transparent:true 让 CSS 画圆角
       // (Linux 没有 Windows 11 DWM 的系统级 frameless 圆角)。但 transparent
       // + Wayland (Ubuntu 22.04 GNOME 默认 session) 触发严重 resize bug —

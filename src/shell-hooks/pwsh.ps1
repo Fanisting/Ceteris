@@ -42,7 +42,7 @@ if (Test-Path $PROFILE) {
     try {
         . $PROFILE
     } catch {
-        Write-Host "[Marina] user PowerShell profile failed to load (hook still active): $_" -ForegroundColor DarkYellow
+        Write-Host "[Ceteris] user PowerShell profile failed to load (hook still active): $_" -ForegroundColor DarkYellow
     }
 }
 

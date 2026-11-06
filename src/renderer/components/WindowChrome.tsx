@@ -107,7 +107,7 @@ export function WindowChrome({ windowStyle, buildType }: Props): JSX.Element {
   };
 
   // DEV-COEXIST:only npm run dev needs telling apart while working on Marina itself.
-  const appLabel = buildType === 'dev' ? 'Marina (dev)' : 'Marina';
+  const appLabel = buildType === 'dev' ? 'Ceteris (dev)' : 'Ceteris';
 
   if (windowStyle === 'macos') {
     return (

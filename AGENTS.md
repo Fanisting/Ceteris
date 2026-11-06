@@ -10,6 +10,8 @@
 > **v1.2 变更**:产品改名 EasyTerm → **Marina**(对齐软件定义书 v1.5,ADR-012)。所有"产品现状"维度的 EasyTerm 字样替换为 Marina;commit message 示例等"历史/惯例"维度的 EasyTerm 保留作为风格参考。`%APPDATA%\EasyTerm\` 全部改为 `%APPDATA%\Marina\`(Electron 由 `productName` 自动派生)。
 > **v1.1 变更**:与软件定义书 v1.3 / CP-4 勘误回合对齐 — CP-4 完成标志改 7 套主题;附录 D 新增"勘误回合工作纪律";4.5 章明确"勘误回合修复"也是检查点工作流的一部分。
 
+> **2026-11-06 改名**:产品现名 **Ceteris** (Marina 的 fork,见软件定义书 ADR-014)。下文的 Marina 指同一产品。`~/AppData/Roaming/Ceteris/` 与 `~/AppData/Roaming/Marina/` 适用相同的数据安全规则。不要改动 ADR-014 列出的持久化名字。
+
 ---
 
 ## 0. 你必须先读的文件

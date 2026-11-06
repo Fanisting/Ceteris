@@ -241,7 +241,7 @@ export class LinkClient {
       });
       this.handshakeTimer = setTimeout(() => {
         if (this.state !== 'connected') {
-          this.fail('握手超时。对方端口可能不是 Marina Link,或网络被中间设备拦截。');
+          this.fail('握手超时。对方端口可能不是 Ceteris Link,或网络被中间设备拦截。');
         }
       }, LINK_HANDSHAKE_TIMEOUT_MS);
     });
@@ -346,7 +346,7 @@ export class LinkClient {
       if (err instanceof FrameDecodeError) {
         this.fail(
           `收到无法解析的数据。目标端口 ${this.targetAddress} 上运行的多半不是 ` +
-            `Marina Link Host。请确认端口号,以及 Host 端已打开"允许远程连接"。`,
+            `Ceteris Link Host。请确认端口号,以及 Host 端已打开"允许远程连接"。`,
         );
       } else {
         this.fail(`分帧失败:${err instanceof Error ? err.message : String(err)}`);
@@ -644,8 +644,8 @@ function describeConnectError(err: NodeJS.ErrnoException, config: LinkClientConf
   switch (err.code) {
     case 'ECONNREFUSED':
       return (
-        `${target} 拒绝连接。可能原因:(1) Host 端 Marina 没开"允许远程连接";` +
-        `(2) 端口号填错了;(3) Host 上 Marina 没在运行。`
+        `${target} 拒绝连接。可能原因:(1) Host 端 Ceteris 没开"允许远程连接";` +
+        `(2) 端口号填错了;(3) Host 上 Ceteris 没在运行。`
       );
     case 'ETIMEDOUT':
       return (

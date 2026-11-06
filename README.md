@@ -1,15 +1,15 @@
-# Marina
+# Ceteris
 
 > Your terminal sessions shouldn't die just because you closed the window.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Liyue-Cheng/marina/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/marina/releases)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#roadmap)
 [![中文文档](https://img.shields.io/badge/中文文档-README.zh--CN.md-red)](README.zh-CN.md)
 
 A path-centric, AI-agent-friendly terminal manager for Windows. Built for developers who run multiple long-running tasks (including Claude Code, Codex, OpenCode, and other AI coding agents) across many local or SSH working directories — and refuse to lose them when the window closes.
 
-> **History note**: Marina is the product previously known as EasyTerm during alpha development (CP-1 through Milestone 1). The rename happened at v1.5, and historical documents under `docs/` may still refer to "EasyTerm" — those are intentional snapshots of past decisions.
+> **Fork note**: Ceteris is a fork of [Marina](https://github.com/Liyue-Cheng/marina) by Liyue-Cheng, which began as EasyTerm. On first launch it copies your settings, bookmarks, SSH profiles and saved passwords from an existing Marina install. The Marina folder is left exactly as it was.
 
 ---
 
@@ -23,11 +23,11 @@ If you've ever:
 - 🔐 Jumped between remote servers and wished SSH sessions were organized by path, not by a pile of terminal tabs
 - 📑 Tried to organize your work in Windows Terminal profiles and given up
 
-...Marina is for you.
+...Ceteris is for you.
 
 ## The Solution
 
-Marina rethinks how terminal sessions should be managed:
+Ceteris rethinks how terminal sessions should be managed:
 
 - **🔒 Sessions survive window closure.** Close every window. Sessions keep running in the background. Reopen any window to see them.
 - **📍 Paths are first-class.** Bookmark working directories. Sessions are organized by where they live, not by which profile spawned them.
@@ -40,7 +40,7 @@ Marina rethinks how terminal sessions should be managed:
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ Marina — Window 1                                    [_] [□] [×]  │
+│ Ceteris — Window 1                                    [_] [□] [×]  │
 ├──────────────────────┬─────────────────────────────────────────────┤
 │ [Bookmarks] [Active] │  ┌─[claude] [shell] [pytest] [codex⚪]┐    │
 │ [Recent]             │  └────────────────────────────────────┘   │
@@ -65,11 +65,11 @@ Marina rethinks how terminal sessions should be managed:
 └──────────────────────┴─────────────────────────────────────────────┘
 ```
 
-Marina ships with two title-bar styles (**Windows** controls on the right, **macOS** traffic-light on the left) selectable from Settings.
+Ceteris ships with two title-bar styles (**Windows** controls on the right, **macOS** traffic-light on the left) selectable from Settings.
 
 ## Why Not Just Use [X]?
 
-| Feature | Windows Terminal | Tabby | Wave | Warp | **Marina** |
+| Feature | Windows Terminal | Tabby | Wave | Warp | **Ceteris** |
 |---------|:---:|:---:|:---:|:---:|:---:|
 | Sessions survive window closure | ❌ | ❌ | ✅ | ❌ | ✅ |
 | Path-centric organization | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -84,7 +84,7 @@ Marina ships with two title-bar styles (**Windows** controls on the right, **mac
 
 ## For AI Agent Users
 
-Marina was born from the frustration of running multiple Claude Code / Codex / OpenCode sessions concurrently and losing track of which one was idle, which one was waiting for input, and which one I'd accidentally killed by closing the wrong window.
+Ceteris was born from the frustration of running multiple Claude Code / Codex / OpenCode sessions concurrently and losing track of which one was idle, which one was waiting for input, and which one I'd accidentally killed by closing the wrong window.
 
 If your workflow looks like this:
 
@@ -95,7 +95,7 @@ If your workflow looks like this:
 - A fifth on `prod:~/repo` attached to a remote tmux session
 - ...and you can't remember which is which
 
-Marina gives you:
+Ceteris gives you:
 
 - **A persistent sidebar** showing every agent grouped by its project path
 - **Status indicators** so you can see at a glance which agents are working vs. idle
@@ -107,12 +107,12 @@ Marina gives you:
 
 ## Quick Start
 
-> ⚠️ Marina is in **Alpha**. Expect rough edges. See the [Roadmap](#roadmap) for what's planned.
+> ⚠️ Ceteris is in **Alpha**. Expect rough edges. See the [Roadmap](#roadmap) for what's planned.
 
 ### Install
 
-1. Download the latest installer from [Releases](https://github.com/Liyue-Cheng/marina/releases)
-2. Run `Marina-Setup-x.y.z.exe`
+1. Download the latest installer from [Releases](https://github.com/Fanisting/marina/releases)
+2. Run `Ceteris-Setup-x.y.z.exe`
 3. Launch from Start Menu or your desktop
 
 ### First-Run
@@ -126,11 +126,11 @@ Marina gives you:
 
 ### Try the Magic
 
-To experience what makes Marina different:
+To experience what makes Ceteris different:
 
 1. Open 2-3 sessions in different paths
 2. Close the window (the × button)
-3. Look at your system tray — Marina is still running
+3. Look at your system tray — Ceteris is still running
 4. Click the tray icon — a new window opens, all sessions are still there
 
 That's it. That's the product.
@@ -145,16 +145,16 @@ That's it. That's the product.
 - ✅ **Launch templates**: built-in (Shell / Claude Code / Codex / OpenCode) + custom
 - ✅ **SSH tmux mode**: per-launch attach-or-create tmux flow, directory-derived tmux session names, and shell fallback after tmux exits
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
-- ✅ **Marina Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
+- ✅ **Ceteris Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD tracking**: OSC 1337 hooks for PowerShell and cmd.exe
-- ✅ **17 themes**: Marina Dark (default), Marina Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal
+- ✅ **17 themes**: Ceteris Dark (default), Ceteris Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal
 - ✅ **Window style**: Windows or macOS (sets title-bar layout — not theme colors)
 - ✅ **Settings**: live-applied, no save button; export/import config (with secrets-redaction option)
 - ✅ **System tray**: persistent menu with running-sessions submenu; honest quit confirmation
 - ✅ **Drop folder onto terminal area** to spawn a new session in that path
 - ✅ **Multi-line paste guard** (confirm prompt prevents accidentally executing pasted scripts)
 - ✅ **Terminal search** (Ctrl+F) with match count
-- ✅ **Persistent logs** under `%APPDATA%\Marina\logs\`
+- ✅ **Persistent logs** under `%APPDATA%\Ceteris\logs\`
 
 ### V1.1 (Planned)
 
@@ -164,13 +164,13 @@ That's it. That's the product.
 
 ### V1.2 (Planned)
 
-- Explorer right-click integration ("Open in Marina")
+- Explorer right-click integration ("Open in Ceteris")
 - Tab drag-and-drop reordering
 - Tab tear-out to new window
 
 ### V1.6 (In Planning — Beta Feedback Round)
 
-- **Linux support** (Ubuntu 22.04 GNOME as Tier 1; Fedora / CentOS Stream 9 / RHEL 9 as Tier 2 via `.rpm` + AppImage). No system-tray dependency on GNOME — Marina runs as a regular desktop app on Linux (`lifecycleModel: 'no-persistence'`), with a blocking modal on last-window-close when sessions are still running. File-manager integration via freedesktop standards (`.desktop` + `Categories=TerminalEmulator` + gsettings + update-alternatives), no Nautilus extension required. See [ADR-013](docs/软件定义书.md#adr-013) and [BETA-003](docs/beta反馈工单库-20260515.md#beta-003--linux-支持方案-a无托盘普通桌面-app).
+- **Linux support** (Ubuntu 22.04 GNOME as Tier 1; Fedora / CentOS Stream 9 / RHEL 9 as Tier 2 via `.rpm` + AppImage). No system-tray dependency on GNOME — Ceteris runs as a regular desktop app on Linux (`lifecycleModel: 'no-persistence'`), with a blocking modal on last-window-close when sessions are still running. File-manager integration via freedesktop standards (`.desktop` + `Categories=TerminalEmulator` + gsettings + update-alternatives), no Nautilus extension required. See [ADR-013](docs/软件定义书.md#adr-013) and [BETA-003](docs/beta反馈工单库-20260515.md#beta-003--linux-支持方案-a无托盘普通桌面-app).
 - i18n (Chinese + English)
 - AI assistant settings page (foundation for LLM status recheck)
 
@@ -182,7 +182,7 @@ That's it. That's the product.
 
 ## Architecture (TL;DR)
 
-Marina is built on **Electron 31 + TypeScript + React 18 + node-pty + xterm.js**.
+Ceteris is built on **Electron 31 + TypeScript + React 18 + node-pty + xterm.js**.
 
 - The **main process** is the daemon: it owns all PTYs, all data, and the system tray
 - Each **window is a renderer process** with its own React UI
@@ -191,7 +191,7 @@ Marina is built on **Electron 31 + TypeScript + React 18 + node-pty + xterm.js**
 
 For details:
 
-- [Software Definition (软件定义书)](docs/软件定义书.md) — what Marina is and why
+- [Software Definition (软件定义书)](docs/软件定义书.md) — what Ceteris is and why
 - [IPC Protocol](docs/ipc-protocol.md) — the contract between main and renderer
 - [AGENTS.md](AGENTS.md) — for AI agents contributing to this codebase
 
@@ -199,7 +199,7 @@ For details:
 
 ```bash
 # Prerequisites: Node.js 20+, Windows 10/11
-git clone https://github.com/Liyue-Cheng/marina.git
+git clone https://github.com/Fanisting/marina.git
 cd marina
 npm install
 npm run dev      # development mode with hot reload
@@ -209,7 +209,7 @@ npm test         # runs the backend test suite
 
 ## Help Wanted
 
-Marina is built and maintained by one person. **The architecture is intentionally cross-platform-ready** — see [`src/main/platform/`](src/main/platform/) and the `PlatformAdapter.lifecycleModel` field. Linux support is being implemented by the author for v1.6; macOS and other platforms are open for contributions:
+Ceteris is built and maintained by one person. **The architecture is intentionally cross-platform-ready** — see [`src/main/platform/`](src/main/platform/) and the `PlatformAdapter.lifecycleModel` field. Linux support is being implemented by the author for v1.6; macOS and other platforms are open for contributions:
 
 ### High Priority
 
@@ -232,7 +232,7 @@ If any of these speak to you, see `CONTRIBUTING.md` (TBD) for the platform abstr
 
 ## Design Philosophy
 
-If you want to understand why Marina makes the choices it does, the four principles are:
+If you want to understand why Ceteris makes the choices it does, the four principles are:
 
 1. **Path is stable, Session is cheap, UI is temporary** — work flows by path, sessions come and go, windows are throwaway observers
 2. **Don't make users type paths, make them click paths** — the `cd` command is a 1971 design that should be optional
@@ -241,16 +241,16 @@ If you want to understand why Marina makes the choices it does, the four princip
 
 Full reasoning in the [Software Definition (软件定义书)](docs/软件定义书.md), Section 2.
 
-## What Marina is NOT
+## What Ceteris is NOT
 
 To save you time:
 
 - ❌ **Not a terminal emulator replacement** — we use xterm.js like everyone else
-- ❌ **Not a tmux competitor** — tmux is a TUI, Marina is a GUI; different audiences
+- ❌ **Not a tmux competitor** — tmux is a TUI, Ceteris is a GUI; different audiences
 - ❌ **Not a project management tool** — no kanban, no team features, no workspace concepts
-- ❌ **Not a full SSH client suite** — Marina supports path-centric SSH sessions, but it is not trying to replace dedicated SSH managers with port forwarding, file transfer, or remote host administration workflows
+- ❌ **Not a full SSH client suite** — Ceteris supports path-centric SSH sessions, but it is not trying to replace dedicated SSH managers with port forwarding, file transfer, or remote host administration workflows
 - ❌ **Not a file editor** — open `code .` in a session if you need that
-- ❌ **Not a "tile-everything" power-user tool** — if you love vim keybindings in your terminal manager, you'll find Marina's mouse-first approach annoying. That's a feature, not a bug.
+- ❌ **Not a "tile-everything" power-user tool** — if you love vim keybindings in your terminal manager, you'll find Ceteris's mouse-first approach annoying. That's a feature, not a bug.
 
 ## Roadmap
 
@@ -269,7 +269,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-Marina stands on the shoulders of:
+Ceteris stands on the shoulders of:
 
 - [Electron](https://www.electronjs.org/) — the application framework
 - [electron-vite + Vite](https://electron-vite.org/) — build tooling

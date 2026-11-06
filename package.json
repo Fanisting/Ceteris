@@ -1,11 +1,11 @@
 {
-  "name": "marina-app",
+  "name": "ceteris-app",
   "version": "0.3.0-beta.5",
   "private": true,
-  "description": "Marina — path-centric, AI-agent-friendly terminal manager for Windows (formerly EasyTerm)",
+  "description": "Ceteris: path-centric, AI-agent-friendly terminal manager for Windows, forked from Marina",
   "license": "MIT",
   "author": "Liyue-Cheng <liyue_cheng@163.com>",
-  "homepage": "https://github.com/Liyue-Cheng/marina",
+  "homepage": "https://github.com/Fanisting/marina",
   "main": "out/main/index.js",
   "type": "module",
   "engines": {

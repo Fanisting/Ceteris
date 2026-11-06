@@ -22,7 +22,7 @@ use windows_core::BOOL;
 use crate::dll_hmodule;
 use crate::guid::CLSID_MARINA_CONTEXT_MENU;
 
-const MENU_TITLE: PCWSTR = w!("在 Marina 终端中打开");
+const MENU_TITLE: PCWSTR = w!("在 Ceteris 终端中打开");
 
 #[implement(IExplorerCommand)]
 pub struct MarinaCommand;
@@ -119,7 +119,7 @@ fn alloc_pwstr_from_str(s: &str) -> Result<PWSTR> {
 /// 拿当前 DLL 自身的绝对路径,定位到 `<dll-dir>\assets\menu-icon.ico`。
 ///
 /// MSIX 包结构(Sparse Package + ExternalLocation):
-///   <Marina InstallLocation>\resources\context-menu\
+///   <Ceteris InstallLocation>\resources\context-menu\
 ///     ├── marina_context_menu.dll      ← 我们就是这个 DLL
 ///     ├── marina-context-menu-host.exe
 ///     └── assets\menu-icon.ico         ← 由 build.ps1 stage 进来
@@ -168,14 +168,14 @@ fn locate_marina_exe() -> Result<String> {
             return Ok(p);
         }
     }
-    if let Some(install) = read_hkcu_string(r"Software\Marina", "InstallLocation") {
+    if let Some(install) = read_hkcu_string(r"Software\Ceteris", "InstallLocation") {
         let trimmed = install.trim_end_matches('\\');
-        let exe = format!(r"{}\Marina.exe", trimmed);
+        let exe = format!(r"{}\Ceteris.exe", trimmed);
         if Path::new(&exe).exists() {
             return Ok(exe);
         }
     }
-    Err(Error::new(E_FAIL, "Marina executable not found"))
+    Err(Error::new(E_FAIL, "Ceteris executable not found"))
 }
 
 fn read_hkcu_string(subkey: &str, name: &str) -> Option<String> {

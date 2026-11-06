@@ -56,11 +56,11 @@ function parseRegPathOutput(stdout: string): string | null {
  * 改名前 EasyTerm 时代的旧 key 在 main/index.ts 启动期单独清理。
  */
 const EXPLORER_INTEGRATION_KEYS = [
-  { hive: 'HKCU\\Software\\Classes\\Directory\\shell\\Marina', argToken: '%1' },
-  { hive: 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Marina', argToken: '%V' },
+  { hive: 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris', argToken: '%1' },
+  { hive: 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris', argToken: '%V' },
 ] as const;
 
-const EXPLORER_INTEGRATION_MENU_TEXT = '在 Marina 终端中打开';
+const EXPLORER_INTEGRATION_MENU_TEXT = '在 Ceteris 终端中打开';
 
 /**
  * 旧 EasyTerm 注册表 key (v1.5 改名前可能残留)。

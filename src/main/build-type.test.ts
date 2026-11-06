@@ -34,27 +34,27 @@ describe('beta isolation', () => {
     delete process.env['PORTABLE_EXECUTABLE_DIR'];
   });
 
-  it('a directly launched MarinaBeta.exe is never treated as installed', () => {
+  it('a directly launched CeterisBeta.exe is never treated as installed', () => {
     mockIsPackaged = true;
     delete process.env['PORTABLE_EXECUTABLE_DIR'];
-    setExecPath('C:\\tmp\\win-unpacked\\MarinaBeta.exe');
+    setExecPath('C:\\tmp\\win-unpacked\\CeterisBeta.exe');
     expect(isBetaBuild()).toBe(true);
     expect(getBuildType()).toBe('portable');
-    expect(getAppLabel()).toBe('Marina Beta');
+    expect(getAppLabel()).toBe('Ceteris Beta');
   });
 
-  it('the installed Marina.exe is not a beta', () => {
+  it('the installed Ceteris.exe is not a beta', () => {
     mockIsPackaged = true;
     delete process.env['PORTABLE_EXECUTABLE_DIR'];
-    setExecPath('C:\\Users\\me\\AppData\\Local\\Programs\\Marina\\Marina.exe');
+    setExecPath('C:\\Users\\me\\AppData\\Local\\Programs\\Ceteris\\Ceteris.exe');
     expect(isBetaBuild()).toBe(false);
     expect(getBuildType()).toBe('installed');
-    expect(getAppLabel()).toBe('Marina');
+    expect(getAppLabel()).toBe('Ceteris');
   });
 
   it('an unpackaged run is not a beta even with that exe name', () => {
     mockIsPackaged = false;
-    setExecPath('C:\\tmp\\MarinaBeta.exe');
+    setExecPath('C:\\tmp\\CeterisBeta.exe');
     expect(isBetaBuild()).toBe(false);
   });
 });

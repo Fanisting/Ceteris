@@ -6,11 +6,11 @@ set -e
 
 if [ "${1:-0}" = "0" ]; then
     if [ -x /usr/sbin/alternatives ]; then
-        /usr/sbin/alternatives --remove x-terminal-emulator /usr/bin/marina || true
+        /usr/sbin/alternatives --remove x-terminal-emulator /usr/bin/ceteris || true
     elif [ -x /usr/bin/alternatives ]; then
-        /usr/bin/alternatives --remove x-terminal-emulator /usr/bin/marina || true
+        /usr/bin/alternatives --remove x-terminal-emulator /usr/bin/ceteris || true
     fi
-    rm -f /usr/bin/marina
+    rm -f /usr/bin/ceteris
     if [ -x /usr/bin/update-desktop-database ]; then
         update-desktop-database -q /usr/share/applications || true
     fi

@@ -137,7 +137,7 @@ export class FrameDecoder {
         throw new FrameDecodeError(
           'frame-too-large',
           `[FrameCodec] 帧载荷声明 ${payloadLength} 字节,超过当前上限 ${this.maxPayloadBytes}。` +
-            `可能原因:(1) 目标端口上跑的不是 Marina Link(例如误连了 HTTP 服务,` +
+            `可能原因:(1) 目标端口上跑的不是 Ceteris Link(例如误连了 HTTP 服务,` +
             `请求行的 ASCII 会被读成一个巨大的长度);(2) 流被截断导致长度前缀错位;` +
             `(3) 恶意构造的长度前缀。连接将被断开。`,
         );

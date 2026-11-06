@@ -116,20 +116,20 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
 
   it('register 先 unregister 两次,再 add 六个 key', async () => {
     const adapter = new WindowsAdapter();
-    await adapter.registerFileManagerIntegration('C:\\Program Files\\Marina\\Marina.exe');
+    await adapter.registerFileManagerIntegration('C:\\Program Files\\Ceteris\\Ceteris.exe');
 
     // 2 个 unregister(Directory + Background)+ 6 个 add
     // (2 个 menu 文案 + 2 个 Icon 值 + 2 个 command)
     expect(calls).toHaveLength(8);
     expect(calls.slice(0, 2)).toEqual([
-      ['delete', 'HKCU\\Software\\Classes\\Directory\\shell\\Marina', '/f'],
-      ['delete', 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Marina', '/f'],
+      ['delete', 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris', '/f'],
+      ['delete', 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris', '/f'],
     ]);
   });
 
   it('register 写 Icon 字段引用 exe 内嵌图标 ",0"', async () => {
     const adapter = new WindowsAdapter();
-    await adapter.registerFileManagerIntegration('C:\\Program Files\\Marina\\Marina.exe');
+    await adapter.registerFileManagerIntegration('C:\\Program Files\\Ceteris\\Ceteris.exe');
     // 两个 hive 各一条 Icon
     const iconCalls = calls.filter(
       (a) =>
@@ -140,53 +140,53 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
     expect(iconCalls).toHaveLength(2);
     for (const c of iconCalls) {
       const dIdx = c.indexOf('/d');
-      expect(c[dIdx + 1]).toBe('C:\\Program Files\\Marina\\Marina.exe,0');
+      expect(c[dIdx + 1]).toBe('C:\\Program Files\\Ceteris\\Ceteris.exe,0');
     }
   });
 
-  it('register 写菜单文案 "在 Marina 终端中打开"', async () => {
+  it('register 写菜单文案 "在 Ceteris 终端中打开"', async () => {
     const adapter = new WindowsAdapter();
-    await adapter.registerFileManagerIntegration('C:\\Marina.exe');
+    await adapter.registerFileManagerIntegration('C:\\Ceteris.exe');
     const menuCall = calls.find(
       (a) =>
         a[0] === 'add' &&
-        a[1] === 'HKCU\\Software\\Classes\\Directory\\shell\\Marina' &&
+        a[1] === 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris' &&
         a.includes('/ve'),
     );
     expect(menuCall).toBeTruthy();
-    expect(menuCall).toContain('在 Marina 终端中打开');
+    expect(menuCall).toContain('在 Ceteris 终端中打开');
   });
 
   it('Directory\\shell command 用 %1 占位符', async () => {
     const adapter = new WindowsAdapter();
-    await adapter.registerFileManagerIntegration('C:\\My App\\Marina.exe');
+    await adapter.registerFileManagerIntegration('C:\\My App\\Ceteris.exe');
     const cmdCall = calls.find((a) =>
-      a[1]?.endsWith('Directory\\shell\\Marina\\command'),
+      a[1]?.endsWith('Directory\\shell\\Ceteris\\command'),
     );
     expect(cmdCall).toBeTruthy();
     const idx = cmdCall!.indexOf('/d');
     expect(cmdCall![idx + 1]).toBe(
-      '"C:\\My App\\Marina.exe" --open-here "%1"',
+      '"C:\\My App\\Ceteris.exe" --open-here "%1"',
     );
   });
 
   it('Directory\\Background\\shell command 用 %V 占位符', async () => {
     const adapter = new WindowsAdapter();
-    await adapter.registerFileManagerIntegration('C:\\Marina.exe');
+    await adapter.registerFileManagerIntegration('C:\\Ceteris.exe');
     const cmdCall = calls.find((a) =>
-      a[1]?.endsWith('Directory\\Background\\shell\\Marina\\command'),
+      a[1]?.endsWith('Directory\\Background\\shell\\Ceteris\\command'),
     );
     expect(cmdCall).toBeTruthy();
     const idx = cmdCall!.indexOf('/d');
-    expect(cmdCall![idx + 1]).toBe('"C:\\Marina.exe" --open-here "%V"');
+    expect(cmdCall![idx + 1]).toBe('"C:\\Ceteris.exe" --open-here "%V"');
   });
 
   it('unregister 删两个根 key (Directory + Background)', async () => {
     const adapter = new WindowsAdapter();
     await adapter.unregisterFileManagerIntegration();
     expect(calls).toEqual([
-      ['delete', 'HKCU\\Software\\Classes\\Directory\\shell\\Marina', '/f'],
-      ['delete', 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Marina', '/f'],
+      ['delete', 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris', '/f'],
+      ['delete', 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris', '/f'],
     ]);
   });
 
@@ -210,7 +210,7 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
     });
     const adapter = new WindowsAdapter();
     await expect(
-      adapter.registerFileManagerIntegration('C:\\Marina.exe'),
+      adapter.registerFileManagerIntegration('C:\\Ceteris.exe'),
     ).rejects.toThrow(/code=5/);
   });
 

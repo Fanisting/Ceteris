@@ -120,8 +120,8 @@ export function importRawPublicKey(raw: Buffer): KeyObject {
     throw new Error(
       `[LinkCrypto] importRawPublicKey: 公钥长度非法 ` +
         `(got ${raw.length}, expect ${X25519_RAW_PUBLIC_KEY_BYTES})。` +
-        `可能原因:(1) 对端不是 Marina Link;(2) 握手 JSON 的 base64 被截断。` +
-        `建议:确认目标端口上跑的确实是 Marina 的 Link Host。`,
+        `可能原因:(1) 对端不是 Ceteris Link;(2) 握手 JSON 的 base64 被截断。` +
+        `建议:确认目标端口上跑的确实是 Ceteris 的 Link Host。`,
     );
   }
   const der = Buffer.concat([X25519_SPKI_PREFIX, raw]);
@@ -341,7 +341,7 @@ export class LinkCipherStream {
     if (frame.length < LINK_AUTH_TAG_BYTES) {
       throw new Error(
         `[LinkCrypto] decrypt(${this.direction}): 帧长度 ${frame.length} 小于认证标签长度 ` +
-          `${LINK_AUTH_TAG_BYTES}。可能原因:(1) 对端不是 Marina Link;(2) 分帧逻辑有 bug。`,
+          `${LINK_AUTH_TAG_BYTES}。可能原因:(1) 对端不是 Ceteris Link;(2) 分帧逻辑有 bug。`,
       );
     }
     const body = frame.subarray(0, frame.length - LINK_AUTH_TAG_BYTES);

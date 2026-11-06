@@ -5,10 +5,10 @@
 # ---------------------------------------------------------------------------
 # scripts/uninstall-context-menu.ps1
 #
-# Uninstall the Marina Win11 right-click menu. Removes the MSIX package
+# Uninstall the Ceteris Win11 right-click menu. Removes the MSIX package
 # only; the cert is kept (avoids a UAC prompt on next install).
 #
-# Triggered by Settings -> "Win11 new menu -> Disable" and by the Marina
+# Triggered by Settings -> "Win11 new menu -> Disable" and by the Ceteris
 # uninstaller (installer.nsh calls powershell + Get-AppxPackage|Remove).
 #
 # Package-not-installed is treated as success (idempotent). Failures go
@@ -19,9 +19,9 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-$pkg = Get-AppxPackage -Name 'Marina.ContextMenu' -ErrorAction SilentlyContinue
+$pkg = Get-AppxPackage -Name 'Ceteris.ContextMenu' -ErrorAction SilentlyContinue
 if ($null -eq $pkg) {
-    Write-Output "Marina.ContextMenu is not installed, skipping."
+    Write-Output "Ceteris.ContextMenu is not installed, skipping."
     exit 0
 }
 

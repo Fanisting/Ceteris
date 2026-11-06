@@ -408,7 +408,7 @@ function HostStatusBlock({
                   <div>
                     <strong>{c.clientName}</strong>
                     <span className="settings-row-hint">
-                      {c.remoteAddress} · Window {c.virtualWindowNumber} · Marina {c.clientVersion}
+                      {c.remoteAddress} · Window {c.virtualWindowNumber} · Ceteris {c.clientVersion}
                     </span>
                   </div>
                   <button

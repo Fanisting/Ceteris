@@ -20,7 +20,7 @@ import { app } from 'electron';
 export type BuildType = 'dev' | 'portable' | 'installed';
 
 /** Must match executableName in electron-builder.beta.yml (compared in lower case). */
-const BETA_EXECUTABLE = 'marinabeta.exe';
+const BETA_EXECUTABLE = 'ceterisbeta.exe';
 
 let cached: BuildType | null = null;
 
@@ -38,7 +38,7 @@ export function isBetaBuild(): boolean {
 
 /** User-facing app name, so the tray can tell a beta from the installed Marina. */
 export function getAppLabel(): string {
-  return isBetaBuild() ? 'Marina Beta' : 'Marina';
+  return isBetaBuild() ? 'Ceteris Beta' : 'Ceteris';
 }
 
 export function getBuildType(): BuildType {

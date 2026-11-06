@@ -35,9 +35,9 @@ import { WindowsAdapter } from './platform/windows';
 const execFileAsync = promisify(execFile);
 
 /** MSIX 包名(AppxManifest.xml 里的 Identity Name) */
-const MSIX_PACKAGE_NAME = 'Marina.ContextMenu';
+const MSIX_PACKAGE_NAME = 'Ceteris.ContextMenu';
 /** 期望的证书 Subject(导入到 Cert:\CurrentUser\TrustedPeople) */
-const CERT_SUBJECT = 'CN=Marina Dev';
+const CERT_SUBJECT = 'CN=Ceteris Dev';
 /** Win11 新菜单(IExplorerCommand) 要求的最低 Windows build */
 const WIN11_MIN_BUILD = 22000;
 
@@ -180,7 +180,7 @@ function getMsixScriptPath(name: 'install.ps1' | 'uninstall.ps1'): string | null
   return existsSync(p) ? p : null;
 }
 
-function getMsixAssetPath(name: 'MarinaContextMenu.msix' | 'marina-cert.cer'): string | null {
+function getMsixAssetPath(name: 'CeterisContextMenu.msix' | 'ceteris-cert.cer'): string | null {
   if (getBuildType() !== 'installed') return null;
   const p = join(process.resourcesPath, 'context-menu', name);
   return existsSync(p) ? p : null;
@@ -275,12 +275,12 @@ export async function setModernIntegration(
   if (!scriptPath) {
     return {
       ok: false,
-      message: `安装资源 ${scriptName} 缺失;请确认 Marina 是从 NSIS 安装包安装(便携版不含)。`,
+      message: `安装资源 ${scriptName} 缺失;请确认 Ceteris 是从 NSIS 安装包安装(便携版不含)。`,
     };
   }
 
-  const msixPath = enabled ? getMsixAssetPath('MarinaContextMenu.msix') : null;
-  const certPath = enabled ? getMsixAssetPath('marina-cert.cer') : null;
+  const msixPath = enabled ? getMsixAssetPath('CeterisContextMenu.msix') : null;
+  const certPath = enabled ? getMsixAssetPath('ceteris-cert.cer') : null;
   if (enabled && (!msixPath || !certPath)) {
     return {
       ok: false,
@@ -336,34 +336,34 @@ export async function setModernIntegration(
  * 返回的字符串面向人,带必要注释。
  */
 export function getPsCommands(appExePath: string): GetPsCommandsResponse {
-  const msixPath = getMsixAssetPath('MarinaContextMenu.msix') ?? '<MarinaContextMenu.msix 路径>';
-  const certPath = getMsixAssetPath('marina-cert.cer') ?? '<marina-cert.cer 路径>';
+  const msixPath = getMsixAssetPath('CeterisContextMenu.msix') ?? '<CeterisContextMenu.msix 路径>';
+  const certPath = getMsixAssetPath('ceteris-cert.cer') ?? '<ceteris-cert.cer 路径>';
 
   const installModern = [
     '# 1. 导入自签证书到 Cert:\\CurrentUser\\TrustedPeople(无需管理员)',
     `Import-Certificate -FilePath '${certPath}' -CertStoreLocation Cert:\\CurrentUser\\TrustedPeople`,
     '',
-    '# 2. 注册 Marina 右键扩展 MSIX 包',
+    '# 2. 注册 Ceteris 右键扩展 MSIX 包',
     `Add-AppxPackage -Path '${msixPath}'`,
   ].join('\n');
 
   const uninstallModern = [
-    '# 卸载 Marina 右键扩展(证书保留,下次重装免 UAC)',
+    '# 卸载 Ceteris 右键扩展(证书保留,下次重装免 UAC)',
     `Get-AppxPackage -Name '${MSIX_PACKAGE_NAME}' -ErrorAction SilentlyContinue | Remove-AppxPackage`,
   ].join('\n');
 
   const installClassic = [
     '# 写 HKCU 经典右键菜单(文件夹本身 + 空白处),无需管理员',
-    `reg add 'HKCU\\Software\\Classes\\Directory\\shell\\Marina' /ve /d '在 Marina 终端中打开' /f`,
-    `reg add 'HKCU\\Software\\Classes\\Directory\\shell\\Marina\\command' /ve /d '"${appExePath}" --open-here "%1"' /f`,
-    `reg add 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Marina' /ve /d '在 Marina 终端中打开' /f`,
-    `reg add 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Marina\\command' /ve /d '"${appExePath}" --open-here "%V"' /f`,
+    `reg add 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris' /ve /d '在 Ceteris 终端中打开' /f`,
+    `reg add 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris\\command' /ve /d '"${appExePath}" --open-here "%1"' /f`,
+    `reg add 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris' /ve /d '在 Ceteris 终端中打开' /f`,
+    `reg add 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris\\command' /ve /d '"${appExePath}" --open-here "%V"' /f`,
   ].join('\n');
 
   const uninstallClassic = [
     '# 删除 HKCU 经典右键菜单注册项',
-    `reg delete 'HKCU\\Software\\Classes\\Directory\\shell\\Marina' /f`,
-    `reg delete 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Marina' /f`,
+    `reg delete 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris' /f`,
+    `reg delete 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris' /f`,
   ].join('\n');
 
   return { installModern, uninstallModern, installClassic, uninstallClassic };

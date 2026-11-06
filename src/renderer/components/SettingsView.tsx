@@ -244,8 +244,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
 // ──────────────────────────────────────────────────────────────────
 
 const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; note?: string }> = [
-  { id: 'marina-dark', label: 'Marina Dark', tone: '深色', note: '默认' },
-  { id: 'marina-light', label: 'Marina Light', tone: '浅色' },
+  { id: 'marina-dark', label: 'Ceteris Dark', tone: '深色', note: '默认' },
+  { id: 'marina-light', label: 'Ceteris Light', tone: '浅色' },
   { id: 'rose-pine', label: 'Rose Pine', tone: '深色' },
   { id: 'rose-pine-dawn', label: 'Rose Pine Dawn', tone: '浅色' },
   { id: 'rose-pine-moon', label: 'Rose Pine Moon', tone: '深色' },
@@ -890,7 +890,7 @@ function TemplateEditor({
         />
       </SettingRow>
 
-      <SettingRow label={tx('命令', 'Command')} hint={tx('留空表示启动纯 shell;不要写 shell 路径,Marina 会自动注入 shell', 'Leave empty for plain shell; do not specify the shell binary, Marina injects it')}>
+      <SettingRow label={tx('命令', 'Command')} hint={tx('留空表示启动纯 shell;不要写 shell 路径,Ceteris 会自动注入 shell', 'Leave empty for plain shell; do not specify the shell binary, Ceteris injects it')}>
         <input
           type="text"
           className="settings-input"
@@ -1182,8 +1182,8 @@ function KeybindingsReference(): JSX.Element {
       </h3>
       <p className="settings-keybindings-hint">
         {tx(
-          '此清单为唯一权威。Marina 不支持其他应用内快捷键(spec §7.1)。',
-          'Authoritative list. Marina does not support any other in-app shortcuts (spec §7.1).',
+          '此清单为唯一权威。Ceteris 不支持其他应用内快捷键(spec §7.1)。',
+          'Authoritative list. Ceteris does not support any other in-app shortcuts (spec §7.1).',
         )}
       </p>
       <table className="settings-keybindings-table">
@@ -1293,8 +1293,8 @@ function MoveToPcSection({
       const lines = [
         tx(`来自 ${found.hostname} 的导出,将导入:`, `Export from ${found.hostname}. This will import:`),
         tx(
-          '· Marina 设置和收藏(替换当前的,你的 API Key 和远程访问设置保持不变)',
-          '· Marina settings and bookmarks (replacing the current ones; your API keys and remote access setup stay)',
+          '· Ceteris 设置和收藏(替换当前的,你的 API Key 和远程访问设置保持不变)',
+          '· Ceteris settings and bookmarks (replacing the current ones; your API keys and remote access setup stay)',
         ),
         tx(`· ${found.tabs} 个标签页`, `· ${found.tabs} tabs`),
       ];
@@ -1321,7 +1321,7 @@ function MoveToPcSection({
         ),
       );
       const ok = await modal.confirm({
-        title: tx('导入 Marina 数据', 'Import Marina data'),
+        title: tx('导入 Ceteris 数据', 'Import Ceteris data'),
         message: lines.join('\n'),
         confirmLabel: tx('导入', 'Import'),
       });
@@ -1374,8 +1374,8 @@ function MoveToPcSection({
       <h3 className="link-subsection-title">{tx('搬到另一台电脑', 'Move to another PC')}</h3>
       <p className="settings-panel-hint">
         {tx(
-          '导出一个文件夹,复制到新电脑后在这里导入。Marina 数据总是包含,而且很小。聊天是复制的,原来的不受影响。账号登录、API Key 和令牌不会导出,所以换电脑后需要重新登录。聊天记录本身可能包含敏感内容,请妥善保管导出的文件夹。',
-          'Export a folder, copy it over, and import it here. Marina data is always included and stays small. Chats are copied, so the originals are untouched. Logins, API keys and tokens are never exported, so you will log in again on the new PC. Chats themselves can hold private content, so keep the folder safe.',
+          '导出一个文件夹,复制到新电脑后在这里导入。Ceteris 数据总是包含,而且很小。聊天是复制的,原来的不受影响。账号登录、API Key 和令牌不会导出,所以换电脑后需要重新登录。聊天记录本身可能包含敏感内容,请妥善保管导出的文件夹。',
+          'Export a folder, copy it over, and import it here. Ceteris data is always included and stays small. Chats are copied, so the originals are untouched. Logins, API keys and tokens are never exported, so you will log in again on the new PC. Chats themselves can hold private content, so keep the folder safe.',
         )}
       </p>
       <SettingRow label={tx('同时导出聊天', 'Also export chats')}>
@@ -1626,7 +1626,7 @@ function DataPanel({
         </div>
       </SettingRow>
 
-      <SettingRow label={tx('数据目录', 'Data directory')} hint={tx('所有 Marina 配置文件存放处', 'Where all Marina configuration files live')}>
+      <SettingRow label={tx('数据目录', 'Data directory')} hint={tx('所有 Ceteris 配置文件存放处', 'Where all Ceteris configuration files live')}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="settings-info-text" title={dataDir}>{dataDir}</span>
           <button type="button" className="settings-button" onClick={handleOpenDataDir}>
@@ -2222,8 +2222,8 @@ function RemotePanel({
       <SettingRow
         label={tx('已知主机指纹', 'Known host fingerprints')}
         hint={tx(
-          '解析 ~/.ssh/known_hosts;同主机指纹变化时高亮(可能是 MITM 或服务器换 key)。Marina 记录指纹历史跨重启保留。',
-          'Parses ~/.ssh/known_hosts; highlights host-key changes (potential MITM or server key rotation). Marina keeps fingerprint history across restarts.',
+          '解析 ~/.ssh/known_hosts;同主机指纹变化时高亮(可能是 MITM 或服务器换 key)。Ceteris 记录指纹历史跨重启保留。',
+          'Parses ~/.ssh/known_hosts; highlights host-key changes (potential MITM or server key rotation). Ceteris keeps fingerprint history across restarts.',
         )}
       >
         <div className="ssh-agent-card">
@@ -2359,7 +2359,7 @@ function SystemIntegrationPanel({
 
       <SettingRow
         label={tx('开机启动', 'Launch on login')}
-        hint={tx('系统启动时自动启动 Marina', 'Automatically start Marina when the system starts')}
+        hint={tx('系统启动时自动启动 Ceteris', 'Automatically start Ceteris when the system starts')}
       >
         <label className="settings-checkbox">
           <input
@@ -2414,7 +2414,7 @@ function SystemIntegrationPanel({
       {/* —— 打开方式(纯偏好,保留在 settings.json) —— */}
       <SettingRow
         label={tx('打开方式', 'Open in')}
-        hint={tx('Marina 已在运行时,从 Explorer 触发的新会话开在哪里', 'When Marina is already running, where new sessions from the file manager appear')}
+        hint={tx('Ceteris 已在运行时,从 Explorer 触发的新会话开在哪里', 'When Ceteris is already running, where new sessions from the file manager appear')}
       >
         <div className="settings-radio-group">
           <label className="settings-radio">
@@ -2605,8 +2605,8 @@ function AiPanel({
       <h2 className="settings-panel-title">{tx('AI 助手', 'AI Assistant')}</h2>
       <p className="settings-panel-hint">
         {tx(
-          'Marina 第一个 LLM 集成点。当前唯一用途是 BETA-006:active→idle 跃迁前让 LLM 看一眼 scrollback,避免 Vite 等长输出工具被误判 idle。所有 API 调用走主进程,不暴露 key 到 renderer。',
-          "Marina's first LLM integration. Current use: BETA-006 status recheck — let the LLM glance at the scrollback before active→idle transition, so long-running tools like Vite aren't falsely marked idle. All API calls go through the main process; the key is never exposed to the renderer.",
+          'Ceteris 第一个 LLM 集成点。当前唯一用途是 BETA-006:active→idle 跃迁前让 LLM 看一眼 scrollback,避免 Vite 等长输出工具被误判 idle。所有 API 调用走主进程,不暴露 key 到 renderer。',
+          "Ceteris's first LLM integration. Current use: BETA-006 status recheck — let the LLM glance at the scrollback before active→idle transition, so long-running tools like Vite aren't falsely marked idle. All API calls go through the main process; the key is never exposed to the renderer.",
         )}
       </p>
 
@@ -2705,8 +2705,8 @@ function AiPanel({
 
           <div className="settings-privacy-notice" role="note">
             <strong>{tx('隐私提示', 'Privacy notice')}</strong> · {tx(
-              '开启"状态复核"后,Marina 在每次 active→idle 跃迁时会把以下数据通过 HTTPS 发送给你配置的 AI 服务商(可能是第三方,如 Kimi / DeepSeek / OpenAI / Anthropic):',
-              'When "Status recheck" is on, Marina sends the following over HTTPS to the AI provider you configured (may be a third party such as Kimi / DeepSeek / OpenAI / Anthropic) on each active→idle transition:',
+              '开启"状态复核"后,Ceteris 在每次 active→idle 跃迁时会把以下数据通过 HTTPS 发送给你配置的 AI 服务商(可能是第三方,如 Kimi / DeepSeek / OpenAI / Anthropic):',
+              'When "Status recheck" is on, Ceteris sends the following over HTTPS to the AI provider you configured (may be a third party such as Kimi / DeepSeek / OpenAI / Anthropic) on each active→idle transition:',
             )}
             <ul>
               <li>
@@ -3003,7 +3003,7 @@ function AdvancedPanel({
 // 关于分类
 // ──────────────────────────────────────────────────────────────────
 
-const GITHUB_REPO = 'https://github.com/Liyue-Cheng/marina';
+const GITHUB_REPO = 'https://github.com/Fanisting/marina';
 const GITHUB_RELEASES = `${GITHUB_REPO}/releases`;
 
 const ACKNOWLEDGEMENTS: Array<{ name: string; url: string; tone: string }> = [
@@ -3090,7 +3090,7 @@ function AboutPanel(): JSX.Element {
         <span className="settings-info-text">MIT</span>
       </SettingRow>
 
-      <SettingRow label={tx('致谢', 'Acknowledgements')} hint={tx('Marina 站在这些项目的肩上', 'Marina stands on the shoulders of these projects')}>
+      <SettingRow label={tx('致谢', 'Acknowledgements')} hint={tx('Ceteris 站在这些项目的肩上', 'Ceteris stands on the shoulders of these projects')}>
         <ul className="acknowledgements-list">
           {ACKNOWLEDGEMENTS.map((a) => (
             <li key={a.name}>

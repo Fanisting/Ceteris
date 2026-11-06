@@ -1,7 +1,7 @@
 # 生成开发期自签代码签名证书,并导入到本机信任存储。
 #
 # 一次性脚本:重复运行会生成新证书(旧的会留在 Cert:\CurrentUser\My 里,
-# 不影响本流程,但建议手动 Get-ChildItem Cert:\CurrentUser\My | ? Subject -eq "CN=Marina Dev" 后 Remove-Item 清理)。
+# 不影响本流程,但建议手动 Get-ChildItem Cert:\CurrentUser\My | ? Subject -eq "CN=Ceteris Dev" 后 Remove-Item 清理)。
 #
 # 终态产物 (在 native\context-menu 根目录):
 #   dev-cert.pfx  — SignTool 用,密码 "marina-dev"
@@ -12,14 +12,14 @@
 # 需要管理员权限(脚本会用 Start-Process -Verb RunAs 弹 UAC)。
 #
 # 重要:Publisher 字段必须与 AppxManifest.xml 的 Identity Publisher 完全一致
-# ("CN=Marina Dev"),否则 SignTool 签名后 Add-AppxPackage 会拒绝包。
+# ("CN=Ceteris Dev"),否则 SignTool 签名后 Add-AppxPackage 会拒绝包。
 
 $ErrorActionPreference = 'Stop'
 
 $root = $PSScriptRoot | Split-Path -Parent
 Set-Location $root
 
-$subject = "CN=Marina Dev"
+$subject = "CN=Ceteris Dev"
 
 Write-Host "[1/4] Generating self-signed cert: $subject" -ForegroundColor Cyan
 $cert = New-SelfSignedCertificate `
@@ -27,7 +27,7 @@ $cert = New-SelfSignedCertificate `
     -Subject $subject `
     -CertStoreLocation Cert:\CurrentUser\My `
     -KeyUsage DigitalSignature `
-    -FriendlyName "Marina Context Menu Dev Cert" `
+    -FriendlyName "Ceteris Context Menu Dev Cert" `
     -NotAfter (Get-Date).AddYears(3) `
     -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
 

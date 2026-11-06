@@ -1,7 +1,7 @@
 {
-  "_meta": "Marina 中文文案。键名走 dot.path 命名,与 src/renderer/components 大致对齐。缺译时回退到 en-US,再回退到 key 字面值(开发期容易发现漏)。",
+  "_meta": "Ceteris 中文文案。键名走 dot.path 命名,与 src/renderer/components 大致对齐。缺译时回退到 en-US,再回退到 key 字面值(开发期容易发现漏)。",
 
-  "lastSession.title": "确定关闭 Marina?",
+  "lastSession.title": "确定关闭 Ceteris?",
   "lastSession.message": "仍有 {count} 个会话在运行,关闭后将被终止。",
   "lastSession.confirm": "关闭",
   "lastSession.cancel": "取消",
@@ -70,11 +70,11 @@
   "settings.toneTag.light": "浅色",
 
   "settings.data.dir.label": "数据目录",
-  "settings.data.dir.hint": "所有 Marina 配置文件存放处",
+  "settings.data.dir.hint": "所有 Ceteris 配置文件存放处",
   "settings.data.openInExplorer": "在 Explorer 中打开",
 
   "settings.ai.title": "AI 助手",
-  "settings.ai.intro": "Marina 第一个 LLM 集成点。当前唯一用途是 BETA-006:active→idle 跃迁前让 LLM 看一眼 scrollback,避免 Vite 等长输出工具被误判 idle。所有 API 调用走主进程,不暴露 key 到 renderer。",
+  "settings.ai.intro": "Ceteris 第一个 LLM 集成点。当前唯一用途是 BETA-006:active→idle 跃迁前让 LLM 看一眼 scrollback,避免 Vite 等长输出工具被误判 idle。所有 API 调用走主进程,不暴露 key 到 renderer。",
   "settings.ai.provider.label": "服务商",
   "settings.ai.provider.hint": "选择后才会激活其它字段",
   "settings.ai.provider.disabled": "未启用",
@@ -118,7 +118,7 @@
   "terminal.toolbar.emptyScrollback": "当前 scrollback 为空",
 
   "tray.openWindow": "打开窗口",
-  "tray.quit": "完全退出 Marina",
+  "tray.quit": "完全退出 Ceteris",
 
   "toast.win11MenuUpdated": "右键菜单已更新,确保设置生效请重启计算机",
 

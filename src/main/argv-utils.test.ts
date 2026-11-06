@@ -8,22 +8,22 @@ import { parseOpenHere } from './argv-utils';
 describe('parseOpenHere', () => {
   it('找到 --open-here 后取下一个 token', () => {
     expect(
-      parseOpenHere(['C:\\Marina.exe', '--open-here', 'D:\\projects\\foo']),
+      parseOpenHere(['C:\\Ceteris.exe', '--open-here', 'D:\\projects\\foo']),
     ).toBe('D:\\projects\\foo');
   });
 
   it('没有 --open-here 返回 null', () => {
-    expect(parseOpenHere(['C:\\Marina.exe', '--auto-start'])).toBeNull();
+    expect(parseOpenHere(['C:\\Ceteris.exe', '--auto-start'])).toBeNull();
   });
 
   it('--open-here 在末尾(没有下一个 token)返回 null', () => {
-    expect(parseOpenHere(['C:\\Marina.exe', '--open-here'])).toBeNull();
+    expect(parseOpenHere(['C:\\Ceteris.exe', '--open-here'])).toBeNull();
   });
 
   it('--open-here 后无任何非 flag token 返回 null', () => {
     // 历史测试 "防误吃" — 现在含义是 "扫完都没非 flag token"
     expect(
-      parseOpenHere(['C:\\Marina.exe', '--open-here', '--auto-start']),
+      parseOpenHere(['C:\\Ceteris.exe', '--open-here', '--auto-start']),
     ).toBeNull();
   });
 
@@ -31,7 +31,7 @@ describe('parseOpenHere', () => {
     // Electron 31 second-instance argv 实测形态
     expect(
       parseOpenHere([
-        'C:\\Marina.exe',
+        'C:\\Ceteris.exe',
         '--open-here',
         '--allow-file-access-from-files',
         'C:\\Users\\liyue\\Desktop',
@@ -58,7 +58,7 @@ describe('parseOpenHere', () => {
   });
 
   it('--open-here 后是空字符串 返回 null', () => {
-    expect(parseOpenHere(['C:\\Marina.exe', '--open-here', ''])).toBeNull();
+    expect(parseOpenHere(['C:\\Ceteris.exe', '--open-here', ''])).toBeNull();
   });
 
   it('多次出现取第一次', () => {

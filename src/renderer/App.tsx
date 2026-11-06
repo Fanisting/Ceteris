@@ -111,13 +111,13 @@ export function App(): JSX.Element {
   }, []);
 
   if (handshake.status === 'pending') {
-    return <FullPagePlaceholder title="Marina" subtitle="正在握手…" />;
+    return <FullPagePlaceholder title="Ceteris" subtitle="正在握手…" />;
   }
 
   if (handshake.status === 'mismatch') {
     return (
       <FullPagePlaceholder
-        title="Marina"
+        title="Ceteris"
         subtitle="协议版本不匹配"
         body={`主进程协议版本 ${handshake.mainVersion},渲染端 ${handshake.rendererVersion}。请重启应用或重装。`}
         variant="error"
@@ -128,7 +128,7 @@ export function App(): JSX.Element {
   if (handshake.status === 'error') {
     return (
       <FullPagePlaceholder
-        title="Marina"
+        title="Ceteris"
         subtitle="启动失败"
         body={handshake.message}
         variant="error"
@@ -245,7 +245,7 @@ function ConnectedShell({
   if (sync.error) {
     return (
       <FullPagePlaceholder
-        title="Marina"
+        title="Ceteris"
         subtitle="加载 snapshot 失败"
         body={sync.error}
         variant="error"
@@ -254,7 +254,7 @@ function ConnectedShell({
   }
 
   if (!sync.ready) {
-    return <FullPagePlaceholder title="Marina" subtitle="加载状态…" />;
+    return <FullPagePlaceholder title="Ceteris" subtitle="加载状态…" />;
   }
 
   return (
@@ -273,7 +273,7 @@ function ConnectedShell({
               windowStyle={windowStyle}
               buildType={buildType}
             />
-            {/* Marina Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
+            {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
             <LinkConnectionBanner />
             {state.inSettingsView ? (
               <SettingsView />

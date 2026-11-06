@@ -268,7 +268,7 @@ class LinkConnection {
         code: 'version-mismatch',
         message:
           `Host 的 Link 协议版本是 ${LINK_PROTOCOL_VERSION},客户端是 ${msg.linkVersion}。` +
-          `请把两端 Marina 升级到同一版本。`,
+          `请把两端 Ceteris 升级到同一版本。`,
       });
       throw new Error(`link 协议版本不匹配:client=${msg.linkVersion}`);
     }
@@ -357,7 +357,7 @@ class LinkConnection {
         code: 'ipc-version-mismatch',
         message:
           `Host 的 IPC 协议版本是 ${PROTOCOL_VERSION},客户端是 ${msg.ipcProtocolVersion}。` +
-          `两端 Marina 版本不一致,请升级到同一版本。`,
+          `两端 Ceteris 版本不一致,请升级到同一版本。`,
       });
       this.destroy('ipc-version-mismatch');
       return;
@@ -733,7 +733,7 @@ function describeListenError(err: NodeJS.ErrnoException, options: LinkServerStar
   switch (err.code) {
     case 'EADDRINUSE':
       return (
-        `端口 ${options.port} 已被占用。可能是另一个 Marina 实例正在监听,` +
+        `端口 ${options.port} 已被占用。可能是另一个 Ceteris 实例正在监听,` +
         `或别的程序占了这个端口。换一个端口,或先关掉占用方。`
       );
     case 'EADDRNOTAVAIL':

@@ -5,14 +5,14 @@
 #
 # 对应文档:软件定义书.md 第 14 章 (开源策略)、AGENTS.md 4.2 (CP-4 打包要求)
 #
-# 改名变更 (v1.5,2026-05-12):产品名从 EasyTerm 改为 Marina。
+# 改名变更 (v1.5,2026-05-12):产品名从 EasyTerm 改为 Ceteris。
 # appId 变更会让 Windows 把它视为新产品(独立安装项 + 独立 userData 目录),
-# 旧 EasyTerm 数据目录 %APPDATA%\EasyTerm 需手动迁移到 %APPDATA%\Marina,
+# 旧 EasyTerm 数据目录 %APPDATA%\EasyTerm 需手动迁移到 %APPDATA%\Ceteris,
 # 详见 docs/marina-改名工作记录-20260512.md。
 
-appId: com.liyue-cheng.marina
-productName: Marina
-copyright: Copyright (c) 2026 Liyue-Cheng
+appId: com.fanisting.ceteris
+productName: Ceteris
+copyright: Copyright (c) 2026 Liyue-Cheng, Fanisting
 
 directories:
   output: release/${version}
@@ -39,10 +39,10 @@ extraResources:
   # Win11 新右键菜单(IExplorerCommand)资源 —— 仅 installed 形态使用,
   # SettingsView 通过 cmd:explorer-integration:set-modern 触发 install.ps1。
   # MSIX 包由 native/context-menu/scripts/build.ps1 离线生成,这里只搬运产物。
-  - from: native/context-menu/build/MarinaContextMenu.msix
-    to: context-menu/MarinaContextMenu.msix
+  - from: native/context-menu/build/CeterisContextMenu.msix
+    to: context-menu/CeterisContextMenu.msix
   - from: native/context-menu/dev-cert.cer
-    to: context-menu/marina-cert.cer
+    to: context-menu/ceteris-cert.cer
   - from: scripts/install-context-menu.ps1
     to: context-menu/install.ps1
   - from: scripts/uninstall-context-menu.ps1
@@ -71,7 +71,7 @@ nsis:
   perMachine: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Marina
+  shortcutName: Ceteris
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   # 卸载时清理 Explorer 右键集成的 HKCU 注册表项,避免旧 command 指向已删 exe
@@ -96,7 +96,7 @@ mac:
 ##   注册为 x-terminal-emulator (优先级 50;系统默认 gnome-terminal 是 40)
 ## - AppImage 走单文件分发,无需 root;StartupWMClass 让任务栏图标分组正确
 ## - desktop entry 通过 Categories=System;TerminalEmulator 让 Nautilus / Nemo /
-##   Caja 的 "在终端中打开" 找到 Marina (走 gsettings + freedesktop spec)
+##   Caja 的 "在终端中打开" 找到 Ceteris (走 gsettings + freedesktop spec)
 linux:
   target:
     - target: deb
@@ -106,27 +106,27 @@ linux:
     - target: AppImage
       arch: [x64]
   # category 是 freedesktop "Main Category" 之一,electron-builder 把它写入
-  # /usr/share/applications/marina.desktop 的 Categories= 字段。选 TerminalEmulator
-  # 让 Nautilus / Nemo 等文件管理器识别 Marina 为"终端"类型应用,GNOME 设置 →
-  # 默认应用 → 终端 下拉也会列出 Marina。
+  # /usr/share/applications/ceteris.desktop 的 Categories= 字段。选 TerminalEmulator
+  # 让 Nautilus / Nemo 等文件管理器识别 Ceteris 为"终端"类型应用,GNOME 设置 →
+  # 默认应用 → 终端 下拉也会列出 Ceteris。
   category: TerminalEmulator
-  executableName: marina
+  executableName: ceteris
   icon: build/icon.png
   synopsis: 现代化的终端模拟器
-  description: Marina 是一款以"路径"为核心的终端管理器,内置 AI 助手联动,适配 Windows / Linux。
+  description: Ceteris 是一款以"路径"为核心的终端管理器,内置 AI 助手联动,适配 Windows / Linux。
   # electron-builder 24.x:desktop 字段直接平铺为 key/value,自动写入
-  # /usr/share/applications/marina.desktop。Exec 行由 executableName=marina 自动
-  # 生成为 `marina %U`(走 /usr/bin/marina 软链);Nautilus / Nemo / Caja 等的
+  # /usr/share/applications/ceteris.desktop。Exec 行由 executableName=marina 自动
+  # 生成为 `marina %U`(走 /usr/bin/ceteris 软链);Nautilus / Nemo / Caja 等的
   # "在终端中打开"通过 gsettings + 子进程 cwd 继承传目录,不依赖 Exec 参数 ——
   # 见 main/index.ts 启动期 process.cwd() 的解析路径(BETA-003c)。
   desktop:
-    Name: Marina
+    Name: Ceteris
     GenericName: Terminal Emulator
     Comment: A modern terminal emulator
     Categories: System;TerminalEmulator;
     Keywords: shell;prompt;command;commandline;cmd;
     MimeType: inode/directory;
-    StartupWMClass: Marina
+    StartupWMClass: Ceteris
     StartupNotify: 'true'
   artifactName: ${productName}-${version}-${arch}.${ext}
 

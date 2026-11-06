@@ -57,7 +57,7 @@ describe('resolveBindAddress', () => {
 });
 
 describe('needsRebind', () => {
-  it('Marina 先于 Tailscale 启动:地址出现后需要重新绑定', () => {
+  it('Ceteris 先于 Tailscale 启动:地址出现后需要重新绑定', () => {
     expect(needsRebind({ listening: true, boundAddress: '127.0.0.1' }, '100.64.0.2')).toBe(true);
   });
 

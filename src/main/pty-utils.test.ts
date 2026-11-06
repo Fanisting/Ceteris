@@ -87,41 +87,41 @@ describe('buildSpawnEnv', () => {
 describe('injectTerminalHintEnv', () => {
   it('默认写出四件套:TERM=xterm-256color / COLORTERM=truecolor / TERM_PROGRAM / TERM_PROGRAM_VERSION', () => {
     const env: Record<string, string> = {};
-    injectTerminalHintEnv(env, { programName: 'Marina', appVersion: '0.1.0' });
+    injectTerminalHintEnv(env, { programName: 'Ceteris', appVersion: '0.1.0' });
     expect(env).toEqual({
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      TERM_PROGRAM: 'Marina',
+      TERM_PROGRAM: 'Ceteris',
       TERM_PROGRAM_VERSION: '0.1.0',
     });
   });
 
-  it('覆盖父进程继承的 TERM_PROGRAM —— 从 VS Code 终端启动 Marina 不应让子 shell 看到 vscode', () => {
+  it('覆盖父进程继承的 TERM_PROGRAM —— 从 VS Code 终端启动 Ceteris 不应让子 shell 看到 vscode', () => {
     const env: Record<string, string> = {
       TERM_PROGRAM: 'vscode',
       TERM_PROGRAM_VERSION: '1.95.0',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
     };
-    injectTerminalHintEnv(env, { programName: 'Marina', appVersion: '0.1.0' });
-    expect(env.TERM_PROGRAM).toBe('Marina');
+    injectTerminalHintEnv(env, { programName: 'Ceteris', appVersion: '0.1.0' });
+    expect(env.TERM_PROGRAM).toBe('Ceteris');
     expect(env.TERM_PROGRAM_VERSION).toBe('0.1.0');
   });
 
   it('appVersion 缺失 / 空串 → 主动 delete 继承的旧值 (避免泄漏父终端版本号)', () => {
     const env: Record<string, string> = { TERM_PROGRAM_VERSION: '1.95.0' };
-    injectTerminalHintEnv(env, { programName: 'Marina' });
+    injectTerminalHintEnv(env, { programName: 'Ceteris' });
     expect(Object.hasOwn(env, 'TERM_PROGRAM_VERSION')).toBe(false);
 
     const env2: Record<string, string> = { TERM_PROGRAM_VERSION: '1.95.0' };
-    injectTerminalHintEnv(env2, { programName: 'Marina', appVersion: '' });
+    injectTerminalHintEnv(env2, { programName: 'Ceteris', appVersion: '' });
     expect(Object.hasOwn(env2, 'TERM_PROGRAM_VERSION')).toBe(false);
   });
 
   it('term / colorTerm option 可覆盖默认值 (给调试 / 特殊场景留口)', () => {
     const env: Record<string, string> = {};
     injectTerminalHintEnv(env, {
-      programName: 'Marina',
+      programName: 'Ceteris',
       term: 'dumb',
       colorTerm: '',
     });
@@ -131,7 +131,7 @@ describe('injectTerminalHintEnv', () => {
 
   it('返回值就是入参 env(原地修改,方便链式),不会拷贝出新对象', () => {
     const env: Record<string, string> = { FOO: 'bar' };
-    const ret = injectTerminalHintEnv(env, { programName: 'Marina', appVersion: '1.0' });
+    const ret = injectTerminalHintEnv(env, { programName: 'Ceteris', appVersion: '1.0' });
     expect(ret).toBe(env);
     expect(env.FOO).toBe('bar');
   });

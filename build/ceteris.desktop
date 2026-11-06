@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Marina
+Name=Ceteris
 GenericName=Terminal Emulator
 GenericName[zh_CN]=终端模拟器
 Comment=A modern terminal emulator
@@ -11,7 +11,7 @@ Terminal=false
 Categories=System;TerminalEmulator;
 Keywords=shell;prompt;command;commandline;cmd;
 MimeType=inode/directory;
-StartupWMClass=Marina
+StartupWMClass=Ceteris
 StartupNotify=true
 Actions=NewWindow;
 

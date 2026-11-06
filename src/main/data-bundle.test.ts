@@ -99,7 +99,7 @@ describe('data bundle', () => {
     await fs.rm(base, { recursive: true, force: true });
   });
 
-  it('with no agents chosen the bundle is only the light Marina files', async () => {
+  it('with no agents chosen the bundle is only the light Ceteris files', async () => {
     await makeBundle([]);
     const names = (await fs.readdir(bundle)).sort();
     expect(names).toEqual(['manifest.json', 'marina.json', 'tabs.json']);

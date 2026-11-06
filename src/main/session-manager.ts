@@ -598,7 +598,7 @@ export class SessionManager extends EventEmitter {
         if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
           throw new SessionManagerError(
             'CwdNotAccessible',
-            `工作目录 "${cwd}" 不存在或不是目录。可能它被删除 / 改名,或路径里含 Marina 无法访问的字符。`,
+            `工作目录 "${cwd}" 不存在或不是目录。可能它被删除 / 改名,或路径里含 Ceteris 无法访问的字符。`,
             { cwd },
           );
         }
@@ -669,7 +669,7 @@ export class SessionManager extends EventEmitter {
     // 必须在合并 launchParams.env / template.env 之前,这样用户在启动模板里
     // 显式写 `TERM=dumb` 仍能覆盖我们的默认值。详见 pty-utils.injectTerminalHintEnv。
     injectTerminalHintEnv(env, {
-      programName: 'Marina',
+      programName: 'Ceteris',
       appVersion: this.appVersion,
     });
     Object.assign(env, launchParams.env);
@@ -689,7 +689,7 @@ export class SessionManager extends EventEmitter {
           `无法定位本机 ssh.exe,无法连接 SSH profile "${input.sshProfile!.name}" cwd="${cwd}". ` +
             `可能原因: (1) Windows OpenSSH Client 未安装; ` +
             `(2) PATH 缺少 %SystemRoot%\\System32\\OpenSSH; ` +
-            `(3) Marina 继承的环境变量损坏。请在 Windows 设置 → 可选功能中安装 OpenSSH Client,` +
+            `(3) Ceteris 继承的环境变量损坏。请在 Windows 设置 → 可选功能中安装 OpenSSH Client,` +
             `或确认 C:\\Windows\\System32\\OpenSSH\\ssh.exe 存在。`,
           { executable: 'ssh', cwd, sshProfileId: input.sshProfile!.id },
         );
@@ -1990,7 +1990,7 @@ function buildRemoteLoginCommand(
     !!options.forceTmuxChoice,
   );
   const failCommand =
-    'printf %s\\\\n "Marina: tmux attach/create failed on the remote host." >&2; exit 127';
+    'printf %s\\\\n "Ceteris: tmux attach/create failed on the remote host." >&2; exit 127';
   const fallbackAfterFailure =
     profile.tmuxOnMissing === 'fail' ? failCommand : launchCommand;
   // tmux 本身只是远端 shell 里的一个全屏程序,不是 Marina session 的终点。
@@ -2001,7 +2001,7 @@ function buildRemoteLoginCommand(
   const tmuxBootstrap =
     `${cdCommand} && if command -v tmux >/dev/null 2>&1; then ` +
     `if ${tmuxCommand}\nthen ${launchCommand}; else ` +
-    `{ printf %s\\\\n "Marina: tmux attach/create failed; falling back to shell." >&2; ${fallbackAfterFailure}; }; fi; ` +
+    `{ printf %s\\\\n "Ceteris: tmux attach/create failed; falling back to shell." >&2; ${fallbackAfterFailure}; }; fi; ` +
     `else ${fallbackAfterFailure}; fi`;
   // SSH remote command 默认由远端 login shell 以非登录/非交互方式执行。
   // 有些机器的 tmux 依赖 login shell 初始化出来的 PATH / locale / conda 等环境:
@@ -2030,7 +2030,7 @@ function buildRemoteTemplateCommand(input: {
   return (
     `${runCommand}; marina_template_status=$?; ` +
     `if [ "$marina_template_status" -eq 127 ]; then ` +
-    `{ printf %s\\\\n "Marina: remote template command not found or not in PATH: ${input.command}" >&2; }; fi; ` +
+    `{ printf %s\\\\n "Ceteris: remote template command not found or not in PATH: ${input.command}" >&2; }; fi; ` +
     `unset marina_template_status`
   );
 }
@@ -2101,7 +2101,7 @@ if [ "$count" = "1" ] && [ "$force" != "1" ]; then
   tmux -L marina attach-session -t "$sessions"
   exit $?
 fi
-printf '\\nMarina found tmux sessions for %s:\\n' "$base"
+printf '\\nCeteris found tmux sessions for %s:\\n' "$base"
 n=1
 printf '%s\\n' "$sessions" | sed '/^$/d' | while IFS= read -r s; do printf '  %s) attach %s\\n' "$n" "$s"; n=$((n + 1)); done
 printf '  n) create new session\\nSelect: '

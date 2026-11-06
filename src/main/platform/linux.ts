@@ -83,7 +83,7 @@ export class LinuxAdapter implements PlatformAdapter {
   private readonly autostartPath = join(
     process.env['XDG_CONFIG_HOME'] ?? join(homedir(), '.config'),
     'autostart',
-    'marina.desktop',
+    'ceteris.desktop',
   );
 
   async detectShells(): Promise<ShellInfo[]> {
@@ -218,7 +218,7 @@ export class LinuxAdapter implements PlatformAdapter {
         'set',
         'org.gnome.desktop.default-applications.terminal',
         'exec',
-        'marina',
+        'ceteris',
       ]);
       oneSucceeded = true;
     } catch (err) {
@@ -233,7 +233,7 @@ export class LinuxAdapter implements PlatformAdapter {
       await execFileAsync('update-alternatives', [
         '--set',
         'x-terminal-emulator',
-        '/usr/bin/marina',
+        '/usr/bin/ceteris',
       ]);
       oneSucceeded = true;
     } catch {
@@ -241,7 +241,7 @@ export class LinuxAdapter implements PlatformAdapter {
         await execFileAsync('alternatives', [
           '--set',
           'x-terminal-emulator',
-          '/usr/bin/marina',
+          '/usr/bin/ceteris',
         ]);
         oneSucceeded = true;
       } catch (err2) {
@@ -311,7 +311,7 @@ export class LinuxAdapter implements PlatformAdapter {
         [
           '[Desktop Entry]',
           'Type=Application',
-          'Name=Marina',
+          'Name=Ceteris',
           `Exec=${realExec}`,
           'Hidden=false',
           'NoDisplay=false',

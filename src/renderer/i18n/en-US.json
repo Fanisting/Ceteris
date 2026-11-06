@@ -1,7 +1,7 @@
 {
-  "_meta": "Marina English strings. Keys follow dot.path naming, roughly aligned with src/renderer/components. Missing translations fall back to the key literal so dev-mode reveals gaps.",
+  "_meta": "Ceteris English strings. Keys follow dot.path naming, roughly aligned with src/renderer/components. Missing translations fall back to the key literal so dev-mode reveals gaps.",
 
-  "lastSession.title": "Close Marina?",
+  "lastSession.title": "Close Ceteris?",
   "lastSession.message": "{count} active session(s) will be terminated.",
   "lastSession.confirm": "Close",
   "lastSession.cancel": "Cancel",
@@ -70,11 +70,11 @@
   "settings.toneTag.light": "light",
 
   "settings.data.dir.label": "Data directory",
-  "settings.data.dir.hint": "Where all Marina config files are stored",
+  "settings.data.dir.hint": "Where all Ceteris config files are stored",
   "settings.data.openInExplorer": "Open in Explorer",
 
   "settings.ai.title": "AI Assistant",
-  "settings.ai.intro": "Marina's first LLM integration. Currently used only for BETA-006: an active→idle LLM recheck so long-output tools like Vite are not mis-classified as idle. All API calls go through the main process; keys are never exposed to the renderer.",
+  "settings.ai.intro": "Ceteris's first LLM integration. Currently used only for BETA-006: an active→idle LLM recheck so long-output tools like Vite are not mis-classified as idle. All API calls go through the main process; keys are never exposed to the renderer.",
   "settings.ai.provider.label": "Provider",
   "settings.ai.provider.hint": "Other fields activate once a provider is selected",
   "settings.ai.provider.disabled": "Disabled",
@@ -118,7 +118,7 @@
   "terminal.toolbar.emptyScrollback": "Scrollback is empty",
 
   "tray.openWindow": "Open window",
-  "tray.quit": "Quit Marina",
+  "tray.quit": "Quit Ceteris",
 
   "toast.win11MenuUpdated": "Right-click menu updated. Restart your computer to ensure changes take effect.",
 

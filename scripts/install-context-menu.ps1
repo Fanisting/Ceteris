@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 # scripts/install-context-menu.ps1
 #
-# Install the Marina Win11 new right-click menu (IExplorerCommand).
+# Install the Ceteris Win11 new right-click menu (IExplorerCommand).
 # Triggered by Settings -> "Win11 new menu -> Enable" via the main
 # process invoking powershell.exe.
 #
@@ -25,7 +25,7 @@
 #   The elevated child cannot write to the non-elevated parent's stdout
 #   pipe. We funnel everything through a transcript file under %TEMP%; the
 #   non-elevated wrapper reads it after the child exits and re-emits to
-#   its own stdout/stderr, so the Marina main process sees the same shape
+#   its own stdout/stderr, so the Ceteris main process sees the same shape
 #   it did before this change.
 #
 # Parameters:
@@ -170,13 +170,13 @@ try {
     }
 
     Write-Output "[2/2] Registering MSIX package"
-    $existing = Get-AppxPackage -Name 'Marina.ContextMenu' -ErrorAction SilentlyContinue
+    $existing = Get-AppxPackage -Name 'Ceteris.ContextMenu' -ErrorAction SilentlyContinue
     if ($null -ne $existing) {
         Write-Output "    Already installed ($($existing.Version)), skipping Add-AppxPackage"
     } else {
         try {
             Add-AppxPackage -Path $MsixPath -ErrorAction Stop
-            Write-Output "    Registered Marina.ContextMenu"
+            Write-Output "    Registered Ceteris.ContextMenu"
         } catch {
             Write-Error "Add-AppxPackage failed: $($_.Exception.Message)"
             exit 4

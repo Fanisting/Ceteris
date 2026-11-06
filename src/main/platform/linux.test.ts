@@ -212,7 +212,7 @@ describe('LinuxAdapter — setAutoStart / isAutoStartEnabled', () => {
     const [, content] = fsWrite.mock.calls[0]!;
     expect(content).toContain('[Desktop Entry]');
     expect(content).toContain('Type=Application');
-    expect(content).toContain('Name=Marina');
+    expect(content).toContain('Name=Ceteris');
     expect(content).toContain('Exec=');
   });
 
@@ -249,7 +249,7 @@ describe('LinuxAdapter — registerFileManagerIntegration', () => {
       },
     );
     const adapter = new LinuxAdapter();
-    await adapter.registerFileManagerIntegration('/usr/bin/marina');
+    await adapter.registerFileManagerIntegration('/usr/bin/ceteris');
 
     const cmds = execFileMock.mock.calls.map((c) => c[0]);
     expect(cmds).toContain('gsettings');
@@ -273,7 +273,7 @@ describe('LinuxAdapter — registerFileManagerIntegration', () => {
       },
     );
     const adapter = new LinuxAdapter();
-    await adapter.registerFileManagerIntegration('/usr/bin/marina');
+    await adapter.registerFileManagerIntegration('/usr/bin/ceteris');
 
     const cmds = execFileMock.mock.calls.map((c) => c[0]);
     expect(cmds).toContain('alternatives');

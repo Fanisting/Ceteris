@@ -213,7 +213,7 @@ function writeMessage(ep: Endpoint, msg: unknown): void {
   ep.socket.write(encodeFrame(ep.send.encrypt(Buffer.from(JSON.stringify(msg), 'utf8'))));
 }
 
-describe('Marina Link 握手(真实 TCP)', () => {
+describe('Ceteris Link 握手(真实 TCP)', () => {
   it('token 一致时,双方派生出可互通的会话密钥', async () => {
     const token = generateLinkToken();
     const host = await startHost(token);

@@ -11,13 +11,13 @@
     IgnorableNamespaces="uap uap3 uap10 com desktop4 desktop5 rescap">
 
   <Identity
-      Name="Marina.ContextMenu"
-      Publisher="CN=Marina Dev"
+      Name="Ceteris.ContextMenu"
+      Publisher="CN=Ceteris Dev"
       Version="0.1.0.0" />
 
   <Properties>
-    <DisplayName>Marina Context Menu</DisplayName>
-    <PublisherDisplayName>Marina Dev</PublisherDisplayName>
+    <DisplayName>Ceteris Context Menu</DisplayName>
+    <PublisherDisplayName>Ceteris Dev</PublisherDisplayName>
     <Logo>assets\StoreLogo.png</Logo>
     <!-- 不声明 AllowExternalContent:MSIX 自包含 DLL/exe/assets (build.ps1 stage 进来),
          走标准 Add-AppxPackage 安装到 WindowsApps,不走 sparse + ExternalLocation 路径.
@@ -38,8 +38,8 @@
         Executable="marina-context-menu-host.exe"
         EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-          DisplayName="Marina Context Menu"
-          Description="Marina Explorer 右键集成"
+          DisplayName="Ceteris Context Menu"
+          Description="Ceteris Explorer 右键集成"
           BackgroundColor="transparent"
           Square150x150Logo="assets\Square150x150Logo.png"
           Square44x44Logo="assets\Square44x44Logo.png"
@@ -47,8 +47,8 @@
       <Extensions>
         <com:Extension Category="windows.comServer">
           <com:ComServer>
-            <com:SurrogateServer DisplayName="Marina Context Menu Host">
-              <com:Class Id="7AB57E23-EBC8-46C2-9DEC-3E88EE3C9865"
+            <com:SurrogateServer DisplayName="Ceteris Context Menu Host">
+              <com:Class Id="300AB94D-0237-4425-8185-8AC06DF7A8B5"
                   Path="marina_context_menu.dll"
                   ThreadingModel="STA" />
             </com:SurrogateServer>
@@ -57,10 +57,10 @@
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
           <desktop4:FileExplorerContextMenus>
             <desktop5:ItemType Type="Directory">
-              <desktop5:Verb Id="MarinaOpen" Clsid="7AB57E23-EBC8-46C2-9DEC-3E88EE3C9865" />
+              <desktop5:Verb Id="MarinaOpen" Clsid="300AB94D-0237-4425-8185-8AC06DF7A8B5" />
             </desktop5:ItemType>
             <desktop5:ItemType Type="Directory\Background">
-              <desktop5:Verb Id="MarinaOpenHere" Clsid="7AB57E23-EBC8-46C2-9DEC-3E88EE3C9865" />
+              <desktop5:Verb Id="MarinaOpenHere" Clsid="300AB94D-0237-4425-8185-8AC06DF7A8B5" />
             </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>

@@ -399,7 +399,7 @@ export async function dispatchLocalCommand(
     throw new Error(
       `[ipc] dispatchLocalCommand: 未知 channel "${channel}"。` +
         `可能原因:(1) 客户端版本比 Host 新,用到了 Host 还没有的命令;` +
-        `(2) channel 名拼错。建议:把两端 Marina 升级到同一版本。`,
+        `(2) channel 名拼错。建议:把两端 Ceteris 升级到同一版本。`,
     );
   }
 
@@ -412,7 +412,7 @@ export async function dispatchLocalCommand(
   if (DIALOG_PARENT_REQUIRED_CHANNELS.has(channel) && !parentWebContents) {
     throw new Error(
       `[ipc] "${channel}" 需要在 Host 上弹出原生对话框,但 Host 当前没有打开任何窗口` +
-        `(纯托盘模式)。请在 Host 机器上先打开一个 Marina 窗口,或改为直接手动输入路径。`,
+        `(纯托盘模式)。请在 Host 机器上先打开一个 Ceteris 窗口,或改为直接手动输入路径。`,
     );
   }
 
@@ -1280,7 +1280,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_OPEN_DATA_DIR,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<void> => {
-      // app.getPath('userData') = %APPDATA%\Marina
+      // app.getPath('userData') = %APPDATA%\Ceteris
       await shell.openPath(app.getPath('userData'));
     },
   );
@@ -1288,7 +1288,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_OPEN_LOGS_DIR,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<void> => {
-      // logs 目录:%APPDATA%\Marina\logs (M1-D 起 logger.ts 实际会写;空目录也可打开)
+      // logs 目录:%APPDATA%\Ceteris\logs (M1-D 起 logger.ts 实际会写;空目录也可打开)
       // 还没接通日志框架,但目录能打开,空就空)。
       const logsDir = joinPath(app.getPath('userData'), 'logs');
       try {
@@ -1310,7 +1310,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_GET_DATA_DIR,
     (_e, _envelope: CommandEnvelope<undefined>): { dataDir: string } => {
-      // BETA-039:UI 设置页用真实绝对路径替代硬编码 %APPDATA%\Marina,
+      // BETA-039:UI 设置页用真实绝对路径替代硬编码 %APPDATA%\Ceteris,
       // 在 portable / dev / 自定义 userData 场景下也保持准确。
       return { dataDir: app.getPath('userData') };
     },
@@ -1528,9 +1528,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
           : '-public'
         : '';
       const result = await dialog.showSaveDialog(owner, {
-        title: '导出 Marina 配置',
-        defaultPath: `marina-config-${formatDateForFilename(new Date())}${suffix}.json`,
-        filters: [{ name: 'Marina Archive (JSON)', extensions: ['json'] }],
+        title: '导出 Ceteris 配置',
+        defaultPath: `ceteris-config-${formatDateForFilename(new Date())}${suffix}.json`,
+        filters: [{ name: 'Ceteris Archive (JSON)', extensions: ['json'] }],
       });
       if (result.canceled || !result.filePath) {
         return { filePath: null };
@@ -1581,7 +1581,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
           currentCwd: s.currentCwd ?? null,
           agent: detectAgent(s.templateId, sessionManager.getScreenTail(s.id, 40)),
         }));
-      const dir = joinPath(parent, `Marina-Export-${formatDateForFilename(new Date())}`);
+      const dir = joinPath(parent, `Ceteris-Export-${formatDateForFilename(new Date())}`);
       const { claude, codex } = envelope.payload;
       const manifest = await writeBundle({
         dir,
@@ -1600,7 +1600,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.DATA_PICK_BUNDLE,
     async (e): Promise<DataBundleSummary | null> => {
       const picked = await dialog.showOpenDialog(parentWindow(e), {
-        title: '选择 Marina 导出文件夹',
+        title: '选择 Ceteris 导出文件夹',
         properties: ['openDirectory'],
       });
       const dir = picked.filePaths[0];
@@ -1640,9 +1640,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       const result = await dialog.showOpenDialog(
         fromWindow ?? BrowserWindow.getFocusedWindow()!,
         {
-          title: '导入 Marina 配置',
+          title: '导入 Ceteris 配置',
           properties: ['openFile'],
-          filters: [{ name: 'Marina Archive (JSON)', extensions: ['json'] }],
+          filters: [{ name: 'Ceteris Archive (JSON)', extensions: ['json'] }],
         },
       );
       if (result.canceled || result.filePaths.length === 0) {
@@ -1802,7 +1802,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 function requireLinkManager(deps: IpcLayerDeps): LinkManager {
   if (!deps.linkManager) {
     throw new Error(
-      '[ipc] Marina Link 未初始化。可能原因:主进程启动时 LinkManager 构造失败。' +
+      '[ipc] Ceteris Link 未初始化。可能原因:主进程启动时 LinkManager 构造失败。' +
         '建议:查看日志目录下 main.log 里 LinkManager / LinkServer 的错误。',
     );
   }

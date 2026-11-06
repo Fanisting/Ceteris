@@ -99,6 +99,13 @@ export function MainPane(): JSX.Element {
   const slots = getPaneSlots(state);
   const myWindowId = state.myWindowId;
 
+  // When the selection moves between panes without a click, such as the selected pane
+  // closing, nothing else gives the keyboard to the new pane.
+  const selectedSessionId = state.selectedSessionId;
+  useEffect(() => {
+    if (layout !== 'single' && selectedSessionId) focusTerminalDom();
+  }, [layout, selectedSessionId]);
+
   // Panes hold their sessions: the main process must not release one when another pane
   // claims, and a pane cannot receive output or input until its session is ours.
   const paneIds = layout === 'single' ? [] : slots.flatMap((s) => (s ? [s.id] : []));
@@ -286,7 +293,13 @@ export function MainPane(): JSX.Element {
   );
 }
 
-/** The x on a split pane. Closes the session exactly as the x on its tab does. */
+/**
+ * The x on a split pane. Closes the session exactly as the x on its tab does.
+ *
+ * It never takes the keyboard. Handing focus back from here would land on the terminal
+ * being closed, whose focus report then reaches a session that no longer exists and shows
+ * a false warning. MainPane moves focus once the store has picked the next pane.
+ */
 function PaneCloseButton({ sessionId }: { sessionId: string }): JSX.Element {
   const { tx } = useTranslation();
   const label = tx('关闭终端', 'Close terminal');
@@ -296,11 +309,11 @@ function PaneCloseButton({ sessionId }: { sessionId: string }): JSX.Element {
       className="pane-close"
       title={label}
       aria-label={label}
+      onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         window.api
           .invoke(COMMAND_CHANNELS.SESSION_CLOSE, { sessionId })
           .catch((err) => console.error('[Pane] close failed', err));
-        focusTerminalDom();
       }}
     >
       <Icon name="close" size={14} />

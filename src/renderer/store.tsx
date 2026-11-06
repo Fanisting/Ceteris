@@ -286,8 +286,17 @@ function reducer(state: AppState, action: AppAction): AppState {
       sessions.delete(action.sessionId);
       const next: AppState = { ...state, sessions };
       // 当前选中的 session 被销毁 → 取消选中
+      // With split panes the selection moves to a pane still on screen instead: with
+      // nothing selected the keyboard has no pane to go to. Slots come from the state
+      // before the delete, so the choice follows the panes as the user sees them.
       if (state.selectedSessionId === action.sessionId) {
-        next.selectedSessionId = null;
+        const survivor =
+          getEffectivePaneLayout(state) === 'single'
+            ? undefined
+            : getPaneSlots(state).find(
+                (s) => s && s.id !== action.sessionId && s.ownerWindowId === state.myWindowId,
+              );
+        next.selectedSessionId = survivor?.id ?? null;
       }
       return next;
     }

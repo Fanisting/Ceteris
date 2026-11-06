@@ -1719,6 +1719,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
             return;
           }
           echo?.reset();
+          // Removing a focused terminal fires a blur, and its focus report reaches a
+          // session that was just closed. That is not input the user lost.
+          if (disposed) return;
           const now = Date.now();
           if (now - lastInputRejectToastAtRef.current < 5000) return;
           lastInputRejectToastAtRef.current = now;

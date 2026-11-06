@@ -1,4 +1,4 @@
-# Marina Link 线路协议规格
+# Ceteris Link 线路协议规格
 
 > Host 与 Client 两台机器之间的通信契约。
 > 与 `ipc-protocol.md` 的关系:那份定义"main 与 renderer 怎么说话",这份定义"两台机器怎么说话"。
@@ -10,14 +10,14 @@
 
 ## 1. 设计前提
 
-Marina 的既有架构里,renderer 是**无状态观察者**,只通过两个原语与 main 通信:
+Ceteris 的既有架构里,renderer 是**无状态观察者**,只通过两个原语与 main 通信:
 
 ```
 invoke(channel, payload) -> Promise<result>     // cmd:*
 on(channel, handler)                            // evt:*
 ```
 
-因此"让另一台机器上的窗口显示本机的会话"不需要新的业务层,只需要**换一条传输通道**。Marina Link 就是这条通道。
+因此"让另一台机器上的窗口显示本机的会话"不需要新的业务层,只需要**换一条传输通道**。Ceteris Link 就是这条通道。
 
 三条由此推导出的设计约束:
 
@@ -82,7 +82,7 @@ Client                                              Server
 shared = X25519(ownPriv, peerPub)                          // 32 字节
 ikm    = shared ‖ utf8(token)
 salt   = clientNonce ‖ serverNonce                         // 16 + 16 字节
-info   = utf8("marina-link/v1") ‖ clientPub ‖ serverPub
+info   = utf8("ceteris-link/v1") ‖ clientPub ‖ serverPub
 okm    = HKDF-SHA256(ikm, salt, info, 64)
 c2sKey = okm[0..32)
 s2cKey = okm[32..64)
@@ -182,7 +182,7 @@ socket 断开(任何原因)
    → Host 本机窗口可立即接管
 ```
 
-最后一步是这个特性与 Marina 核心哲学("会话不随窗口死")的接榫处:远程客户端断线在 Host 眼里与本地关掉一个窗口**是同一件事**,走同一条代码路径。
+最后一步是这个特性与 Ceteris 核心哲学("会话不随窗口死")的接榫处:远程客户端断线在 Host 眼里与本地关掉一个窗口**是同一件事**,走同一条代码路径。
 
 ### 6.1 重连保持身份
 

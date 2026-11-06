@@ -192,7 +192,7 @@ export class SftpConnection {
     return this.pending.size > 0;
   }
 
-  /** 是 Marina 自己关的,不是连接出了问题。 */
+  /** 是 Ceteris 自己关的,不是连接出了问题。 */
   get wasClosedByUs(): boolean {
     return this.closedByUs;
   }

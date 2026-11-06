@@ -1,7 +1,7 @@
 /**
  * @file src/shared/i18n.ts
  * @purpose BETA-004:自写的轻量 i18n 层。AGENTS.md 1.2 边界 2 禁止引入新依赖,
- *   ~100 行自实现足够覆盖 Marina 当前规模(~300-400 个文案点)。
+ *   ~100 行自实现足够覆盖 Ceteris 当前规模(~300-400 个文案点)。
  *
  *   设计:
  *   - 静态 import zh-CN.json + en-US.json,无运行时加载

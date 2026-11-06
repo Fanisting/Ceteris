@@ -8,7 +8,7 @@
 # 改名变更 (v1.5,2026-05-12):产品名从 EasyTerm 改为 Ceteris。
 # appId 变更会让 Windows 把它视为新产品(独立安装项 + 独立 userData 目录),
 # 旧 EasyTerm 数据目录 %APPDATA%\EasyTerm 需手动迁移到 %APPDATA%\Ceteris,
-# 详见 docs/marina-改名工作记录-20260512.md。
+# 详见 docs/ceteris-改名工作记录-20260512.md。
 
 appId: com.fanisting.ceteris
 productName: Ceteris
@@ -92,7 +92,7 @@ mac:
 ## Linux (BETA-003d)
 ##
 ## 三产物:.deb / .rpm / AppImage,都 x64。
-## - .deb / .rpm postinst 自动通过 update-alternatives / alternatives 把 marina
+## - .deb / .rpm postinst 自动通过 update-alternatives / alternatives 把 ceteris
 ##   注册为 x-terminal-emulator (优先级 50;系统默认 gnome-terminal 是 40)
 ## - AppImage 走单文件分发,无需 root;StartupWMClass 让任务栏图标分组正确
 ## - desktop entry 通过 Categories=System;TerminalEmulator 让 Nautilus / Nemo /
@@ -115,8 +115,8 @@ linux:
   synopsis: 现代化的终端模拟器
   description: Ceteris 是一款以"路径"为核心的终端管理器,内置 AI 助手联动,适配 Windows / Linux。
   # electron-builder 24.x:desktop 字段直接平铺为 key/value,自动写入
-  # /usr/share/applications/ceteris.desktop。Exec 行由 executableName=marina 自动
-  # 生成为 `marina %U`(走 /usr/bin/ceteris 软链);Nautilus / Nemo / Caja 等的
+  # /usr/share/applications/ceteris.desktop。Exec 行由 executableName=ceteris 自动
+  # 生成为 `ceteris %U`(走 /usr/bin/ceteris 软链);Nautilus / Nemo / Caja 等的
   # "在终端中打开"通过 gsettings + 子进程 cwd 继承传目录,不依赖 Exec 参数 ——
   # 见 main/index.ts 启动期 process.cwd() 的解析路径(BETA-003c)。
   desktop:

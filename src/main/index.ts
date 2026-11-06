@@ -4,7 +4,7 @@
  *   注册 IPC 层,管理应用整体生命周期。
  *
  * @关键设计:
- * - 单实例锁: 第二次启动 Marina.exe 转发到已运行实例新开窗口
+ * - 单实例锁: 第二次启动 Ceteris.exe 转发到已运行实例新开窗口
  *   (软件定义书 5.1.6, AGENTS.md CP-1 完成标志)
  * - window-all-closed 不调用 app.quit() — 应用进入"纯托盘模式"
  *   (软件定义书 8.1, 9.2.1)
@@ -41,7 +41,6 @@ import { WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, isBetaBuild } from './build-type';
 import { ViewSwitcher } from './view-switcher';
-import { copyLegacyData, legacyAppName } from './legacy-data';
 import { logger } from './logger';
 import type {
   BookmarksFile,
@@ -54,7 +53,7 @@ import type {
 let isQuitting = false;
 
 /**
- * Marina Link 的管理器引用。
+ * Ceteris Link 的管理器引用。
  *
  * 它在 app.whenReady 的闭包里构造,而 will-quit 的 handler 在闭包之外,
  * 需要一个模块级引用才能在退出前停止监听、断开所有连接。null 表示还没走到
@@ -102,32 +101,9 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
   pathManager.setInvalidPaths(invalid);
 }
 
-/**
- * First run after the rename from Marina: copies the old data folder's contents in.
- *
- * Only for the default data folder. A custom --user-data-dir is a deliberately separate
- * profile, such as an isolated test run, and must not fill up with real user data.
- */
-function carryOverLegacyData(dataDir: string): void {
-  const legacyName = legacyAppName(app.getName());
-  const appData = app.getPath('appData');
-  if (!legacyName || dataDir !== join(appData, app.getName())) return;
-
-  const from = join(appData, legacyName);
-  const result = copyLegacyData(from, dataDir);
-  if (result.skipped) {
-    logger.info('main', `legacy data not copied: ${result.skipped}`, { from });
-    return;
-  }
-  logger.info('main', 'copied legacy data', { from, items: result.copied });
-  for (const { item, error } of result.failed) {
-    logger.warn('main', `legacy data item not copied: ${item}`, { error });
-  }
-}
-
 function bootstrap(): void {
   // DEV-COEXIST(2026-05-16):dev 模式下改 app 名,让 npm run dev 与打包版
-  // Marina.exe 互不冲突。Electron 把以下 4 类资源全部按 `productName` 派生:
+  // Ceteris.exe 互不冲突。Electron 把以下 4 类资源全部按 `productName` 派生:
   //   - app.getPath('userData') → %APPDATA%\Ceteris (dev) vs %APPDATA%\Ceteris
   //   - requestSingleInstanceLock 的锁键(底层用 userData 目录)
   //   - 日志目录(logger 走 join(userData, 'logs'))
@@ -136,7 +112,7 @@ function bootstrap(): void {
   // 之前调用 — 一旦解析过,Electron 缓存了路径,改 name 不再生效。
   //
   // 同样的 portable 形态也独立一份,避免运行中的 portable 与已安装版互踩
-  // settings.json / 单实例锁。仅 installed 形态使用 "Marina" 原名。
+  // settings.json / 单实例锁。仅 installed 形态使用 "Ceteris" 原名。
   if (!app.isPackaged) {
     app.setName('Ceteris (dev)');
   } else if (isBetaBuild()) {
@@ -188,7 +164,7 @@ function bootstrap(): void {
 
   const windowManager = new WindowManager();
 
-  // 数据目录:%APPDATA%\Ceteris (Electron 由 productName 自动派生;v1.5 改名后从 EasyTerm 切到 Marina,见 ADR-012)
+  // 数据目录:%APPDATA%\Ceteris (Electron 由 productName 自动派生;v1.5 改名后从 EasyTerm 切到 Ceteris,见 ADR-012)
   // 注:在 app.whenReady 之前调 app.getPath('userData') 是合法的,
   // Electron 31 在 ready 前就把它解析好了
   const dataDir = app.getPath('userData');
@@ -205,7 +181,6 @@ function bootstrap(): void {
   // M1-D:绑定日志目录 (fire-and-forget,在此之前的 logger 调用先缓存到内存)
   void logger.setLogDir(join(dataDir, 'logs'));
   logger.info('main', 'bootstrap starting', { dataDir });
-  carryOverLegacyData(dataDir);
   const settingsStore = new JsonStore<Settings>(join(dataDir, 'settings.json'));
   const bookmarksStore = new JsonStore<BookmarksFile>(join(dataDir, 'bookmarks.json'));
   const recentStore = new JsonStore<RecentFile>(join(dataDir, 'recent.json'));
@@ -425,7 +400,7 @@ function bootstrap(): void {
       const aiClient = new AIClient(() => settingsManager.get());
       sessionManager.setAiClient(aiClient);
 
-      // Marina Link:远程挂载。构造必须在 installIpcLayer **之前**,因为
+      // Ceteris Link:远程挂载。构造必须在 installIpcLayer **之前**,因为
       // LinkManager 的构造函数会调 setLinkCommandForwarder 注册转发器,而
       // installIpcLayer 注册的 handler 在运行时会用到它。
       // eslint-disable-next-line prefer-const -- 下面的 onStatusChange 闭包引用它,
@@ -478,7 +453,7 @@ function bootstrap(): void {
       // 自动连接标记了 autoConnect 的已保存 Host。
       //
       // 放在启动流程里而不是等用户点按钮,是这个特性的核心体验:打开笔记本
-      // 的 Marina,家里台式机上那些 agent 标签页就已经在那儿了。
+      // 的 Ceteris,家里台式机上那些 agent 标签页就已经在那儿了。
       for (const entry of settingsManager.get().link.savedHosts) {
         if (!entry.autoConnect) continue;
         try {
@@ -516,7 +491,7 @@ function bootstrap(): void {
         if (e.changedKeys.includes('advanced.logLevel')) {
           logger.setLevel(e.settings.advanced.logLevel === 'DEBUG' ? 'debug' : 'info');
         }
-        // Marina Link:开关 / 绑定地址 / 端口任一变化都要重开监听。
+        // Ceteris Link:开关 / 绑定地址 / 端口任一变化都要重开监听。
         //
         // 刻意**不**监听 link.hostToken:换 token 时不该打断已经连着的客户端
         // (它们用的是早先派生的会话密钥,继续有效),新 token 只影响之后的
@@ -557,7 +532,7 @@ function bootstrap(): void {
         logger.warn('main', 'scanInvalidPathsAsync failed', err);
       });
 
-      // v1.5 改名遗留清理:EasyTerm 时代写入的右键菜单 key 若残留,会与 Marina
+      // v1.5 改名遗留清理:EasyTerm 时代写入的右键菜单 key 若残留,会与 Ceteris
       // 并排出现两条菜单项。启动期静默清一次。失败 (例如本来就没装过) 不阻塞。
       if (platformAdapter instanceof WindowsAdapter) {
         platformAdapter
@@ -616,10 +591,10 @@ function bootstrap(): void {
         trayManager.init();
       }
 
-      // 交互级冒烟测试 harness。仅在 MARINA_SMOKE_INTERACTIVE=1 时装载。
+      // 交互级冒烟测试 harness。仅在 CETERIS_SMOKE_INTERACTIVE=1 时装载。
       // 完整端到端验证:真实 BrowserWindow + preload bridge + IPC handler +
       // SessionManager + node-pty。详见 src/main/smoke-interactive.ts。
-      const smokeInteractive = process.env['MARINA_SMOKE_INTERACTIVE'] === '1';
+      const smokeInteractive = process.env['CETERIS_SMOKE_INTERACTIVE'] === '1';
       if (smokeInteractive) {
         const { installSmokeInteractiveHarness, installSmokeGlobalTimeout } =
           await import('./smoke-interactive.js');
@@ -638,7 +613,7 @@ function bootstrap(): void {
 
       // BETA-003c:Linux 上 Nautilus / Nemo / Caja 的 "在终端中打开" 是通过
       // gsettings org.gnome.desktop.default-applications.terminal exec 拉起
-      // Marina,**不传 argv 参数**,而是 fork+chdir+exec ——子进程的 process.cwd()
+      // Ceteris,**不传 argv 参数**,而是 fork+chdir+exec ——子进程的 process.cwd()
       // 就是用户右键的那个目录。我们检测这个信号,当 cwd 不是 / 也不是 home 时
       // 自动把它作为 startupOpenHere。GUI 应用菜单启动时 cwd 通常是 / 或 home,
       // 走默认空窗逻辑。
@@ -772,7 +747,7 @@ interface OpenPathDeps {
 }
 
 /**
- * Explorer 右键 → "在 Marina 终端中打开" 已运行时的 dispatcher。
+ * Explorer 右键 → "在 Ceteris 终端中打开" 已运行时的 dispatcher。
  *
  * - mode='new-window': 始终新开一个窗口,等 did-finish-load 后再 createSession
  *   (复用 tray.ts focusSession 已验证过的模式)

@@ -4,7 +4,7 @@
 # 不影响本流程,但建议手动 Get-ChildItem Cert:\CurrentUser\My | ? Subject -eq "CN=Ceteris Dev" 后 Remove-Item 清理)。
 #
 # 终态产物 (在 native\context-menu 根目录):
-#   dev-cert.pfx  — SignTool 用,密码 "marina-dev"
+#   dev-cert.pfx  — SignTool 用,密码 "ceteris-dev"
 #   dev-cert.cer  — 信任导入用
 #
 # 信任导入位置: Cert:\LocalMachine\TrustedPeople
@@ -37,7 +37,7 @@ $pfxPath = Join-Path $root "dev-cert.pfx"
 $cerPath = Join-Path $root "dev-cert.cer"
 
 Write-Host "[2/4] Exporting .pfx (with private key) for SignTool" -ForegroundColor Cyan
-$pwd = ConvertTo-SecureString -String "marina-dev" -Force -AsPlainText
+$pwd = ConvertTo-SecureString -String "ceteris-dev" -Force -AsPlainText
 Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd | Out-Null
 Write-Host "    -> $pfxPath"
 

@@ -1,6 +1,6 @@
 /**
  * @file src/shared/link-routing.test.ts
- * @purpose 守护 Marina Link 的命令路由表。
+ * @purpose 守护 Ceteris Link 的命令路由表。
  *
  * @为什么这个测试重要:
  * LINK_LOCAL_ONLY_CHANNELS 里存的是 channel 字符串字面量,而不是

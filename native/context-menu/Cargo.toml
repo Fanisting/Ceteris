@@ -1,19 +1,19 @@
 [package]
-name = "marina_context_menu"
+name = "ceteris_context_menu"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Marina Explorer IExplorerCommand DLL (Win11 modern context menu)"
+description = "Ceteris Explorer IExplorerCommand DLL (Win11 modern context menu)"
 
 [lib]
 crate-type = ["cdylib"]
-name = "marina_context_menu"
+name = "ceteris_context_menu"
 
 # Sparse Package 的 Executable 字段必须指向一个真实存在的 .exe(MakeAppx 强校验),
 # 哪怕 Sparse 模式下它永远不会被 Windows 启动(因为我们只走 IExplorerCommand 入口)。
 # 这个 stub 进程的 main 立即 exit(0),编译后 ~10KB,跟着 DLL 一起进 staging。
 [[bin]]
-name = "marina-context-menu-host"
+name = "ceteris-context-menu-host"
 path = "src/bin/host.rs"
 
 [dependencies]

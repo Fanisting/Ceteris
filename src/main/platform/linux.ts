@@ -3,7 +3,7 @@
  * @purpose Linux 平台适配器,BETA-003 (ADR-013 方案 A) 落地。
  *
  * @关键设计:
- * - lifecycleModel = 'no-persistence' — Linux 上 Marina 作为普通桌面 app,
+ * - lifecycleModel = 'no-persistence' — Linux 上 Ceteris 作为普通桌面 app,
  *   关掉最后一个窗口 = 应用退出,session 全销毁。配套阻塞 modal 在
  *   "最后窗口 + 仍有非 exited session" 时弹二次确认(ADR-013)。
  * - detectShells:读 /etc/shells,过滤伪 shell(nologin / false / halt 等)。
@@ -11,7 +11,7 @@
  * - buildShellLaunchParams:bash 走 --rcfile,zsh 走 ZDOTDIR,fish 走
  *   XDG_CONFIG_HOME,分别注入对应 hook 文件。
  * - getProcessCwd:readlink /proc/<pid>/cwd(对自己起的子进程,同 UID 可读)
- * - setAutoStart:写 ~/.config/autostart/marina.desktop(XDG 标准)
+ * - setAutoStart:写 ~/.config/autostart/ceteris.desktop(XDG 标准)
  * - registerFileManagerIntegration:走 freedesktop 标准 —— gsettings +
  *   update-alternatives / alternatives 双分支(Debian / RHEL 系),
  *   **不写 Nautilus 扩展**(ADR-013 明确克制)。
@@ -199,13 +199,13 @@ export class LinuxAdapter implements PlatformAdapter {
   }
 
   /**
-   * 注册"Marina 为系统默认终端"。走 freedesktop 标准两条腿:
+   * 注册"Ceteris 为系统默认终端"。走 freedesktop 标准两条腿:
    *
    * 1. gsettings:GNOME 22.04 / Cinnamon / MATE 都用此设置默认终端 exec
    *    (新版 GNOME 44+ 走 xdg-terminal-exec spec,gsettings 不再生效,
    *    但 .desktop Categories=TerminalEmulator 会被读到)
    * 2. update-alternatives / alternatives:让所有走 x-terminal-emulator 的
-   *    GTK 程序找到 marina。Debian 系叫 update-alternatives,RHEL 系叫
+   *    GTK 程序找到 ceteris。Debian 系叫 update-alternatives,RHEL 系叫
    *    alternatives,语义一致
    *
    * 全部失败也只写 warn,不抛 —— 用户机器上没装 gsettings(纯 XFCE/i3)

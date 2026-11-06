@@ -3,7 +3,7 @@
  * @purpose Windows 子进程环境变量规整 — BETA-ENV-1 根治。
  *
  * @背景:
- * 用户报告"PowerShell is not available on this system."(Marina 启动 Git Bash
+ * 用户报告"PowerShell is not available on this system."(Ceteris 启动 Git Bash
  * 后,Bash 里 `command -v powershell.exe` 找不到,但 `/c/Windows/System32/.../powershell.exe`
  * 实际存在)。复现 + 抓 env 后定位到两个独立但叠加的 bug:
  *
@@ -17,7 +17,7 @@
  *          不到就替换成空,等于 PATH 里那串路径完全失效。
  *
  * Windows Terminal / cmd.exe 下不出现是因为它们都不读注册表,而是从父进程
- * (登录会话)继承已展开的 env。Marina 主动 `reg query` 拿原始字符串,绕过了
+ * (登录会话)继承已展开的 env。Ceteris 主动 `reg query` 拿原始字符串,绕过了
  * 登录链路的自动展开,等于把这块 ExpandEnvironmentStringsW 的责任接管到自
  * 己头上,却没做。
  *

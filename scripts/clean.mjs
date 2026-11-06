@@ -4,7 +4,7 @@
  * @purpose 跨平台清理工具(ISO-1,2026-05-20)。
  *
  * @背景
- * Marina 单仓在 Windows / Linux 之间切换开发或构建时,会在 node_modules/
+ * Ceteris 单仓在 Windows / Linux 之间切换开发或构建时,会在 node_modules/
  * 与 out/ / release/ 留下上一个平台的残留:
  *
  *   1. node_modules/node-pty/build/Release/pty.node  ← install-app-deps

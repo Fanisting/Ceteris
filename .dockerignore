@@ -1,4 +1,4 @@
-# .dockerignore · Marina(ISO-1,2026-05-20)
+# .dockerignore · Ceteris(ISO-1,2026-05-20)
 #
 # 关键文件 — 阻断主机 node_modules / 构建产物 / 二进制污染 Docker 构建上下文。
 # 没有这个文件,Windows 主机的 node_modules(含 Windows .node + 错平台 build/

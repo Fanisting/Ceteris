@@ -125,7 +125,7 @@ describe('formatDisplayPath', () => {
   });
 
   it('非 WSL 路径保持原样', () => {
-    expect(formatDisplayPath('D:\\projects\\marina')).toBe('D:\\projects\\marina');
+    expect(formatDisplayPath('D:\\projects\\ceteris')).toBe('D:\\projects\\ceteris');
   });
 });
 

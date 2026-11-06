@@ -1,6 +1,6 @@
 /**
  * @file src/main/data-bundle.ts
- * @purpose Moves a working setup to another PC as one folder. Marina's own data always goes
+ * @purpose Moves a working setup to another PC as one folder. Ceteris's own data always goes
  *   in and stays small. Claude Code and Codex chats are optional, per agent.
  *
  * Copy, never move: chats stay in ~/.claude and ~/.codex, so each agent keeps finding them
@@ -18,10 +18,10 @@ import { dirname, join } from 'node:path';
 import type { SettingsArchiveV1 } from '@shared/protocol';
 import type { AgentKind } from '@shared/next-prompt';
 
-const FORMAT = 'marina-export';
+const FORMAT = 'ceteris-export';
 const VERSION = 1;
 const MANIFEST = 'manifest.json';
-const ARCHIVE = 'marina.json';
+const ARCHIVE = 'ceteris.json';
 const TABS = 'tabs.json';
 
 export const AGENTS: Record<AgentKind, { dir: string; entries: string[] }> = {

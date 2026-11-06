@@ -1,6 +1,6 @@
 /**
  * @file src/main/ipc-sender.ts
- * @purpose 判断一条 IPC 是否来自 Marina 自己的页面。
+ * @purpose 判断一条 IPC 是否来自 Ceteris 自己的页面。
  *
  * @关键设计:
  * - 这是第二道防线。第一道是 window-manager.ts 的 will-navigate:外部页面本就不该

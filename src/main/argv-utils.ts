@@ -8,8 +8,8 @@
 /**
  * 解析 argv,提取 `--open-here <path>` 后第一个非 flag token 作为目录路径。
  *
- * Explorer 右键 "在 Marina 终端中打开" 通过注册表 command 字段调用
- * `Marina.exe --open-here "<path>"`。冷启动和 second-instance handler 都会
+ * Explorer 右键 "在 Ceteris 终端中打开" 通过注册表 command 字段调用
+ * `Ceteris.exe --open-here "<path>"`。冷启动和 second-instance handler 都会
  * 走这个 parser。
  *
  * **TIT-2**: 不能用 `argv[idx+1]` 直接取下一项,因为 Electron 31 在
@@ -31,7 +31,7 @@ export function parseOpenHere(argv: readonly string[]): string | null {
   // BETA-003c:Linux 文件管理器 / gnome-terminal 兼容 alias —
   // `--working-directory=<path>` 是 GTK 终端家族(gnome-terminal /
   // xfce4-terminal / wezterm)的事实标准 flag。我们的 .desktop Exec 行用
-  // `marina --working-directory=%f`,Nautilus 会展开 %f 为目录路径。
+  // `ceteris --working-directory=%f`,Nautilus 会展开 %f 为目录路径。
   for (const tok of argv) {
     if (!tok) continue;
     if (tok.startsWith('--working-directory=')) {

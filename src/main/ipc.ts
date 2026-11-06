@@ -202,11 +202,11 @@ export interface IpcLayerDeps {
   /** BETA-031:可选,未注入时 AI_TEST_CONNECTION 返回 ok:false */
   aiClient?: AIClient;
   /**
-   * Marina Link:可选。未注入时 cmd:link:get-status 返回"未监听"的空状态,
+   * Ceteris Link:可选。未注入时 cmd:link:get-status 返回"未监听"的空状态,
    * 其余 link 命令抛错。单测里的 deps 不带它。
    */
   linkManager?: LinkManager;
-  /** Marina Link Client side. Optional for the same reason as linkManager. */
+  /** Ceteris Link Client side. Optional for the same reason as linkManager. */
   viewSwitcher?: ViewSwitcher;
   /** SSH 路径的文件树和文件夹选择。未注入时远端请求返回 no-client */
   sftpPool?: SftpPool;
@@ -216,7 +216,7 @@ let installed = false;
 let aiClient: AIClient | undefined;
 
 /**
- * Marina Link:事件广播需要感知虚拟窗口(Host 侧的远程客户端)与远程绑定
+ * Ceteris Link:事件广播需要感知虚拟窗口(Host 侧的远程客户端)与远程绑定
  * 窗口(Client 侧连到远端的本地窗口)。broadcastEvent / sendEventTo 是模块级
  * 函数,拿不到 deps,所以在 install 时把 WindowManager 存一份。
  *
@@ -249,7 +249,7 @@ function wrapEvent<P>(payload: P): EventEnvelope<P> {
 /**
  * 广播一条事件给所有窗口。
  *
- * Marina Link 之后这里有两处偏离"发给所有 BrowserWindow"的直觉:
+ * Ceteris Link 之后这里有两处偏离"发给所有 BrowserWindow"的直觉:
  *
  * 1. **跳过远程绑定窗口(Client 侧)**。这类窗口的 renderer 显示的是远端
  *    Host 的数据,它的 store 由 Host 推来的事件驱动。若本机守护进程也往里
@@ -284,7 +284,7 @@ function sendEventTo<P>(win: BrowserWindow, channel: string, payload: P): void {
 }
 
 /**
- * 按 windowId 定向推送一条事件。目标可以是本机窗口,也可以是 Marina Link
+ * 按 windowId 定向推送一条事件。目标可以是本机窗口,也可以是 Ceteris Link
  * 的远程客户端(虚拟窗口),调用方不需要区分。
  *
  * 用于 owner-only 的推送(evt:session:output)—— 远程客户端 claim 了某个
@@ -299,7 +299,7 @@ function sendEventToWindowId<P>(windowId: string, channel: string, payload: P): 
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Marina Link:命令转发
+// Ceteris Link:命令转发
 // ──────────────────────────────────────────────────────────────────
 
 /**
@@ -335,7 +335,7 @@ export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
 }
 
 /**
- * 注册一条命令 handler,并在最外层插入 Marina Link 的路由判断。
+ * 注册一条命令 handler,并在最外层插入 Ceteris Link 的路由判断。
  *
  * 路由规则(见 @shared/link-protocol 的 LINK_LOCAL_ONLY_CHANNELS):
  * - 发起窗口不是远程窗口 → 本地执行,行为与 Link 出现之前完全一致
@@ -349,7 +349,7 @@ export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
  * 集中一处 + 一张显式白名单,才能保证"新增 channel 时默认是安全的转发"。
  */
 /**
- * Marina Link(Host 侧):channel → 本地 handler 的直呼表。
+ * Ceteris Link(Host 侧):channel → 本地 handler 的直呼表。
  *
  * 为什么需要它:Electron 只允许 renderer 通过 ipcRenderer.invoke 触发
  * ipcMain.handle 注册的 handler,主进程内部没有"自己调用自己 handler"的
@@ -1340,7 +1340,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   // IME-1 探针 dump — renderer 端 ring buffer 触发 LEAK 时一次性送过来。
   // 不依赖 DevTools 打开,事后可通过 `cmd:system:open-logs-dir` 按钮直达
-  // `%APPDATA%/Marina/logs/ime-YYYY-MM-DD.log` 查看。
+  // `%APPDATA%/Ceteris/logs/ime-YYYY-MM-DD.log` 查看。
   // 设计:无 throw、无大规模 stringify(已在 logger.format 内做 JSON.stringify
   // 兜底),让 renderer 的 fire-and-forget 调用永不影响主链路。
   handleCommand(
@@ -1689,7 +1689,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // ────────────────────────────────────────────────────────────────
-  // Marina Link(远程挂载)
+  // Ceteris Link(远程挂载)
   //
   // 这些命令全部操作**本机**的 Link 配置,已列入 LINK_LOCAL_ONLY_CHANNELS,
   // 因此即使在远程窗口里调用也不会被转发出去。
@@ -1832,7 +1832,7 @@ async function buildArchive(deps: IpcLayerDeps): Promise<SettingsArchiveV1> {
   };
   // 强制先 flush,以保证读盘时拿到最新写入
   await flushAllStores(deps);
-  // Marina Link:导出的归档里剥掉远程访问凭据。
+  // Ceteris Link:导出的归档里剥掉远程访问凭据。
   //
   // 理由:归档的典型用途是"发给别人"或"备份到网盘",而 link.hostToken 等价于
   // 这台机器上所有终端的完全访问权,savedHosts[].token 则是别人机器的访问权。
@@ -1857,8 +1857,8 @@ async function buildArchive(deps: IpcLayerDeps): Promise<SettingsArchiveV1> {
     templates: deps.templatesManager.list(),
   };
   return {
-    // v1.5 起统一用 'marina-archive';读侧同时接受 'easyterm-archive' 旧值(向后兼容)。
-    format: 'marina-archive',
+    // v1.5 起统一用 'ceteris-archive';读侧同时接受 'easyterm-archive' 旧值(向后兼容)。
+    format: 'ceteris-archive',
     version: 1,
     exportedAt: Date.now(),
     exportedFrom: app.getVersion(),
@@ -1872,17 +1872,17 @@ async function buildArchive(deps: IpcLayerDeps): Promise<SettingsArchiveV1> {
 }
 
 function validateArchive(input: unknown): asserts input is SettingsArchiveV1 {
-  // 接受新名 'marina-archive' 和旧名 'easyterm-archive'(v1.5 改名前的归档)。
+  // 接受新名 'ceteris-archive' 和旧名 'easyterm-archive'(v1.5 改名前的归档)。
   // 都是同一 schema,只是 format 标签不同。
   const fmt = (input as SettingsArchiveV1 | null)?.format;
   if (
     !input ||
     typeof input !== 'object' ||
-    (fmt !== 'marina-archive' && fmt !== 'easyterm-archive') ||
+    (fmt !== 'ceteris-archive' && fmt !== 'easyterm-archive') ||
     (input as SettingsArchiveV1).version !== 1
   ) {
     throw new Error(
-      '不是合法的归档:format/version 不匹配 (期望 marina-archive v1,旧 easyterm-archive v1 也接受)',
+      '不是合法的归档:format/version 不匹配 (期望 ceteris-archive v1,旧 easyterm-archive v1 也接受)',
     );
   }
   const i = input as SettingsArchiveV1;
@@ -2060,7 +2060,7 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
 
   // Session output → 仅推 owner
   //
-  // Marina Link 之后 owner 可能是一个远程客户端(虚拟窗口)。走
+  // Ceteris Link 之后 owner 可能是一个远程客户端(虚拟窗口)。走
   // sendEventToWindowId 而非 getById + sendEventTo:前者会自动区分
   // "本机 webContents" 与 "TCP 连接",后者对虚拟窗口返回 null,字节流会
   // 被静默丢掉 —— 表现就是远程终端里敲了命令但屏幕永远不更新。

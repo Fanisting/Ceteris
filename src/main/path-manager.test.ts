@@ -145,7 +145,7 @@ describe('PathManager — 初始化', () => {
 
   // ──────────────────────────────────────────────────────────────────
   // SSH 方案 v2.1 §II.1:磁盘迁移不变式 — 老 schema(kind 缺失)、损坏
-  // schema(kind=ssh 缺 sshProfileId)都要能让 Marina 启动起来。
+  // schema(kind=ssh 缺 sshProfileId)都要能让 Ceteris 启动起来。
   // ──────────────────────────────────────────────────────────────────
 
   it('迁移:旧 bookmark 缺 kind → 自动按 local 加载', async () => {

@@ -905,7 +905,7 @@ html[data-maximized='true'] .app-root.with-shell {
 
 /*
  * BETA-024 二次修复:macOS 风格沿用 Windows 的彩色染色方案 ——
- *   - .titlebar-app-name(Marina)走全局 --iris
+ *   - .titlebar-app-name(Ceteris)走全局 --iris
  *   - .titlebar-window-badge(Window N)走全局 --gold
  * 两者直接靠 .titlebar-title 的 gap: 8px 分开,无分隔符。
  */
@@ -3325,7 +3325,7 @@ button:focus-visible,
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   Marina Link(远程访问)设置面板
+   Ceteris Link(远程访问)设置面板
    与 .ssh-* 同属"某个设置分类专用"的样式,不进通用词表。
    ────────────────────────────────────────────────────────────────── */
 
@@ -3424,7 +3424,7 @@ button:focus-visible,
   color: var(--color-text-muted, #f0f);
 }
 
-/* Marina Link:远程窗口顶部的连接状态条。连接正常时组件返回 null,
+/* Ceteris Link:远程窗口顶部的连接状态条。连接正常时组件返回 null,
    所以这些样式只在断线 / 重连中可见。 */
 .link-banner {
   display: flex;

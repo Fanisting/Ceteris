@@ -7,7 +7,7 @@
  * 的输入都是"设计者构造的预期场景"(知道 0x9D 是 C1 OSC 起始,于是构造
  * [0x9D,'1337;...',BEL] 来验证识别)。没有人喂"包含 UTF-8 多字节字符尾
  * 字节恰好是 0x9D 的真实 banner 字节流"作为输入,所以 OSC-4 的误识别
- * + OSC-3 的静默丢弃叠加导致 marina-app 启动 Claude Code 大段内容丢失
+ * + OSC-3 的静默丢弃叠加导致 ceteris-app 启动 Claude Code 大段内容丢失
  * 的回归没被任何单测拦下来。bisect 5 步才定位到。
  *
  * @策略
@@ -118,8 +118,8 @@ const BOX_HORIZ = Buffer.from('─', 'utf8'); // E2 94 80
 const BOX_VERT = Buffer.from('│', 'utf8'); // E2 94 82
 
 /** 真实 OSC 0/2 标题序列与 OSC 1337 CurrentDir 序列 */
-const OSC_TITLE_CLAUDE = Buffer.from('\x1b]0;Claude · ~/marina-app\x07');
-const OSC_1337_CWD = Buffer.from('\x1b]1337;CurrentDir=C:\\proj\\marina\x07');
+const OSC_TITLE_CLAUDE = Buffer.from('\x1b]0;Claude · ~/ceteris-app\x07');
+const OSC_1337_CWD = Buffer.from('\x1b]1337;CurrentDir=C:\\proj\\ceteris\x07');
 
 // ──────────────────────────────────────────────────────────────────
 // 不变量测试
@@ -146,7 +146,7 @@ describe('Osc1337Parser — fixture-driven invariants', () => {
       { label: 'text-welcome', bytes: Buffer.from('Welcome back!'), stripped: false },
       { label: 'sgr-reset', bytes: SGR_RESET, stripped: false },
       { label: 'osc-cwd', bytes: OSC_1337_CWD, stripped: true },
-      { label: 'prompt', bytes: Buffer.from('\r\nPS C:\\proj\\marina> '), stripped: false },
+      { label: 'prompt', bytes: Buffer.from('\r\nPS C:\\proj\\ceteris> '), stripped: false },
     ]);
 
     const parser = new Osc1337Parser();

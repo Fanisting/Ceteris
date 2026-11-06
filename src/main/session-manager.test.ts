@@ -208,7 +208,7 @@ function makeStubSettingsManager(
       terminalRenderer: 'auto',
       ...overrides,
     },
-    // Marina Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
+    // Ceteris Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
     // 结构,缺字段会让整个 stub 类型不成立。
     link: {
       hostEnabled: false,
@@ -523,7 +523,7 @@ describe('SessionManager — createSession', () => {
       isBuiltin: false,
       command: 'codex',
       args: ['--model', 'gpt-5', "it's-ok"],
-      env: { MARINA_MODE: 'remote test' },
+      env: { CETERIS_MODE: 'remote test' },
       shellFirst: true,
       postExitAction: 'keep_shell',
     };
@@ -553,13 +553,13 @@ describe('SessionManager — createSession', () => {
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
     expect(command).toContain('cd "$HOME"/');
     expect(command).toContain('exec "${SHELL:-/bin/sh}" -ic');
-    expect(command).toContain("env '\\''MARINA_MODE=remote test'\\''");
+    expect(command).toContain("env '\\''CETERIS_MODE=remote test'\\''");
     expect(command).toContain("'\\''codex'\\''");
     expect(command).toContain("'\\''--model'\\''");
     expect(command).toContain("'\\''gpt-5'\\''");
     expect(command).toContain("'\\''it'\\''\\'\\'''\\''s-ok'\\''");
-    expect(command).toContain('marina_template_status=$?;');
-    expect(command).toContain('if [ "$marina_template_status" -eq 127 ]; then');
+    expect(command).toContain('ceteris_template_status=$?;');
+    expect(command).toContain('if [ "$ceteris_template_status" -eq 127 ]; then');
     expect(command).toContain('Ceteris: remote template command not found or not in PATH: codex');
     expect(command).toContain('exec "${SHELL:-/bin/sh}" -l');
   });
@@ -598,7 +598,7 @@ describe('SessionManager — createSession', () => {
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
     expect(command).toContain('exec "${SHELL:-/bin/sh}" -lc');
     expect(command).toContain('command -v tmux >/dev/null 2>&1');
-    expect(command).toContain('MARINA_TMUX_BASE=');
+    expect(command).toContain('CETERIS_TMUX_BASE=');
     expect(command).toContain('base64 -d');
     expect(command).not.toContain("sh -c '");
     expect(command).not.toContain('<<');
@@ -646,11 +646,11 @@ describe('SessionManager — createSession', () => {
 
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
 
-    expect(command).toContain('if MARINA_TMUX_BASE=');
+    expect(command).toContain('if CETERIS_TMUX_BASE=');
     expect(command).toContain('base64 -d');
     expect(command).not.toContain('<<');
     expect(command).toContain('then exec "${SHELL:-/bin/sh}" -l; else');
-    expect(command).not.toContain('then MARINA_TMUX_BASE=');
+    expect(command).not.toContain('then CETERIS_TMUX_BASE=');
   });
 
   it('SSH tmux 忽略旧版自定义 session 名,始终按目录末级派生', async () => {
@@ -688,8 +688,8 @@ describe('SessionManager — createSession', () => {
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
     expect(command).toContain('/srv/app');
     expect(command).toContain('command -v tmux');
-    expect(command).toContain('MARINA_TMUX_BASE=');
-    expect(command).toContain('marina-app');
+    expect(command).toContain('CETERIS_TMUX_BASE=');
+    expect(command).toContain('ceteris-app');
     expect(command).not.toContain('deploy.api');
   });
 
@@ -765,8 +765,8 @@ describe('SessionManager — createSession', () => {
     await mgr.createSession(common);
 
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
-    expect(command).toContain('MARINA_TMUX_BASE=');
-    expect(command).toContain('marina-repo');
+    expect(command).toContain('CETERIS_TMUX_BASE=');
+    expect(command).toContain('ceteris-repo');
     expect(command).toContain('base64 -d');
     expect(command).not.toContain('work-');
   });
@@ -803,8 +803,8 @@ describe('SessionManager — createSession', () => {
     });
 
     const command = (FakePty.instances[0]!.args as string[]).at(-1)!;
-    expect(command).toContain('MARINA_TMUX_BASE=');
-    expect(command).toContain('marina-projects');
+    expect(command).toContain('CETERIS_TMUX_BASE=');
+    expect(command).toContain('ceteris-projects');
   });
 
   it('SSH 本机 ssh.exe 找不到时,错误信息明确指向 ssh 而不是 PowerShell', async () => {
@@ -1573,7 +1573,7 @@ describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () =>
 
   // TIT-1:powershell.exe / cmd.exe / Git Bash 启动时把窗口标题设成自己的 exe
   // 路径(ConPTY 把 SetConsoleTitle() 翻译成 OSC 0),Git Bash 默认 PS1 又每次
-  // prompt 重发 "MINGW64:<cwd>"。这些"裸路径"标题不应该覆盖 Marina 的友好名。
+  // prompt 重发 "MINGW64:<cwd>"。这些"裸路径"标题不应该覆盖 Ceteris 的友好名。
   it('TIT-1 启动垃圾:整段是 Windows exe 路径 → 拒,保留 "PowerShell"', async () => {
     const { mgr } = makeManager();
     const info = await mgr.createSession({
@@ -1664,7 +1664,7 @@ describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () =>
 
 describe('looksLikeShellStartupGarbage (TIT-1)', () => {
   // 拒绝面:这些是 powershell.exe / cmd.exe / Git Bash 启动期自动发的标题,
-  // 全部覆盖 displayName 会把 Marina 的 "PowerShell" / "Bash" 友好名搞没。
+  // 全部覆盖 displayName 会把 Ceteris 的 "PowerShell" / "Bash" 友好名搞没。
   it.each([
     'C:\\Windows\\System32\\cmd.exe',
     'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',

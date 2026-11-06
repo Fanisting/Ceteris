@@ -1,6 +1,6 @@
 /**
  * @file src/main/view-switcher.ts
- * @purpose Client side of Marina Link: show Local and each remote Host as views of one
+ * @purpose Client side of Ceteris Link: show Local and each remote Host as views of one
  *   visible window, switched from the title bar.
  *
  * Why swap windows instead of hosting two views in one BrowserWindow:

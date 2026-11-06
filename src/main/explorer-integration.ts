@@ -7,9 +7,9 @@
  * IPC handler 透传调它,SettingsView 现场查不缓存。
  *
  * 涉及两条独立的菜单:
- * - 经典菜单:HKCU\Software\Classes\Directory(\Background)\shell\Marina,通过
+ * - 经典菜单:HKCU\Software\Classes\Directory(\Background)\shell\Ceteris,通过
  *   reg.exe 写;Win10 / Win11 共用。
- * - Win11 新菜单(modern):MSIX 包 Marina.ContextMenu 注册 IExplorerCommand,
+ * - Win11 新菜单(modern):MSIX 包 Ceteris.ContextMenu 注册 IExplorerCommand,
  *   通过 powershell Add-AppxPackage 装,需要先把自签证书导入 TrustedPeople。
  *
  * 三类构建产物的策略(build-type.ts 探测):
@@ -83,7 +83,7 @@ async function runPowerShell(
 }
 
 /**
- * 查 Get-AppxPackage Marina.ContextMenu 的结果(JSON)。
+ * 查 Get-AppxPackage Ceteris.ContextMenu 的结果(JSON)。
  * 不存在 / 出错返回 null。
  */
 async function queryMsixPackage(): Promise<ExplorerIntegrationPackageInfo | null> {
@@ -104,7 +104,7 @@ async function queryMsixPackage(): Promise<ExplorerIntegrationPackageInfo | null
 }
 
 /**
- * 查 Cert:\CurrentUser\TrustedPeople 里 Marina Dev 证书。返回最新一张(NotAfter 最远)。
+ * 查 Cert:\CurrentUser\TrustedPeople 里 Ceteris Dev 证书。返回最新一张(NotAfter 最远)。
  * 不存在返回 null。
  */
 async function queryCert(): Promise<ExplorerIntegrationCertInfo | null> {

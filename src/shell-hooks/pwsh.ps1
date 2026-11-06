@@ -5,7 +5,7 @@
 # and our UTF-8 multi-byte sequences get mis-decoded into stray "}" / "{"
 # bytes that break the parser (real bug, v0.1.0-beta.1, see ENC-1).
 #
-# Marina prefers PowerShell 7 (which reads .ps1 as UTF-8 by default) but
+# Ceteris prefers PowerShell 7 (which reads .ps1 as UTF-8 by default) but
 # falls back to powershell.exe 5.1 when 7 is not installed -- so the bug
 # hits every Chinese Windows user without pwsh 7. We do not ship a BOM
 # (it would force every editor + tooling step to preserve it). Pure ASCII
@@ -19,7 +19,7 @@
 # fail if any byte > 0x7F or a BOM appears in this file).
 #
 # ---------------------------------------------------------------------------
-# Marina PowerShell hook (formerly EasyTerm, renamed in v1.5).
+# Ceteris PowerShell hook (formerly EasyTerm, renamed in v1.5).
 #
 # Emits an OSC 1337 sequence before every prompt so the main process can
 # track the session's working directory in real time
@@ -49,14 +49,14 @@ if (Test-Path $PROFILE) {
 # Wrap the prompt function. Save the original first so we can call it,
 # otherwise we would recurse infinitely if the user's profile already
 # defined a prompt.
-$script:_marinaOriginalPrompt = $function:prompt
+$script:_ceterisOriginalPrompt = $function:prompt
 function prompt {
     $cwd = (Get-Location).Path
     # OSC 1337: \x1b ] 1337 ; CurrentDir=<cwd> \x07
     $osc = "$([char]27)]1337;CurrentDir=$cwd$([char]7)"
     [Console]::Write($osc)
-    if ($script:_marinaOriginalPrompt) {
-        & $script:_marinaOriginalPrompt
+    if ($script:_ceterisOriginalPrompt) {
+        & $script:_ceterisOriginalPrompt
     } else {
         # Default prompt: "PS C:\path>"
         "PS $cwd> "

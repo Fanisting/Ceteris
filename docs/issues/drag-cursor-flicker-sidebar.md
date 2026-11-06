@@ -9,7 +9,7 @@
 
 ## 现象
 
-从 Windows Explorer 拖一个文件夹进 Marina 窗口,沿 sidebar 区域**快速移动**时:
+从 Windows Explorer 拖一个文件夹进 Ceteris 窗口,沿 sidebar 区域**快速移动**时:
 
 - 鼠标光标在 "copy 复制角标" 与 "禁止 ⊘" 两个状态之间高频跳动
 - sidebar 的背景洗涤 / 居中浮卡也跟着闪烁(出现 → 消失 → 出现 …)
@@ -71,7 +71,7 @@ const handleDragOver = (e: globalThis.DragEvent): void => {
 
 ### 待用户验证
 
-beta 用户 F11 之后仍报闪烁。F12 后请重复 issue 描述里的复现步骤:从 Windows Explorer 拖文件夹进 Marina 窗口,沿 sidebar 快速移动。预期:光标稳定显示 copy 复制角标,不再在 ⊘ 之间闪烁。
+beta 用户 F11 之后仍报闪烁。F12 后请重复 issue 描述里的复现步骤:从 Windows Explorer 拖文件夹进 Ceteris 窗口,沿 sidebar 快速移动。预期:光标稳定显示 copy 复制角标,不再在 ⊘ 之间闪烁。
 
 ## F12.1 补丁(2026-05-16)
 
@@ -133,7 +133,7 @@ React 的 `e.preventDefault()` 内部调 `nativeEvent.preventDefault()`,但**调
 
 ### 假说 C:Electron / Chromium 在 contextIsolation + frame:false + Windows 11 下对 dragover 的 dropEffect 处理有 bug
 
-Marina 的窗口配置:`frame: false` + `contextIsolation: true` + sandbox 关。Win11 DWM 还有 Mica/Acrylic 等可能干扰指针 hit testing 的复合层。值得在 Linux / macOS / 标准 frame 上对照测试。
+Ceteris 的窗口配置:`frame: false` + `contextIsolation: true` + sandbox 关。Win11 DWM 还有 Mica/Acrylic 等可能干扰指针 hit testing 的复合层。值得在 Linux / macOS / 标准 frame 上对照测试。
 
 可验证手段:临时给 main 端窗口创建加 `frame: true`,看闪烁是否消失。如果消失 → DWM/frameless 干扰;不消失 → Electron 层。
 

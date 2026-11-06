@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/smoke-interactive.mjs
- * @purpose 交互级冒烟 — spawn marina-app 完整跑一次 PTY 来回验证。
+ * @purpose 交互级冒烟 — spawn ceteris-app 完整跑一次 PTY 来回验证。
  *
  * @关系
  * scripts/smoke-launch.mjs  → 只验证 main 起得来、preload 不爆 (5s 内)
@@ -14,10 +14,10 @@
  * (本次 OSC-3/4 渲染丢内容 / PER-2 race emit 漏失等)。
  *
  * @工作流
- * 1. 在 OS temp 下建一个独占 user-data-dir,避免污染开发者的 marina 配置
+ * 1. 在 OS temp 下建一个独占 user-data-dir,避免污染开发者的 ceteris 配置
  * 2. spawn electron out/main/index.js
  *      --user-data-dir=<tmp>
- *      env MARINA_SMOKE_INTERACTIVE=1  →  触发 main/smoke-interactive harness
+ *      env CETERIS_SMOKE_INTERACTIVE=1  →  触发 main/smoke-interactive harness
  * 3. main 启动后注入 renderer 测试脚本(详见 src/main/smoke-interactive.ts),
  *    脚本 IPC 创建 session + 喂 'echo TOKEN\\r' + 等 8s 验证 PTY 输出含 TOKEN
  * 4. main 通过 stdout 输出 "[smoke-interactive] PASS/FAIL ..." 行
@@ -53,9 +53,9 @@ if (typeof electronPath !== 'string') {
   process.exit(1);
 }
 
-// 独立 user-data-dir,避免污染开发者本机 marina 配置;每次跑用新目录,
+// 独立 user-data-dir,避免污染开发者本机 ceteris 配置;每次跑用新目录,
 // 跑完清理。
-const userDataDir = mkdtempSync(join(tmpdir(), 'marina-smoke-'));
+const userDataDir = mkdtempSync(join(tmpdir(), 'ceteris-smoke-'));
 console.log(`[smoke-interactive] user-data-dir=${userDataDir}`);
 console.log(`[smoke-interactive] entry=${mainEntry}`);
 console.log(`[smoke-interactive] electron=${electronPath}`);
@@ -140,7 +140,7 @@ const child = spawn(
     cwd: projectRoot,
     env: {
       ...process.env,
-      MARINA_SMOKE_INTERACTIVE: '1',
+      CETERIS_SMOKE_INTERACTIVE: '1',
       FORCE_COLOR: '0',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

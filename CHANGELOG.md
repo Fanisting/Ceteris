@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-Marina Link — 远程挂载(Windows ↔ Windows)。
+Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
@@ -12,7 +12,7 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
   外观集中在 `src/renderer/styles/material.css`,在 `global.css` 之后加载,`global.css` 本身没有改动。所有主题都走这一层:没有 MD3 色板的主题从现有语义 token 推导颜色角色。
 
-- **Marina Dark / Marina Light 主题,新安装默认 Marina Dark。** 配色由海青种子色 `#006a6a` 生成,终端 ANSI 色同步调整。已有 `settings.json` 的用户保持原主题和原字体。新安装的 UI 默认字体改为 Segoe UI。
+- **Ceteris Dark / Ceteris Light 主题,新安装默认 Ceteris Dark。** 配色由海青种子色 `#006a6a` 生成,终端 ANSI 色同步调整。已有 `settings.json` 的用户保持原主题和原字体。新安装的 UI 默认字体改为 Segoe UI。
 
 - **新应用图标。** 按 Material Design 重新设计:平涂海青底上居中的 `>` 提示符,底部一层浅青水面。托盘、标题栏、exe 和右键菜单一起更新。
 
@@ -28,7 +28,7 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 ### 变更
 
-- **改名为 Ceteris。** 本项目是 [Marina](https://github.com/Liyue-Cheng/marina) 的 fork。应用名、exe、安装包、app ID、注册表项和右键菜单都已更换,所以它会作为新应用安装,可以和 Marina 共存。首次启动时自动复制 Marina 的设置、收藏、SSH 配置、已保存的密码和界面偏好,Marina 的目录不做任何改动。开机自启和 Explorer 右键菜单需要在设置里重新开启。
+- **改名为 Ceteris。** 应用名、exe、安装包、app ID、注册表项、右键菜单、数据目录,以及环境变量、主题 id、tmux socket 和 Link 握手前缀都已更换。
 
 - **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 42 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
 - **SSH 入口始终显示。** 侧栏的本地/远程切换和设置页的远程分类不再隐藏,移除了“启用远程入口”开关。
@@ -41,11 +41,11 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 - 6 套旧主题的填充按钮文字对比度提到 4.5:1 以上(Light Pink、Tokyo Night Day、Fairyfloss、Rose Pine Dawn、Cutie、Ubuntu),强调色作文字时也按主题调深。Tokyo Night Day 的强调色文字约 4.15:1,受该主题正文色本身限制。
 
-- **Marina Link:在另一台机器上打开这台机器正在跑的终端标签页。** 会话本身始终留在原机器运行,另一台只是"显示器":同一批 session、同一份 scrollback、同一个正在跑的 agent,在远端敲的键直接写进原机器的 PTY。与已有的 SSH 功能是两回事(SSH 是"在远端跑一个 shell",Link 是"接管远端 Marina 的全部会话")。
+- **Ceteris Link:在另一台机器上打开这台机器正在跑的终端标签页。** 会话本身始终留在原机器运行,另一台只是"显示器":同一批 session、同一份 scrollback、同一个正在跑的 agent,在远端敲的键直接写进原机器的 PTY。与已有的 SSH 功能是两回事(SSH 是"在远端跑一个 shell",Link 是"接管远端 Ceteris 的全部会话")。
 
-  实现上没有引入任何新的业务层。Marina 的 renderer 本来就是无状态观察者,只通过 `invoke(channel, payload)` 与 `on(channel, handler)` 两个原语与 main 通信,所以远程访问被实现为**一次传输层替换**:远程窗口的 `cmd:*` 被转发到远端 main,远端的 `evt:*` 被注入回本地 renderer。renderer 代码零改动,它无从得知自己连的是远端。
+  实现上没有引入任何新的业务层。Ceteris 的 renderer 本来就是无状态观察者,只通过 `invoke(channel, payload)` 与 `on(channel, handler)` 两个原语与 main 通信,所以远程访问被实现为**一次传输层替换**:远程窗口的 `cmd:*` 被转发到远端 main,远端的 `evt:*` 被注入回本地 renderer。renderer 代码零改动,它无从得知自己连的是远端。
 
-  Host 端把每个远程客户端注册成 WindowManager 里的一个"虚拟窗口",于是 session ownership、事件广播、owner-only 的字节流路由**全部复用既有代码路径**,没有一处远程专属的特例分支。客户端断开在 Host 眼里与本地关掉一个窗口是同一件事:走同一条 `handleWindowClosed`,它持有的 session 转为无主、PTY 继续跑、本机窗口可立即接管 —— 这是 Marina "会话不随窗口死"哲学在远程场景下的自然延伸。
+  Host 端把每个远程客户端注册成 WindowManager 里的一个"虚拟窗口",于是 session ownership、事件广播、owner-only 的字节流路由**全部复用既有代码路径**,没有一处远程专属的特例分支。客户端断开在 Host 眼里与本地关掉一个窗口是同一件事:走同一条 `handleWindowClosed`,它持有的 session 转为无主、PTY 继续跑、本机窗口可立即接管 —— 这是 Ceteris "会话不随窗口死"哲学在远程场景下的自然延伸。
 
   设置入口:**设置 → 远程访问**。连通性推荐 Tailscale(个人使用免费),绑定地址默认"自动"会优先选中本机的 Tailscale 地址;找不到时退回 `127.0.0.1` 而非 `0.0.0.0`,宁可连不上也不在用户没明确要求时把终端服务暴露到局域网。完整配置步骤见 `docs/远程访问指南.md`。
 
@@ -89,7 +89,7 @@ issue #4 落地 + xterm 6.1 升级对齐 VSCode + CURSOR-2 调研记录归档。
 
 ### 文档
 
-- **CURSOR-2 调研记录归档 — `docs/issues/cursor-2-codex-tui-jitter-vs-vscode.md`。** Codex TUI 在 Marina 中光标逐帧跳变(VSCode 无此问题)的三天调研挂起记录:7 条假说排除表 + 6 次实验细节 + 6 条尚未尝试的下一步方向(D1-D6,按 ROI 排序)。下次接手优先级:D1(`cursorBlink: false` 5 分钟)→ D2(读 xterm 6.1 WebGL CursorRenderLayer 源码)→ D3(`onWriteParsed` 探针)。GitHub issue #11 同步建档。
+- **CURSOR-2 调研记录归档 — `docs/issues/cursor-2-codex-tui-jitter-vs-vscode.md`。** Codex TUI 在 Ceteris 中光标逐帧跳变(VSCode 无此问题)的三天调研挂起记录:7 条假说排除表 + 6 次实验细节 + 6 条尚未尝试的下一步方向(D1-D6,按 ROI 排序)。下次接手优先级:D1(`cursorBlink: false` 5 分钟)→ D2(读 xterm 6.1 WebGL CursorRenderLayer 源码)→ D3(`onWriteParsed` 探针)。GitHub issue #11 同步建档。
 
 ## [0.2.1] — 2026-05-26
 
@@ -97,7 +97,7 @@ issue #4 落地 + xterm 6.1 升级对齐 VSCode + CURSOR-2 调研记录归档。
 
 ### 改进
 
-- **Sidebar 右侧 resize handle:宽度可拖动 + localStorage 持久化。** 在 sidebar 右边缘加 4px 拖动条,鼠标按下后全局 mousemove 接管,松开落盘到 `marina.sidebar.width`(范围 [180, 600],默认 280)。双击 handle 复位默认宽度。拖动期间 `document.body.cursor = 'ew-resize'` + `userSelect = 'none'`,避免越过边界进入终端区时光标抖 / 误选中文本。hover 时 handle 显出莫紫色半透明高亮线,平时透明不抢视觉。
+- **Sidebar 右侧 resize handle:宽度可拖动 + localStorage 持久化。** 在 sidebar 右边缘加 4px 拖动条,鼠标按下后全局 mousemove 接管,松开落盘到 `ceteris.sidebar.width`(范围 [180, 600],默认 280)。双击 handle 复位默认宽度。拖动期间 `document.body.cursor = 'ew-resize'` + `userSelect = 'none'`,避免越过边界进入终端区时光标抖 / 误选中文本。hover 时 handle 显出莫紫色半透明高亮线,平时透明不抢视觉。
 - **Sidebar 全顶格 — padding-left 统一压到 8px。** 旧版三层缩进(category 12 / path 28 / session 44)在 280px 窄边栏里把内容推得太靠右,无 chevron 的路径行被"夹在中间不顶格"。改为五处行(`.sidebar-category-header` / `.path-item-row` / `.session-item` / `.sidebar-empty` / `.sidebar-footer`)共享 8px 左 padding,内容左缘共线;session 层不再额外缩进,由 state-dot 圆点形状区分层级。
 - **移除右上角"隐藏侧边栏"按钮 + 整套 sidebarVisible 状态机。** 实际从未被高频使用,删除后 Sidebar 永远显示。`WindowChrome` Windows / macOS 两套标题栏的 toggle 按钮、`toggleSidebar` handler、`PanelLeftClose` / `PanelLeftOpen` import、`useAppDispatch` import 全删;App.tsx 不再按 `state.sidebarVisible` 条件渲染;store 的 `sidebarVisible` 字段、`view/toggle-sidebar` / `view/set-sidebar-visible` 两个 action、reducer case、初始值一并清掉。
 
@@ -107,7 +107,7 @@ issue #4 落地 + xterm 6.1 升级对齐 VSCode + CURSOR-2 调研记录归档。
 
 ## [0.2.0] — 2026-05-25
 
-**M1 里程碑达成 — Marina SSH 终端模式正式就位。** 本地用户视野与 beta.9 完全一致(UI 层 segmented + filter 守住),SSH 用户能完成"管理远程服务器 + 进 shell 干活 + 用 tmux 保持会话 + 多 session 复用 SSH 连接 + 主动重连"完整工作流。同期合入 KBD-1 键盘交互全面整改 / SCROLL-1 session 切换二次修复 / ISO-1 跨平台构建隔离三层防御 / IME-2 候选框位置锁定 / spec §14 远程 SSH 模式定型 + presentation 三件升 v0.2.0 + 28 份 alpha 历史档案清理。
+**M1 里程碑达成 — Ceteris SSH 终端模式正式就位。** 本地用户视野与 beta.9 完全一致(UI 层 segmented + filter 守住),SSH 用户能完成"管理远程服务器 + 进 shell 干活 + 用 tmux 保持会话 + 多 session 复用 SSH 连接 + 主动重连"完整工作流。同期合入 KBD-1 键盘交互全面整改 / SCROLL-1 session 切换二次修复 / ISO-1 跨平台构建隔离三层防御 / IME-2 候选框位置锁定 / spec §14 远程 SSH 模式定型 + presentation 三件升 v0.2.0 + 28 份 alpha 历史档案清理。
 
 ### 新增
 
@@ -115,22 +115,22 @@ issue #4 落地 + xterm 6.1 升级对齐 VSCode + CURSOR-2 调研记录归档。
   - **ProxyJump 多级跳板(§阶段 2.3)**:`SshProfile.proxyJump: string[]` 字段,`buildSshLaunchParams` 拼成 `-J host1,host2,host3`。RemotePanel SSH 表单加 ProxyJump 输入(逗号分隔多跳板,支持 `user@host:port` 段)。每段最多 5 跳防滥用,空段静默过滤。3 个新单测覆盖单/多跳板 + 空数组。
   - **ssh_config 集成(§阶段 2.1)**:新建 `src/main/ssh-config-parser.ts`(258 行 + 13 个单测),解析 `~/.ssh/config` 的 Host 块 + Include 指令(递归深度 16 防循环)+ 通配符 Host 过滤 + Match 块整段跳过(V1 范围外)+ `Key=Value` / 引号 value / `key value` 三种行格式。`advanced.includeSshConfig` 开关默认 false;开后 RemotePanel 显示已发现 Host 列表(只读,改请直接编辑 ssh_config)。
   - **ssh-agent 检测(§阶段 2.2)**:新建 `src/main/ssh-agent.ts`(140 行 + 9 个单测)。POSIX 看 `SSH_AUTH_SOCK`,Windows 看 OpenSSH Authentication Agent 服务;统一通过 `ssh-add -l` 列已加载 key(bits / SHA256 指纹 / comment / keyType)。RemotePanel 显示 agent 状态 ✅/⚠️ + key 列表 + 刷新按钮。无 agent 时给 actionable 提示(`eval $(ssh-agent)` 等)。
-  - **ControlMaster 性能层(§阶段 3.5)**:`advanced.enableControlMaster` 默认 true。`buildSshLaunchParams` 加 `-o ControlMaster=auto -o ControlPath=~/.ssh/cm-%r@%h:%p -o ControlPersist=10m`,同一 host:port:user 的 5 个 session 只 1 次握手(~3s → <100ms / session)。Windows OpenSSH 8.x+ 走 named pipe,ControlPath 被忽略仍照样复用,失败时 OpenSSH 自动回退到独立连接 — Marina 不需要兜底。2 个新单测验证 args 出现 / 不出现。`PlatformAdapter.getSshControlPath()` 可选接口(POSIX 三平台返回 `~/.ssh/cm-%r@%h:%p`)。
+  - **ControlMaster 性能层(§阶段 3.5)**:`advanced.enableControlMaster` 默认 true。`buildSshLaunchParams` 加 `-o ControlMaster=auto -o ControlPath=~/.ssh/cm-%r@%h:%p -o ControlPersist=10m`,同一 host:port:user 的 5 个 session 只 1 次握手(~3s → <100ms / session)。Windows OpenSSH 8.x+ 走 named pipe,ControlPath 被忽略仍照样复用,失败时 OpenSSH 自动回退到独立连接 — Ceteris 不需要兜底。2 个新单测验证 args 出现 / 不出现。`PlatformAdapter.getSshControlPath()` 可选接口(POSIX 三平台返回 `~/.ssh/cm-%r@%h:%p`)。
   - **KnownHostsManager(§阶段 3.1)**:新建 `src/main/known-hosts-manager.ts`(190 行 + 8 个单测),解析 `~/.ssh/known_hosts` 每行(支持 plaintext / hashed `|1|` host / @cert-authority 跳过 / 注释跳过),计算 SHA256 指纹(与 `ssh-keygen -lf` 一致)。新增 `known-hosts-history.json` 持久化指纹时间线 — 同 host 指纹变化时报告 changes(potential MITM),timeline 跨重启保留。RemotePanel 顶部高亮变化条目(红框),下方列当前所有条目(前 10 条)。
   - **ReconnectBanner(§阶段 3.4)**:TerminalView statusbar 在 SSH session `state === 'exited'` 时显示"重连"按钮(玫紫色 accent),点击 = 同 pathId + 同 templateId + 当前 dims 起新 session,reducer 自动 select 新 session,旧 exited tab 留给用户决定。不做自动重连(留 V2 配 powerMonitor / navigator.onLine 体系)。CSS `.reconnect-button` 配 hover / disabled 态。
   - **IPC + bootstrap**:新增 3 个通道 `cmd:ssh-config:list` / `cmd:ssh-agent:status` / `cmd:known-hosts:refresh`。`KnownHostsManager` 跟其他 store 一样走 `JsonStore` + `initialize` / `flush` 生命周期,挂进 `installIpcLayer({ ...deps, knownHostsManager })`。
   - **RemotePanel UI 集成**:新增 4 个 SettingRow — agent 状态卡片 / ssh_config 开关 + 列表 / ControlMaster 开关 / known_hosts 浏览器(含变化高亮)。新 CSS class 8 个(`.ssh-agent-card / .ssh-agent-status-line / .ssh-agent-key-list / .ssh-config-list / .ssh-config-hint / .ssh-known-hosts-list / .ssh-known-hosts-changes / .reconnect-button`)。新 i18n key 0 个(用 tx 双语字面量)。
   - **测试 + CI Gate**:新增 33 条测试(`ssh-config-parser.test.ts` 13 + `ssh-agent.test.ts` 9 + `known-hosts-manager.test.ts` 8 + `session-manager.test.ts` 新增 ProxyJump×3 + ControlMaster×2 = 5)。全量 501 个测试通过,typecheck + ESLint + stylelint 全过。
   - **已跳过的 M1 后续工单(放 V1.1 或 V2)**:
-    - **HostKeyPromptModal**(首次连接的 `Are you sure you want to continue connecting?` 拦截 + Marina 自绘 modal)— 需要 PTY 输出实时扫描 + 写 ssh stdin,跨平台行为细节多。当前体验:用户在终端里直接按 yes,known_hosts 由 OpenSSH 自动写入,Marina 下次 refresh 时检测到新条目。
-    - **MFA / TOTP modal**(截获 `Verification code:` prompt → Marina modal)同上原因。
+    - **HostKeyPromptModal**(首次连接的 `Are you sure you want to continue connecting?` 拦截 + Ceteris 自绘 modal)— 需要 PTY 输出实时扫描 + 写 ssh stdin,跨平台行为细节多。当前体验:用户在终端里直接按 yes,known_hosts 由 OpenSSH 自动写入,Ceteris 下次 refresh 时检测到新条目。
+    - **MFA / TOTP modal**(截获 `Verification code:` prompt → Ceteris modal)同上原因。
     - **自动重连 + 网络变化检测**(navigator.onLine + powerMonitor sleep/wake → 倒计时自动重连)— 实现简单但需要时序测试,且重连频率受 ControlPersist 影响较大,V2 跟"会话冻结/解冻"一起做。
     - **远端 tmux session 列表面板**(只看不操作)— PR #2 已实现 per-launch attach-or-create,列表面板属于增值功能。
-  - **M1 里程碑达成判定**:阶段 0(spec + PR #2 merge)+ 阶段 1(UI 分离 + 类型强化)+ 阶段 2-3 核心(本 PR)= Marina SSH 终端模式正式就位。SSH 用户能完成"管理远程服务器 + 进 shell 干活 + 用 tmux 保持会话 + 多 session 复用连接 + 主动重连"完整工作流。下一步走 0.2.0 GA 发版(beta.10 → beta.11 → 0.2.0)。
+  - **M1 里程碑达成判定**:阶段 0(spec + PR #2 merge)+ 阶段 1(UI 分离 + 类型强化)+ 阶段 2-3 核心(本 PR)= Ceteris SSH 终端模式正式就位。SSH 用户能完成"管理远程服务器 + 进 shell 干活 + 用 tmux 保持会话 + 多 session 复用连接 + 主动重连"完整工作流。下一步走 0.2.0 GA 发版(beta.10 → beta.11 → 0.2.0)。
 
 - **SSH 阶段 1:UI 分离 + 类型强化 + PR #2 polish。** 落地 `docs/方案-SSH-完整支持-20260524.md` §阶段 1,把 PR #2 的 SSH MVP 收尾成"本地用户视野与 beta.9 100% 一致 + SSH 用户专属入口"。
   - **PathKind discriminated union(§II.1)**:`Bookmark / RecentEntry / PathNode` 改严格 discriminated union,`kind` 必填,ssh 变体 `sshProfileId` narrow 为必填。所有使用 Path 的函数走 `switch on kind` 自动 exhaustiveness check;新增 `assertNeverPathKind` 兜底,未来加 `'wsl'`/`'docker'` 时编译器强制找出所有需要补 case 的位置。
-  - **磁盘迁移**:beta.9 之前的旧 schema(无 kind 字段)在 PathManager 启动时由 `migrateBookmarkOnLoad`/`migrateRecentOnLoad` 静默 coerce 为 local;损坏条目(kind=ssh 缺 sshProfileId)启动期丢弃不让用户进不来 Marina,导入 archive 走严格校验直接拒。新增 `PersistedBookmark`/`PersistedRecentEntry` 磁盘宽松 schema,与内存严格类型分离。
+  - **磁盘迁移**:beta.9 之前的旧 schema(无 kind 字段)在 PathManager 启动时由 `migrateBookmarkOnLoad`/`migrateRecentOnLoad` 静默 coerce 为 local;损坏条目(kind=ssh 缺 sshProfileId)启动期丢弃不让用户进不来 Ceteris,导入 archive 走严格校验直接拒。新增 `PersistedBookmark`/`PersistedRecentEntry` 磁盘宽松 schema,与内存严格类型分离。
   - **Sidebar segmented control(§II.3)**:顶部加 `[本地] [远程]` segmented control,默认本地;`hasSshProfiles || advanced.enableRemote` 时才渲染(本地用户 = sidebar 跟 beta.9 完全一致);切到本地段时 device sections / temporary / recent 都按 `kind !== 'ssh'` 过滤,反之亦然。状态 localStorage 持久化跨重启保留。
   - **设置页 SSH 条件渲染(§II.6)**:把 SSH UI 从"数据"分类抽出来,做成顶级"远程"分类。`buildVisibleCategories` 纯函数控制 nav 显示:无 SshProfile 且 `advanced.enableRemote=false` 时不出现,设置页永远 8 个分类;有 profile 或勾了 enableRemote 时第 5 位插入"远程"成 9 个。RemotePanel 含 SSH 服务器 CRUD / 远程文件夹收藏 / `enableRemote` 开关。
   - **`advanced.enableRemote` 设置**:新增字段,默认 false。是"本地视野守护"的唯一显式触发条件;RemotePanel 内可勾掉,关掉后无 profile 则刷新设置后远程分类隐藏。
@@ -165,14 +165,14 @@ UI 视觉一致性收尾:把"无边框 / hairline / lucide 矢量图标"语言�
 
 - **UI-2:新增 4 个主题 — Catppuccin Latte / Tokyo Night Day / Light Pink / Fairyfloss。**
   补完 Catppuccin / Tokyo Night 浅色家族;Light Pink 走"多色少女"区分于 Cutie 的"单粉色家族";Fairyfloss 是项目第一个"深色可爱"主题。所有 ANSI bright 系按 BETA-035 标准在浅底 ≥4.5:1。`global.css` 加 4 个 `[data-theme]` 块 + 浅色主题 `ctx-menu / modal / toast / select-arrow / bootstrap-placeholder` 特化扩展。
-- **TERM-PROGRAM:子 shell 现在能识别 Marina 宿主身份 + 完整终端能力。** 仿 iTerm2 / WezTerm,统一注入 `TERM=xterm-256color`、`COLORTERM=truecolor`、`TERM_PROGRAM=Marina`、`TERM_PROGRAM_VERSION=app.getVersion()`。覆盖父进程继承的旧值(避免 Marina 从 VS Code 终端启动时子 shell 看到 `vscode`);若 `appVersion` 缺失则主动 `delete` 继承值。用户 `.bashrc / Profile.ps1` 可分支判断 `$env:TERM_PROGRAM -eq 'Marina'`;starship / oh-my-posh / fzf / bat / delta 等显式读 `COLORTERM` 决定 24-bit 渐变。node-pty `spawn name` 同步改 `xterm-256color`。
+- **TERM-PROGRAM:子 shell 现在能识别 Ceteris 宿主身份 + 完整终端能力。** 仿 iTerm2 / WezTerm,统一注入 `TERM=xterm-256color`、`COLORTERM=truecolor`、`TERM_PROGRAM=Ceteris`、`TERM_PROGRAM_VERSION=app.getVersion()`。覆盖父进程继承的旧值(避免 Ceteris 从 VS Code 终端启动时子 shell 看到 `vscode`);若 `appVersion` 缺失则主动 `delete` 继承值。用户 `.bashrc / Profile.ps1` 可分支判断 `$env:TERM_PROGRAM -eq 'Ceteris'`;starship / oh-my-posh / fzf / bat / delta 等显式读 `COLORTERM` 决定 24-bit 渐变。node-pty `spawn name` 同步改 `xterm-256color`。
 
 ### 修复 / 改进
 
 - **SCROLL-1:切 session 时终端"从上往下刷屏再到底"再现 — 用 `term.write('', cb)` 作 fence 根治回归。**
   BETA-018 在 2026-05-16 修过同一现象,但 CURSOR-1 把 `get-scrollback` 数据源从 main 端裸字节 ring 切到 SerializeAddon 序列化的完整状态 ANSI 流后,体积从"单片 16KB 一过完"变成"几十~几百 KB 必走分片 + yield",原修复(`.then` 体内直接 `scrollToBottom`)隐式依赖"parser 单帧能 drain 完",于是失效。根因:`term.write()` 是异步排队(d.ts:1216),`.then` 体内的 `scrollToBottom` 锚的"底"在后续 parser 解析新行时会被持续往下推。修复把 `scrollToBottom` 移进 `term.write('', cb)` 的 callback 内,callback 由 parser drain 后才触发,等价 fence。主路径 + catch fallback 各改一处,带 `disposed` 兜底。文件头 `@关键设计` 加"步骤 4 视口锚定",明文禁止"`.then` 体里直接调"。详见 `docs/issues/scroll-1-session-switch-progressive-refresh.md`。
 - **IME-1 探针 v2:LEAK 判定升级 + 持久化日志通道,根治"DevTools 没开就丢现场" + 正常长输入误报。**
-  用户在 2026-05-18 当晚反馈 `[IME-LEAK]` 在 console 里只剩 "Object" 占位,定位不了哪条 race;同步抓到的另一条现场 `len=24 head=tail=taTail=24 字` 又是"一次性长 IME 提交"被原始阈值 `data.length > 20` 误报。两个动作:**(a)** LEAK 判定从单一阈值升级到 `data.length > 20 AND taLen ≥ data.length + 8`(物理意义:textarea 必须严格长于 data 才说明有"前面那段历史"没被取出);**(b)** PROBE B 的 `composition* / keydown(229)` 不再 `console.warn` 每条(中文用户日常输入每按一个标点都打一条),改进 ring buffer (capacity 50) 暂存;LEAK 触发时整个 ring 一次性 IPC dump 到 main 端,通过新增的 `logger.ime` 通道落盘 `%APPDATA%/Marina/logs/ime-YYYY-MM-DD.log`(按日切、5MB rotate、保 7 天,与 `llm` 排障日志同套设施)。判定与 ring 下沉到 `src/shared/ime-probe-ring.ts`,配 10 条护栏单测。观察期结束移除探针时,本通道一并退役。详见 `docs/issues/ime-1-chinese-ime-stale-textarea-flush.md` "探针 v2 升级"段。
+  用户在 2026-05-18 当晚反馈 `[IME-LEAK]` 在 console 里只剩 "Object" 占位,定位不了哪条 race;同步抓到的另一条现场 `len=24 head=tail=taTail=24 字` 又是"一次性长 IME 提交"被原始阈值 `data.length > 20` 误报。两个动作:**(a)** LEAK 判定从单一阈值升级到 `data.length > 20 AND taLen ≥ data.length + 8`(物理意义:textarea 必须严格长于 data 才说明有"前面那段历史"没被取出);**(b)** PROBE B 的 `composition* / keydown(229)` 不再 `console.warn` 每条(中文用户日常输入每按一个标点都打一条),改进 ring buffer (capacity 50) 暂存;LEAK 触发时整个 ring 一次性 IPC dump 到 main 端,通过新增的 `logger.ime` 通道落盘 `%APPDATA%/Ceteris/logs/ime-YYYY-MM-DD.log`(按日切、5MB rotate、保 7 天,与 `llm` 排障日志同套设施)。判定与 ring 下沉到 `src/shared/ime-probe-ring.ts`,配 10 条护栏单测。观察期结束移除探针时,本通道一并退役。详见 `docs/issues/ime-1-chinese-ime-stale-textarea-flush.md` "探针 v2 升级"段。
 - **UI-1:无边框风格收尾清理 4 处遗漏 `border` + tab 改 Chrome 风格(缩放替代横向滚动)。**
   之前 4 个区块(`.sidebar / .sidebar-category / .tab-bar / .tab`)已固化"无边框",但还有 4 处遗漏仍画 1px 实色线:`.sidebar-footer / .terminal-statusbar / .settings-header / .settings-nav`,统一删掉。tab-bar / tab-list `overflow: hidden` 替代 `overflow-x: auto`,`.tab` 从 `flex: 0 0 auto` 改成 `flex: 0 1 180px` + `min-width: 40px`,空间不够时一直缩到 40px 被 `.tab-name` 的 ellipsis 截断,不再出水平滚动条。浅色主题 hairline 补强方案以 RFC 形式归档于 `docs/issues/ui-1-borderless-style-light-theme-hairline.md`(保留 open question)。
 
@@ -198,7 +198,7 @@ UI 视觉一致性收尾:把"无边框 / hairline / lucide 矢量图标"语言�
 
 ## [0.1.0-beta.6] — 2026-05-18
 
-紧急 hotfix:在 Marina 启动的 Git Bash 里 `powershell.exe` / `cmd.exe` / `reg.exe`
+紧急 hotfix:在 Ceteris 启动的 Git Bash 里 `powershell.exe` / `cmd.exe` / `reg.exe`
 / `wmic.exe` / `ssh.exe`(OpenSSH 版)等所有 `C:\Windows\System32` 系原生命令
 都无法通过 PATH 解析(BETA-ENV-1)。用户报告 Claude Code 的 PowerShell 工具
 直接返回"PowerShell is not available on this system."。
@@ -239,7 +239,7 @@ beta.4 之后的开源准备 + Linux 首发回合。三件大事:**Linux 包正�
 - **Linux 支持**(BETA-003):LinuxAdapter 真实现替换全部 NOT_IMPLEMENTED
   桩;detectShells 走 /etc/shells 过滤;buildShellLaunchParams 对 bash / zsh /
   fish 三 shell 各自走 --rcfile / ZDOTDIR / XDG_CONFIG_HOME 分支;getProcessCwd
-  走 /proc/<pid>/cwd;setAutoStart 写 ~/.config/autostart/marina.desktop;
+  走 /proc/<pid>/cwd;setAutoStart 写 ~/.config/autostart/ceteris.desktop;
   registerFileManagerIntegration 走 gsettings + update-alternatives /
   alternatives 双分支(Debian / RHEL 系)。`PlatformAdapter.lifecycleModel` 字段
   新增,三平台分别 `tray-resident` / `dock-resident` / `no-persistence`。
@@ -312,7 +312,7 @@ beta.4 之后的开源准备 + Linux 首发回合。三件大事:**Linux 包正�
 - **WebGL 关闭**(Linux):滚动比 Windows 略卡
 - **无系统托盘**(Linux):平台限制(GNOME 移除 system tray),配套二次确认 modal
 - **IME-1**(Linux + Windows):中文 IME 按标点偶发冲刷历史输入,根因调查中
-- **KI-004**(全平台):ConPTY 强约束 — Marina 主进程崩则所有 PTY 必死。
+- **KI-004**(全平台):ConPTY 强约束 — Ceteris 主进程崩则所有 PTY 必死。
   长任务请挂 tmux / screen / nohup 兜底
 - **无代码签名 + 无自动更新**:beta 阶段如此,公测前会做
 
@@ -321,7 +321,7 @@ beta.4 之后的开源准备 + Linux 首发回合。三件大事:**Linux 包正�
 - 测试 320+ 通过(含 `linux.test.ts` 新增 18 个用例:detectShells /
   buildShellLaunchParams / getProcessCwd / setAutoStart /
   registerFileManagerIntegration)
-- 仓库正式开源:**https://github.com/Liyue-Cheng/marina** (MIT)
+- 仓库正式开源:**https://github.com/Fanisting/ceteris** (MIT)
 - 分支:`fix/cursor-1-state-replay` no-ff merge 到 `main`
 
 ---
@@ -368,12 +368,12 @@ Beta 反馈勘误回合一次性收口 32 条工单。详见 `docs/beta反馈工
   正在执行,`idle` = 等待命令(含 banner 期 + prompt 等待)。消除"新建即
   闪绿"。推翻 CP-4 勘误 #5。(BETA-008,ADR-014)
 - **spawn 前从注册表合并最新 PATH**:Windows 安装新软件后,新 PTY 立刻
-  能看到新的 python.exe / node.exe,无需重启 Marina。(BETA-001)
+  能看到新的 python.exe / node.exe,无需重启 Ceteris。(BETA-001)
 - **多行粘贴判定逻辑修复**:原 normalize 只剥一个尾换行,`"ls\n\n"` 被算
   2 行误触发 confirm,改为剥所有尾空行。(BETA-041)
 - **切换终端不再"从上往下刷屏"**:scrollback 重放完立即 `scrollToBottom()`。
   (BETA-018)
-- **新窗口右键打开终端时自动展开 path**:Explorer "在 Marina 终端中
+- **新窗口右键打开终端时自动展开 path**:Explorer "在 Ceteris 终端中
   打开" 新窗口里直接看到 session,不再要手动展开。(BETA-042)
 - **主题选择 UI 改纯文本列表**:删 5 色块色卡,改纯文本 + 深色/浅色 tag。
   (BETA-032)
@@ -386,7 +386,7 @@ Beta 反馈勘误回合一次性收口 32 条工单。详见 `docs/beta反馈工
 - **浅色主题右键菜单 / Modal 边框 + 背景透明度调整**:边框换 --muted,
   modal backdrop 改 22%(原 45% 在浅底突兀)。(BETA-037)
 - **数据目录显示真实路径**:设置页用 `app.getPath('userData')` 替换硬编码
-  `%APPDATA%\Marina`,portable / dev / 自定义 userData 场景准确。(BETA-039)
+  `%APPDATA%\Ceteris`,portable / dev / 自定义 userData 场景准确。(BETA-039)
 - **Sidebar 分组标题字号 / 颜色加重**:font-size 11→12,color --subtle
   → --text。(BETA-012)
 - **Sidebar 三角形换 lucide ChevronRight/Down**:文字 ▶ 视觉上不够清晰。
@@ -409,9 +409,9 @@ Beta 反馈勘误回合一次性收口 32 条工单。详见 `docs/beta反馈工
 
 ### 已知限制
 
-- **KI-004**:Windows ConPTY 强约束 — Marina 主进程崩溃则所有 PTY 必死。
+- **KI-004**:Windows ConPTY 强约束 — Ceteris 主进程崩溃则所有 PTY 必死。
   接受为 V1 限制,用户应定期 export 设置;长任务挂 tmux / screen / nohup
-  以独立于 Marina 主进程。(BETA-002)
+  以独立于 Ceteris 主进程。(BETA-002)
 
 ### 工程
 

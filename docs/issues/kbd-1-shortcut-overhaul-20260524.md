@@ -26,7 +26,7 @@
 
 ### 架构层
 1. **没有单一权威**:键位定义散落在 `attachCustomKeyEventHandler` 长 handler 内,spec 文档只说"Ctrl+C/V/F",代码实际更多,设置页无速查,三处永远不一致
-2. **paste 是双层 listener**:xterm 自己在 helper-textarea 上挂 bubble-phase paste listener 直接送 PTY;Marina 在键盘 handler 内调 `handlePaste()`;两者并存导致双倍 / 漏触发
+2. **paste 是双层 listener**:xterm 自己在 helper-textarea 上挂 bubble-phase paste listener 直接送 PTY;Ceteris 在键盘 handler 内调 `handlePaste()`;两者并存导致双倍 / 漏触发
 3. **overlay 无优先级模型**:每个 overlay 各自挂 window keydown,Esc 谁吃靠 React 注册顺序
 4. **focus 行为在 replay 期未定义**:visibility:hidden 让 helper-textarea 不能 focus,但没显式 inert,焦点可能漂走
 

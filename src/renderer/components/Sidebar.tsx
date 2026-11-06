@@ -89,8 +89,8 @@ const STATE_DOT_COLOR: Record<SessionInfo['state'], string> = {
  * 持久化到 localStorage,跨重启保留。
  */
 type SidebarSegment = 'local' | 'remote';
-const SIDEBAR_SEGMENT_LS_KEY = 'marina.sidebar.segment';
-const FILE_TREE_OPEN_LS_KEY = 'marina.sidebar.fileTreeOpen';
+const SIDEBAR_SEGMENT_LS_KEY = 'ceteris.sidebar.segment';
+const FILE_TREE_OPEN_LS_KEY = 'ceteris.sidebar.fileTreeOpen';
 
 function readFileTreeOpenFromStorage(): boolean {
   try {
@@ -113,7 +113,7 @@ function readSegmentFromStorage(): SidebarSegment {
  * max 抢占终端区视觉权重。中间档默认 280px 与历史 CSS 一致,无 sidebarWidth
  * 时回落到该值(旧用户首次升级看不出变化)。
  */
-const SIDEBAR_WIDTH_LS_KEY = 'marina.sidebar.width';
+const SIDEBAR_WIDTH_LS_KEY = 'ceteris.sidebar.width';
 const SIDEBAR_DEFAULT_WIDTH = 280;
 const SIDEBAR_MIN_WIDTH = 180;
 const SIDEBAR_MAX_WIDTH = 600;

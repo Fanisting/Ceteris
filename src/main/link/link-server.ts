@@ -1,6 +1,6 @@
 /**
  * @file src/main/link/link-server.ts
- * @purpose Marina Link 的 Host 侧。监听 TCP,接受经过认证的远程客户端,
+ * @purpose Ceteris Link 的 Host 侧。监听 TCP,接受经过认证的远程客户端,
  *   把每个客户端注册成一个虚拟窗口,再把它发来的命令喂进本机既有的 IPC
  *   handler,并把本机产生的事件顺着 socket 推回去。
  *
@@ -13,7 +13,7 @@
  *   handleWindowClosed 清理路径。
  * - **断开 = 关窗**。socket 断掉时注销虚拟窗口,ipc.ts 注册的 onWindowClosed
  *   会把它持有的 session 全部转为无主。PTY 一直在跑,Host 本机窗口可以立刻
- *   接管 —— 这正是 Marina "会话不随窗口死" 哲学在远程场景下的自然延伸。
+ *   接管 —— 这正是 Ceteris "会话不随窗口死" 哲学在远程场景下的自然延伸。
  * - **重连恢复归属**。意外断线时记下该客户端持有的 session,同一 windowId 重连后
  *   重新接管。这里不保留"挂起的虚拟窗口",因为那样 Host 本机在客户端回来之前
  *   无法使用这些 session。只恢复仍然无主的 session,已被别处接管的不抢。
@@ -23,7 +23,7 @@
  * - **每条连接一个状态机**,见 LinkConnection。握手超时、心跳超时、帧过大、
  *   解密失败,任一发生都是直接 destroy socket,不做任何"尝试恢复"。
  *
- * @对应文档章节: docs/marina-link-protocol.md;docs/ipc-protocol.md(被搬运的内层协议)
+ * @对应文档章节: docs/ceteris-link-protocol.md;docs/ipc-protocol.md(被搬运的内层协议)
  *
  * @不要在这里做的事:
  * - 不要在这里解释任何 cmd:/evt: 的语义(那是 ipc.ts 的职责)
@@ -34,7 +34,7 @@
  * - 客户端连上立刻断 → 看日志里有没有 "帧认证失败":几乎总是两端 token 不一致
  * - 监听失败 EADDRINUSE → 端口被占,换端口或关掉占用进程
  * - 监听失败 EADDRNOTAVAIL → bindAddress 填了一个本机没有的 IP(常见于
- *   Tailscale 还没起来就启动了 Marina),改成 auto 或等 Tailscale 就绪后重开
+ *   Tailscale 还没起来就启动了 Ceteris),改成 auto 或等 Tailscale 就绪后重开
  */
 import { createServer, type Server, type Socket } from 'node:net';
 import { randomUUID } from 'node:crypto';
@@ -237,7 +237,7 @@ class LinkConnection {
         if (this.state === 'handshaking') this.handleHandshakeFrame(frame);
         else this.handleEncryptedFrame(frame);
       } catch (err) {
-        // 任何一帧处理失败都是不可恢复的:要么对端不是 Marina,要么 token
+        // 任何一帧处理失败都是不可恢复的:要么对端不是 Ceteris,要么 token
         // 不对,要么流已经错位。继续读下去只会产生更多噪声。
         logger.warn(
           'LinkServer',
@@ -573,7 +573,7 @@ class LinkConnection {
 }
 
 /**
- * Marina Link 的 Host 端服务。
+ * Ceteris Link 的 Host 端服务。
  *
  * 生命周期由 LinkManager 驱动:设置里打开开关就 start,关掉就 stop,
  * 改端口 / 改绑定地址就 stop + start。

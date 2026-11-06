@@ -8,7 +8,7 @@
  *   不阻塞主流程)。
  *
  *   为什么用官方 SDK 而不是 fetch:与 BETA-031 实施决策一致(用户拍板:
- *   维护成本低、类型完整)。同时 BETA-031 是 Marina 第一个 LLM 集成点,
+ *   维护成本低、类型完整)。同时 BETA-031 是 Ceteris 第一个 LLM 集成点,
  *   未来还可能扩展 streaming / function calling,SDK 提供更平坦的升级路径。
  *
  * @对应文档章节: 工单库 BETA-006 BETA-031;软件定义书后续 AI 章节
@@ -110,7 +110,7 @@ export class AIClient {
 
   /**
    * BETA-006 v2:active→idle 跃迁前给 LLM 看一眼终端尾部,问它"用户该不
-   * 该回来看一眼了" — 因为 Marina 的主要用途是监控多个后台 Agent,旧 tab
+   * 该回来看一眼了" — 因为 Ceteris 的主要用途是监控多个后台 Agent,旧 tab
    * 在后台跑、状态点是用户判断"该不该回去检查"的唯一信号。
    *
    * 返回 'keep-active' = 任务还在跑,先别打扰用户;'go-idle' = 任务停了 /

@@ -29,14 +29,14 @@ let cached: BuildType | null = null;
  *
  * Detection uses the exe name, not an env var: the portable wrapper is not always
  * in the launch path (running win-unpacked directly skips it), and env vars leak
- * into child shells. A beta must never be mistaken for the installed Marina.
+ * into child shells. A beta must never be mistaken for the installed Ceteris.
  */
 export function isBetaBuild(): boolean {
   if (!app.isPackaged) return false;
   return process.execPath.split(/[\\/]/).pop()?.toLowerCase() === BETA_EXECUTABLE;
 }
 
-/** User-facing app name, so the tray can tell a beta from the installed Marina. */
+/** User-facing app name, so the tray can tell a beta from the installed Ceteris. */
 export function getAppLabel(): string {
   return isBetaBuild() ? 'Ceteris Beta' : 'Ceteris';
 }

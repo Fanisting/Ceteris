@@ -13,8 +13,8 @@ use windows::Win32::Foundation::{
 use windows::Win32::System::Com::IClassFactory;
 use windows_core::BOOL;
 
-use crate::factory::MarinaClassFactory;
-use crate::guid::CLSID_MARINA_CONTEXT_MENU;
+use crate::factory::CeterisClassFactory;
+use crate::guid::CLSID_CETERIS_CONTEXT_MENU;
 
 /// 自身 DLL 的 HINSTANCE,DllMain DLL_PROCESS_ATTACH 时记录。
 /// command.rs 的 GetIcon 通过它拿 DLL 绝对路径,再拼 assets\menu-icon.ico。
@@ -42,11 +42,11 @@ pub extern "system" fn DllGetClassObject(
         }
         *ppv = std::ptr::null_mut();
 
-        if *rclsid != CLSID_MARINA_CONTEXT_MENU {
+        if *rclsid != CLSID_CETERIS_CONTEXT_MENU {
             return CLASS_E_CLASSNOTAVAILABLE;
         }
 
-        let factory: IClassFactory = MarinaClassFactory.into();
+        let factory: IClassFactory = CeterisClassFactory.into();
         match factory.query(&*riid, ppv) {
             hr if hr == S_OK => S_OK,
             hr => hr,

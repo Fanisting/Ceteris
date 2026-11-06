@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/generate-icon.cjs
- * @purpose Marina 应用图标生成器。一份几何定义同时产出 SVG、PNG 和多尺寸 ICO。
+ * @purpose Ceteris 应用图标生成器。一份几何定义同时产出 SVG、PNG 和多尺寸 ICO。
  *
  * 用法:
  *   npm run generate-icon
@@ -14,8 +14,8 @@
  *
  * @设计: Material Design 产品图标的做法:平涂色块分层,不用渐变,主体居中在
  *   安全区内。海青底上一个白色 ">" 提示符,底部一层浅青的水面。提示符表明这是
- *   终端,水面是 marina(港湾)的意象,波浪边与运行中标签页的指示线呼应。配色
- *   取自 Marina Material 主题的种子色 #006a6a。
+ *   终端,水面是 ceteris(港湾)的意象,波浪边与运行中标签页的指示线呼应。配色
+ *   取自 Ceteris Material 主题的种子色 #006a6a。
  *
  * @关键设计:
  * - 不依赖任何 npm 包(AGENTS.md 1.2 边界 2):用 SDF 算覆盖率实现抗锯齿,

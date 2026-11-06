@@ -1,6 +1,6 @@
 /**
  * @file src/main/link/link-crypto.ts
- * @purpose Marina Link 的认证密钥交换与帧加密。提供:临时 X25519 密钥对、
+ * @purpose Ceteris Link 的认证密钥交换与帧加密。提供:临时 X25519 密钥对、
  *   把预共享 token 绑进 HKDF 的会话密钥派生、AES-256-GCM 的逐帧加解密。
  *
  * @关键设计:
@@ -15,7 +15,7 @@
  * - **序号由接收方自己维护**,不从帧里读。因此重放、乱序、丢帧都表现为
  *   GCM 认证失败 → 断开连接。TCP 已保证有序,所以正常流量不受影响。
  *
- * @对应文档章节: docs/marina-link-protocol.md 第 3 章(握手与密钥派生)
+ * @对应文档章节: docs/ceteris-link-protocol.md 第 3 章(握手与密钥派生)
  *
  * @不要在这里做的事:
  * - 不要在这里读 settings / 碰 socket(纯函数 + 一个会话对象,便于单测)
@@ -199,7 +199,7 @@ export interface LinkSessionKeys {
  *   shared = X25519(ownPriv, peerPub)                       // 32 字节
  *   ikm    = shared ‖ utf8(token)
  *   salt   = clientNonce ‖ serverNonce                      // 32 字节
- *   info   = utf8("marina-link/v{V}") ‖ clientPub ‖ serverPub
+ *   info   = utf8("ceteris-link/v{V}") ‖ clientPub ‖ serverPub
  *   okm    = HKDF-SHA256(ikm, salt, info, 64)
  *   c2sKey = okm[0..32)
  *   s2cKey = okm[32..64)
@@ -245,7 +245,7 @@ export function deriveSessionKeys(input: DeriveSessionKeysInput): LinkSessionKey
   const ikm = Buffer.concat([shared, Buffer.from(input.token, 'utf8')]);
   const salt = Buffer.concat([input.clientNonce, input.serverNonce]);
   const info = Buffer.concat([
-    Buffer.from(`marina-link/v${LINK_PROTOCOL_VERSION}`, 'utf8'),
+    Buffer.from(`ceteris-link/v${LINK_PROTOCOL_VERSION}`, 'utf8'),
     input.clientPublicKeyRaw,
     input.serverPublicKeyRaw,
   ]);

@@ -1,8 +1,8 @@
-# Dockerfile.linux-build · Marina Linux 包构建容器(ISO-1,2026-05-20)
+# Dockerfile.linux-build · Ceteris Linux 包构建容器(ISO-1,2026-05-20)
 #
 # 用途
 # ----
-# 在 Windows / macOS 开发机上构建 Marina 的 Linux 安装包(.deb / .rpm / AppImage),
+# 在 Windows / macOS 开发机上构建 Ceteris 的 Linux 安装包(.deb / .rpm / AppImage),
 # 不污染主机 node_modules,不需要双系统、双仓库、双 nvm。
 #
 # 历史问题
@@ -28,18 +28,18 @@
 #   npm run build:linux:docker
 #
 #   # 等价手工命令:
-#   docker build -f Dockerfile.linux-build -t marina-linux-build:local .
-#   docker run --rm -v "$(pwd)/release:/build/release" marina-linux-build:local
+#   docker build -f Dockerfile.linux-build -t ceteris-linux-build:local .
+#   docker run --rm -v "$(pwd)/release:/build/release" ceteris-linux-build:local
 #
 #   # 进容器交互式排查(RESIZE-1 等):
 #   docker run --rm -it \
 #     -v "$(pwd)/release:/build/release" \
 #     -v "$(pwd)/src:/build/src:ro" \
-#     --entrypoint /bin/bash marina-linux-build:local
+#     --entrypoint /bin/bash ceteris-linux-build:local
 #
 # 注意
 # ----
-# - 这是 build container,不是 runtime container。不要把 marina 装进容器跑 GUI。
+# - 这是 build container,不是 runtime container。不要把 ceteris 装进容器跑 GUI。
 # - 镜像 ~1.2GB(Electron + electron-builder 完整工具链),local tag 用完不删
 #   也无所谓;CI 上可以 docker build --no-cache 保证 reproducible。
 # - 不签名(签名证书在主机上,容器里不应有私钥)。签名步骤在 npm postbuild
@@ -55,7 +55,7 @@ FROM node:20-bullseye AS build
 #   - dpkg-dev:.deb 打包(dpkg-deb)
 #   - rpm:.rpm 打包
 #   - fakeroot:无 root 也能 chown / chmod
-#   - libsecret-1-dev:Electron Keytar 编译依赖(虽然 Marina 不直接用,
+#   - libsecret-1-dev:Electron Keytar 编译依赖(虽然 Ceteris 不直接用,
 #     但 electron-builder 自检会读)
 #   - python3 + make + g++:node-pty native build 工具链
 #   - libxss-dev + libgtk-3-dev:Electron 编译期依赖

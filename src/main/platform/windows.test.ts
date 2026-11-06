@@ -341,7 +341,7 @@ describe('WindowsAdapter — resolveExecutable', () => {
   });
 
   it('按 PATH + PATHEXT 解析 ssh → ssh.exe', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'marina-win-exe-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'ceteris-win-exe-'));
     const sshPath = join(tempDir, 'ssh.exe');
     writeFileSync(sshPath, '');
 

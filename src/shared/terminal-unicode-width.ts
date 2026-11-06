@@ -6,7 +6,7 @@
  * @关键设计:
  * - xterm 5.5 默认 UnicodeV6 会把很多 emoji 当 1 列;Linux/WSL/SSH 侧
  *   ncurses/Rust/Go TUI 常按更新的 wcwidth 把这些符号当 2 列
- * - 使用 xterm 官方 @xterm/addon-unicode11,不在 Marina 内自维护 Unicode 表
+ * - 使用 xterm 官方 @xterm/addon-unicode11,不在 Ceteris 内自维护 Unicode 表
  * - renderer 与 headless replay 都必须启用同一 provider,否则重挂回放会
  *   与 live 渲染在光标位置上再次分叉
  *
@@ -28,7 +28,7 @@ export interface UnicodeWidthTerminal {
  *
  * @returns true 表示已切到 Unicode 11;false 表示当前终端对象缺少 unicode API。
  */
-export function activateMarinaUnicodeWidth(term: UnicodeWidthTerminal): boolean {
+export function activateCeterisUnicodeWidth(term: UnicodeWidthTerminal): boolean {
   if (!term.unicode) return false;
   term.loadAddon(new Unicode11Addon());
   term.unicode.activeVersion = UNICODE11_VERSION;

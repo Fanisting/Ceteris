@@ -7,9 +7,9 @@
 // 重挂时能否正确恢复 alt-buffer + cursor 隐藏状态。
 //
 // 用法:
-//   1. Marina 任意 tab 内 `node scripts/repro-cursor-1.mjs`
+//   1. Ceteris 任意 tab 内 `node scripts/repro-cursor-1.mjs`
 //   2. 等进度条满(画面进入稳态)
-//   3. 关 Marina 窗口 → 从托盘 / 任务栏重开 → 切回该 tab
+//   3. 关 Ceteris 窗口 → 从托盘 / 任务栏重开 → 切回该 tab
 //
 // 期望(CURSOR-1 修复后):画面完整重现 + 光标继续隐藏。
 // 期望(CURSOR-1 修复前):画面错乱 + 闪烁可见光标。
@@ -71,7 +71,7 @@ process.on('SIGHUP', () => {
 process.on('exit', cleanup);
 
 // ── 一次性 setup:进 alt-buffer + 隐光标 ──
-// 只发一次,模拟 Claude Code / Codex 真实行为。如果 Marina scrollback 截断
+// 只发一次,模拟 Claude Code / Codex 真实行为。如果 Ceteris scrollback 截断
 // 把这两条字节裁掉,重挂时 xterm 落不到 alt-buffer + cursor 仍可见 + blink。
 write('\x1b[?1049h');
 write('\x1b[?25l');
@@ -113,12 +113,12 @@ function drawFrame() {
     buf += '\r\n';
     buf +=
       '  脚本只发一次 \x1b[33m?1049h\x1b[0m + \x1b[33m?25l\x1b[0m,然后刷 alt-screen 帧把\r\n';
-    buf += '  Marina scrollback 推过 2MB。等下方进度条满,画面进入稳态。\r\n';
+    buf += '  Ceteris scrollback 推过 2MB。等下方进度条满,画面进入稳态。\r\n';
     buf += '\r\n';
     buf += '  操作步骤:\r\n';
     buf += '    1. 等进度条满\r\n';
     buf +=
-      '    2. \x1b[1m关 Marina 窗口\x1b[0m → 从托盘 / 任务栏重开 → 切回此 tab\r\n';
+      '    2. \x1b[1m关 Ceteris 窗口\x1b[0m → 从托盘 / 任务栏重开 → 切回此 tab\r\n';
     buf += '    3. 验证画面完整重现 + 光标继续隐藏\r\n';
     buf += '\r\n';
   }
@@ -144,11 +144,11 @@ function drawFrame() {
     // 稳态终屏:盖掉进度区,显示完成 + 操作提示
     let final = '';
     final += '\x1b[12;1H\x1b[K';
-    final += `  \x1b[1;32m✓ Emitted ${(totalBytes / 1024).toFixed(0)} KB (> 2MB Marina scrollback cap)\x1b[0m`;
+    final += `  \x1b[1;32m✓ Emitted ${(totalBytes / 1024).toFixed(0)} KB (> 2MB Ceteris scrollback cap)\x1b[0m`;
     final += '\x1b[14;1H\x1b[K';
     final += '\x1b[15;1H\x1b[K  \x1b[37m现在试一下:\x1b[0m';
     final +=
-      '\x1b[16;1H\x1b[K    \x1b[1m关闭 Marina 窗口\x1b[0m,从托盘 / 任务栏重新打开,切回此 tab';
+      '\x1b[16;1H\x1b[K    \x1b[1m关闭 Ceteris 窗口\x1b[0m,从托盘 / 任务栏重新打开,切回此 tab';
     final += '\x1b[17;1H\x1b[K';
     final += '\x1b[18;1H\x1b[K  CURSOR-1 修复正确 → 画面完整 + 光标仍隐藏';
     final +=

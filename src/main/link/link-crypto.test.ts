@@ -1,6 +1,6 @@
 /**
  * @file src/main/link/link-crypto.test.ts
- * @purpose 验证认证密钥交换与帧加密。这是 Marina Link 唯一的安全边界,
+ * @purpose 验证认证密钥交换与帧加密。这是 Ceteris Link 唯一的安全边界,
  *   所以测试重点不是 happy path,而是**攻击者应当失败的每一条路径**。
  *
  * @核心断言:

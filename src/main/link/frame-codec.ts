@@ -13,14 +13,14 @@
  *   能让它占的内存越少越好),握手完成后调 raiseLimit 放宽到
  *   LINK_MAX_FRAME_BYTES(8 MiB,要容纳 scrollback 响应)。
  *
- * @对应文档章节: docs/marina-link-protocol.md 第 2 章(分帧)
+ * @对应文档章节: docs/ceteris-link-protocol.md 第 2 章(分帧)
  *
  * @不要在这里做的事:
  * - 不要做加解密(那是 link-crypto.ts 的职责,本层只认字节)
  * - 不要做 JSON 解析(调用方按阶段决定载荷是明文 JSON 还是密文)
  *
  * @常见问题排查:
- * - 收到 'frame-too-large' → 对端多半根本不是 Marina Link(比如误连了
+ * - 收到 'frame-too-large' → 对端多半根本不是 Ceteris Link(比如误连了
  *   一个 HTTP 服务,"GET /" 的 ASCII 会被当成长度 0x47455420 = 1.2 GB)
  * - 帧内容错位 / JSON 解析失败 → 检查两端是否都在用同一个 raiseLimit 时机
  */
@@ -31,7 +31,7 @@ import {
 } from '@shared/link-protocol';
 
 /**
- * 分帧错误。带 code 便于调用方区分"对端不是 Marina"(直接断开、不重连)
+ * 分帧错误。带 code 便于调用方区分"对端不是 Ceteris"(直接断开、不重连)
  * 与其他情况。
  */
 export class FrameDecodeError extends Error {

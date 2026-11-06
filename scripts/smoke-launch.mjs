@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/smoke-launch.mjs
- * @purpose marina-app 启动冒烟测试。
+ * @purpose ceteris-app 启动冒烟测试。
  *
  * 仅验证 main 进程 + 至少一个 BrowserWindow 能在 5s 内活到 "ready-to-show"
  * 而不报 preload-error / renderer-process-gone 等致命错误。
@@ -14,13 +14,13 @@
  *
  * @策略
  * 1. 假设 out/ 已 build (电梯口检查 out/main/index.js 存在)。
- * 2. spawn Electron 子进程跑 marina-app,关闭 GPU 加速 (CI 友好)。
+ * 2. spawn Electron 子进程跑 ceteris-app,关闭 GPU 加速 (CI 友好)。
  * 3. 5s 内监听 stdout/stderr:
  *      - 看到 "[WindowManager] preload-error" → fail
  *      - 看到 "bootstrap starting" → milestone (main 进程起来了)
  *      - 看到 "render-process-gone" → fail
  *    超时未见 preload-error 且 milestone 达成 → pass。
- * 4. 测试结束无论成败都 kill 子进程,marina-app 不会真留下持续窗口。
+ * 4. 测试结束无论成败都 kill 子进程,ceteris-app 不会真留下持续窗口。
  *
  * @用法
  *   npm run build:unpack   # 先 build 出 out/
@@ -136,7 +136,7 @@ const child = spawn(
     env: {
       ...process.env,
       // 防托盘 / 自启等副作用,纯启动验证
-      MARINA_SMOKE: '1',
+      CETERIS_SMOKE: '1',
       // electron 在 Win 上 stdout 默认 inherit 可能不刷 — 强制 line buffer
       FORCE_COLOR: '0',
     },
@@ -154,7 +154,7 @@ child.on('error', (err) => {
 
 child.on('exit', (code, signal) => {
   if (resolved) return;
-  // 子进程在窗口期内自己退出 → 不正常(marina-app 不该自动退)
+  // 子进程在窗口期内自己退出 → 不正常(ceteris-app 不该自动退)
   finish(false, `子进程提前退出 code=${code} signal=${signal}`);
 });
 

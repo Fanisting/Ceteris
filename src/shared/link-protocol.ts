@@ -1,10 +1,10 @@
 /**
  * @file src/shared/link-protocol.ts
- * @purpose Marina Link(远程挂载)的线路协议定义。Host 端与 Client 端
+ * @purpose Ceteris Link(远程挂载)的线路协议定义。Host 端与 Client 端
  *   都从这里 import,保证两端对帧格式、握手消息、命令路由策略的理解一致。
  *
  * @关键设计:
- * - Marina Link 不发明新的应用层协议。它把已有的 `cmd:*` / `evt:*` 信封
+ * - Ceteris Link 不发明新的应用层协议。它把已有的 `cmd:*` / `evt:*` 信封
  *   原样搬到 TCP 上。Host 收到 forward 帧后直接丢进本地 ipcMain 的同一批
  *   handler,renderer 完全感知不到自己连的是远端。
  * - 传输层零新增依赖:node 内置 net + crypto。不引入 ws / socket.io
@@ -13,7 +13,7 @@
  *   一方连第一个 AUTH 帧都解不开。token 本身永不上线路。详见 link-crypto.ts。
  * - 本文件是纯类型 + 常量,不含运行时逻辑,renderer 侧也可安全 import。
  *
- * @对应文档章节: docs/marina-link-protocol.md;docs/ipc-protocol.md(被搬运的内层协议)
+ * @对应文档章节: docs/ceteris-link-protocol.md;docs/ipc-protocol.md(被搬运的内层协议)
  *
  * @不要在这里做的事:
  * - 不要 import 'node:net' / 'node:crypto'(本文件会被 renderer bundle 引用)
@@ -143,7 +143,7 @@ export interface LinkAuth {
   type: 'auth';
   /** 展示用的客户端名,Host 在设置页的"已连接客户端"里显示 */
   clientName: string;
-  /** Client 端 Marina 的 app 版本,用于诊断 */
+  /** Client 端 Ceteris 的 app 版本,用于诊断 */
   clientVersion: string;
   /** Client 端 renderer 编译时的 IPC PROTOCOL_VERSION,不匹配时 Host 拒绝 */
   ipcProtocolVersion: number;
@@ -181,7 +181,7 @@ export interface LinkAuthOk {
   virtualWindowNumber: number;
   /** Host 的机器名,Client 端标题栏 / 状态条显示 */
   hostName: string;
-  /** Host 端 Marina 的 app 版本 */
+  /** Host 端 Ceteris 的 app 版本 */
   hostVersion: string;
 }
 
@@ -326,7 +326,7 @@ export const LINK_MAX_WRITE_BACKLOG_BYTES = 64 * 1024 * 1024;
 /**
  * Host 复查绑定地址的间隔。
  *
- * Marina 随系统启动时 Tailscale 往往还没连上,"自动"只能先绑 127.0.0.1。
+ * Ceteris 随系统启动时 Tailscale 往往还没连上,"自动"只能先绑 127.0.0.1。
  * 复查让它在 Tailscale 就绪后自己换到 100.x.y.z,无人值守的机器才能重启后恢复。
  */
 export const LINK_BIND_RECHECK_MS = 30_000;
@@ -345,7 +345,7 @@ export const LINK_BIND_RECHECK_MS = 30_000;
  * 每一条的理由:
  * - APP_GET_PROTOCOL_VERSION · 本地 handshake 用。Host 的版本在 auth-ok 里
  *   单独带回并比对,不走这条。
- * - APP_QUIT · 退出的是**本机** Marina。转发出去会把 Host 上跑着的所有
+ * - APP_QUIT · 退出的是**本机** Ceteris。转发出去会把 Host 上跑着的所有
  *   agent 全杀掉,是灾难性的误操作。
  * - WINDOW_* · 最小化 / 最大化 / 关闭 / 新建窗口全是本机 BrowserWindow 的
  *   操作。特别注意 WINDOW_CLOSE_SELF:关的是本地这个远程窗口,Host 侧对应

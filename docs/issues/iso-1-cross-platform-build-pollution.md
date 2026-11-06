@@ -23,7 +23,7 @@
 
 ## 现象
 
-在 Marina 单仓做以下任一动作后,**node_modules 与已发布安装包同时被污染**:
+在 Ceteris 单仓做以下任一动作后,**node_modules 与已发布安装包同时被污染**:
 
 1. 在 Linux(WSL2 / 真机 / Docker)上跑 `npm install` 或 `npm run build:linux`
 2. 在 Windows 上跑 `npm install` 或 `npm run build`
@@ -318,7 +318,7 @@ Linux+DOM)定位 root cause。
 1. `rm -rf node_modules` — 30 秒
 2. `npm install` — 3-5 分钟(从 npm registry 拉,Windows 上还慢)
 3. 验证 node-pty 加载没崩 — 1 分钟
-4. `npm run dev` 起 Marina — 1 分钟
+4. `npm run dev` 起 Ceteris — 1 分钟
 5. 实际拖窗口做对照实验 — 5 分钟
 
 **单次对照 ~10 分钟**,4 组要做完 40 分钟,中间任一步出错重来。这是个排查
@@ -337,7 +337,7 @@ ISO-1 后:
 ❌ **不要把 node-pty 拆成 git 子仓 / git submodule**。维护成本与上游 sync
 摩擦远大于"清不干净 build/Release/"。
 
-❌ **不要换其他 PTY 库**。Marina 已绑死 node-pty,改换有架构级影响,只为
+❌ **不要换其他 PTY 库**。Ceteris 已绑死 node-pty,改换有架构级影响,只为
 解决一个工作流问题不值。
 
 ❌ **不要把 prebuilds 整个删了让所有平台都本地 rebuild**。Windows 上 prebuild

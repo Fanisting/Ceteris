@@ -33,13 +33,13 @@ cd native\context-menu
 
 DLL 在 Invoke 时按以下顺序找 Ceteris 可执行文件:
 
-1. 环境变量 `MARINA_EXE`(开发期推荐)
+1. 环境变量 `CETERIS_EXE`(开发期推荐)
 2. 注册表 `HKCU\Software\Ceteris\InstallLocation` + `\Ceteris.exe`(生产期 NSIS 写)
 
 开发期最快路径:
 
 ```powershell
-[Environment]::SetEnvironmentVariable('MARINA_EXE', 'E:\projects\terminal\out\main\...\Ceteris.exe', 'User')
+[Environment]::SetEnvironmentVariable('CETERIS_EXE', 'E:\projects\terminal\out\main\...\Ceteris.exe', 'User')
 ```
 
 注意环境变量改完后 explorer / dllhost 要重启才能读到新值。
@@ -81,7 +81,7 @@ Stop-Process -Name explorer -Force
 ## 文件布局
 
 ```
-Cargo.toml              cdylib 输出 marina_context_menu.dll
+Cargo.toml              cdylib 输出 ceteris_context_menu.dll
 src/
   lib.rs                DllMain + DllGetClassObject + DllCanUnloadNow
   guid.rs               固定 CLSID

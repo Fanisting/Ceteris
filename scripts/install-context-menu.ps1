@@ -83,7 +83,7 @@ $principal = New-Object Security.Principal.WindowsPrincipal(
 $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin -and -not $_Relaunched) {
-    $transcript = Join-Path $env:TEMP "marina-msix-install.log"
+    $transcript = Join-Path $env:TEMP "ceteris-msix-install.log"
     # Wipe any stale transcript from a prior run so we only ever read this
     # invocation's output.
     if (Test-Path -LiteralPath $transcript) {
@@ -149,7 +149,7 @@ if (-not $isAdmin -and -not $_Relaunched) {
 # diagnostic output, the install itself still proceeds.
 $transcriptStarted = $false
 if ($_Relaunched) {
-    $transcript = Join-Path $env:TEMP "marina-msix-install.log"
+    $transcript = Join-Path $env:TEMP "ceteris-msix-install.log"
     try {
         Start-Transcript -LiteralPath $transcript -Force | Out-Null
         $transcriptStarted = $true

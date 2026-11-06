@@ -50,4 +50,4 @@ Write-Host ""
 Write-Host "If menu does NOT appear:" -ForegroundColor Yellow
 Write-Host "  1. Get-AppxPackage Ceteris.ContextMenu          # confirm installed"
 Write-Host "  2. Event Viewer -> AppXDeployment-Server log   # check deploy errors"
-Write-Host "  3. Check `$env:MARINA_EXE` is set (needed for Invoke to find Ceteris.exe)"
+Write-Host "  3. Check `$env:CETERIS_EXE` is set (needed for Invoke to find Ceteris.exe)"

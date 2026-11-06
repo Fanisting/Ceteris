@@ -38,7 +38,7 @@ const FAKE_KEY_2 = Buffer.alloc(32, 0xbb).toString('base64');
 describe('parseKnownHostsFile — 解析 known_hosts 行', () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'marina-kh-'));
+    dir = mkdtempSync(join(tmpdir(), 'ceteris-kh-'));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -91,7 +91,7 @@ describe('KnownHostsManager — 指纹历史 + 变化检测', () => {
   let mgr: KnownHostsManager;
 
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'marina-khm-'));
+    dir = mkdtempSync(join(tmpdir(), 'ceteris-khm-'));
     store = new FakeJsonStore<KnownHostsHistoryFile>();
     mgr = new KnownHostsManager(store as unknown as JsonStore<KnownHostsHistoryFile>);
     await mgr.initialize();

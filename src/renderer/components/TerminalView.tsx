@@ -115,7 +115,7 @@ import {
   type ImeProbeEntry,
 } from '@shared/ime-probe-ring';
 import { isDeviceAttributesResponse } from '@shared/terminal-input-filter';
-import { activateMarinaUnicodeWidth } from '@shared/terminal-unicode-width';
+import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
 import { detectAgent } from '@shared/next-prompt';
@@ -170,7 +170,7 @@ const LIGHT_EXTENDED_ANSI = buildLightExtendedAnsi();
  * 同时更新这两处。
  */
 const XTERM_THEMES: Record<ThemeId, ITheme> = {
-  'marina-dark': {
+  'ceteris-dark': {
     background: '#0e1514',
     foreground: '#dde4e3',
     cursor: '#80d5d4',
@@ -193,7 +193,7 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
     brightCyan: '#9cf1f0',
     brightWhite: '#ffffff',
   },
-  'marina-light': {
+  'ceteris-light': {
     background: '#f4fbfa',
     foreground: '#161d1d',
     cursor: '#006a6a',
@@ -597,7 +597,7 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
 };
 
 function getXtermTheme(themeId: ThemeId | undefined): ITheme {
-  return XTERM_THEMES[themeId ?? 'marina-dark'] ?? XTERM_THEMES['marina-dark'];
+  return XTERM_THEMES[themeId ?? 'ceteris-dark'] ?? XTERM_THEMES['ceteris-dark'];
 }
 
 /**
@@ -945,11 +945,11 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       if (sid && sid !== session.id) return;
       handleOpenSearch();
     };
-    window.addEventListener('marina:terminal-clear', onClear);
-    window.addEventListener('marina:terminal-open-search', onOpenSearch);
+    window.addEventListener('ceteris:terminal-clear', onClear);
+    window.addEventListener('ceteris:terminal-open-search', onOpenSearch);
     return () => {
-      window.removeEventListener('marina:terminal-clear', onClear);
-      window.removeEventListener('marina:terminal-open-search', onOpenSearch);
+      window.removeEventListener('ceteris:terminal-clear', onClear);
+      window.removeEventListener('ceteris:terminal-open-search', onOpenSearch);
     };
   }, [session.id, handleClear, handleOpenSearch]);
 
@@ -1047,7 +1047,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // cc-switch / lazygit 这类远端 TUI 常按现代 wcwidth 把 emoji 当 2 列。
     // xterm 5.5 默认 UnicodeV6 会把很多 emoji 当 1 列,导致 cursor advance
     // 与应用输出的绝对定位分叉,边框随 emoji 累计错位。
-    activateMarinaUnicodeWidth(term);
+    activateCeterisUnicodeWidth(term);
     termRef.current = term;
 
     const fitAddon = new FitAddon();
@@ -1173,7 +1173,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // 真正修复在 main 端 `SessionManager.getScrollbackForReplay`:重挂时通过
     // SerializeAddon 从 headless 状态机吐完整 ANSI 重建流(含 ?1049h / ?25l
     // 等模式),renderer 写入即恢复正确 buffer / cursor 可见性。应用要藏光标
-    // 就发 ?25l,Marina 转发,不再二次猜。
+    // 就发 ?25l,Ceteris 转发,不再二次猜。
 
     term.open(container);
 
@@ -1808,7 +1808,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // 状态回到 active/idle 时(实际不会发生,exited 是终态)恢复闪。
   //
   // CURSOR-1 后:not-exited 分支不再读 buffer.type — 应用要藏光标会发
-  // ?25l,Marina 转发即可,无需启发式。
+  // ?25l,Ceteris 转发即可,无需启发式。
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;

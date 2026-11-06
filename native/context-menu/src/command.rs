@@ -20,14 +20,14 @@ use windows::Win32::UI::Shell::{
 use windows_core::BOOL;
 
 use crate::dll_hmodule;
-use crate::guid::CLSID_MARINA_CONTEXT_MENU;
+use crate::guid::CLSID_CETERIS_CONTEXT_MENU;
 
 const MENU_TITLE: PCWSTR = w!("在 Ceteris 终端中打开");
 
 #[implement(IExplorerCommand)]
-pub struct MarinaCommand;
+pub struct CeterisCommand;
 
-impl IExplorerCommand_Impl for MarinaCommand_Impl {
+impl IExplorerCommand_Impl for CeterisCommand_Impl {
     fn GetTitle(&self, _items: Ref<'_, IShellItemArray>) -> Result<PWSTR> {
         guard(|| alloc_pwstr(MENU_TITLE))
     }
@@ -44,7 +44,7 @@ impl IExplorerCommand_Impl for MarinaCommand_Impl {
     }
 
     fn GetCanonicalName(&self) -> Result<GUID> {
-        Ok(CLSID_MARINA_CONTEXT_MENU)
+        Ok(CLSID_CETERIS_CONTEXT_MENU)
     }
 
     fn GetState(
@@ -62,8 +62,8 @@ impl IExplorerCommand_Impl for MarinaCommand_Impl {
     ) -> Result<()> {
         guard(|| {
             let path = get_first_item_path(items)?;
-            let marina_exe = locate_marina_exe()?;
-            launch_marina(&marina_exe, &path)
+            let ceteris_exe = locate_ceteris_exe()?;
+            launch_ceteris(&ceteris_exe, &path)
         })
     }
 
@@ -120,8 +120,8 @@ fn alloc_pwstr_from_str(s: &str) -> Result<PWSTR> {
 ///
 /// MSIX 包结构(Sparse Package + ExternalLocation):
 ///   <Ceteris InstallLocation>\resources\context-menu\
-///     ├── marina_context_menu.dll      ← 我们就是这个 DLL
-///     ├── marina-context-menu-host.exe
+///     ├── ceteris_context_menu.dll      ← 我们就是这个 DLL
+///     ├── ceteris-context-menu-host.exe
 ///     └── assets\menu-icon.ico         ← 由 build.ps1 stage 进来
 ///
 /// 失败(取路径失败 / 文件缺失)就退回 E_NOTIMPL,Shell 会无图标显示菜单,功能不受影响。
@@ -162,8 +162,8 @@ fn get_first_item_path(items: Ref<'_, IShellItemArray>) -> Result<String> {
     }
 }
 
-fn locate_marina_exe() -> Result<String> {
-    if let Ok(p) = std::env::var("MARINA_EXE") {
+fn locate_ceteris_exe() -> Result<String> {
+    if let Ok(p) = std::env::var("CETERIS_EXE") {
         if !p.is_empty() && Path::new(&p).exists() {
             return Ok(p);
         }
@@ -214,7 +214,7 @@ fn read_hkcu_string(subkey: &str, name: &str) -> Option<String> {
     }
 }
 
-fn launch_marina(exe: &str, path: &str) -> Result<()> {
+fn launch_ceteris(exe: &str, path: &str) -> Result<()> {
     let cmdline = format!(r#""{}" --open-here "{}""#, exe, path);
     let mut cmdline_w: Vec<u16> = cmdline.encode_utf16().chain(std::iter::once(0)).collect();
     let mut si = STARTUPINFOW::default();

@@ -4,12 +4,12 @@ use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl};
 use windows::Win32::UI::Shell::IExplorerCommand;
 use windows_core::BOOL;
 
-use crate::command::MarinaCommand;
+use crate::command::CeterisCommand;
 
 #[implement(IClassFactory)]
-pub struct MarinaClassFactory;
+pub struct CeterisClassFactory;
 
-impl IClassFactory_Impl for MarinaClassFactory_Impl {
+impl IClassFactory_Impl for CeterisClassFactory_Impl {
     fn CreateInstance(
         &self,
         punkouter: Ref<'_, IUnknown>,
@@ -24,7 +24,7 @@ impl IClassFactory_Impl for MarinaClassFactory_Impl {
                 return Err(windows::core::Error::from_hresult(E_POINTER));
             }
             *ppvobject = std::ptr::null_mut();
-            let cmd: IExplorerCommand = MarinaCommand.into();
+            let cmd: IExplorerCommand = CeterisCommand.into();
             let hr = cmd.query(&*riid, ppvobject);
             if hr == S_OK {
                 Ok(())

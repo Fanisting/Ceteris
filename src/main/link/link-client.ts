@@ -1,6 +1,6 @@
 /**
  * @file src/main/link/link-client.ts
- * @purpose Marina Link 的 Client 侧。连到远端 Host,开一个本地窗口作为它的
+ * @purpose Ceteris Link 的 Client 侧。连到远端 Host,开一个本地窗口作为它的
  *   "显示器":该窗口的命令被转发到 Host,Host 推来的事件被注入该窗口。
  *
  * @关键设计:
@@ -17,7 +17,7 @@
  * - **本地窗口关闭 = 断开连接**。用户关掉远程窗口就是"我不看了",此时主动
  *   断开;Host 那边虚拟窗口注销,session 转无主继续跑。
  *
- * @对应文档章节: docs/marina-link-protocol.md
+ * @对应文档章节: docs/ceteris-link-protocol.md
  *
  * @不要在这里做的事:
  * - 不要缓存 / 改写 Host 推来的事件 payload(Client 是纯管道,任何"聪明"的

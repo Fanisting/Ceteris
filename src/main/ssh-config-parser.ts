@@ -1,7 +1,7 @@
 /**
  * @file src/main/ssh-config-parser.ts
  * @purpose 解析 OpenSSH `ssh_config(5)` 的 Host 块,把每个具体主机暴露成
- *   Marina 可消费的 SshConfigEntry。
+ *   Ceteris 可消费的 SshConfigEntry。
  *
  * 范围(SSH 方案 v2.1 §阶段 2.1):
  * - ✅ Host 块(忽略含 `*` `?` 的通配符 Host,因为没法当 profile 用)
@@ -9,7 +9,7 @@
  * - ✅ Include 指令(递归展开,深度上限 16,~ 展开 / 相对路径 base 是 ~/.ssh/)
  * - ❌ Match 块(语义复杂,需要 hostname/user 上下文,V1 不实现 — 跳过)
  * - ❌ 其他 200+ 个 ssh_config key(NetworkTimeout / Tunnel / RemoteForward
- *   …):非 connection 必需,Marina 不接管,直接由 ssh 自身读 ssh_config 时
+ *   …):非 connection 必需,Ceteris 不接管,直接由 ssh 自身读 ssh_config 时
  *   生效(因为 buildSshLaunchParams 不会显式覆盖)。
  *
  * 设计:
@@ -18,7 +18,7 @@
  * - 解析采用最简朴方式:逐行 trim、跳注释 / 空行、按空白拆 key + value;
  *   value 单引号 / 双引号去包(OpenSSH 也支持但少见)
  * - 不实现 token 展开(%h / %p / %u 等)— 那是 ssh 自己 connect 时的事;
- *   Marina 只展示原值给用户
+ *   Ceteris 只展示原值给用户
  */
 import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -31,7 +31,7 @@ const MAX_INCLUDE_DEPTH = 16;
  * 从 ssh_config 派生的"具体主机条目"。每条对应一个或多个非通配 Host 名
  * (例如 `Host prod web1 web2` 拆 3 条同 settings 的 entry)。
  *
- * 与 Marina 自管的 SshProfile 是同源数据,但来源标记为 'ssh_config',前端
+ * 与 Ceteris 自管的 SshProfile 是同源数据,但来源标记为 'ssh_config',前端
  * 把它做成只读 — 改 settings 请用户直接编辑 ~/.ssh/config。
  */
 export interface SshConfigEntry {
@@ -153,7 +153,7 @@ function parseFile(
 
     if (keyLower === 'match') {
       // §阶段 2.1 范围外:Match 需要 connect 时上下文,V1 跳过整段。
-      // 表现:Match 内的 settings 不被 Marina 看到,但 OpenSSH connect 时
+      // 表现:Match 内的 settings 不被 Ceteris 看到,但 OpenSSH connect 时
       // 仍正常生效。用户感受 = 这部分配置不在 sidebar 显示但能连。
       flushCurrent();
       currentHosts = null;
@@ -183,7 +183,7 @@ function parseFile(
         );
         break;
       default:
-        // 其他 key 透传给 ssh 自身处理 — Marina 不展示也不消费。
+        // 其他 key 透传给 ssh 自身处理 — Ceteris 不展示也不消费。
         break;
     }
   }

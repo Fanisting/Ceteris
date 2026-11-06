@@ -1,6 +1,6 @@
 /**
  * @file src/main/smoke-interactive.ts
- * @purpose 交互级冒烟测试 harness。**仅在 MARINA_SMOKE_INTERACTIVE=1 时**
+ * @purpose 交互级冒烟测试 harness。**仅在 CETERIS_SMOKE_INTERACTIVE=1 时**
  *   被 main/index.ts 装载,生产路径完全不引入。
  *
  * @背景
@@ -42,7 +42,7 @@ interface SmokeReport {
 }
 
 /**
- * 装载 harness。**只在 MARINA_SMOKE_INTERACTIVE=1 时被调用**。
+ * 装载 harness。**只在 CETERIS_SMOKE_INTERACTIVE=1 时被调用**。
  *
  * @param getFirstWindow 拿当前第一个(且只有一个,smoke 模式下不开多窗)
  *   BrowserWindow 的 getter。main 启动期 createWindowFromFactory 后窗口

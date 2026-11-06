@@ -10,7 +10,7 @@
 
 ## 现象
 
-Linux Ubuntu 22.04 GNOME(Wayland)上 Marina v0.1.0-beta.4(commit `7d4ebef` 之后,`transparent: false` 已修复 cols 跟随)装包后:
+Linux Ubuntu 22.04 GNOME(Wayland)上 Ceteris v0.1.0-beta.4(commit `7d4ebef` 之后,`transparent: false` 已修复 cols 跟随)装包后:
 
 1. 默认窗口尺寸 → `echo $COLUMNS` 输出 `133`
 2. 拖小窗口 → `echo $COLUMNS` 输出 `83`(跟随 ✓)
@@ -22,11 +22,11 @@ Linux Ubuntu 22.04 GNOME(Wayland)上 Marina v0.1.0-beta.4(commit `7d4ebef` 之�
 
 ```
 liyue@liyue-ysyx:~/workbench/ysyx/ysyx-wor
-2026-05-17T05:14:15.440Z [INFO] [main] req/marina"]}
+2026-05-17T05:14:15.440Z [INFO] [main] req/ceteris"]}
 liyue@liyue-ysyx:~/workbench/ysyx/ysyx-wor
 ```
 
-prompt 完整应是 `liyue@liyue-ysyx:~/workbench/ysyx/ysyx-workbench$ ` (50 字符),实际只显示前 42。INFO 行 `requestSingleInstanceLock result {...}` 也被截断成 `req/marina"]}`(用 `\r` 同行覆盖)。
+prompt 完整应是 `liyue@liyue-ysyx:~/workbench/ysyx/ysyx-workbench$ ` (50 字符),实际只显示前 42。INFO 行 `requestSingleInstanceLock result {...}` 也被截断成 `req/ceteris"]}`(用 `\r` 同行覆盖)。
 
 **关键对照(用户确认)**:**Windows 上无此 bug**,缩放完全正常。
 
@@ -95,7 +95,7 @@ prompt 完整应是 `liyue@liyue-ysyx:~/workbench/ysyx/ysyx-workbench$ ` (50 字
 
 ### 步骤 1:做对照实验,精确划定 bug 边界
 
-在 Marina **dev 模式** 下(`npm run dev`)做以下对照:
+在 Ceteris **dev 模式** 下(`npm run dev`)做以下对照:
 
 | 平台 | renderer | 现象 |
 |---|---|---|
@@ -131,8 +131,8 @@ prompt 完整应是 `liyue@liyue-ysyx:~/workbench/ysyx/ysyx-workbench$ ` (50 字
 
 用户报告截图里有 `[INFO] [main] requestSingleInstanceLock result {...}` **出现在 PTY 中**。这是单独的 logging 卫生问题,与本 issue 解耦,下次单独开 `LOG-1`:
 
-- 主进程 logger 在 packaged build 应只写 `~/.config/marina-app/logs/*.log`,不该写 stdout
-- 当前现象解释:用户从一个 Marina session 里 spawn 了另一个 marina 进程(嵌套),新 marina 的 stdout 继承自父 PTY → 字节流被 shell 当输入显示
+- 主进程 logger 在 packaged build 应只写 `~/.config/ceteris-app/logs/*.log`,不该写 stdout
+- 当前现象解释:用户从一个 Ceteris session 里 spawn 了另一个 ceteris 进程(嵌套),新 ceteris 的 stdout 继承自父 PTY → 字节流被 shell 当输入显示
 
 ## 不要再走的路
 

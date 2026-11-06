@@ -5,7 +5,7 @@
  *
  * @背景:
  *   navigator.clipboard.{read,write}Text 在 Electron file:// 上下文需 web
- *   Permission API 放行(clipboard-read / clipboard-write)。Marina 早期的
+ *   Permission API 放行(clipboard-read / clipboard-write)。Ceteris 早期的
  *   setPermissionRequestHandler 默认拒掉了 clipboard-write,导致选中即复制 /
  *   右键粘贴 / Ctrl+Shift+C/V 全部静默失败(.catch(()=>{}) 把权限 reject 吞掉)。
  *

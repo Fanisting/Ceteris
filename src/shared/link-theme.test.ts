@@ -15,9 +15,9 @@ const hostSettings = {
 
 describe('withLocalTheme', () => {
   it('只替换主题,保留 Host 的其余外观设置,且不修改入参', () => {
-    const result = withLocalTheme(hostSettings, 'marina-dark');
+    const result = withLocalTheme(hostSettings, 'ceteris-dark');
 
-    expect(result.appearance.theme).toBe('marina-dark');
+    expect(result.appearance.theme).toBe('ceteris-dark');
     expect(result.appearance.terminalFontSize).toBe(18);
     expect(result.behavior).toBe(hostSettings.behavior);
     expect(hostSettings.appearance.theme).toBe('dracula');
@@ -31,23 +31,23 @@ describe('applyLocalThemeToResult', () => {
       const result = applyLocalThemeToResult(
         channel,
         { settings: hostSettings, other: 1 },
-        'marina-dark',
+        'ceteris-dark',
       ) as { settings: Settings; other: number };
 
-      expect(result.settings.appearance.theme).toBe('marina-dark');
+      expect(result.settings.appearance.theme).toBe('ceteris-dark');
       expect(result.other).toBe(1);
     },
   );
 
   it('其它 channel 原样返回,哪怕结果里碰巧有 settings 字段', () => {
     const result = { settings: hostSettings };
-    expect(applyLocalThemeToResult(COMMAND_CHANNELS.SESSION_CREATE, result, 'marina-dark')).toBe(
+    expect(applyLocalThemeToResult(COMMAND_CHANNELS.SESSION_CREATE, result, 'ceteris-dark')).toBe(
       result,
     );
   });
 
   it('容忍空结果', () => {
-    expect(applyLocalThemeToResult(COMMAND_CHANNELS.SETTINGS_GET, null, 'marina-dark')).toBeNull();
+    expect(applyLocalThemeToResult(COMMAND_CHANNELS.SETTINGS_GET, null, 'ceteris-dark')).toBeNull();
   });
 });
 

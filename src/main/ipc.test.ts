@@ -29,7 +29,7 @@ import { makePathId } from './path-manager';
 // electron mock — ipcMain.handle 捕获 handler 到 handlers Map
 // ──────────────────────────────────────────────────────────────────
 
-vi.stubEnv('ELECTRON_RENDERER_URL', 'http://marina.test');
+vi.stubEnv('ELECTRON_RENDERER_URL', 'http://ceteris.test');
 
 const { handlers, mockApp, mockBrowserWindow, mockClipboard, mockDialog, mockShell, mockIpcMain } =
   vi.hoisted(() => {
@@ -43,7 +43,7 @@ const { handlers, mockApp, mockBrowserWindow, mockClipboard, mockDialog, mockShe
           const withFrame =
             'senderFrame' in given
               ? given
-              : { senderFrame: { url: 'http://marina.test/' }, ...given };
+              : { senderFrame: { url: 'http://ceteris.test/' }, ...given };
           return handler(withFrame, ...rest);
         });
       },
@@ -52,7 +52,7 @@ const { handlers, mockApp, mockBrowserWindow, mockClipboard, mockDialog, mockShe
       },
     };
     const mockApp = {
-      getPath: (): string => '/tmp/marina-test',
+      getPath: (): string => '/tmp/ceteris-test',
       getVersion: (): string => '0.0.0-test',
       on: (): void => {},
       quit: (): void => {},
@@ -206,7 +206,7 @@ function makeStubs() {
     onWindowCreated: vi.fn(),
     onWindowClosed: vi.fn(),
     on: vi.fn(),
-    // Marina Link:handleCommand 在每条命令入口都会问"发起窗口是不是远程窗口"。
+    // Ceteris Link:handleCommand 在每条命令入口都会问"发起窗口是不是远程窗口"。
     // 这些测试跑的都是本地窗口场景,恒 false = 所有命令走本地 handler,
     // 与 Link 出现之前的行为完全一致。
     isWindowRemote: vi.fn(() => false),
@@ -419,7 +419,7 @@ describe('Link 远程窗口的主题跟随本机', () => {
   async function setup() {
     const ipc = await freshIpc();
     const { deps, stubs } = makeStubs();
-    const localSettings = { appearance: { theme: 'marina-dark' } };
+    const localSettings = { appearance: { theme: 'ceteris-dark' } };
     const settingsListeners: Array<(e: unknown) => void> = [];
     const update = vi.fn();
     Object.assign(stubs.settingsManager, {
@@ -484,7 +484,7 @@ describe('Link 远程窗口的主题跟随本机', () => {
       settings: typeof hostSettings;
     };
 
-    expect(res.settings.appearance).toEqual({ theme: 'marina-dark', terminalFontSize: 18 });
+    expect(res.settings.appearance).toEqual({ theme: 'ceteris-dark', terminalFontSize: 18 });
   });
 
   it('Host 推来的 settings 事件被覆盖,其它事件原样通过', async () => {
@@ -493,7 +493,7 @@ describe('Link 远程窗口的主题跟随本机', () => {
 
     const result = ipc.applyLocalThemeToLinkEvent('evt:settings:changed', envelope) as typeof envelope;
 
-    expect(result.payload.settings.appearance.theme).toBe('marina-dark');
+    expect(result.payload.settings.appearance.theme).toBe('ceteris-dark');
     expect(ipc.applyLocalThemeToLinkEvent('evt:session:output', envelope)).toBe(envelope);
   });
 

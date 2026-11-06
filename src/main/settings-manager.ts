@@ -40,7 +40,7 @@ export type { DeepPartial };
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   appearance: {
-    theme: 'marina-dark',
+    theme: 'ceteris-dark',
     windowStyle: 'windows',
     language: 'system',
     terminalFontFamily:
@@ -67,7 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
     terminalRightClick: 'menu',
     quickLaunch: [...DEFAULT_QUICK_LAUNCH_ITEMS],
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
-    // (Marina 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
+    // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
   },
   systemIntegration: {
@@ -77,7 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
     logLevel: 'INFO',
     activeIdleThresholdSeconds: 2,
     // SSH 方案 v2.1 §阶段 2.1:默认不读 ~/.ssh/config,用户在 RemotePanel
-    // 主动启用才合并显示。避免出现没看过 ssh_config 的用户误以为 Marina
+    // 主动启用才合并显示。避免出现没看过 ssh_config 的用户误以为 Ceteris
     // 暴露了他们的远端清单。
     includeSshConfig: false,
     // SSH 方案 v2.1 §阶段 3.5:默认开 ControlMaster,同 host 多 session
@@ -102,7 +102,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // 重绘残影。老用户升级后字段缺失也会因为 SettingsManager.merge 走 default。
     statusRecheckSource: 'headless',
   },
-  // Marina Link 默认全关。hostToken 留空,用户第一次打开 Host 开关时
+  // Ceteris Link 默认全关。hostToken 留空,用户第一次打开 Host 开关时
   // 由 UI 调 cmd:link:regenerate-token 生成 —— 不在默认值里预生成,
   // 因为那会让每个从没用过远程功能的用户的 settings.json 里凭空多一个
   // 看起来像密钥的字符串,徒增困惑。
@@ -116,8 +116,8 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const VALID_THEMES: ThemeId[] = [
-  'marina-dark',
-  'marina-light',
+  'ceteris-dark',
+  'ceteris-light',
   'rose-pine',
   'rose-pine-dawn',
   'rose-pine-moon',
@@ -424,7 +424,7 @@ export function diffKeys<T>(prefix: string, a: T, b: T): string[] {
  * @throws SettingsError InvalidSettings 任意字段越界 / 枚举错误
  */
 /**
- * 校验 Marina Link 设置。
+ * 校验 Ceteris Link 设置。
  *
  * 这里的校验比其它字段严格,理由是 link 配置直接决定"谁能连进这台机器":
  * 一个被写坏的端口或空 token 不该被静默接受然后在运行期以难懂的方式失败。

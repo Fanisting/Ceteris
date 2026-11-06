@@ -1,6 +1,6 @@
 /**
  * @file src/main/known-hosts-manager.ts
- * @purpose 读 ~/.ssh/known_hosts 解析出每个 host 的指纹清单,并跟 Marina
+ * @purpose 读 ~/.ssh/known_hosts 解析出每个 host 的指纹清单,并跟 Ceteris
  *   自管的 known-hosts-history.json 比对 — 指纹变化即记 timeline 条目,
  *   未来 HostKeyPromptModal(阶段 3 后续工单)消费这份历史做 MITM 警告。
  *
@@ -24,7 +24,7 @@ import { logger } from './logger';
 export interface KnownHostEntry {
   /**
    * 原始 host 字段(逗号分隔的多 host / IP / `[host]:port`)。hashed 时是
-   * `|1|salt|hash` 形式,Marina 不还原 — 直接展示。
+   * `|1|salt|hash` 形式,Ceteris 不还原 — 直接展示。
    */
   hosts: string;
   /** 'ssh-rsa' / 'ssh-ed25519' / 'ecdsa-sha2-nistp256' 等 */
@@ -55,7 +55,7 @@ export interface KnownHostsHistoryFile {
     timeline: Array<{
       fingerprint: string;
       keyType: string;
-      /** Unix ms;Marina 首次看到此指纹的时间(不是 known_hosts 文件本身的 mtime) */
+      /** Unix ms;Ceteris 首次看到此指纹的时间(不是 known_hosts 文件本身的 mtime) */
       firstSeenAt: number;
     }>;
   }>;

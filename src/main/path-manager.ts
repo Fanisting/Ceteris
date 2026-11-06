@@ -191,7 +191,7 @@ export class PathManager extends EventEmitter {
     // v2.1 §II.1:把磁盘上的旧 schema(kind 缺失 / ssh 但 sshProfileId 缺失)
     // 在内存层 coerce 成新 discriminated union。损坏条目静默丢弃,与旧
     // validateBookmarksArray "整体拒绝" 不同 —— 启动期不能因为一条坏数据
-    // 让用户进不来 Marina。
+    // 让用户进不来 Ceteris。
     this.bookmarks = bk.value.paths.flatMap(migrateBookmarkOnLoad);
     this.recent = rc.value.paths.flatMap(migrateRecentOnLoad);
     this.sortRecent();
@@ -868,7 +868,7 @@ function buildPathNode(input: {
  * v2.1 §II.1 启动期 migrate:磁盘 Bookmark 缺 kind 时 coerce 'local';
  * kind === 'ssh' 但缺 sshProfileId 视为损坏数据,丢弃(配合 flatMap)。
  * 与 validateBookmarksArray 不同的是 — 启动期容错,损坏数据让用户能进
- * Marina;import 走严格校验。
+ * Ceteris;import 走严格校验。
  */
 function migrateBookmarkOnLoad(raw: unknown): Bookmark[] {
   if (typeof raw !== 'object' || raw === null) return [];

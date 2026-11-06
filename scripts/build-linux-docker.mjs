@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/build-linux-docker.mjs
- * @purpose 在 Docker 容器内构建 Marina 的 Linux 安装包(ISO-1,2026-05-20)。
+ * @purpose 在 Docker 容器内构建 Ceteris 的 Linux 安装包(ISO-1,2026-05-20)。
  *
  * @背景
  * `npm run build:linux:docker` 原写法是
@@ -77,7 +77,7 @@ if (buildOnly && runOnly) {
   process.exit(1);
 }
 
-const imageTag = 'marina-linux-build:local';
+const imageTag = 'ceteris-linux-build:local';
 
 function runCmd(label, cmd, cmdArgs) {
   console.log(`\n[docker-build] === ${label} ===`);

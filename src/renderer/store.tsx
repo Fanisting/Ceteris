@@ -101,7 +101,7 @@ export interface AppState {
 
   /**
    * BETA-027:简易页面模式 — 隐藏 Sidebar / Tab bar,只保留 WindowChrome
-   * + 终端区。从 Explorer 右键"在 Marina 简易终端中打开"启动时默认 true;
+   * + 终端区。从 Explorer 右键"在 Ceteris 简易终端中打开"启动时默认 true;
    * 也可通过工具栏按钮(BETA-028)在普通页面里切换。本窗口私有,不跨窗口同步。
    */
   simpleMode: boolean;
@@ -157,7 +157,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       const sessionsMap = new Map(s.sessions.map((sess) => [sess.id, sess]));
       // 默认选中第一个收藏路径 (若有);否则不选
       const firstBookmark = s.pathTree.bookmarks[0];
-      // 本窗口已持有 session 时直接回到它。Marina Link 重连会整页 reload,没有这一步
+      // 本窗口已持有 session 时直接回到它。Ceteris Link 重连会整页 reload,没有这一步
       // 窗口会停在空白页,用户要重新找到刚才的会话。
       const owned = s.sessions.find((sess) => sess.ownerWindowId === state.myWindowId);
       return {
@@ -215,7 +215,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       // displayable 不会闪到 EmptyPathState (用户勘误后续 #1 闪 + 现象)。
       if (action.session.ownerWindowId === state.myWindowId) {
         // BETA-042:新 session 自动展开所属 path。覆盖两个场景:
-        // (a) Explorer 右键"在 Marina 终端打开"开新窗口时,sidebar 默认折叠,
+        // (a) Explorer 右键"在 Ceteris 终端打开"开新窗口时,sidebar 默认折叠,
         //     用户看不到刚创建的 session
         // (b) 模板按钮 / + 双击在已折叠 path 上创建 session 时,直观应展开
         const expandedPathIds = new Set(state.expandedPathIds);

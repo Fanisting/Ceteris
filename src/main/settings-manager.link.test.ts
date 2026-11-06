@@ -1,6 +1,6 @@
 /**
  * @file src/main/settings-manager.link.test.ts
- * @purpose 校验 Marina Link 设置的 schema 规则。
+ * @purpose 校验 Ceteris Link 设置的 schema 规则。
  *
  * @为什么单独一个文件:
  * settings-manager.test.ts 已经很长,而 link 段的校验有一条特别容易被后人

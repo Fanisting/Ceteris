@@ -4,7 +4,7 @@
  *   等 UI 副作用让焦点漂离 xterm 时,统一通过 focusTerminalDom() 把焦点
  *   送回 .xterm-helper-textarea。
  *
- * @背景:Marina 主打"鼠标优先",chrome / tab 按钮是日常路径,每次点完都
+ * @背景:Ceteris 主打"鼠标优先",chrome / tab 按钮是日常路径,每次点完都
  *   要让用户能直接打字。Chromium 原生行为是 click 后 :focus 留在 button
  *   上,需要应用层主动归还。审计条目 FOC-2/3/5/6 都是同根问题。
  *

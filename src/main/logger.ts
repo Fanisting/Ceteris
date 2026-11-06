@@ -2,7 +2,7 @@
  * @file src/main/logger.ts
  * @purpose 主进程持久化日志 (M1-D) — 无新依赖,纯 Node fs。
  *
- *   写入 `%APPDATA%/Marina/logs/<channel>-YYYY-MM-DD.log`,按日切;同时镜像到
+ *   写入 `%APPDATA%/Ceteris/logs/<channel>-YYYY-MM-DD.log`,按日切;同时镜像到
  *   console (dev / 启动期诊断)。
  *
  *   两个 channel:

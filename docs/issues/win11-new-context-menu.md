@@ -10,12 +10,12 @@
 
 ## 现象
 
-Windows 11 默认右键菜单(圆角、紧凑、用户首先看到的那个)里**看不到** "在 Marina 终端中打开"。用户必须:
+Windows 11 默认右键菜单(圆角、紧凑、用户首先看到的那个)里**看不到** "在 Ceteris 终端中打开"。用户必须:
 
 - 点击菜单底部的 **"显示更多选项"** 展开经典菜单,或
 - 直接按 `Shift+F10` 调出经典菜单
 
-才能看到 Marina 入口。Marina 主打 "path-centric,从 Explorer 一键进终端",这个落差稀释了核心入口的价值主张。
+才能看到 Ceteris 入口。Ceteris 主打 "path-centric,从 Explorer 一键进终端",这个落差稀释了核心入口的价值主张。
 
 ## 根因
 
@@ -31,7 +31,7 @@ Microsoft 在 Win11 重新设计 shell context menu,故意切断了与 Win95-Win
 | 7-Zip | ❌(2024 才支持,需 v24+) | ✅ |
 | Notepad++ | ❌ | ✅ |
 | Git for Windows | ❌ | ✅ |
-| **Marina(当前)** | ❌ | ✅ |
+| **Ceteris(当前)** | ❌ | ✅ |
 
 业界标准是"暂未支持",但我们既然主打 Explorer 集成入口,这是一个**核心体验缺口**。
 
@@ -39,7 +39,7 @@ Microsoft 在 Win11 重新设计 shell context menu,故意切断了与 Win95-Win
 
 **Sparse Package + Rust 写 IExplorerCommand DLL**。理由:
 
-- **不动主体打包**:NSIS 主安装器照常,Sparse Package 是旁路;失败也不影响 Marina 本体
+- **不动主体打包**:NSIS 主安装器照常,Sparse Package 是旁路;失败也不影响 Ceteris 本体
 - **Rust over C++**:`windows-rs` crate 封装 COM 接口很干净,内存安全,工具链比 MSVC 干净
 - **DLL 极小**(预计 < 1MB),进程内载入 Explorer.exe 风险可控
 
@@ -75,11 +75,11 @@ Sparse Package **强制要签名**才能 sideload(`Add-AppxPackage` 拒绝未签
 
 ## 验收标准
 
-- [ ] 在 Win11 22H2+ 上,Explorer 文件夹右键(默认菜单,非"显示更多选项")**直接**看到 "在 Marina 终端中打开"(图标 = Marina app icon)
+- [ ] 在 Win11 22H2+ 上,Explorer 文件夹右键(默认菜单,非"显示更多选项")**直接**看到 "在 Ceteris 终端中打开"(图标 = Ceteris app icon)
 - [ ] 在文件夹背景空白处右键同样可达
-- [ ] 点击 → 与现有经典菜单行为完全一致(`Marina.exe --open-here "<path>"`)
+- [ ] 点击 → 与现有经典菜单行为完全一致(`Ceteris.exe --open-here "<path>"`)
 - [ ] 设置页 "Explorer 右键集成" 开关同时控制新 + 经典两套菜单
-- [ ] 卸载 Marina 后,新菜单条目消失(NSIS 卸载脚本调 `Remove-AppxPackage`)
+- [ ] 卸载 Ceteris 后,新菜单条目消失(NSIS 卸载脚本调 `Remove-AppxPackage`)
 - [ ] 一次诱导性测试:让 DLL 在 Invoke 时主动 throw,Explorer 不应崩
 
 ## 参考资料

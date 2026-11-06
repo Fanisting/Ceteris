@@ -115,8 +115,8 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'shell', iconName: 'shell', titleKey: 'settings.category.shell' },
   { id: 'behavior', iconName: 'behavior', titleKey: 'settings.category.behavior' },
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
-  // Marina Link(远程挂载)。与 'remote'(SSH)是两回事,故独立成一类:
-  // SSH 是"在远端跑一个 shell",Link 是"接管远端 Marina 的全部会话"。
+  // Ceteris Link(远程挂载)。与 'remote'(SSH)是两回事,故独立成一类:
+  // SSH 是"在远端跑一个 shell",Link 是"接管远端 Ceteris 的全部会话"。
   // 这一类**无条件显示** —— 它不像 SSH 那样需要先配 profile 才有意义,
   // 用户第一次找"怎么在另一台机器上看我的终端"时必须能直接找到入口。
   { id: 'link', iconName: 'server', titleKey: 'settings.category.link' },
@@ -244,8 +244,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
 // ──────────────────────────────────────────────────────────────────
 
 const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; note?: string }> = [
-  { id: 'marina-dark', label: 'Ceteris Dark', tone: '深色', note: '默认' },
-  { id: 'marina-light', label: 'Ceteris Light', tone: '浅色' },
+  { id: 'ceteris-dark', label: 'Ceteris Dark', tone: '深色', note: '默认' },
+  { id: 'ceteris-light', label: 'Ceteris Light', tone: '浅色' },
   { id: 'rose-pine', label: 'Rose Pine', tone: '深色' },
   { id: 'rose-pine-dawn', label: 'Rose Pine Dawn', tone: '浅色' },
   { id: 'rose-pine-moon', label: 'Rose Pine Moon', tone: '深色' },
@@ -272,7 +272,7 @@ function AppearancePanel({
   const { tx } = useTranslation();
   const state = useAppState();
   const a = state.settings.appearance;
-  const theme = a?.theme ?? 'marina-dark';
+  const theme = a?.theme ?? 'ceteris-dark';
   const windowStyle: WindowStyle = a?.windowStyle ?? 'windows';
   const terminalFontFamily = a?.terminalFontFamily ?? '';
   const terminalFontSize = a?.terminalFontSize ?? 13;
@@ -1218,7 +1218,7 @@ const formatSize = (bytes: number): string => {
 };
 
 /**
- * Carry a setup to another PC as one folder. Marina's own data always goes and stays
+ * Carry a setup to another PC as one folder. Ceteris's own data always goes and stays
  * small; each agent's chats are optional because they can run to gigabytes.
  */
 function MoveToPcSection({
@@ -2281,7 +2281,7 @@ function RemotePanel({
 }
 
 // ──────────────────────────────────────────────────────────────────
-// 系统集成分类 — Explorer 右键 "在 Marina 终端中打开"
+// 系统集成分类 — Explorer 右键 "在 Ceteris 终端中打开"
 //
 // 经典菜单(HKCU 注册表)和 Win11 新菜单(MSIX + 证书)各自独立卡片,
 // 独立开关。状态来自现场查 HKCU / Get-AppxPackage(IPC),不进 settings.json。
@@ -2339,7 +2339,7 @@ function SystemIntegrationPanel({
         setError(res.message || `操作失败 (${kind})`);
       } else if (kind === 'modern') {
         // BETA-044:Win11 新菜单 install/uninstall 后,MSIX 加载有 OS 级延迟
-        // (不是 Marina bug)。提示用户重启电脑确保生效;不做"一键重启 Explorer"
+        // (不是 Ceteris bug)。提示用户重启电脑确保生效;不做"一键重启 Explorer"
         // 按钮(用户选了最保守的方案)。详见 docs/known-issues.md。
         toast.push({
           kind: 'info',
@@ -3003,7 +3003,7 @@ function AdvancedPanel({
 // 关于分类
 // ──────────────────────────────────────────────────────────────────
 
-const GITHUB_REPO = 'https://github.com/Fanisting/marina';
+const GITHUB_REPO = 'https://github.com/Fanisting/ceteris';
 const GITHUB_RELEASES = `${GITHUB_REPO}/releases`;
 
 const ACKNOWLEDGEMENTS: Array<{ name: string; url: string; tone: string }> = [
@@ -3022,12 +3022,12 @@ function AboutPanel(): JSX.Element {
   // build define 在 dev 模式可能未定义,做个兜底
   // (vite 实际上 dev 时也会做 string 替换,但为了万无一失)
   const commit =
-    typeof __MARINA_BUILD_COMMIT__ !== 'undefined'
-      ? __MARINA_BUILD_COMMIT__
+    typeof __CETERIS_BUILD_COMMIT__ !== 'undefined'
+      ? __CETERIS_BUILD_COMMIT__
       : 'dev';
   const builtAt =
-    typeof __MARINA_BUILD_TIME__ !== 'undefined'
-      ? __MARINA_BUILD_TIME__
+    typeof __CETERIS_BUILD_TIME__ !== 'undefined'
+      ? __CETERIS_BUILD_TIME__
       : 'dev';
 
   // app 版本号通过 handshake 已经拿到,从 store 读不太合适 (store 里没存)

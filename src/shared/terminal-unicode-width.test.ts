@@ -1,13 +1,13 @@
 /**
  * @file src/shared/terminal-unicode-width.test.ts
- * @purpose 护栏测试:Marina 必须在 renderer/headless xterm 上启用官方
+ * @purpose 护栏测试:Ceteris 必须在 renderer/headless xterm 上启用官方
  *   Unicode 11 宽度表,否则 cc-switch 等 emoji/CJK TUI 会列宽错位。
  */
 import { describe, expect, it } from 'vitest';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { activateMarinaUnicodeWidth } from './terminal-unicode-width';
+import { activateCeterisUnicodeWidth } from './terminal-unicode-width';
 
-describe('activateMarinaUnicodeWidth', () => {
+describe('activateCeterisUnicodeWidth', () => {
   it('loads Unicode11Addon and switches xterm activeVersion to 11', () => {
     const loaded: unknown[] = [];
     const term = {
@@ -17,7 +17,7 @@ describe('activateMarinaUnicodeWidth', () => {
       },
     };
 
-    const activated = activateMarinaUnicodeWidth(term);
+    const activated = activateCeterisUnicodeWidth(term);
 
     expect(activated).toBe(true);
     expect(loaded).toHaveLength(1);
@@ -33,7 +33,7 @@ describe('activateMarinaUnicodeWidth', () => {
       },
     };
 
-    expect(activateMarinaUnicodeWidth(term)).toBe(false);
+    expect(activateCeterisUnicodeWidth(term)).toBe(false);
     expect(loaded).toHaveLength(0);
   });
 });

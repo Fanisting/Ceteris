@@ -56,7 +56,7 @@ C:\Windows\System32\cmd.exe
 
 ## Reproduction
 
-1. 全新机器(尤其没装 PowerShell 7 的中文 Windows)安装 Marina beta.1
+1. 全新机器(尤其没装 PowerShell 7 的中文 Windows)安装 Ceteris beta.1
 2. 加路径
 3. 创建 session,模板选 **Shell**(默认,`command: ''`)
 4. 观察 sidebar / tab 的 displayName

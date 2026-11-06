@@ -1,7 +1,7 @@
 # 构建 + 打包 + 签名 MSIX。每次改了 Rust 代码或 manifest 后跑一次。
 #
 # 步骤:
-#   1. cargo build --release  -> target\release\marina_context_menu.dll
+#   1. cargo build --release  -> target\release\ceteris_context_menu.dll
 #   2. 收集 DLL + manifest + assets 到 build\staging\
 #   3. MakeAppx.exe pack       -> build\CeterisContextMenu.msix
 #   4. SignTool.exe sign       -> 同一个 MSIX (in-place)
@@ -38,8 +38,8 @@ if (Test-Path $staging) {
 }
 New-Item $staging -ItemType Directory | Out-Null
 
-Copy-Item "$root\target\release\marina_context_menu.dll" $staging
-Copy-Item "$root\target\release\marina-context-menu-host.exe" $staging
+Copy-Item "$root\target\release\ceteris_context_menu.dll" $staging
+Copy-Item "$root\target\release\ceteris-context-menu-host.exe" $staging
 Copy-Item "$root\package\AppxManifest.xml" $staging
 Copy-Item "$root\package\assets" $staging -Recurse
 
@@ -54,7 +54,7 @@ Write-Host "[4/4] SignTool sign" -ForegroundColor Cyan
 # 依旧有效(时间戳服务在签名当下打上的时间戳证明"这签名是在证书有效期内
 # 做的")。否则证书过期一刻,所有已装 MSIX 都会被 Add-AppxPackage 视为
 # NotValid,新装失败 + 已装重启后 Explorer 加载 DLL 失败。
-& $signTool sign /f $pfx /p marina-dev /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $msix
+& $signTool sign /f $pfx /p ceteris-dev /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $msix
 if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed" }
 
 Write-Host ""

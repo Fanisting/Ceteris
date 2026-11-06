@@ -1,6 +1,6 @@
-# Marina IPC 协议规格
+# Ceteris IPC 协议规格
 
-> Marina 在 alpha 阶段(CP-1 ~ Milestone 1)的开发代号为 EasyTerm,v1.5 起正式定名 Marina。详见软件定义书 ADR-012。
+> Ceteris 在 alpha 阶段(CP-1 ~ Milestone 1)的开发代号为 EasyTerm,v1.5 起正式定名 Ceteris。详见软件定义书 ADR-012。
 
 > 主进程(守护进程)与渲染进程(每个窗口)之间的通信契约。
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
@@ -231,7 +231,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:settings:export` | 导出全部配置为 JSON 归档(M1-F:可选含/不含 env 敏感字段) |
 | `cmd:settings:import` | 从 JSON 归档导入(in-memory replace,不重启应用,ADR-009) |
 | `cmd:system:show-in-explorer` | 在 Explorer 中显示某路径 |
-| `cmd:system:open-data-dir` | 在 Explorer 中打开 `%APPDATA%\Marina` |
+| `cmd:system:open-data-dir` | 在 Explorer 中打开 `%APPDATA%\Ceteris` |
 | `cmd:system:open-logs-dir` | 在 Explorer 中打开日志目录 |
 | `cmd:system:open-external` | 用系统默认浏览器打开 URL(仅 http(s)/mailto) |
 
@@ -295,7 +295,7 @@ Renderer 启动
 ```typescript
 interface ProtocolVersionResponse {
   protocolVersion: number;     // 当前协议主版本
-  buildVersion: string;         // Marina 应用版本号(用于诊断)
+  buildVersion: string;         // Ceteris 应用版本号(用于诊断)
 }
 ```
 
@@ -1175,7 +1175,7 @@ Electron `clipboard` 模块,绕开所有 web 权限层 + dev/prod 行为一致�
 
 #### `cmd:explorer-integration:get-status`
 
-综合查询当前系统对 Marina 两种 Explorer 集成的状态。
+综合查询当前系统对 Ceteris 两种 Explorer 集成的状态。
 
 ```typescript
 // Payload: void
@@ -1229,8 +1229,8 @@ interface SetExplorerIntegrationResponse {
 ```
 
 **写入位置**:
-- `HKCU\Software\Classes\Directory\shell\Marina` (右键文件夹)
-- `HKCU\Software\Classes\Directory\Background\shell\Marina` (右键文件夹空白处)
+- `HKCU\Software\Classes\Directory\shell\Ceteris` (右键文件夹)
+- `HKCU\Software\Classes\Directory\Background\shell\Ceteris` (右键文件夹空白处)
 
 **Errors**:不抛错,失败信息走 `ok=false / message`。
 
@@ -1251,18 +1251,18 @@ interface SetExplorerIntegrationPayload {
 ```
 
 **开启流程**(`scripts/install-context-menu.ps1` 由主进程 spawn):
-1. 把 `marina-cert.cer` 导入 `Cert:\CurrentUser\TrustedPeople`(首次需 UAC)
-2. `Add-AppxPackage -Path MarinaContextMenu.msix -ExternalLocation <resources/context-menu>`
+1. 把 `ceteris-cert.cer` 导入 `Cert:\CurrentUser\TrustedPeople`(首次需 UAC)
+2. `Add-AppxPackage -Path CeterisContextMenu.msix -ExternalLocation <resources/context-menu>`
 3. Explorer 在用户下次打开右键菜单时加载新菜单条目
 
 **关闭流程**(`scripts/uninstall-context-menu.ps1`):
-1. `Get-AppxPackage Marina.ContextMenu | Remove-AppxPackage`
+1. `Get-AppxPackage Ceteris.ContextMenu | Remove-AppxPackage`
 2. 证书保留(下次安装免 UAC)
 
 **前置条件**(若不满足 `ok=false`):
 - `buildType === 'installed'`(dev/portable 不带 extraResources)
 - `windowsBuild >= 22000`
-- `resources/context-menu/{install.ps1,MarinaContextMenu.msix,marina-cert.cer}` 必须存在
+- `resources/context-menu/{install.ps1,CeterisContextMenu.msix,ceteris-cert.cer}` 必须存在
 
 **Errors**:不抛错,详细原因走 `message`。
 
@@ -1733,7 +1733,7 @@ Renderer handshake 时检查:
 const { protocolVersion } = await invoke('cmd:app:get-protocol-version', {});
 if (protocolVersion !== PROTOCOL_VERSION) {
   // 显示错误页面:
-  // "Marina 守护进程是版本 X,但当前 UI 是版本 Y。请重启应用。"
+  // "Ceteris 守护进程是版本 X,但当前 UI 是版本 Y。请重启应用。"
   // 不要继续 handshake。
 }
 ```
@@ -1900,5 +1900,5 @@ async function handleSessionTabClick(sessionId: string) {
 
 **文档结束**
 
-> 本协议文档与 `软件定义书.md` 共同构成 Marina V1 的完整设计契约。
+> 本协议文档与 `软件定义书.md` 共同构成 Ceteris V1 的完整设计契约。
 > 协议版本号在 `src/shared/protocol.ts` 中维护,每次有不兼容变更必须 bump 版本号并更新本文档。

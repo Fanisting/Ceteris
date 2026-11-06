@@ -22,7 +22,7 @@ const SECRET = 'SECRET-LOGIN-TOKEN';
 
 function archive(): SettingsArchiveV1 {
   return {
-    format: 'marina-archive',
+    format: 'ceteris-archive',
     version: 1,
     exportedAt: 1,
     exportedFrom: 'test',
@@ -89,7 +89,7 @@ describe('data bundle', () => {
     });
 
   beforeEach(async () => {
-    base = await fs.mkdtemp(join(tmpdir(), 'marina-bundle-'));
+    base = await fs.mkdtemp(join(tmpdir(), 'ceteris-bundle-'));
     home = join(base, 'home');
     other = join(base, 'other');
     bundle = join(base, 'bundle');
@@ -102,7 +102,7 @@ describe('data bundle', () => {
   it('with no agents chosen the bundle is only the light Ceteris files', async () => {
     await makeBundle([]);
     const names = (await fs.readdir(bundle)).sort();
-    expect(names).toEqual(['manifest.json', 'marina.json', 'tabs.json']);
+    expect(names).toEqual(['ceteris.json', 'manifest.json', 'tabs.json']);
   });
 
   it('copies only the agents that were chosen', async () => {

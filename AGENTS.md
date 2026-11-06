@@ -1,16 +1,16 @@
-# AGENTS.md — Marina 项目 AI Agent 工作说明书
+# AGENTS.md — Ceteris 项目 AI Agent 工作说明书
 
-> 这份文件是给为 Marina 贡献代码的 AI agent(Claude Code / Cursor / Codex / 其他)看的。
+> 这份文件是给为 Ceteris 贡献代码的 AI agent(Claude Code / Cursor / Codex / 其他)看的。
 > 你正在 YOLO 模式下工作,大部分时间不需要打扰开发者。但有少数情况你必须立刻停下来。
 > 仔细读完整份文件再开始工作。
 
 文档版本:1.3 · 最后更新:2026-05-16
 
 > **v1.3 变更**:与软件定义书 v1.6 / ADR-013 对齐 — 附录 C "关闭弹确认"硬规则增加 Linux 例外脚注:仅当 `lifecycleModel === 'no-persistence'` + 最后一个窗口 + 仍有非 exited session 时,允许弹 `<LastSessionConfirm />`。1.2 节边界 3 例子同步加例外注脚。
-> **v1.2 变更**:产品改名 EasyTerm → **Marina**(对齐软件定义书 v1.5,ADR-012)。所有"产品现状"维度的 EasyTerm 字样替换为 Marina;commit message 示例等"历史/惯例"维度的 EasyTerm 保留作为风格参考。`%APPDATA%\EasyTerm\` 全部改为 `%APPDATA%\Marina\`(Electron 由 `productName` 自动派生)。
+> **v1.2 变更**:产品改名 EasyTerm → **Ceteris**(对齐软件定义书 v1.5,ADR-012)。所有"产品现状"维度的 EasyTerm 字样替换为 Ceteris;commit message 示例等"历史/惯例"维度的 EasyTerm 保留作为风格参考。`%APPDATA%\EasyTerm\` 全部改为 `%APPDATA%\Ceteris\`(Electron 由 `productName` 自动派生)。
 > **v1.1 变更**:与软件定义书 v1.3 / CP-4 勘误回合对齐 — CP-4 完成标志改 7 套主题;附录 D 新增"勘误回合工作纪律";4.5 章明确"勘误回合修复"也是检查点工作流的一部分。
 
-> **2026-11-06 改名**:产品现名 **Ceteris** (Marina 的 fork,见软件定义书 ADR-014)。下文的 Marina 指同一产品。`~/AppData/Roaming/Ceteris/` 与 `~/AppData/Roaming/Marina/` 适用相同的数据安全规则。不要改动 ADR-014 列出的持久化名字。
+> **2026-11-06 改名**:产品名为 **Ceteris**,见软件定义书 ADR-014。
 
 ---
 
@@ -31,7 +31,7 @@
 
 ### 1.1 什么是 YOLO 模式
 
-你被授权在不打扰开发者的前提下,**端到端**完成 Marina 的构建。这意味着:
+你被授权在不打扰开发者的前提下,**端到端**完成 Ceteris 的构建。这意味着:
 
 * **可以自主决策**:文件命名、代码组织、变量名、内部 API 设计、测试用例选择、调试策略
 * **可以自主执行**:写代码、跑构建、跑测试、提交 git commit、安装(限定范围内的)依赖
@@ -49,7 +49,7 @@ YOLO 不是"想干啥干啥"。以下三条边界**永远不能越过**,越过�
 * 删除文件(除非是你刚才自己创建的临时文件)
 * `git push --force` 任何操作
 * 修改 `.git/` 目录
-* 删除或修改 `~/AppData/Roaming/Marina/` 下的任何文件(即使是测试)
+* 删除或修改 `~/AppData/Roaming/Ceteris/` 下的任何文件(即使是测试)
 * 卸载 npm 包
 * 修改系统注册表(Windows)
 * 调用任何"清理"、"重置"、"reset"、"clean"类命令对实际数据生效
@@ -214,7 +214,7 @@ throw new Error(
   `Possible causes: (1) shell binary not found at "${shellPath}", ` +
   `(2) cwd does not exist or no permission, ` +
   `(3) node-pty native module not built for current Node version. ` +
-  `Check logs in ~/AppData/Roaming/Marina/logs/main.log for stderr.`
+  `Check logs in ~/AppData/Roaming/Ceteris/logs/main.log for stderr.`
 );
 ```
 
@@ -325,7 +325,7 @@ log.error(`[SessionManager] Failed to create session`, error);
 
 ### 4.1 检查点的作用
 
-Marina 的开发被切分成 **N 个检查点**,与 `软件定义书.md` 第 15 章的 Phase 1 路线图对齐。
+Ceteris 的开发被切分成 **N 个检查点**,与 `软件定义书.md` 第 15 章的 Phase 1 路线图对齐。
 
 在每个检查点,**你必须停下来**:
 1. 完成一份"自测报告"(你自己先冒烟测试一遍)
@@ -348,10 +348,10 @@ Marina 的开发被切分成 **N 个检查点**,与 `软件定义书.md` 第 15 
 - [ ] `npm install && npm run dev` 能在 Windows 上启动应用
 - [ ] 能看到一个窗口,内含一个 xterm.js 实例
 - [ ] xterm 里能正确显示 PowerShell 提示符,能输入命令并看到输出
-- [ ] 关闭窗口 → 应用进入纯托盘模式(托盘图标还在,任务管理器里 Marina.exe 还在)
+- [ ] 关闭窗口 → 应用进入纯托盘模式(托盘图标还在,任务管理器里 Ceteris.exe 还在)
 - [ ] 单击托盘图标 → 重新打开一个窗口(窗口编号变了)
 - [ ] 右键托盘 → 看到菜单,菜单里"完全退出"能真正退出应用
-- [ ] 启动第二次 Marina.exe → 在已运行实例上新开一个窗口(单实例锁工作)
+- [ ] 启动第二次 Ceteris.exe → 在已运行实例上新开一个窗口(单实例锁工作)
 - [ ] 至少 3 个 main 进程模块的单元测试存在并通过
 
 **用户测试指南必须包含**:
@@ -456,11 +456,11 @@ Marina 的开发被切分成 **N 个检查点**,与 `软件定义书.md` 第 15 
 ## 跑过的测试
 - [x] `npm test` 通过(35/35)
 - [x] `npm run dev` 启动后,xterm 显示 PowerShell 提示符,输入 `dir` 有输出
-- [x] 关闭窗口后,任务管理器查看 Marina.exe 仍在
+- [x] 关闭窗口后,任务管理器查看 Ceteris.exe 仍在
 - ...
 
 ## 已知不工作的事(需要开发者关注)
-- 第二次启动 Marina.exe 时,新窗口的位置和第一个重叠了 → 这个属于 CP2 的窗口位置记忆功能,目前先不修
+- 第二次启动 Ceteris.exe 时,新窗口的位置和第一个重叠了 → 这个属于 CP2 的窗口位置记忆功能,目前先不修
 - ...
 
 ## 我没测的东西(需要开发者帮忙)
@@ -481,18 +481,18 @@ Marina 的开发被切分成 **N 个检查点**,与 `软件定义书.md` 第 15 
 
 ## 测试 1:基础启动(预计 1 分钟)
 1. 跑 `npm run dev`
-2. 等待 ~10 秒,应该看到一个 Marina 窗口出现
+2. 等待 ~10 秒,应该看到一个 Ceteris 窗口出现
 3. 窗口右半部分应有一个黑色终端区域,显示 PowerShell 提示符,如 `PS C:\Users\xxx>`
 4. **预期**:你能在终端里输入 `dir` 并看到当前目录列表
 5. **失败现象**:窗口空白 / 终端显示乱码 / 终端输入无反应
-6. **失败时**:打开 `~/AppData/Roaming/Marina/logs/main.log`,把最后 50 行贴给 agent
+6. **失败时**:打开 `~/AppData/Roaming/Ceteris/logs/main.log`,把最后 50 行贴给 agent
 
 ## 测试 2:窗口与应用解耦(预计 30 秒)
 1. 关闭那个窗口(点右上角 ×)
-2. 看 Windows 系统托盘(右下角),应该有一个 Marina 图标
-3. 打开任务管理器,搜索 "Marina",应该看到 Marina.exe 进程仍在
+2. 看 Windows 系统托盘(右下角),应该有一个 Ceteris 图标
+3. 打开任务管理器,搜索 "Ceteris",应该看到 Ceteris.exe 进程仍在
 4. **预期**:窗口关了,但应用还在
-5. 单击系统托盘的 Marina 图标
+5. 单击系统托盘的 Ceteris 图标
 6. **预期**:重新出现一个窗口,标题栏写 "Window 2"(不是 Window 1)
 
 ## 测试 3 ~ 测试 N:...
@@ -736,14 +736,14 @@ Session 进程退出后不立即销毁,保留 5 分钟以便用户从
 ### 9.1 不许碰用户的真实数据
 
 测试 / 调试 / 开发过程中,**永远不要**:
-* 删除 `~/AppData/Roaming/Marina/` 下任何文件
-* 修改 `~/AppData/Roaming/Marina/` 下任何文件(除非是应用本身的正常写入)
-* 用真实的 Marina 数据目录跑测试
+* 删除 `~/AppData/Roaming/Ceteris/` 下任何文件
+* 修改 `~/AppData/Roaming/Ceteris/` 下任何文件(除非是应用本身的正常写入)
+* 用真实的 Ceteris 数据目录跑测试
 
 测试用临时目录或内存文件系统:
 ```typescript
 // 测试里这么用
-const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'marina-test-'));
+const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ceteris-test-'));
 // 测试结束清理
 await fs.rm(tempDir, { recursive: true, force: true });
 ```
@@ -795,7 +795,7 @@ V1 只是底线,不追求极致:
 11. 收到 "CP-1 xxx 不工作" 或 "看 docs/cp1勘误.md" → 进入勘误回合(见 4.6),
     通读勘误 → 转 task → 修复 → typecheck/test/lint → 文档同步 → 再次回报
 12. 重复直到 CP-5 完成
-13. 输出 🎉 ALL CHECKPOINTS COMPLETE: Marina V1 构建完成
+13. 输出 🎉 ALL CHECKPOINTS COMPLETE: Ceteris V1 构建完成
 ```
 
 异常工作流(出问题):
@@ -823,7 +823,7 @@ E. 检查点之间想"顺手"重构 / 加新功能
 
 如果你在工作中陷入困惑,回到这几条:
 
-1. **你的工作不是"写出最优雅的代码"**,而是"实现一个可用的 V1 Marina,让开发者接手后能维护"。
+1. **你的工作不是"写出最优雅的代码"**,而是"实现一个可用的 V1 Ceteris,让开发者接手后能维护"。
 2. **写注释不是浪费时间**。开发者读不懂你的代码 = 你白干了。
 3. **YOLO 不是"不顾后果"**,而是"在边界内自主"。边界(技术栈 / 哲学 / 破坏性操作)永远不能越。
 4. **检查点是给你机会校准方向**,不是麻烦事。一次跑偏到 CP-4 才发现,损失大于 4 次检查点的开销之和。
@@ -840,7 +840,7 @@ E. 检查点之间想"顺手"重构 / 加新功能
 | 项目根目录及子目录 | ✅ | ✅ | ⚠️ 仅限你自己创建的临时文件 |
 | `node_modules/` | ✅ | ⚠️ 通过 npm | ⚠️ 通过 npm |
 | `.git/` | ✅ | ❌ | ❌ |
-| `~/AppData/Roaming/Marina/` | ⚠️ 仅 Marina 应用代码 | ❌(测试不许碰) | ❌(永远不许) |
+| `~/AppData/Roaming/Ceteris/` | ⚠️ 仅 Ceteris 应用代码 | ❌(测试不许碰) | ❌(永远不许) |
 | 系统 / 注册表 | ⚠️ 通过 PlatformAdapter | ❌(只在 V1.2 启用 Explorer 集成时可,现在不许) | ❌ |
 | 任意 `~/projects/*` 等用户文件 | ❌ | ❌ | ❌ |
 
@@ -866,7 +866,7 @@ E. 检查点之间想"顺手"重构 / 加新功能
 
 **说明书结束**
 
-> 这份说明书会随 Marina 项目演化而修订。如果你看的版本是 1.0,而 git 里有更新版本,以最新版本为准。
+> 这份说明书会随 Ceteris 项目演化而修订。如果你看的版本是 1.0,而 git 里有更新版本,以最新版本为准。
 >
 > 当你完成 V1 构建,你的最后一个 commit 应该是更新本文件的 "Last Updated" 字段并加一行:
 > "构建完成于 2026-XX-XX,by [agent identifier]"。

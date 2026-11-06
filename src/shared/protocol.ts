@@ -108,7 +108,7 @@ export const COMMAND_CHANNELS = {
   SSH_CONFIG_LIST: 'cmd:ssh-config:list',
   /** §阶段 2.2:探测 ssh-agent 状态 + 列出已加载的 key */
   SSH_AGENT_STATUS: 'cmd:ssh-agent:status',
-  /** §阶段 3.1:列出 ~/.ssh/known_hosts + 与 Marina history 比对的指纹变化 */
+  /** §阶段 3.1:列出 ~/.ssh/known_hosts + 与 Ceteris history 比对的指纹变化 */
   KNOWN_HOSTS_REFRESH: 'cmd:known-hosts:refresh',
 
   // Settings 域
@@ -176,7 +176,7 @@ export const COMMAND_CHANNELS = {
    */
   LOGGER_IME_DUMP: 'cmd:logger:ime-dump',
 
-  // Marina Link 域(远程挂载)。全部是"配置本机"的命令,因此都在
+  // Ceteris Link 域(远程挂载)。全部是"配置本机"的命令,因此都在
   // LINK_LOCAL_ONLY_CHANNELS 里 —— 远程窗口里点"断开",断的必须是本机
   // 这条连接,而不是把命令转发到 Host 去断 Host 自己的连接。
   /** 查询本机 Host 监听状态 + 所有 Client 连接状态 */
@@ -239,13 +239,13 @@ export const EVENT_CHANNELS = {
   UI_SHOW_LAST_SESSION_CONFIRM: 'evt:ui:show-last-session-confirm',
 
   /**
-   * Marina Link:本机的 Host 监听状态或任一 Client 连接状态发生变化。
+   * Ceteris Link:本机的 Host 监听状态或任一 Client 连接状态发生变化。
    * 设置页据此刷新状态条(连接中 / 已连接 / 重连中 + RTT)。
    */
   LINK_STATUS_CHANGED: 'evt:link:status-changed',
 
   /**
-   * Marina Link:**定向**推给某个远程窗口,告诉它自己这条连接的状态。
+   * Ceteris Link:**定向**推给某个远程窗口,告诉它自己这条连接的状态。
    *
    * 与 LINK_STATUS_CHANGED 的区别:那条是广播给本机所有普通窗口用于刷新
    * 设置页;这条只发给远程窗口本身,用来渲染顶部的连接状态条。
@@ -674,7 +674,7 @@ export interface SetDefaultTemplatePayload {
 /**
  * ~/.ssh/config 的一条 Host 条目(只读;用户改请直接编辑 ssh_config)。
  *
- * Marina 在 sidebar / RemotePanel 把这些条目展示为"来源:ssh_config"标签,
+ * Ceteris 在 sidebar / RemotePanel 把这些条目展示为"来源:ssh_config"标签,
  * 不可删/编辑;连接时按本条同等 SshProfile 拼 ssh args。
  */
 export interface SshConfigEntryDto {
@@ -743,10 +743,10 @@ export interface KnownHostsRefreshResponse {
  */
 export interface SettingsArchiveV1 {
   /**
-   * 归档格式标签。v1.5 改名后新导出统一 'marina-archive';读侧也接受
+   * 归档格式标签。v1.5 改名后新导出统一 'ceteris-archive';读侧也接受
    * 'easyterm-archive'(改名前的旧归档)。
    */
-  format: 'marina-archive' | 'easyterm-archive';
+  format: 'ceteris-archive' | 'easyterm-archive';
   version: 1;
   exportedAt: number;
   exportedFrom: string;
@@ -852,7 +852,7 @@ export interface ExplorerIntegrationCertInfo {
 }
 
 export interface ExplorerIntegrationPackageInfo {
-  /** Marina.ContextMenu 等包名 */
+  /** Ceteris.ContextMenu 等包名 */
   name: string;
   version: string;
   installLocation: string;
@@ -1026,7 +1026,7 @@ export interface ImeProbeDumpResponse {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Marina Link 域
+// Ceteris Link 域
 // ──────────────────────────────────────────────────────────────────
 
 export interface LinkStatusResponse {

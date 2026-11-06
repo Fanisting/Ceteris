@@ -1,7 +1,7 @@
 /**
  * @file src/main/link/link-bind.test.ts
  * @purpose 验证 Host 绑定地址的决策逻辑。无人值守的机器重启后要靠它恢复远程访问:
- *   Marina 往往先于 Tailscale 启动,此时只能绑 127.0.0.1,之后必须自己换到 tailnet
+ *   Ceteris 往往先于 Tailscale 启动,此时只能绑 127.0.0.1,之后必须自己换到 tailnet
  *   地址,并且绝不能退回 0.0.0.0。
  *
  * @对应文档章节: docs/远程访问指南.md 第 7 章

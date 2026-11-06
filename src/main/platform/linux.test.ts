@@ -139,28 +139,28 @@ describe('LinuxAdapter — buildShellLaunchParams', () => {
   it('bash 走 --rcfile + -i', () => {
     const result = adapter.buildShellLaunchParams(
       { id: 'bash', displayName: 'Bash', executablePath: '/bin/bash' },
-      '/tmp/marina-hook.bashrc',
+      '/tmp/ceteris-hook.bashrc',
     );
-    expect(result.args).toEqual(['--rcfile', '/tmp/marina-hook.bashrc', '-i']);
+    expect(result.args).toEqual(['--rcfile', '/tmp/ceteris-hook.bashrc', '-i']);
     expect(result.env).toEqual({});
   });
 
   it('zsh 走 ZDOTDIR 环境变量', () => {
     const result = adapter.buildShellLaunchParams(
       { id: 'zsh', displayName: 'Zsh', executablePath: '/bin/zsh' },
-      '/tmp/marina-zsh-dir/.zshrc',
+      '/tmp/ceteris-zsh-dir/.zshrc',
     );
     expect(result.args).toEqual(['-i']);
-    expect(result.env['ZDOTDIR']).toBe('/tmp/marina-zsh-dir');
+    expect(result.env['ZDOTDIR']).toBe('/tmp/ceteris-zsh-dir');
   });
 
   it('fish 走 XDG_CONFIG_HOME 指向 fish/config.fish 上两级', () => {
     const result = adapter.buildShellLaunchParams(
       { id: 'fish', displayName: 'Fish', executablePath: '/usr/bin/fish' },
-      '/tmp/marina-fish/fish/config.fish',
+      '/tmp/ceteris-fish/fish/config.fish',
     );
     expect(result.args).toEqual(['-i']);
-    expect(result.env['XDG_CONFIG_HOME']).toBe('/tmp/marina-fish');
+    expect(result.env['XDG_CONFIG_HOME']).toBe('/tmp/ceteris-fish');
   });
 
   it('带 commandToRun 时:bash -c "cmd; exec bash -i"', () => {

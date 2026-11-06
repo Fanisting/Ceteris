@@ -1,11 +1,12 @@
 {
   "name": "ceteris-app",
+  "productName": "Ceteris",
   "version": "0.3.0-beta.5",
   "private": true,
-  "description": "Ceteris: path-centric, AI-agent-friendly terminal manager for Windows, forked from Marina",
+  "description": "Ceteris: path-centric, AI-agent-friendly terminal manager for Windows",
   "license": "MIT",
   "author": "Liyue-Cheng <liyue_cheng@163.com>",
-  "homepage": "https://github.com/Fanisting/marina",
+  "homepage": "https://github.com/Fanisting/ceteris",
   "main": "out/main/index.js",
   "type": "module",
   "engines": {

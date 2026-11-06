@@ -7,11 +7,11 @@
  *
  * 结构:
  *   1. MD3 token:形状 / 动效 / 阴影 / 状态层 / 字体 / 颜色角色
- *   2. Marina Dark / Marina Light 两套主题(种子色 #006a6a 的 MD3 配色)
+ *   2. Ceteris Dark / Ceteris Light 两套主题(种子色 #006a6a 的 MD3 配色)
  *   3. 组件:外壳 → 侧栏 → 标签 → 终端 → 菜单 → 设置 → 对话框 → 通知
  *
  * 颜色角色:其它主题没有 MD3 色板,--md-* 从 Layer 2 token 推导,所以所有主题
- * 自动获得这套外观。Marina 两套主题直接给出精确色值。
+ * 自动获得这套外观。Ceteris 两套主题直接给出精确色值。
  *
  * 选择器写法:`:root .x` 用来压过 global.css 里 `[data-theme='...'] .x` 这类
  * 按主题写的阴影和箭头规则(两者特异性相同,后加载者胜)。
@@ -43,7 +43,7 @@
   --md-elevation-2: 0 1px 2px rgb(0 0 0 / 30%), 0 2px 6px 2px rgb(0 0 0 / 15%);
   --md-elevation-3: 0 4px 8px 3px rgb(0 0 0 / 15%), 0 1px 3px rgb(0 0 0 / 30%);
 
-  /* 没有 MD3 色板的主题从 Layer 2 推导。Marina 主题块的特异性与 :root 相同,
+  /* 没有 MD3 色板的主题从 Layer 2 推导。Ceteris 主题块的特异性与 :root 相同,
      必须写在这段之后,它们的精确色值才能生效。 */
   --md-primary: var(--color-accent-special, #f0f);
   --md-on-primary: var(--color-bg-primary, #f0f);
@@ -90,10 +90,10 @@
   --md-state-pressed: color-mix(in srgb, currentcolor 10%, transparent);
 }
 
-/* ── 2. Marina 主题 ─────────────────────────────────────────────── */
+/* ── 2. Ceteris 主题 ─────────────────────────────────────────────── */
 
 :root:not([data-theme]),
-[data-theme='marina-dark'] {
+[data-theme='ceteris-dark'] {
   --color-bg-primary: #0e1514;
   --color-bg-secondary: #1a2121;
   --color-bg-elevated: #242b2b;
@@ -122,7 +122,7 @@
   --md-inverse-on-surface: #2b3231;
 }
 
-[data-theme='marina-light'] {
+[data-theme='ceteris-light'] {
   --color-bg-primary: #f4fbfa;
   --color-bg-secondary: #e3e9e9;
   --color-bg-elevated: #eef5f4;

@@ -73,10 +73,10 @@ import { pathRefFromId } from './path-manager';
 import { getPlatformAdapter, type PlatformAdapter, type ShellInfo } from './platform';
 import { buildSpawnEnv, injectTerminalHintEnv, validateDimensions } from './pty-utils';
 import { logger } from './logger';
-import { activateMarinaUnicodeWidth } from '@shared/terminal-unicode-width';
+import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
-// Marina launched from that shell would misidentify itself as a portable build.
+// Ceteris launched from that shell would misidentify itself as a portable build.
 const SPAWN_ENV_SKIP = [
   'ELECTRON_RUN_AS_NODE',
   'ELECTRON_RENDERER_URL',
@@ -513,7 +513,7 @@ export class SessionManager extends EventEmitter {
    * 缓存 detectShells 结果。首次 createSession 时填充,后续复用。
    *
    * PER-4:加 30s TTL — 用户装 / 卸载 PowerShell 7、改 PATH 后不必重启
-   * Marina 也能在 EmptyPathState 的"检测到的 Shell"刷出新结果。30s 既给
+   * Ceteris 也能在 EmptyPathState 的"检测到的 Shell"刷出新结果。30s 既给
    * 用户主动重新检测的及时性,又把热路径 createSession 的 detectShells
    * 调用数压到很低。
    */
@@ -591,7 +591,7 @@ export class SessionManager extends EventEmitter {
     // 否则交给 node-pty,ConPTY 在 CreateProcess 时会因 lpCurrentDirectory 失败
     // 抛 ERROR_DIRECTORY (267),用户看到的是"Cannot create process, error code: 267",
     // 完全看不出问题在 cwd。此外 Explorer 集成场景下用户可能把右键时存在的
-    // 文件夹在 Marina 处理过程中删了,这里给出明确兜底。
+    // 文件夹在 Ceteris 处理过程中删了,这里给出明确兜底。
     // 单测用伪路径,通过 options.skipCwdValidation=true 跳过此检查。
     if (!isSsh && !this.skipCwdValidation) {
       try {
@@ -804,7 +804,7 @@ export class SessionManager extends EventEmitter {
     };
     // CURSOR-1:绑 SerializeAddon。loadAddon 必须在 headless 实例创建后,
     // 字段挂回 managed.serializeAddon 供 getScrollback 调用。
-    activateMarinaUnicodeWidth(managed.headlessTerm!);
+    activateCeterisUnicodeWidth(managed.headlessTerm!);
     const serializeAddon = new SerializeAddon();
     managed.headlessTerm!.loadAddon(serializeAddon);
     managed.serializeAddon = serializeAddon;
@@ -1917,7 +1917,7 @@ export function buildSshLaunchParams(
   }
   // ProxyJump:多跳板拼接成 -J host1,host2,host3。空数组等价于不跳板。
   // OpenSSH 接受 user@host:port 形式,这里只做空段过滤,不做格式校验
-  // (跳板鉴权由 OpenSSH 复用主机已配置的 agent / key,Marina 不介入)。
+  // (跳板鉴权由 OpenSSH 复用主机已配置的 agent / key,Ceteris 不介入)。
   const proxyHops = (profile.proxyJump ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
   if (proxyHops.length > 0) {
     args.push('-J', proxyHops.join(','));
@@ -1982,7 +1982,7 @@ function buildRemoteLoginCommand(
   }
   const baseSessionName = defaultTmuxSessionName(cwd);
   // 目录派生是产品语义:同一个远程目录的 tmux 会话族必须统一落在
-  // marina-<leaf> / marina-<leaf>-N。旧版 profile 里可能残留
+  // ceteris-<leaf> / ceteris-<leaf>-N。旧版 profile 里可能残留
   // tmuxSessionName 或 new-per-launch,这里故意不再读取,避免旧配置覆盖
   // "按目录智能选择"规则。
   const tmuxCommand = buildSmartTmuxCommand(
@@ -1993,9 +1993,9 @@ function buildRemoteLoginCommand(
     'printf %s\\\\n "Ceteris: tmux attach/create failed on the remote host." >&2; exit 127';
   const fallbackAfterFailure =
     profile.tmuxOnMissing === 'fail' ? failCommand : launchCommand;
-  // tmux 本身只是远端 shell 里的一个全屏程序,不是 Marina session 的终点。
+  // tmux 本身只是远端 shell 里的一个全屏程序,不是 Ceteris session 的终点。
   // 用户在 tmux pane 里输入 exit 后,tmux client 会正常返回;此时必须继续
-  // exec 回登录 shell,否则 ssh.exe 会结束,Main 只能把整个 Marina session
+  // exec 回登录 shell,否则 ssh.exe 会结束,Main 只能把整个 Ceteris session
   // 标成 exited。失败路径仍走 fallbackAfterFailure,避免把真正的 tmux 启动
   // 错误伪装成一次正常 shell 回落。
   const tmuxBootstrap =
@@ -2028,10 +2028,10 @@ function buildRemoteTemplateCommand(input: {
     ? argv.join(' ')
     : ['env', ...envPairs, ...argv].join(' ');
   return (
-    `${runCommand}; marina_template_status=$?; ` +
-    `if [ "$marina_template_status" -eq 127 ]; then ` +
+    `${runCommand}; ceteris_template_status=$?; ` +
+    `if [ "$ceteris_template_status" -eq 127 ]; then ` +
     `{ printf %s\\\\n "Ceteris: remote template command not found or not in PATH: ${input.command}" >&2; }; fi; ` +
-    `unset marina_template_status`
+    `unset ceteris_template_status`
   );
 }
 
@@ -2046,9 +2046,9 @@ function defaultTmuxSessionName(remoteCwd: string): string {
     .replace(/[^a-z0-9_.-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
-  if (safe) return `marina-${safe}`;
+  if (safe) return `ceteris-${safe}`;
   const digest = createHash('sha256').update(remoteCwd).digest('hex').slice(0, 8);
-  return `marina-${digest}`;
+  return `ceteris-${digest}`;
 }
 
 function buildSmartTmuxCommand(baseSessionName: string, forceChoice: boolean): string {
@@ -2067,15 +2067,15 @@ function buildSmartTmuxCommand(baseSessionName: string, forceChoice: boolean): s
   // exec "${SHELL:-/bin/sh}" -l` 没机会执行,用户在 tmux 里 exit 后就会
   // 直接断开 SSH。
   return (
-    `MARINA_TMUX_BASE=${base} MARINA_TMUX_FORCE_CHOICE=${force} ` +
+    `CETERIS_TMUX_BASE=${base} CETERIS_TMUX_FORCE_CHOICE=${force} ` +
     `sh -c "$(printf %s ${shQuote(script)} | base64 -d)"`
   );
 }
 
 const SMART_TMUX_SCRIPT = `
-base=$MARINA_TMUX_BASE
-force=$MARINA_TMUX_FORCE_CHOICE
-sessions=$(tmux -L marina list-sessions -F '#S' 2>/dev/null | while IFS= read -r s; do
+base=$CETERIS_TMUX_BASE
+force=$CETERIS_TMUX_FORCE_CHOICE
+sessions=$(tmux -L ceteris list-sessions -F '#S' 2>/dev/null | while IFS= read -r s; do
   if [ "$s" = "$base" ]; then
     printf '%s\\n' "$s"
     continue
@@ -2089,16 +2089,16 @@ done)
 count=$(printf '%s\\n' "$sessions" | sed '/^$/d' | wc -l | tr -d ' ')
 new_session() {
   i=1
-  while tmux -L marina has-session -t "$base-$i" 2>/dev/null; do i=$((i + 1)); done
-  tmux -L marina new-session -s "$base-$i"
+  while tmux -L ceteris has-session -t "$base-$i" 2>/dev/null; do i=$((i + 1)); done
+  tmux -L ceteris new-session -s "$base-$i"
   exit $?
 }
 if [ "$count" = "0" ]; then
-  tmux -L marina new-session -s "$base"
+  tmux -L ceteris new-session -s "$base"
   exit $?
 fi
 if [ "$count" = "1" ] && [ "$force" != "1" ]; then
-  tmux -L marina attach-session -t "$sessions"
+  tmux -L ceteris attach-session -t "$sessions"
   exit $?
 fi
 printf '\\nCeteris found tmux sessions for %s:\\n' "$base"
@@ -2117,7 +2117,7 @@ if [ "$ans" -lt 1 ] 2>/dev/null; then
 fi
 target=$(printf '%s\\n' "$sessions" | sed '/^$/d' | sed -n "$ans"p)
 if [ -n "$target" ]; then
-  tmux -L marina attach-session -t "$target"
+  tmux -L ceteris attach-session -t "$target"
   exit $?
 fi
 new_session
@@ -2135,7 +2135,7 @@ new_session
  * 把窗口标题设成自己的 exe 路径,ConPTY 把这次调用翻译成 OSC 0 序列发给
  * xterm 消费者;Git Bash 默认 PS1 又在每次 prompt 时主动发
  * `\e]0;MINGW64:<cwd>\a`。这些"shell 启动 / 内置 prompt"产出的标题对
- * Marina 用户而言全是噪声 — 他们希望 tab 显示的是 "PowerShell" / "Bash"
+ * Ceteris 用户而言全是噪声 — 他们希望 tab 显示的是 "PowerShell" / "Bash"
  * 或自己跑的工具名(vim / claude / node ...),不是 shell 自己的 exe 路径
  * 或 cwd 重复。
  *

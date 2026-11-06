@@ -155,7 +155,7 @@ function normalizeProfile(input: SshProfile): SshProfile {
   if (tmuxSessionName) next.tmuxSessionName = tmuxSessionName;
   // ProxyJump v2.1 §阶段 2.3:多跳板,每段最多 255 字符;空段过滤;最多 5 段
   // 防滥用(OpenSSH 没硬上限但 5 段已极少见)。OpenSSH -J 接受 user@host:port
-  // 形式,Marina 不校验段格式,直接透传。
+  // 形式,Ceteris 不校验段格式,直接透传。
   const proxyJump = Array.isArray(input.proxyJump)
     ? input.proxyJump
         .map((s) => (typeof s === 'string' ? s.trim() : ''))

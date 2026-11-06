@@ -1,8 +1,8 @@
 # IME-1 · 中文 IME 偶发"按标点冲刷一大段历史输入"
 
-**状态**:**workaround 已实施(2026-05-18),探针已二次升级(2026-05-18 当晚),监控中** — `compositionend` 延迟 16ms 清空 helper-textarea,核心逻辑在 `src/shared/ime-textarea-workaround.ts`,7 条护栏单测就位。探针不再 console.warn 每条 EV(噪音过大且 DevTools 没开就丢现场),改为 ring buffer + LEAK 触发时 IPC dump 到 main `logger.ime` 落盘 `%APPDATA%/Marina/logs/ime-YYYY-MM-DD.log`。LEAK 判定从"`data.length > 20`"升级为"`data.length > 20 AND taLen ≥ data.length + 8`",排除"正常长 IME 提交"的误报(2026-05-18 用户实例:24 字一次性输入,head/tail/taTail 三字段完全一致)。
+**状态**:**workaround 已实施(2026-05-18),探针已二次升级(2026-05-18 当晚),监控中** — `compositionend` 延迟 16ms 清空 helper-textarea,核心逻辑在 `src/shared/ime-textarea-workaround.ts`,7 条护栏单测就位。探针不再 console.warn 每条 EV(噪音过大且 DevTools 没开就丢现场),改为 ring buffer + LEAK 触发时 IPC dump 到 main `logger.ime` 落盘 `%APPDATA%/Ceteris/logs/ime-YYYY-MM-DD.log`。LEAK 判定从"`data.length > 20`"升级为"`data.length > 20 AND taLen ≥ data.length + 8`",排除"正常长 IME 提交"的误报(2026-05-18 用户实例:24 字一次性输入,head/tail/taTail 三字段完全一致)。
 **优先级**:P1(影响中文用户日常输入体感,但偶发性;切英文输入法即恢复)
-**首次报告**:2026-05-16,用户日常使用 Marina 时偶发,凭对话框输入残影确认
+**首次报告**:2026-05-16,用户日常使用 Ceteris 时偶发,凭对话框输入残影确认
 **复现率**:偶发,不是每次都触发;仅在中文输入法开启时;切英文输入法立即消失
 
 ---
@@ -156,7 +156,7 @@ if (helperTa) {
 - [ ] 跑回归:确认 Enter / Ctrl+C 清 textarea 路径仍工作,中文长段输入不丢字
       (手动,中文 IME 必须人测)
 - [ ] **观察期**:dev / beta 版本运行两周(2026-05-18 → 2026-06-01),
-      不再依赖 DevTools — 读 `%APPDATA%/Marina/logs/ime-*.log`,**无报警则推进**下一项
+      不再依赖 DevTools — 读 `%APPDATA%/Ceteris/logs/ime-*.log`,**无报警则推进**下一项
 - [ ] 观察期通过后,**移除两个探针**(grep `IME-1 PROBE` / `IME-LEAK` / `IME-EV`
       一次性清掉,连同 `ime-probe-ring.ts` / `LOGGER_IME_DUMP` channel /
       `logger.ime` 通道一起退役);若期间再现 LEAK,在此工单加复现证据 +
@@ -184,7 +184,7 @@ head=tail=taTail=24 字`,确认这是"正常一次性长 IME 提交"被探针误
      `imeProbeRing`(capacity=50,满了覆盖最老)
    - PROBE A 检测到 LEAK 时:push 一条 `ev='leak'` 到 ring,drain 整个 ring
      一次性 IPC 发到 `cmd:logger:ime-dump`,main 端 `logger.ime` 落盘
-     `%APPDATA%/Marina/logs/ime-YYYY-MM-DD.log`(按日切、5MB rotate、保 7 天,
+     `%APPDATA%/Ceteris/logs/ime-YYYY-MM-DD.log`(按日切、5MB rotate、保 7 天,
      与 `llm` 通道同套设施,不 mirror console)
    - 仍保留一次 `console.warn('[IME-LEAK]', ...)` 第一时间在 DevTools 可见
 
@@ -251,9 +251,9 @@ head=tail=taTail=24 字`,确认这是"正常一次性长 IME 提交"被探针误
 
 ### 环境准备
 
-1. `npm run dev` 启动开发版 Marina(electron-vite dev,自带 hot reload + DevTools)
+1. `npm run dev` 启动开发版 Ceteris(electron-vite dev,自带 hot reload + DevTools)
 2. 任意打开一个 session(默认 PowerShell 即可,或推荐进一个 TUI 比如 `claude` / `aider` / `nano`,因为复现要"长时间不按 Enter")
-3. **打开 DevTools**(Marina 的渲染进程窗口里 `Ctrl+Shift+I`)→ Console tab → 过滤栏输入 `[IME-`
+3. **打开 DevTools**(Ceteris 的渲染进程窗口里 `Ctrl+Shift+I`)→ Console tab → 过滤栏输入 `[IME-`
 4. **确认 Windows 输入法已切到"微软拼音"**(任务栏右下角语言指示器),不要用搜狗/QQ 等第三方 IME — 本 bug 只在微软拼音上复现过
 
 ### 用例 1:冒烟(英文输入法 / 基线)

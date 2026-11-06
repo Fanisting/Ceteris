@@ -5,7 +5,7 @@
 ;
 ; customInstall — 写 HKCU\Software\Ceteris\InstallLocation。
 ;   Win11 新菜单 DLL(native/context-menu)启动 Ceteris.exe 前会按此键值
-;   定位 exe;不写就只能依赖 MARINA_EXE 环境变量(开发期用)。生产期必写,
+;   定位 exe;不写就只能依赖 CETERIS_EXE 环境变量(开发期用)。生产期必写,
 ;   否则用户启用新菜单后点击"在 Ceteris 终端中打开"会无反应(DLL panic 兜底)。
 ;
 ; customUnInstall — 清掉:

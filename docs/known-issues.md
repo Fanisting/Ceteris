@@ -1,6 +1,6 @@
 # 已知问题与平台限制
 
-> **历史档案**:本文件创建于 alpha 阶段,产品当时叫 EasyTerm,自 v1.5 起更名为 Marina(见软件定义书 ADR-012)。下文 "EasyTerm" 字样保留作为时间点快照。
+> **历史档案**:本文件创建于 alpha 阶段,产品当时叫 EasyTerm,自 v1.5 起更名为 Ceteris(见软件定义书 ADR-012)。下文 "EasyTerm" 字样保留作为时间点快照。
 
 
 记录应用层无法根治、属于平台/上游依赖的问题。每条带"现象 / 根因 / 我们做了什么 / 用户解法 / 平台覆盖 / 状态"。
@@ -90,8 +90,8 @@ POSIX PTY 在 resize 时只给 child 发 SIGWINCH,**自己不重画 buffer**—�
 
 用户拿到 v0.1.0-alpha.1 后,下个版本发出来时:
 - 应用内**不会有任何提示**
-- 用户得自己去 https://github.com/Liyue-Cheng/marina/releases 翻新版本
-- 下载新 Setup 覆盖安装(数据在 `%APPDATA%\Marina` 不受影响)
+- 用户得自己去 https://github.com/Fanisting/ceteris/releases 翻新版本
+- 下载新 Setup 覆盖安装(数据在 `%APPDATA%\Ceteris` 不受影响)
 
 ### 实施计划(暂不开工)
 
@@ -107,7 +107,7 @@ MVP 工作量约 **3-5 小时**:
 2. main 进程钩 `autoUpdater.checkForUpdatesAndNotify()` 启动期 + 周期触发
 3. `evt:update:*` IPC 推送 "可下载 / 下载中 / 已就绪重启" 三态
 4. 给 toast / 设置页一个 "重启安装" 入口
-5. 配 `electron-builder.yml`:`publish: { provider: github, owner: Liyue-Cheng, repo: marina }`
+5. 配 `electron-builder.yml`:`publish: { provider: github, owner: Liyue-Cheng, repo: ceteris }`
 
 ### 阻塞 / 注意事项
 
@@ -134,17 +134,17 @@ MVP 工作量约 **3-5 小时**:
 ## KI-003 · Win11 新右键菜单未集成(必做,排 v0.2 公测前)
 
 **首次记录**:2026-05-12,alpha.3 发布前勘误 #15
-**严重度**:中(Marina 主打 path-centric 入口,新菜单缺位是核心体验缺口)
+**严重度**:中(Ceteris 主打 path-centric 入口,新菜单缺位是核心体验缺口)
 
 ### 现象
 
-Windows 11 默认右键菜单(那个圆角紧凑、用户首先看到的)看不到 "在 Marina 终端中打开"。要看到必须点 "显示更多选项" 展开经典菜单,或 `Shift+F10`。
+Windows 11 默认右键菜单(那个圆角紧凑、用户首先看到的)看不到 "在 Ceteris 终端中打开"。要看到必须点 "显示更多选项" 展开经典菜单,或 `Shift+F10`。
 
 ### 根因
 
 Win11 新菜单要求 `IExplorerCommand` COM + Sparse Package / MSIX。我们当前的 `HKCU\...\Directory\shell` 注册表方案只命中经典菜单。
 
-VS Code / Notepad++ / Git for Windows / 7-Zip(< v24)同处境,业界标准是"暂未支持"。但 Marina 主打 Explorer 集成,这个缺位最伤。
+VS Code / Notepad++ / Git for Windows / 7-Zip(< v24)同处境,业界标准是"暂未支持"。但 Ceteris 主打 Explorer 集成,这个缺位最伤。
 
 ### 决议
 
@@ -171,11 +171,11 @@ VS Code / Notepad++ / Git for Windows / 7-Zip(< v24)同处境,业界标准是"�
 
 ### 现象
 
-如果 Marina 主进程异常退出(uncaughtException 未捕获、被 OS Kill、Out-Of-Memory 等),所有正在运行的 PTY session 同时被 Windows job object 杀掉,scrollback / 当前命令进度 / 未保存的工作全部丢失。
+如果 Ceteris 主进程异常退出(uncaughtException 未捕获、被 OS Kill、Out-Of-Memory 等),所有正在运行的 PTY session 同时被 Windows job object 杀掉,scrollback / 当前命令进度 / 未保存的工作全部丢失。
 
 ### 根因
 
-Windows ConPTY 的 PTY 进程是 Marina 主进程的直接子进程。Windows 默认把 Marina 注册为 job object 的 root,父死则子必死(SetInformationJobObject + JobObjectExtendedLimitInformation)。这是 ConPTY 体系的强约束,不是 Marina 的 bug。
+Windows ConPTY 的 PTY 进程是 Ceteris 主进程的直接子进程。Windows 默认把 Ceteris 注册为 job object 的 root,父死则子必死(SetInformationJobObject + JobObjectExtendedLimitInformation)。这是 ConPTY 体系的强约束,不是 Ceteris 的 bug。
 
 要在主进程崩溃后保住 PTY,只有两条路:
 1. 把 PTY 抽出独立 sidecar 进程(重写主进程,工程量~1-2 周)
@@ -192,7 +192,7 @@ BETA-002 把 IPC handler / persistence / session-manager 等关键路径的 try-
 ### 用户解法
 
 - 定期 export 设置 + 收藏(设置 → 数据 → 导出)
-- 长任务尽量挂在 tmux / screen / nohup 这类**用户态进程隔离**的会话里(它们的 PTY 父是 shell 自己,不依赖 Marina 主进程存活)
+- 长任务尽量挂在 tmux / screen / nohup 这类**用户态进程隔离**的会话里(它们的 PTY 父是 shell 自己,不依赖 Ceteris 主进程存活)
 
 ### 平台覆盖
 

@@ -50,7 +50,7 @@ interface ManagedWindow {
 }
 
 /**
- * Marina Link:虚拟窗口的 electronWindowId 占位值。
+ * Ceteris Link:虚拟窗口的 electronWindowId 占位值。
  *
  * 虚拟窗口没有 BrowserWindow,自然也没有 webContents.id。用 -1 是因为
  * Electron 的 webContents.id 恒为正整数,不会与真实窗口碰撞;
@@ -59,7 +59,7 @@ interface ManagedWindow {
 export const VIRTUAL_WINDOW_ELECTRON_ID = -1;
 
 /**
- * Marina Link(Host 侧):一个远程客户端在本机 WindowManager 里的表示。
+ * Ceteris Link(Host 侧):一个远程客户端在本机 WindowManager 里的表示。
  *
  * @关键设计:
  * 把远程客户端注册成"虚拟窗口"是整个 Link 特性的支点。有了它,
@@ -114,7 +114,7 @@ export interface CreateWindowOptions {
    */
   selectSessionId?: string;
   /**
-   * Marina Link(Client 侧):强制使用指定的 windowId,而不是新生成一个 UUID。
+   * Ceteris Link(Client 侧):强制使用指定的 windowId,而不是新生成一个 UUID。
    *
    * 远程窗口必须用 Host 分配的虚拟 windowId 作为自己的身份,原因见
    * LinkAuth.preferredWindowId 的注释:renderer 用 `window.api.windowId` 与
@@ -146,14 +146,14 @@ export class WindowManager implements IWindowManager {
   private readonly windows = new Map<string, ManagedWindow>();
 
   /**
-   * Marina Link(Host 侧):远程客户端注册成的虚拟窗口。
+   * Ceteris Link(Host 侧):远程客户端注册成的虚拟窗口。
    * 与 this.windows 共用同一个 windowId 命名空间(都是 UUID),两者的 key
    * 不会碰撞。
    */
   private readonly virtualWindows = new Map<string, ManagedVirtualWindow>();
 
   /**
-   * Marina Link(Client 侧):本机哪些真实窗口是"远程窗口"。
+   * Ceteris Link(Client 侧):本机哪些真实窗口是"远程窗口"。
    *
    * 远程窗口的 renderer 展示的是**远端** Host 的数据,因此本机守护进程的
    * 事件广播必须跳过它们 —— 否则本机的 path 树、session 列表会与远端数据
@@ -245,7 +245,7 @@ export class WindowManager implements IWindowManager {
       // 看到方角窗口,这与 gnome-terminal / wezterm 等所有主流 Linux 终端
       // 一致;CSS 端配合 <html data-platform='linux'> 在 .app-root 上去掉
       // border-radius 避免内部出现 #191724 实色边角。
-      // 与默认主题 marina-dark 的外壳底色一致,避免首帧闪出其它颜色
+      // 与默认主题 ceteris-dark 的外壳底色一致,避免首帧闪出其它颜色
       backgroundColor: '#1a2121',
       transparent: false,
       // M1-A:自绘标题栏。frame:false 把整条 OS 标题栏拿掉,renderer 端用
@@ -508,7 +508,7 @@ export class WindowManager implements IWindowManager {
   }
 
   /**
-   * 所有窗口的简要信息,**包含** Marina Link 的虚拟窗口。
+   * 所有窗口的简要信息,**包含** Ceteris Link 的虚拟窗口。
    *
    * 为什么虚拟窗口要出现在这个列表里:renderer 侧栏用 windows[] 判断某个
    * session 的 owner 是"本窗口 / 其他窗口 / 无主"。远程客户端持有的 session
@@ -613,7 +613,7 @@ export class WindowManager implements IWindowManager {
   /**
    * 取 createOptionsProvider 当前会给出的 options,但**不**创建窗口。
    *
-   * Marina Link 的远程窗口需要在拿到 Host 分配的 windowId 之后才能创建,
+   * Ceteris Link 的远程窗口需要在拿到 Host 分配的 windowId 之后才能创建,
    * 没法走 createWindowFromFactory(它不接受 forcedWindowId 以外的时序),
    * 所以这里把"取 options"单独暴露出来,保证远程窗口与本地窗口共用同一套
    * 尺寸 / 位置 / 关窗持久化策略。
@@ -654,7 +654,7 @@ export class WindowManager implements IWindowManager {
   }
 
   // ────────────────────────────────────────────────────────────────
-  // Marina Link:虚拟窗口(Host 侧)与远程绑定窗口(Client 侧)
+  // Ceteris Link:虚拟窗口(Host 侧)与远程绑定窗口(Client 侧)
   // ────────────────────────────────────────────────────────────────
 
   /**

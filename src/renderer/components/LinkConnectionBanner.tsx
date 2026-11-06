@@ -1,9 +1,9 @@
 /**
  * @file src/renderer/components/LinkConnectionBanner.tsx
- * @purpose 远程窗口顶部的连接状态条(Marina Link)。
+ * @purpose 远程窗口顶部的连接状态条(Ceteris Link)。
  *
  * @为什么需要它:
- * 远程窗口的 renderer **不知道**自己是远程的 —— 这正是 Marina Link 的设计
+ * 远程窗口的 renderer **不知道**自己是远程的 —— 这正是 Ceteris Link 的设计
  * 目标(见 src/main/link/link-client.ts)。代价是:一旦连接断掉,终端会
  * 完全停止响应,而用户得不到任何解释:按键没回显、标签页不更新、看起来
  * 像应用卡死了。
@@ -19,7 +19,7 @@
  *   按钮只会让用户在它已经在重试时反复点。
  * - 挂载时主动拉一次状态:重连会 reload 窗口,reload 期间推送的事件收不到。
  * - 重连后如果有未确认的输入,保留一条提示直到用户确认。这些输入可能已经执行,
- *   只有用户看过终端才知道要不要重发,所以 Marina 不替用户重发。
+ *   只有用户看过终端才知道要不要重发,所以 Ceteris 不替用户重发。
  */
 import { useEffect, useState } from 'react';
 import {

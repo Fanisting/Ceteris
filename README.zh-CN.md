@@ -3,13 +3,13 @@
 > 你的终端会话不应该因为关掉窗口就死掉。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/marina/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/ceteris/releases)
 [![状态](https://img.shields.io/badge/状态-Alpha-orange)](#路线图)
 [![English](https://img.shields.io/badge/English-README.md-blue)](README.md)
 
 一个**以路径为中心、对 AI agent 友好**的 Windows 终端管理器。为同时运行多个长时间任务(包括 Claude Code、Codex、OpenCode 等 AI 编码助手)、需要在多个工作目录之间频繁切换、又不愿意因为关错窗口前功尽弃的开发者打造。
 
-> **Fork 说明**:Ceteris 是 Liyue-Cheng 的 [Marina](https://github.com/Liyue-Cheng/marina) 的 fork,Marina 的前身是 EasyTerm。首次启动时,它会从已安装的 Marina 复制设置、收藏、SSH 配置和已保存的密码,Marina 的目录保持原样。
+> **Fork 说明**:Ceteris 是 Liyue-Cheng 的 [Marina](https://github.com/Liyue-Cheng/marina) 的 fork,Marina 的前身是 EasyTerm。
 
 ---
 
@@ -104,7 +104,7 @@ Ceteris 给你:
 
 ### 安装
 
-1. 从 [Releases](https://github.com/Fanisting/marina/releases) 下载最新安装包
+1. 从 [Releases](https://github.com/Fanisting/ceteris/releases) 下载最新安装包
 2. 跑 `Ceteris-Setup-x.y.z.exe`
 3. 从开始菜单或桌面启动
 
@@ -189,8 +189,8 @@ Ceteris 基于 **Electron 31 + TypeScript + React 18 + node-pty + xterm.js** 构
 
 ```bash
 # 前置:Node.js 20+,Windows 10/11
-git clone https://github.com/Fanisting/marina.git
-cd marina
+git clone https://github.com/Fanisting/ceteris.git
+cd ceteris
 npm install
 npm run dev      # 带热重载的开发模式
 npm run build    # 打包安装程序到 release/

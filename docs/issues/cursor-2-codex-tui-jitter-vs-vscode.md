@@ -1,4 +1,4 @@
-# CURSOR-2 · Codex TUI 光标在两个位置间逐帧跳变(仅 Marina,VSCode 无此问题)
+# CURSOR-2 · Codex TUI 光标在两个位置间逐帧跳变(仅 Ceteris,VSCode 无此问题)
 
 **状态**:**未解决,挂起待续**(2026-06-01)
 **优先级**:P1(影响 codex 用户日常使用,尤其是长按方向键 / 退格的高频输入场景)
@@ -22,7 +22,7 @@
 1. **触发场景**:codex CLI 在 alt buffer(进入 TUI 后),用户按住退格键(或任何持续输入)
 2. **视觉**:系统光标在屏幕底部两个位置之间逐帧跳变。一个是输入光标位置(用户期待),另一个是 TUI 状态行某个 cell 末端
 3. **对照**:**VSCode 集成终端无此现象**(同一个 codex 二进制,同一台机器,同一时间窗口测试)
-4. **Claude Code 的相关问题**:Claude Code 在 Marina 中**无可见光标抖**(因为它发了 `?25l` 藏起来),但**中文 IME 候选框跟着同源的 cursor 移动飘**(详见 IME-2 工单,本工单不重复)
+4. **Claude Code 的相关问题**:Claude Code 在 Ceteris 中**无可见光标抖**(因为它发了 `?25l` 藏起来),但**中文 IME 候选框跟着同源的 cursor 移动飘**(详见 IME-2 工单,本工单不重复)
 5. **`EMIT_BATCH_MS` 敏感**:见下文实验记录,这个 main 端 batch 窗口尺寸对抖动严重程度有明显影响
 
 ### 抖动的精确数据(2026-05-31 探针抓到)
@@ -77,7 +77,7 @@ T+13697 seq=94  len=94: <光标回归 + 新 atomic + 光标回归 — 三段都�
 - `codex-rs/tui/src/insert_history.rs`:同上,`queue!` + flush,无 SUM
 - 推论:**SUM 标记由 crossterm 或 ratatui 自动注入**,不是 codex 业务代码主动发的。codex 不读 TERM_PROGRAM 来切策略
 
-### 3. Marina 字节路径(实测代码)
+### 3. Ceteris 字节路径(实测代码)
 
 ```
 PTY (codex)
@@ -114,7 +114,7 @@ PTY (codex)
 
 ### 实验 1:加 `[CURSOR-JITTER-PROBE]` 数 SESSION_OUTPUT 与 term.write 的每帧次数
 
-**假说**:Marina 的 8ms IPC batch 把 codex 的 atomic+cursor-return 切成两个 RAF,renderer 多次 `term.write` → xterm 多次 parser tick → 多次 `onRender` → 中间状态可见
+**假说**:Ceteris 的 8ms IPC batch 把 codex 的 atomic+cursor-return 切成两个 RAF,renderer 多次 `term.write` → xterm 多次 parser tick → 多次 `onRender` → 中间状态可见
 
 **改动**:`TerminalView.tsx` 加 RAF loop,每帧打 `out=<次> write=<次> bytes=<总字节>`
 
@@ -197,7 +197,7 @@ PTY (codex)
 | H2 | xterm 5.x 不支持 SUM,中间帧暴露 | 升 6.0 stable 后无任何改变 | **否** |
 | H3 | xterm 6.0 stable 离 VSCode 用的 beta 200+ commit,中间有 cursor 修复 | 升 6.1.0-beta.256 后无任何改变 | **否** |
 | H4 | EMIT_BATCH_MS 是元凶,砍掉就好 | 改 0 显著变差 | **否(反向)** |
-| H5 | codex 检测 TERM_PROGRAM 切策略,我们 'Marina' 让它走差的分支 | 看 codex 源码 `terminal_probe.rs`,无 TERM_PROGRAM 检查;capability 探测只查 CPR / OSC 10/11 / kitty kbd protocol | **否(无证据)** |
+| H5 | codex 检测 TERM_PROGRAM 切策略,我们 'Ceteris' 让它走差的分支 | 看 codex 源码 `terminal_probe.rs`,无 TERM_PROGRAM 检查;capability 探测只查 CPR / OSC 10/11 / kitty kbd protocol | **否(无证据)** |
 | H6 | VSCode 在 `term.write` 外加了 batching / coalescing 包装 | 直接看 VSCode `xtermTerminal.ts:write`,纯透传 `this.raw.write(data, callback)`,无任何额外处理 | **否** |
 | H7 | VSCode 的 `TerminalDataBufferer` throttle 比我们小(5ms vs 8ms),所以更紧凑 | 5ms 更短理论上应该 jitter 更多,而 VSCode 不抖。我们改成 0(等价"零 batch")反而变差 | **否(数据矛盾,反向)** |
 
@@ -260,7 +260,7 @@ PTY (codex)
 
 ## 调研期间引入的探针 / 实验改动
 
-**2026-06-03 收尾说明**:用户决定不在 Marina 这层继续追(底层差别在 xterm / 渲染管线,不是我们能动的);**所有调研期实验改动已 `git restore` 回退,xterm 6.1.0-beta.256 升级单独从 worktree 合入 main**。本节列出当时植入过什么,下次重启调研时按这里重新植入即可。
+**2026-06-03 收尾说明**:用户决定不在 Ceteris 这层继续追(底层差别在 xterm / 渲染管线,不是我们能动的);**所有调研期实验改动已 `git restore` 回退,xterm 6.1.0-beta.256 升级单独从 worktree 合入 main**。本节列出当时植入过什么,下次重启调研时按这里重新植入即可。
 
 ### 探针(植入位置:`src/renderer/components/TerminalView.tsx`)
 
@@ -295,7 +295,7 @@ PTY (codex)
 | 2026-05-31 | 开 worktree `xterm-6-upgrade`,升 6.0 stable,**无效** |
 | 2026-06-01 | 发现 VSCode 用 6.1 beta 线,升我们到 6.1.0-beta.256,**仍无效** |
 | 2026-06-01 | 写本工单,挂起 |
-| 2026-06-03 | 用户决策放弃在 Marina 这层继续追;清掉所有实验改动;xterm 6.1 beta 升级独立合入 main(版本更新独立有价值) |
+| 2026-06-03 | 用户决策放弃在 Ceteris 这层继续追;清掉所有实验改动;xterm 6.1 beta 升级独立合入 main(版本更新独立有价值) |
 
 ---
 

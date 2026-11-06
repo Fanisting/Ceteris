@@ -3,13 +3,13 @@
 > Your terminal sessions shouldn't die just because you closed the window.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/marina/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/ceteris/releases)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#roadmap)
 [![中文文档](https://img.shields.io/badge/中文文档-README.zh--CN.md-red)](README.zh-CN.md)
 
 A path-centric, AI-agent-friendly terminal manager for Windows. Built for developers who run multiple long-running tasks (including Claude Code, Codex, OpenCode, and other AI coding agents) across many local or SSH working directories — and refuse to lose them when the window closes.
 
-> **Fork note**: Ceteris is a fork of [Marina](https://github.com/Liyue-Cheng/marina) by Liyue-Cheng, which began as EasyTerm. On first launch it copies your settings, bookmarks, SSH profiles and saved passwords from an existing Marina install. The Marina folder is left exactly as it was.
+> **Fork note**: Ceteris is a fork of [Marina](https://github.com/Liyue-Cheng/marina) by Liyue-Cheng, which began as EasyTerm.
 
 ---
 
@@ -111,7 +111,7 @@ Ceteris gives you:
 
 ### Install
 
-1. Download the latest installer from [Releases](https://github.com/Fanisting/marina/releases)
+1. Download the latest installer from [Releases](https://github.com/Fanisting/ceteris/releases)
 2. Run `Ceteris-Setup-x.y.z.exe`
 3. Launch from Start Menu or your desktop
 
@@ -199,8 +199,8 @@ For details:
 
 ```bash
 # Prerequisites: Node.js 20+, Windows 10/11
-git clone https://github.com/Fanisting/marina.git
-cd marina
+git clone https://github.com/Fanisting/ceteris.git
+cd ceteris
 npm install
 npm run dev      # development mode with hot reload
 npm run build    # produces installer under release/

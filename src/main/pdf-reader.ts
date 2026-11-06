@@ -3,7 +3,7 @@
  * @purpose 分块读取 PDF 文件给 renderer,本地文件走 fs,远端文件走 SFTP。
  *
  * @关键设计:
- * - 分块是为了 Marina Link:单帧上限 8 MiB,命令超时 30 秒,所以每块 1 MiB,
+ * - 分块是为了 Ceteris Link:单帧上限 8 MiB,命令超时 30 秒,所以每块 1 MiB,
  *   1 Mbit/s 的线路也来得及。本地窗口走同一条路,只有一套逻辑。
  * - 这条命令能读磁盘,所以只读普通文件,限定扩展名,每次都检查 %PDF- 文件头,
  *   不能用非零偏移绕过,也不能当任意文件读取用。
@@ -12,7 +12,7 @@
  * @对应文档章节: 软件定义书.md 14.6
  *
  * @不要在这里做的事:
- * - 不要写入或修改 PDF (Marina 不做文件编辑)
+ * - 不要写入或修改 PDF (Ceteris 不做文件编辑)
  */
 import { promises as fs } from 'node:fs';
 import { isAbsolute } from 'node:path';

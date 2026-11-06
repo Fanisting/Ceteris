@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file scripts/vendor-material-symbols.cjs
- * @purpose 把 Marina 实际用到的 Material Symbols (Rounded) 拉取下来,生成
+ * @purpose 把 Ceteris 实际用到的 Material Symbols (Rounded) 拉取下来,生成
  *   src/renderer/components/material-symbols.tsx。
  *
  * @关键设计:

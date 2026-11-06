@@ -126,9 +126,9 @@ FLK-1(commit `493b2e5`,2026-05-14)做的事:把原来 `term.write(decodeBase64To
 
 ## 复现步骤
 
-环境:Marina v0.1.0-beta.7 Windows 11(WebGL renderer),PowerShell 7。
+环境:Ceteris v0.1.0-beta.7 Windows 11(WebGL renderer),PowerShell 7。
 
-1. 启动 Marina,新建一个 session
+1. 启动 Ceteris,新建一个 session
 2. 跑一个产生足够 scrollback 的命令,例如:
    ```pwsh
    1..2000 | % { "line $_  $(Get-Random)" }

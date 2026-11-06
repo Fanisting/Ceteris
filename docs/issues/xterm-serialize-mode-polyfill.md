@@ -74,15 +74,15 @@ if (top !== undefined && bot !== undefined &&
 
 验证步骤:
 1. `npm view @xterm/addon-serialize@latest version` ≥ `0.15.0`
-2. 升级,re-run `scripts/repro-cursor-1.mjs`,close+reopen Marina 窗口
+2. 升级,re-run `scripts/repro-cursor-1.mjs`,close+reopen Ceteris 窗口
 3. 在 `getScrollback` 临时 log 输出 SerializeAddon 原生 output,确认含 `\x1b[?25l` 和 DECSTBM(当对应状态成立时)
 4. 确认后 → 删除 `session-manager.ts` 中的 polyfill 段(grep `XTERM-SERIALIZE-POLYFILL` 找位置)
 5. 删除本 issue
 
-**条件 B:Marina 主动升 xterm 栈到 6.1.0-beta.x 系列**
+**条件 B:Ceteris 主动升 xterm 栈到 6.1.0-beta.x 系列**
 
 `@xterm/xterm` 6.0.0 stable 自 2023-11-01 起两年多未更新,实际活跃版本在
-`6.1.0-beta.x`。若 Marina 决定主动升 beta(可能因其他原因,如某 addon 修了
+`6.1.0-beta.x`。若 Ceteris 决定主动升 beta(可能因其他原因,如某 addon 修了
 我们关心的 bug),顺手把本 polyfill 删掉:beta 版 0.15.0-beta.x 原生覆盖
 `?25l` 和 DECSTBM。
 

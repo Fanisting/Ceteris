@@ -1,10 +1,10 @@
 /**
  * @file src/main/link/link-manager.ts
- * @purpose Marina Link 的总装配点。持有 Host 侧的 LinkServer 与 Client 侧的
+ * @purpose Ceteris Link 的总装配点。持有 Host 侧的 LinkServer 与 Client 侧的
  *   若干 LinkClient,把它们与 settings、WindowManager、ipc 层接起来。
  *
  * @关键设计:
- * - **一个 Marina 实例可以同时是 Host 和 Client**。台式机开着 Host 给笔记本连,
+ * - **一个 Ceteris 实例可以同时是 Host 和 Client**。台式机开着 Host 给笔记本连,
  *   同时自己也连着公司的另一台机器 —— 这两件事互不干扰,所以这里是"一个
  *   server + 一组 client",而不是二选一的模式开关。
  * - **settings 是唯一驱动源**。用户改设置 → SettingsManager 发 settingsChanged
@@ -14,7 +14,7 @@
  *   函数,内部按 windowId 找到对应的 LinkClient。ipc.ts 因此不需要 import
  *   任何 link 模块,避免循环依赖。
  *
- * @对应文档章节: docs/marina-link-protocol.md;docs/远程访问指南.md
+ * @对应文档章节: docs/ceteris-link-protocol.md;docs/远程访问指南.md
  *
  * @不要在这里做的事:
  * - 不要放协议细节(在 link-server / link-client 里)
@@ -112,7 +112,7 @@ export class LinkManager {
   }
 
   /**
-   * 定期复查监听状态。覆盖两种无人值守时的故障:Marina 先于 Tailscale 启动,
+   * 定期复查监听状态。覆盖两种无人值守时的故障:Ceteris 先于 Tailscale 启动,
    * 以及 Tailscale 地址变化或监听失败。
    */
   private startBindWatch(): void {

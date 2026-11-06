@@ -12,7 +12,7 @@
  *   them and can produce stray "}" / "{" / "'" tokens that break the
  *   parser at runtime.
  *
- *   Marina's shell detection (src/main/platform/windows.ts) prefers
+ *   Ceteris's shell detection (src/main/platform/windows.ts) prefers
  *   pwsh.exe (PowerShell 7, UTF-8 by default) but falls back to 5.1 when
  *   7 is not installed. v0.1.0-beta.1 shipped with Chinese comments in
  *   pwsh.ps1 and a user on Chinese Windows without pwsh 7 immediately

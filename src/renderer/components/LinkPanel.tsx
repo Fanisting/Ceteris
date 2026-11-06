@@ -1,19 +1,19 @@
 /**
  * @file src/renderer/components/LinkPanel.tsx
- * @purpose 设置页的"远程访问"分类 UI(Marina Link)。分两块:
+ * @purpose 设置页的"远程访问"分类 UI(Ceteris Link)。分两块:
  *   - 本机作为 Host:开关、绑定地址、端口、访问令牌、已连入的客户端
  *   - 本机作为 Client:已保存的远端主机、连接 / 断开
  *
  * @关键设计:
  * - 这里只做 UI。所有状态来自 cmd:link:get-status,所有动作走 cmd:link:*。
- *   renderer 不持有任何连接状态的副本 —— 与 Marina "main 是唯一可信源" 的
+ *   renderer 不持有任何连接状态的副本 —— 与 Ceteris "main 是唯一可信源" 的
  *   整体设计一致。
  * - 令牌默认遮罩显示。它等价于"这台机器上所有终端的完全访问权",不该在
  *   用户截图或录屏分享设置页时不小心泄露。
  * - 绑定地址下拉把 Tailscale 地址排在最前并标注"推荐",让最安全的选项也是
  *   最省事的选项。
  *
- * @对应文档章节: docs/远程访问指南.md;docs/marina-link-protocol.md
+ * @对应文档章节: docs/远程访问指南.md;docs/ceteris-link-protocol.md
  *
  * @不要在这里做的事:
  * - 不要在 renderer 侧生成 token(必须由 main 用 node:crypto 生成)
@@ -49,7 +49,7 @@ const EMPTY_STATUS: LinkStatusResponse = {
   clients: [],
 };
 
-const TUTORIAL_KEY = 'marina.link.tutorial-seen';
+const TUTORIAL_KEY = 'ceteris.link.tutorial-seen';
 
 /** Per-viewer convenience: if storage is unavailable the worst case is seeing it again. */
 function tutorialSeen(): boolean {

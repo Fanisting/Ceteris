@@ -6,7 +6,7 @@
  * @关键设计:
  * - 远程路径不是本机文件系统路径,不能走 node:path.resolve()
  * - 只做跨 shell / SSH 场景稳定且可解释的文本规范化
- * - 空输入按远程 home 简写 "~" 处理,匹配 Marina 远程默认 cwd
+ * - 空输入按远程 home 简写 "~" 处理,匹配 Ceteris 远程默认 cwd
  *
  * @对应文档章节: 软件定义书.md 第 5.1.1、5.1.6、11.1 节
  *
@@ -37,7 +37,7 @@ export function joinRemotePath(dir: string, name: string): string {
   return dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`;
 }
 
-/** 把开头的 ~ 换成 home。"~user" 这种写法不是 Marina 产生的,原样返回。 */
+/** 把开头的 ~ 换成 home。"~user" 这种写法不是 Ceteris 产生的,原样返回。 */
 export function expandHome(path: string, home: string): string {
   if (path === '~') return home;
   return path.startsWith('~/') ? joinRemotePath(home, path.slice(2)) : path;

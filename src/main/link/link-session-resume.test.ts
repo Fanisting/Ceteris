@@ -8,7 +8,7 @@
  * reload、写缓冲积压。这些只有真 socket 和真定时器才会暴露。替身只用在 Link 层
  * 之外:WindowManager 和命令 handler,它们的语义由各自的测试覆盖。
  *
- * @对应文档章节: docs/marina-link-protocol.md 第 6 章
+ * @对应文档章节: docs/ceteris-link-protocol.md 第 6 章
  */
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';

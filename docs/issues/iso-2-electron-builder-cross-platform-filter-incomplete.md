@@ -25,7 +25,7 @@ node_modules/node-pty/prebuilds/
 ├── darwin-x64/          ← 不该出现(macOS Intel)
 │   ├── pty.node         52,864 字节
 │   └── spawn-helper      9,248 字节
-├── win32-arm64/         ← 不该出现(Windows ARM,Marina 只发 x64)
+├── win32-arm64/         ← 不该出现(Windows ARM,Ceteris 只发 x64)
 │   ├── conpty.node     302,592 字节
 │   ├── conpty_console_list.node 122,368 字节
 │   ├── pty.node        293,376 字节

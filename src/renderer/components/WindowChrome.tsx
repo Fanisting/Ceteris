@@ -41,7 +41,7 @@ import { useAppState } from '../store';
 interface Props {
   windowStyle: WindowStyle;
   /**
-   * DEV-COEXIST 2026-05-16:'dev' / 'portable' 时在 "Marina" 字样后追加
+   * DEV-COEXIST 2026-05-16:'dev' / 'portable' 时在 "Ceteris" 字样后追加
    * 后缀,避免 npm run dev 与打包版同时跑混淆。'installed' 保持原样。
    */
   buildType: 'dev' | 'portable' | 'installed';
@@ -106,7 +106,7 @@ export function WindowChrome({ windowStyle, buildType }: Props): JSX.Element {
     callToggleMax();
   };
 
-  // DEV-COEXIST:only npm run dev needs telling apart while working on Marina itself.
+  // DEV-COEXIST:only npm run dev needs telling apart while working on Ceteris itself.
   const appLabel = buildType === 'dev' ? 'Ceteris (dev)' : 'Ceteris';
 
   if (windowStyle === 'macos') {
@@ -243,7 +243,7 @@ function ViewSwitchButton(): JSX.Element {
  * 又把它做成开关,默认仍关。两派(极简派 vs 原生派)都能用。
  *
  * 标题染色(BETA-024 二次修复):与 Windows 风格完全一致 ——
- * "Marina" 用 .titlebar-app-name(iris 紫),"Window N" 用 .titlebar-window-badge(gold 金),
+ * "Ceteris" 用 .titlebar-app-name(iris 紫),"Window N" 用 .titlebar-window-badge(gold 金),
  * 两者直接靠 .titlebar-title 的 gap 8px 分开,不加分隔符。
  */
 function MacosTitlebar({

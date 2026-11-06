@@ -224,10 +224,10 @@ export class JsonStore<T> {
 /**
  * 创建一个临时数据目录 (测试用)。
  *
- * AGENTS.md 9.1 强约束:测试**永远不许**用真实 Marina 数据目录,
+ * AGENTS.md 9.1 强约束:测试**永远不许**用真实 Ceteris 数据目录,
  * 必须每次创建新的 temp dir,测试结束清理。
  */
-export async function createTempDataDir(prefix = 'marina-test-'): Promise<string> {
+export async function createTempDataDir(prefix = 'ceteris-test-'): Promise<string> {
   return fs.mkdtemp(join(tmpdir(), prefix));
 }
 

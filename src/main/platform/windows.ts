@@ -52,7 +52,7 @@ function parseRegPathOutput(stdout: string): string | null {
  * Directory\shell  = 右键文件夹本身; %1 = 被点击文件夹的全路径
  * Directory\Background\shell = 右键文件夹空白处; %V = 当前打开的目录全路径
  *
- * 选用 Marina 这个固定 key 名(不带版本/平台后缀);设置开关 off 时 unregister 同名 key。
+ * 选用 Ceteris 这个固定 key 名(不带版本/平台后缀);设置开关 off 时 unregister 同名 key。
  * 改名前 EasyTerm 时代的旧 key 在 main/index.ts 启动期单独清理。
  */
 const EXPLORER_INTEGRATION_KEYS = [
@@ -218,7 +218,7 @@ export class WindowsAdapter implements PlatformAdapter {
    * 为什么不直接把 "ssh" 交给 node-pty:
    * - 远程 session 需要直接 spawn ssh.exe,不经过 cmd / PowerShell shell 搜索。
    * - 用户机器上的 PATH 可能来自 REG_EXPAND_SZ,含 `%SystemRoot%` 占位符;
-   *   Marina 已在 spawn env 里规整,这里复用规整后的 env 做搜索。
+   *   Ceteris 已在 spawn env 里规整,这里复用规整后的 env 做搜索。
    * - OpenSSH 是 Windows 10/11 的系统组件,标准位置在
    *   `%SystemRoot%\System32\OpenSSH\ssh.exe`;显式优先检查这个位置能绕开
    *   node-pty / CreateProcess 对 PATH casing 的差异。
@@ -376,18 +376,18 @@ export class WindowsAdapter implements PlatformAdapter {
   }
 
   /**
-   * 注册 Explorer 右键菜单"在 Marina 终端中打开"。
+   * 注册 Explorer 右键菜单"在 Ceteris 终端中打开"。
    *
    * 写 HKCU(用户级,无需提升权限)下 3 类键值,共 6 条 reg add:
-   *   Directory\shell\Marina            (default) = 菜单文案
-   *   Directory\shell\Marina            Icon       = "<exe>,0"      ← ICN-3
-   *   Directory\shell\Marina\command    (default) = "<exe>" --open-here "%1"
-   *   Directory\Background\shell\Marina (default) = 菜单文案
-   *   Directory\Background\shell\Marina Icon       = "<exe>,0"      ← ICN-3
-   *   Directory\Background\shell\Marina\command   = "<exe>" --open-here "%V"
+   *   Directory\shell\Ceteris            (default) = 菜单文案
+   *   Directory\shell\Ceteris            Icon       = "<exe>,0"      ← ICN-3
+   *   Directory\shell\Ceteris\command    (default) = "<exe>" --open-here "%1"
+   *   Directory\Background\shell\Ceteris (default) = 菜单文案
+   *   Directory\Background\shell\Ceteris Icon       = "<exe>,0"      ← ICN-3
+   *   Directory\Background\shell\Ceteris\command   = "<exe>" --open-here "%V"
    *
    * Icon 字段引用 exe 内嵌图标资源 ",0"(electron-builder 已经把 build/icon.ico
-   * 嵌进 Marina.exe)。Explorer 显示经典右键菜单时会在条目左侧渲染该图标,
+   * 嵌进 Ceteris.exe)。Explorer 显示经典右键菜单时会在条目左侧渲染该图标,
    * 与 Win11 新菜单(MSIX 的 menu-icon.ico)观感一致。
    *
    * 调 reg.exe 走 execFile(数组参数),由 Node 处理 Windows quoting,避免
@@ -461,9 +461,9 @@ export class WindowsAdapter implements PlatformAdapter {
   }
 
   /**
-   * 仅在 HKCU 已经存在 Marina 经典右键菜单 key 时,把 command 字段刷成当前 exe 路径。
+   * 仅在 HKCU 已经存在 Ceteris 经典右键菜单 key 时,把 command 字段刷成当前 exe 路径。
    *
-   * 启动期幂等修复:用户卸载后重装、installer 把 Marina 装到新路径,旧 command
+   * 启动期幂等修复:用户卸载后重装、installer 把 Ceteris 装到新路径,旧 command
    * 仍指向已删 exe → Explorer 右键弹"unable to find electron app at ...";我们
    * 静默改 command 字段为当前 exe 即可。
    *

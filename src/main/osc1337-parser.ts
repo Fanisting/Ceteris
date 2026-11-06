@@ -101,7 +101,7 @@ export class Osc1337Parser {
       // 编码末字节 = 0x9D 都会被误抓)。Claude Code 等 TUI 输出大量
       // box drawing / 状态文字一旦含此类字符,后续字节被当 OSC payload
       // 吞掉直至 BEL/ST 或 stash overflow,大段内容丢失。bisect 锁定为
-      // marina-app 渲染回归根因。
+      // ceteris-app 渲染回归根因。
       //
       // 取舍:不识别 C1 OSC 时,极少数发 C1 OSC 的程序的 OSC 序列会被
       // xterm 直接渲染(因为 xterm 自己识别 C1 OSC),最多多一个无害的

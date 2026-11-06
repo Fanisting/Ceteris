@@ -35,9 +35,9 @@
 | 自绘光标 TUI | Claude Code / vim(normal mode) / htop / less | **不需要**终端 blink — 自己画 |
 | 依赖系统光标 TUI | Codex / nano / vim(insert mode) / 某些 REPL | **需要**终端 blink — 让用户看到输入位置 |
 
-`buffer.type === 'alternate'` 这一个信号**不足以**区分这两类。Marina 没有可靠的运行时方法判定当前 alt-buffer 是哪一类(没有标准 escape sequence、没有 PTY-level 元数据)。
+`buffer.type === 'alternate'` 这一个信号**不足以**区分这两类。Ceteris 没有可靠的运行时方法判定当前 alt-buffer 是哪一类(没有标准 escape sequence、没有 PTY-level 元数据)。
 
-业界标杆参考误用:之前文档里写 "Windows Terminal / iTerm2 / kitty 同此策略" — 重新核对后**这个说法是错的**。这些终端默认 `cursorBlink: false`(光标静态显示),Marina 默认 `cursorBlink: true`(模仿 Windows ConHost 行为),策略不同所以行为不同。Marina 借鉴"alt-buffer 关 blink"实际是在给自己造新问题。
+业界标杆参考误用:之前文档里写 "Windows Terminal / iTerm2 / kitty 同此策略" — 重新核对后**这个说法是错的**。这些终端默认 `cursorBlink: false`(光标静态显示),Ceteris 默认 `cursorBlink: true`(模仿 Windows ConHost 行为),策略不同所以行为不同。Ceteris 借鉴"alt-buffer 关 blink"实际是在给自己造新问题。
 
 ## 已尝试
 
@@ -121,7 +121,7 @@
 ### 工单关闭确认
 
 - BETA-019 原 cursor flash:**消失**(state-replay 把 `?1049h` 始终注入到 ANSI 头部)
-- Codex 静态 / 动态光标:**正常**(应用要藏就发 `?25l`,Marina 转发,不再二次猜)
+- Codex 静态 / 动态光标:**正常**(应用要藏就发 `?25l`,Ceteris 转发,不再二次猜)
 - 切 tab "从顶到底刷屏" 副症状:**减轻**(serialize 输出体积比 2MB 裸字节小一两个数量级,FLK-1 分片几乎一次刷完)
 
 ### 删除清单(实际落地)

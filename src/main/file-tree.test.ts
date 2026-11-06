@@ -16,7 +16,7 @@ vi.mock('./logger', () => ({
 let root: string;
 
 beforeEach(async () => {
-  root = await fs.mkdtemp(join(tmpdir(), 'marina-test-'));
+  root = await fs.mkdtemp(join(tmpdir(), 'ceteris-test-'));
 });
 
 afterEach(async () => {

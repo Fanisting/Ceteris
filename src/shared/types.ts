@@ -87,8 +87,8 @@ export type PostExitAction = 'close_session' | 'keep_shell' | 'hold';
  */
 export type ThemeId =
   // Material Design 3 主题,默认主题。配色由海青种子色 #006a6a 生成
-  | 'marina-dark'
-  | 'marina-light'
+  | 'ceteris-dark'
+  | 'ceteris-light'
   | 'rose-pine'
   | 'rose-pine-dawn'
   | 'rose-pine-moon'
@@ -137,8 +137,8 @@ export type NewTerminalShellPolicy = 'default' | 'last-used';
 /**
  * SSH 远端 tmux 启动策略。
  *
- * 这是 SSH 启动链路的轻量增强,不是 Marina 的 tmux session 管理模型:
- * Marina 仍只管理本地 ssh.exe PTY;远端 tmux 仅用于断线后 attach 回同一个
+ * 这是 SSH 启动链路的轻量增强,不是 Ceteris 的 tmux session 管理模型:
+ * Ceteris 仍只管理本地 ssh.exe PTY;远端 tmux 仅用于断线后 attach 回同一个
  * 远端会话。
  */
 export type SshTmuxMode = 'disabled' | 'attach-or-create';
@@ -152,7 +152,7 @@ export type SshTmuxOnMissing = 'fallback-shell' | 'fail';
  * SSH tmux session 命名策略。
  *
  * - reuse:按远程目录末级派生基名,远端已有同名 session 时按数量智能选择
- * - new-per-launch:每次从 Marina 新建 session 都创建新的 tmux session,适合强制多开
+ * - new-per-launch:每次从 Ceteris 新建 session 都创建新的 tmux session,适合强制多开
  */
 export type SshTmuxSessionPolicy = 'reuse' | 'new-per-launch';
 
@@ -268,14 +268,14 @@ export interface PathTree {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Marina Link(远程挂载)
+// Ceteris Link(远程挂载)
 // ──────────────────────────────────────────────────────────────────
 
 /**
  * 一台已保存的远端 Host。
  *
  * token 明文存 settings.json,与 ai.apiKey 的处理一致。这是一个**有意识的
- * 折衷**:safeStorage 加密后的密文无法随配置导出到第二台机器,而 Marina Link
+ * 折衷**:safeStorage 加密后的密文无法随配置导出到第二台机器,而 Ceteris Link
  * 的典型用法恰恰是"在两台机器上填同一个 token"。相应地,配置导出会剥掉
  * token 字段(见 cmd:settings:export),避免用户把归档发给别人时连带把自己
  * 终端的访问权一起送出去。
@@ -294,7 +294,7 @@ export interface LinkHostEntry {
 }
 
 /**
- * Marina Link 设置。
+ * Ceteris Link 设置。
  *
  * 一个实例可以同时是 Host(让别人连进来)和 Client(连到别人那里),
  * 所以这里不是模式二选一,而是两组互相独立的配置。
@@ -349,7 +349,7 @@ export interface Settings {
     uiZoom: number;
     /**
      * BETA-023:macOS 风格红绿灯按钮在 hover 时是否显示 ×/−/+ 悬浮符号。
-     * 默认 false(保持 Marina 极简风,与 CP-4 勘误第二轮的决策一致);
+     * 默认 false(保持 Ceteris 极简风,与 CP-4 勘误第二轮的决策一致);
      * 设为 true 可恢复原生 macOS 观感。
      */
     macOSTrafficLightHoverSymbols: boolean;
@@ -400,14 +400,14 @@ export interface Settings {
      * 不支持的 shell(cmd.exe 无 readline / 老版 bash)会把 marker
      * 显示成 ^[[200~ 字面乱码。建议用 cmd 的用户关闭此项。
      *
-     * 默认 true 因为 Marina 默认 shell 是 PowerShell,大多数用户用 pwsh。
+     * 默认 true 因为 Ceteris 默认 shell 是 PowerShell,大多数用户用 pwsh。
      */
     bracketedPaste: boolean;
   };
 
   systemIntegration: {
     /**
-     * 从 Explorer 右键菜单触发 "在 Marina 终端中打开" 时,新 session 起在哪里。
+     * 从 Explorer 右键菜单触发 "在 Ceteris 终端中打开" 时,新 session 起在哪里。
      * - 'new-window': 始终开新窗口承载(默认,符合"右键 = 干净环境"直觉)
      * - 'recent-window-tab': 在最近活动窗口里新开 tab
      * 冷启动一律走 new-window 行为(没有可复用窗口),设置只在已开应用时生效。
@@ -427,10 +427,10 @@ export interface Settings {
     /**
      * SSH 方案 v2.1 §阶段 2.1:读取 ~/.ssh/config 合并到 profile 列表。
      *
-     * - true:Marina 自管 SshProfile + ssh_config 的 Host 块在 sidebar /
+     * - true:Ceteris 自管 SshProfile + ssh_config 的 Host 块在 sidebar /
      *   设置页"远程"分类合并显示;ssh_config 来源的条目带"ssh_config" 标签,
      *   只读不能编辑/删除(改请直接编辑 ~/.ssh/config)。
-     * - false(默认):只显示 Marina 自管 profile。
+     * - false(默认):只显示 Ceteris 自管 profile。
      *
      * 设置入口在 RemotePanel。
      */
@@ -514,10 +514,10 @@ export interface Settings {
   };
 
   /**
-   * Marina Link:远程挂载。默认全关,用户在设置 → 远程访问里主动开启。
+   * Ceteris Link:远程挂载。默认全关,用户在设置 → 远程访问里主动开启。
    *
    * 注意与 sshProfiles 的区别:SSH 是"在远端机器上跑一个 shell",终端会话
-   * 仍然属于本机 Marina;Link 是"接管远端 Marina 的全部会话",连的是那台
+   * 仍然属于本机 Ceteris;Link 是"接管远端 Ceteris 的全部会话",连的是那台
    * 机器上已经在跑的 AI agent 标签页。两者互不替代。
    */
   link: LinkSettings;
@@ -638,7 +638,7 @@ export interface SshProfile {
    *
    * 数组形式:`['bastion.example.com', 'inner.example.com']` → `ssh -J bastion.example.com,inner.example.com`。
    * 每段可写 `user@host:port` 形式(与 OpenSSH -J 相同);空数组或缺失 = 不跳板。
-   * Marina 不校验跳板格式,完整转发给 OpenSSH,跳板鉴权由 OpenSSH 自己处理
+   * Ceteris 不校验跳板格式,完整转发给 OpenSSH,跳板鉴权由 OpenSSH 自己处理
    * (复用主机已配的 SSH agent / key)。
    */
   proxyJump?: string[];

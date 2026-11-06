@@ -1,7 +1,7 @@
 /**
  * @file src/main/tray.ts
  * @purpose 系统托盘管理。常驻托盘图标、右键菜单、单击聚焦最近活动窗口、
- *   "完全退出 Marina"流程。
+ *   "完全退出 Ceteris"流程。
  *
  * @关键设计:
  * - 托盘是应用"始终在线"的代表 (软件定义书 6.5)
@@ -223,7 +223,7 @@ export class TrayManager {
    *   - 正在运行的会话(子菜单,>=1 session 时)
    *   - --
    *   - 设置
-   *   - 完全退出 Marina
+   *   - 完全退出 Ceteris
    */
   private rebuildContextMenu(): void {
     if (!this.tray) return;

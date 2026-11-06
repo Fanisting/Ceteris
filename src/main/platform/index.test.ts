@@ -1,7 +1,7 @@
 /**
  * @file src/main/platform/index.test.ts
  * @purpose 验证 getPlatformAdapter 的分发逻辑:Windows 返回 WindowsAdapter,
- *   macOS / Linux throw 带"Contributions welcome"提示,未知平台 throw。
+ *   未知平台 throw。
  *
  * @关键设计:
  * - 测试通过 Object.defineProperty 临时覆盖 process.platform
@@ -40,11 +40,9 @@ describe('getPlatformAdapter', () => {
     expect(adapter).toBeInstanceOf(WindowsAdapter);
   });
 
-  it('macOS throw 带 "Contributions welcome" 提示', () => {
+  it('macOS 返回 MacOSAdapter', () => {
     setPlatform('darwin');
-    expect(() => getPlatformAdapter()).toThrow(
-      /macOS.*not implemented.*Contributions welcome/,
-    );
+    expect(getPlatformAdapter().lifecycleModel).toBe('dock-resident');
   });
 
   it('Linux 返回 LinuxAdapter,lifecycleModel=no-persistence (BETA-003a)', () => {

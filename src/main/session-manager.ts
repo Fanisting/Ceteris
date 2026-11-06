@@ -542,11 +542,7 @@ export class SessionManager extends EventEmitter {
     super();
     void this._windowManager; // 抑制 noUnusedLocals
     this.spawnFn = options.spawnFn ?? defaultSpawnPty;
-    // 测试或 macOS 不走 getPlatformAdapter (macOS 仍 throw)。
-    // BETA-003a:Windows / Linux 都有真实 adapter,各自 detectShells / buildShellLaunchParams。
-    this.platformAdapter =
-      options.platformAdapter ??
-      (process.platform === 'darwin' ? createNoopAdapter() : getPlatformAdapter());
+    this.platformAdapter = options.platformAdapter ?? getPlatformAdapter();
     this.hookFileResolver = options.hookFileResolver ?? defaultHookFileResolver;
     this.resizeQuietMs = options.resizeQuietMs ?? RESIZE_QUIET_MS;
     this.startupGraceMs = options.startupGraceMs ?? STARTUP_GRACE_MS;
@@ -2304,58 +2300,4 @@ function normalizeCwd(raw: string): string {
   } catch {
     return value;
   }
-}
-
-/**
- * 测试 / 非 Windows 用的 noop adapter。所有方法返回最小可用值。
- *
- * 注:这里"用"是说 SessionManager 在 Linux/macOS 下也可以构造 (主要是
- * 为了让 session-manager.test.ts 在任何 OS 上跑得起来)。生产 Windows
- * 路径不会走到这。
- */
-function createNoopAdapter(): PlatformAdapter {
-  return {
-    lifecycleModel: 'no-persistence',
-    async detectShells() {
-      return [
-        {
-          id: 'sh',
-          displayName: 'sh',
-          executablePath: process.env['SHELL'] ?? '/bin/sh',
-        },
-      ];
-    },
-    resolveExecutable(commandName) {
-      if (!commandName.trim()) return null;
-      return commandName;
-    },
-    buildShellLaunchParams(_shell, _hookFilePath, _commandToRun) {
-      return { args: [], env: {} };
-    },
-    async registerFileManagerIntegration() {
-      throw new Error('noop');
-    },
-    async unregisterFileManagerIntegration() {
-      throw new Error('noop');
-    },
-    async getProcessCwd() {
-      return null;
-    },
-    async setAutoStart() {
-      throw new Error('noop');
-    },
-    async isAutoStartEnabled() {
-      return false;
-    },
-    getRefreshedPath() {
-      return process.env.PATH ?? '';
-    },
-    normalizeSpawnEnv(env: Record<string, string>) {
-      // noop adapter:不做 Windows 占位符规整,直接放行
-      return env;
-    },
-    getDefaultBookmarkSeeds() {
-      return [];
-    },
-  };
 }

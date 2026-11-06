@@ -1,0 +1,48 @@
+# Builds the Mac app, which cannot be built on Windows, and proves it runs before keeping it.
+# Start it from the Actions tab, or with: gh workflow run build-mac.yml
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build
+        run: |
+          npx electron-vite build
+          npx electron-builder --mac dmg --arm64 --x64 --publish never --config electron-builder.yml -c.directories.output=release/mac
+
+      - name: Show the signature
+        run: codesign -dv release/mac/mac-arm64/Ceteris.app 2>&1 | head -8
+
+      - name: Run the app
+        run: node --experimental-websocket scripts/smoke-mac.mjs release/mac/mac-arm64/Ceteris.app
+
+      - name: Keep the screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshot
+          path: ${{ runner.temp }}/ceteris-smoke.png
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ceteris-macos
+          path: release/mac/*.dmg
+          retention-days: 30

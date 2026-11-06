@@ -91,7 +91,12 @@ mac:
     - target: dmg
       arch: [x64, arm64]
   category: public.app-category.developer-tools
-  # icon: build/icon.icns
+  # electron-builder 从这张 1024 PNG 生成 icns。
+  icon: build/icon.png
+  # 没有 Apple 证书:不公证,也不用 hardened runtime。首次打开要右键选择“打开”。
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
 ## Linux (BETA-003d)
 ##

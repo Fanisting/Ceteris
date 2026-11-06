@@ -15,8 +15,11 @@
  * @AGENTS.md 8.1: V1 只测 Windows,但代码必须 platform-aware。
  *   不许在 windows.ts 之外的地方写 process.platform === 'win32' 判断。
  */
+import type { MenuItemConstructorOptions } from 'electron';
+import type { WindowStyle } from '@shared/types';
 import { WindowsAdapter } from './windows';
 import { LinuxAdapter } from './linux';
+import { MacOSAdapter } from './macos';
 
 /**
  * 一个被检测到的 shell 的元数据。
@@ -51,6 +54,12 @@ export interface PlatformAdapter {
    * 三平台共享同一个 <LastSessionConfirm /> 组件,仅触发位置不同。
    */
   readonly lifecycleModel: 'tray-resident' | 'dock-resident' | 'no-persistence';
+
+  /** A fresh install's window style. Without it the shared default applies. */
+  readonly defaultWindowStyle?: WindowStyle;
+
+  /** The application menu. Without it the app has none, as the product design prefers. */
+  applicationMenuTemplate?(): MenuItemConstructorOptions[];
 
   /** 检测系统中可用的 shell */
   detectShells(): Promise<ShellInfo[]>;
@@ -180,7 +189,7 @@ export interface DefaultBookmarkSeed {
 /**
  * 当前平台的 adapter 单例。延迟到首次访问时初始化,避免在测试中误触发副作用。
  *
- * @throws 在 macOS / Linux 上 throw "Not implemented yet. Contributions welcome!"
+ * @throws 未知平台
  */
 let cachedAdapter: PlatformAdapter | null = null;
 
@@ -194,10 +203,8 @@ export function getPlatformAdapter(): PlatformAdapter {
       cachedAdapter = new WindowsAdapter();
       return cachedAdapter;
     case 'darwin':
-      throw new Error(
-        '[platform] macOS support not implemented yet. Contributions welcome! ' +
-          'See CONTRIBUTING.md and src/main/platform/macos.ts.',
-      );
+      cachedAdapter = new MacOSAdapter();
+      return cachedAdapter;
     case 'linux':
       cachedAdapter = new LinuxAdapter();
       return cachedAdapter;

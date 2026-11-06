@@ -8,6 +8,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
+- **支持 macOS。** 新增 macOS 适配层和 GitHub Actions 构建。关闭窗口后留在 Dock,登录 shell 的 PATH 对终端生效,没有签名时首次打开需要右键选择“打开”。
+
 - **安装程序使用 Material 配色。** 增加欢迎页,侧栏和页眉换成 Ceteris 签名与主题色。
 
 - **下一步提示建议的累计花费。** AI 设置里显示累计金额、调用次数和 token 数,可以清零。

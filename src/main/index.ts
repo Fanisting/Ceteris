@@ -200,8 +200,12 @@ function bootstrap(): void {
   const channel = CHANNELS[getChannel()];
   logger.info('main', 'channel profile', { ...channel });
   setExplorerLabel(channel.label);
+  const windowStyle = getPlatformAdapter().defaultWindowStyle;
   const settingsManager = new SettingsManager(settingsStore, {
     ...DEFAULT_SETTINGS,
+    ...(windowStyle
+      ? { appearance: { ...DEFAULT_SETTINGS.appearance, windowStyle } }
+      : {}),
     link: { ...DEFAULT_SETTINGS.link, hostPort: channel.linkPort },
   });
   const pathManager = new PathManager(bookmarksStore, recentStore);
@@ -325,13 +329,22 @@ function bootstrap(): void {
     isQuitting = true;
   });
 
+  // Only macOS fires this, when the Dock icon is clicked. The app lives on with no window.
+  app.on('activate', () => {
+    if (app.isReady() && windowManager.list().length === 0) {
+      windowManager.createWindow();
+    }
+  });
+
   app.whenReady().then(async () => {
     try {
       // M1-A 配套(P0-2):把 Electron 默认 application menu (File/Edit/View/...)
       // 完全禁掉。与"自绘标题栏 + 软件定义书 7.1 不做应用内快捷键"哲学一致。
       // 仍保留 webContents.before-input-event 拦截 F12 / Ctrl+Shift+I 开 DevTools
       // (在 window-manager.ts 内单独注册,与 menu 是否存在无关)。
-      Menu.setApplicationMenu(null);
+      // macOS is the exception: without a menu it loses Cmd+C, Cmd+V and Cmd+Q.
+      const menuTemplate = getPlatformAdapter().applicationMenuTemplate?.();
+      Menu.setApplicationMenu(menuTemplate ? Menu.buildFromTemplate(menuTemplate) : null);
 
       // CP-4 勘误 #3:自动放行 'local-fonts' 权限 — 让 renderer 可以调用
       // navigator.fonts.query() / window.queryLocalFonts() 枚举系统字体,
@@ -489,10 +502,7 @@ function bootstrap(): void {
       // 在不少机器上不可靠 (尤其多用户 / 远程会话),自动切主题反而是 bug 来源;
       // 用户主动选 7 套主题已足够。
       //
-      // BETA-003a:Linux 也走 getPlatformAdapter(),拿到 LinuxAdapter 实例;
-      // macOS 仍占位,getPlatformAdapter 会 throw,保留 null 即可。
-      const platformAdapter =
-        process.platform === 'darwin' ? null : getPlatformAdapter();
+      const platformAdapter = getPlatformAdapter();
 
       settingsManager.on('settingsChanged', (e: { changedKeys: string[]; settings: Settings }) => {
         if (e.changedKeys.includes('behavior.autoStart') && platformAdapter) {

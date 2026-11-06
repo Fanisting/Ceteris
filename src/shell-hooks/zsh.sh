@@ -1,15 +1,20 @@
 #!/usr/bin/env zsh
-# Ceteris zsh hook (留给 macOS / Linux 贡献者) — 原 EasyTerm,v1.5 改名
-#
-# V1 不主动启用 (软件定义书 12.5),框架供贡献者参考。
+# Ceteris zsh hook。macOS 把它复制成临时目录里的 .zshrc,并把 ZDOTDIR 指向那里。
 #
 # 关键设计:
 # - 通过 precmd_functions 在每次 prompt 前打印 OSC 1337
 # - 加载用户原 .zshrc
 
+# ZDOTDIR pointed zsh here, so it skipped the user's .zshenv and must now point back.
+export ZDOTDIR="${CETERIS_USER_ZDOTDIR:-$HOME}"
+unset CETERIS_USER_ZDOTDIR
+if [[ -f "$ZDOTDIR/.zshenv" ]]; then
+    source "$ZDOTDIR/.zshenv"
+fi
+
 # 加载用户原 .zshrc
-if [[ -f "$HOME/.zshrc" ]]; then
-    source "$HOME/.zshrc"
+if [[ -f "$ZDOTDIR/.zshrc" ]]; then
+    source "$ZDOTDIR/.zshrc"
 fi
 
 # 注入 OSC 1337 cwd hook

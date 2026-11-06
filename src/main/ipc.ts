@@ -109,8 +109,8 @@ import {
   type OpenSessionInNewWindowResponse,
   type ReleaseSessionPayload,
   type RemoveBookmarkPayload,
-  type RemoveFromRecentPayload,
   type RenameBookmarkPayload,
+  type SetBookmarkTagsPayload,
   type ReorderBookmarksPayload,
   type ResizeSessionPayload,
   type ResizeSessionResponse,
@@ -1016,9 +1016,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   handleCommand(
-    COMMAND_CHANNELS.PATH_REMOVE_FROM_RECENT,
-    (_e, envelope: CommandEnvelope<RemoveFromRecentPayload>): void => {
-      pathManager.removeFromRecent(envelope.payload.path);
+    COMMAND_CHANNELS.BOOKMARK_SET_TAGS,
+    (_e, envelope: CommandEnvelope<SetBookmarkTagsPayload>): void => {
+      pathManager.setTags(envelope.payload.pathId, envelope.payload.tags);
     },
   );
 

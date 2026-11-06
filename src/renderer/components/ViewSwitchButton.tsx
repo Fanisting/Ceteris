@@ -122,8 +122,8 @@ export function ViewSwitchButton(): JSX.Element {
   /** Shows the server's folders, opening one if it has any saved. */
   const openServer = (profileId: string): void => {
     dispatch({ type: 'view/set-sidebar-segment', segment: 'remote' });
-    const { bookmarks, temporary, recent } = state.pathTree;
-    const node = [...bookmarks, ...temporary, ...recent].find(
+    const { bookmarks, temporary } = state.pathTree;
+    const node = [...bookmarks, ...temporary].find(
       (n) => n.kind === 'ssh' && n.sshProfileId === profileId,
     );
     if (node) {

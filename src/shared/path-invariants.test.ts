@@ -131,7 +131,7 @@ describe('Sidebar segment filter (本地不变式 §I.3)', () => {
       kind: 'ssh',
       sshProfileId: 'p1',
       path: '~/y',
-      category: 'recent',
+      category: 'temporary',
       sessionIds: [],
     },
   ];

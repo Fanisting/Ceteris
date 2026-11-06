@@ -80,7 +80,6 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
   const allPaths = [
     ...tree.bookmarks,
     ...tree.temporary,
-    ...tree.recent,
   ];
   const invalid: string[] = [];
   for (const node of allPaths) {

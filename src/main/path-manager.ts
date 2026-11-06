@@ -1,27 +1,27 @@
 /**
  * @file src/main/path-manager.ts
- * @purpose 管理路径的三栏分类 (收藏 / 临时 / 最近) 与 Path 状态机。
+ * @purpose 管理侧栏的文件夹列表及其标签。
  *
  * @关键设计:
- * - Path 状态机 (软件定义书 8.2):
- *     最近 ↔ 临时 (有/无终端在跑)
- *     最近/临时 → 收藏 (用户主动加入)
- *     收藏 → 最近 (用户移除收藏)
- * - 同一 path 任意时刻只属于一个分类 (优先级:收藏 > 临时 > 最近)
- * - "最近"分类容量上限 30,按 lastUsedAt 降序,自动淘汰最旧
+ * - One list (ADR-015). Opening a terminal in a folder adds it, and it stays until the
+ *   user removes it. Nothing is ever removed automatically.
+ * - bookmarks holds the list. The name stays because bookmarks.json is already on disk.
+ * - Folders removed while a terminal runs there stay visible as temporary until it closes,
+ *   derived from sessionToPath, and are then gone.
+ * - recent.json is read only to bring old recent folders into the list, once.
  * - PathNode.id 使用 normalize 后的绝对路径字符串本身,稳定且不需要
  *   额外 ID 映射;Bookmark 内部仍有 UUID 用于持久化记账,但对 renderer
  *   不可见
  * - 任何变化触发 emit('pathTreeUpdated'),IPC 层负责广播 + throttle
  *
- * @对应文档章节: 软件定义书.md 第 4 (心智模型)、5.1.1、8.2、11.1
+ * @对应文档章节: 软件定义书.md ADR-015、第 11.1
  *
  * @不要在这里做的事:
  * - 不直接读写磁盘 (通过 PersistenceManager / JsonStore)
  * - 不持有 Session 实例 (SessionManager 管 Session 生命周期,这里只
  *   通过 attachSession/detachSession 维护 sessionId → path 的映射)
  *
- * @AGENTS.md 5.3 必测: Path 状态机所有转移、容量限制、增删改查并发。
+ * @AGENTS.md 5.3 必测: 列表增删、旧数据并入、增删改查并发。
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -35,11 +35,10 @@ import type {
   RecentEntry,
   RecentFile,
 } from '@shared/types';
+import { normalizeTags } from '@shared/path-tags';
 import { normalizeRemotePath } from '@shared/remote-path';
 import type { JsonStore } from './persistence';
 import { logger } from './logger';
-
-const RECENT_CAPACITY = 30;
 
 const DEFAULT_BOOKMARKS_FILE: BookmarksFile = { version: 1, paths: [] };
 const DEFAULT_RECENT_FILE: RecentFile = { version: 1, paths: [] };
@@ -160,11 +159,6 @@ export class PathManager extends EventEmitter {
   private bookmarks: Bookmark[] = [];
 
   /**
-   * recent,按 lastUsedAt 降序;最大 RECENT_CAPACITY 项。
-   */
-  private recent: RecentEntry[] = [];
-
-  /**
    * BETA-043:启动期扫描发现的"不可访问"路径集合(normalized)。
    * getTree() 用于把对应 PathNode 标 invalid。bootstrap 启动末尾填一次,
    * 不做后台周期扫(资源考虑)。
@@ -193,8 +187,14 @@ export class PathManager extends EventEmitter {
     // validateBookmarksArray "整体拒绝" 不同 —— 启动期不能因为一条坏数据
     // 让用户进不来 Ceteris。
     this.bookmarks = bk.value.paths.flatMap(migrateBookmarkOnLoad);
-    this.recent = rc.value.paths.flatMap(migrateRecentOnLoad);
-    this.sortRecent();
+    const legacyRecent = rc.value.paths.flatMap(migrateRecentOnLoad);
+    if (rc.value.paths.length > 0) {
+      this.absorbRecent(legacyRecent);
+      // The folders must be safely on disk before their only other copy is emptied.
+      this.persistBookmarks();
+      await this.bookmarksStore.flush();
+      this.clearRecentFile();
+    }
     return { bookmarksSource: bk.source };
   }
 
@@ -239,16 +239,13 @@ export class PathManager extends EventEmitter {
       addedAt: Date.now(),
     });
     this.bookmarks.push(bookmark);
-    // 收藏后,该路径自动从 recent 中移出 (避免重复出现)
-    this.removeRecentInternal(id);
     this.persistBookmarks();
-    this.persistRecent();
     this.emitChange();
     return bookmark;
   }
 
   /**
-   * 移除收藏。若该路径当前有 session,会自动出现在临时;否则进入最近。
+   * 从列表移除。若该路径当前有 session,它留在列表里直到终端关闭。磁盘上的文件夹不受影响。
    *
    * @throws PathManagerError BookmarkNotFound
    */
@@ -258,14 +255,26 @@ export class PathManager extends EventEmitter {
     if (idx < 0) {
       throw new PathManagerError('BookmarkNotFound', `pathId="${pathId}" 不在收藏`);
     }
-    const removed = this.bookmarks[idx]!;
     this.bookmarks.splice(idx, 1);
-    // 移除收藏后,如果路径没有 session 在跑,要进入最近;有的话进入临时 (自动)
-    if (!this.hasSessionsForPath(id)) {
-      this.touchRecent(pathRefFromBookmark(removed)); // 移到最近
-    }
     this.persistBookmarks();
-    this.persistRecent();
+    this.emitChange();
+  }
+
+  /**
+   * Replaces a folder's tags. An empty list clears them.
+   *
+   * @throws PathManagerError BookmarkNotFound
+   */
+  setTags(pathId: string, tags: unknown): void {
+    const id = makePathId(pathRefFromId(pathId));
+    const bookmark = this.findBookmarkByPath(id);
+    if (!bookmark) {
+      throw new PathManagerError('BookmarkNotFound', `pathId="${pathId}" 不在列表`);
+    }
+    const cleaned = normalizeTags(tags);
+    if (cleaned.length > 0) bookmark.tags = cleaned;
+    else delete bookmark.tags;
+    this.persistBookmarks();
     this.emitChange();
   }
 
@@ -352,33 +361,11 @@ export class PathManager extends EventEmitter {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Recent CRUD
-  // ──────────────────────────────────────────────────────────────────
-
-  /**
-   * 从最近列表移除。常用场景:用户右键"从最近移除"。
-   *
-   * @throws PathManagerError PathNotInRecent
-   */
-  removeFromRecent(input: string): void {
-    const id = makePathId(pathRefFromId(input));
-    const idx = this.recent.findIndex((r) => recentPathId(r) === id);
-    if (idx < 0) {
-      throw new PathManagerError('PathNotInRecent', `path="${input}" 不在最近列表`);
-    }
-    this.recent.splice(idx, 1);
-    this.persistRecent();
-    this.emitChange();
-  }
-
-  // ──────────────────────────────────────────────────────────────────
   // Session attach / detach (由 SessionManager 调用)
   // ──────────────────────────────────────────────────────────────────
 
   /**
-   * 把 sessionId attach 到指定 path,触发 path 状态机:
-   * - 若 path 不在收藏 → 自动进入临时
-   * - 若 path 在最近 → 从最近移除 (因为它要去临时了)
+   * 把 sessionId attach 到指定 path。不在列表里的文件夹会加入列表。
    *
    * v1.2 起 (ADR-008):session.pathId 创建后永不变,本方法对每个 sessionId
    * 只会被调一次。"先 detach 再 attach" 的旧逻辑保留为防御代码,正常路径
@@ -399,19 +386,15 @@ export class PathManager extends EventEmitter {
       this.detachSessionInternal(sessionId, /* emit */ false);
     }
     this.sessionToPath.set(sessionId, id);
-    // STM-3:不再 removeRecentInternal — 旧写法先删后 unshift 会把已有 entry 的
-    // useCount 重置为 1,daily-driver "开终端 → 关终端 → 开终端" 循环下,useCount
-    // 永远在 1↔2 之间震荡而不真实累加。新写法:只 touch(存在则 ++,不存在则新建),
-    // 让 useCount 真实记录使用次数。getTree() 已经按 sessionPaths 过滤,recent
-    // 数组里"暂时归在临时分类"的 entry 不会重复显示,无需先 remove。
-    this.touchRecentTimestamp(ref);
-    this.persistRecent();
+    if (!this.findBookmarkByPath(id)) {
+      this.bookmarks.push(buildBookmark({ id: randomUUID(), ref, addedAt: Date.now() }));
+      this.persistBookmarks();
+    }
     this.emitChange();
   }
 
   /**
-   * 把 sessionId 从 path 上 detach。如果是该 path 最后一个 session 且 path
-   * 不在收藏,该 path 离开临时,进入最近。
+   * 把 sessionId 从 path 上 detach。
    */
   detachSession(sessionId: string): void {
     this.detachSessionInternal(sessionId, /* emit */ true);
@@ -421,12 +404,6 @@ export class PathManager extends EventEmitter {
     const path = this.sessionToPath.get(sessionId);
     if (path === undefined) return;
     this.sessionToPath.delete(sessionId);
-
-    // 如果该 path 没有其他 session 且不在收藏,进入最近
-    if (!this.hasSessionsForPath(path) && !this.findBookmarkByPath(path)) {
-      this.touchRecent(pathRefFromId(path));
-      this.persistRecent();
-    }
     if (emit) this.emitChange();
   }
 
@@ -435,7 +412,7 @@ export class PathManager extends EventEmitter {
   // ──────────────────────────────────────────────────────────────────
 
   /**
-   * 获取完整 PathTree,三个分类无重叠(优先级:收藏 > 临时 > 最近)。
+   * 获取完整 PathTree。temporary 只含已从列表移除但终端还在运行的文件夹。
    *
    * BETA-043:invalidPaths 集合里的路径会被标 invalid: true。
    */
@@ -454,6 +431,7 @@ export class PathManager extends EventEmitter {
         sessionIds: this.sessionsForPath(id),
         ...(b.displayName ? { displayName: b.displayName } : {}),
         ...(b.defaultTemplateId ? { defaultTemplateId: b.defaultTemplateId } : {}),
+        ...(b.tags ? { tags: b.tags } : {}),
         ...markInvalid(id),
       });
     });
@@ -471,23 +449,7 @@ export class PathManager extends EventEmitter {
         });
       });
 
-    const recent: PathNode[] = this.recent
-      .filter((r) => {
-        const n = recentPathId(r);
-        return !bookmarkPaths.has(n) && !sessionPaths.has(n);
-      })
-      .map((r) => {
-        const id = recentPathId(r);
-        return buildPathNode({
-          id,
-          ref: pathRefFromRecent(r),
-          category: 'recent',
-          sessionIds: [],
-          ...markInvalid(id),
-        });
-      });
-
-    return { bookmarks, temporary, recent };
+    return { bookmarks, temporary };
   }
 
   /**
@@ -509,22 +471,12 @@ export class PathManager extends EventEmitter {
     return this.bookmarks.map((b) => ({ ...b }));
   }
 
-  /**
-   * 测试 / 调试用:列出当前 recent 的浅拷贝。
-   */
-  listRecent(): RecentEntry[] {
-    return this.recent.map((r) => ({ ...r }));
-  }
-
   hasSshProfileReferences(profileId: string): boolean {
     const isMatch = (kind: PathKind, sshProfileId: string | undefined): boolean =>
       kind === 'ssh' && sshProfileId === profileId;
     return (
       this.bookmarks.some((b) =>
         b.kind === 'ssh' ? isMatch(b.kind, b.sshProfileId) : false,
-      ) ||
-      this.recent.some((r) =>
-        r.kind === 'ssh' ? isMatch(r.kind, r.sshProfileId) : false,
       ) ||
       [...this.sessionToPath.values()].some((id) => {
         const ref = pathRefFromId(id);
@@ -556,50 +508,21 @@ export class PathManager extends EventEmitter {
     return result;
   }
 
-  private hasSessionsForPath(normalizedPath: string): boolean {
-    for (const p of this.sessionToPath.values()) {
-      if (p === normalizedPath) return true;
-    }
-    return false;
-  }
-
   /**
-   * 把路径加入最近 (或更新已有的时间戳)。容量上限 30,按 lastUsedAt 降序。
+   * Adds old recent folders to the list, most recently used first. Folders already listed
+   * are skipped, so running this twice changes nothing.
    */
-  private touchRecent(rawPath: string | PathRef): void {
-    const ref = normalizePathRef(rawPath);
-    this.touchRecentTimestamp(ref);
-    this.sortRecent();
-    this.trimRecent();
-  }
-
-  private touchRecentTimestamp(ref: PathRef): void {
-    const id = makePathId(ref);
-    const existing = this.recent.find((r) => recentPathId(r) === id);
-    if (existing) {
-      existing.lastUsedAt = Date.now();
-      existing.useCount++;
-    } else {
-      this.recent.unshift(
-        buildRecentEntry({ ref, lastUsedAt: Date.now(), useCount: 1 }),
+  private absorbRecent(entries: RecentEntry[]): void {
+    const newestFirst = [...entries].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+    for (const entry of newestFirst) {
+      if (this.findBookmarkByPath(recentPathId(entry))) continue;
+      this.bookmarks.push(
+        buildBookmark({
+          id: randomUUID(),
+          ref: pathRefFromRecent(entry),
+          addedAt: entry.lastUsedAt,
+        }),
       );
-    }
-  }
-
-  private removeRecentInternal(normalizedPath: string): void {
-    const idx = this.recent.findIndex((r) => recentPathId(r) === normalizedPath);
-    if (idx >= 0) {
-      this.recent.splice(idx, 1);
-    }
-  }
-
-  private sortRecent(): void {
-    this.recent.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
-  }
-
-  private trimRecent(): void {
-    if (this.recent.length > RECENT_CAPACITY) {
-      this.recent = this.recent.slice(0, RECENT_CAPACITY);
     }
   }
 
@@ -607,8 +530,8 @@ export class PathManager extends EventEmitter {
     this.bookmarksStore.set({ version: 1, paths: this.bookmarks.slice() });
   }
 
-  private persistRecent(): void {
-    this.recentStore.set({ version: 1, paths: this.recent.slice() });
+  private clearRecentFile(): void {
+    this.recentStore.set(DEFAULT_RECENT_FILE);
   }
 
   private emitChange(): void {
@@ -631,7 +554,7 @@ export class PathManager extends EventEmitter {
    * 用户数据,留着就好,使用时再校验)。
    *
    * @param input.bookmarks 新的收藏列表 (顺序保留)
-   * @param input.recent 新的最近列表 (按当前数组顺序;内部仍会再 sortRecent)
+   * @param input.recent 旧归档里的最近列表,并入文件夹列表
    * @throws PathManagerError('InvalidName') 任一 entry 形状不合规
    */
   replaceAll(input: { bookmarks: unknown; recent: unknown }): void {
@@ -640,10 +563,9 @@ export class PathManager extends EventEmitter {
     const bookmarks = validateBookmarksArray(input.bookmarks);
     const recent = validateRecentArray(input.recent);
     this.bookmarks = bookmarks;
-    this.recent = recent;
-    this.sortRecent();
+    this.absorbRecent(recent);
     this.persistBookmarks();
-    this.persistRecent();
+    this.clearRecentFile();
     this.emitChange();
   }
 }
@@ -707,6 +629,7 @@ function validateBookmarksArray(input: unknown): Bookmark[] {
         ...(typeof r['defaultTemplateId'] === 'string'
           ? { defaultTemplateId: r['defaultTemplateId'] }
           : {}),
+        tags: normalizeTags(r['tags']),
       }),
     );
   }
@@ -804,6 +727,7 @@ function buildBookmark(input: {
   addedAt: number;
   displayName?: string;
   defaultTemplateId?: string;
+  tags?: string[];
 }): Bookmark {
   const common = {
     id: input.id,
@@ -811,6 +735,7 @@ function buildBookmark(input: {
     addedAt: input.addedAt,
     ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.defaultTemplateId ? { defaultTemplateId: input.defaultTemplateId } : {}),
+    ...(input.tags?.length ? { tags: input.tags } : {}),
   };
   switch (input.ref.kind) {
     case 'local':
@@ -845,6 +770,7 @@ function buildPathNode(input: {
   sessionIds: string[];
   displayName?: string;
   defaultTemplateId?: string;
+  tags?: string[];
   invalid?: true;
 }): PathNode {
   const common = {
@@ -854,6 +780,7 @@ function buildPathNode(input: {
     sessionIds: input.sessionIds,
     ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.defaultTemplateId ? { defaultTemplateId: input.defaultTemplateId } : {}),
+    ...(input.tags ? { tags: input.tags } : {}),
     ...(input.invalid ? { invalid: true as const } : {}),
   };
   switch (input.ref.kind) {
@@ -888,6 +815,7 @@ function migrateBookmarkOnLoad(raw: unknown): Bookmark[] {
     ...(typeof r['defaultTemplateId'] === 'string'
       ? { defaultTemplateId: r['defaultTemplateId'] }
       : {}),
+    ...(normalizeTags(r['tags']).length > 0 ? { tags: normalizeTags(r['tags']) } : {}),
   };
   if (kind === 'local') return [{ ...base, kind: 'local' }];
   return [{ ...base, kind: 'ssh', sshProfileId: sshProfileId! }];

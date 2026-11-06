@@ -91,8 +91,8 @@ export const COMMAND_CHANNELS = {
   BOOKMARK_RENAME: 'cmd:bookmark:rename',
   BOOKMARK_REORDER: 'cmd:bookmark:reorder',
   BOOKMARK_SET_DEFAULT_TEMPLATE: 'cmd:bookmark:set-default-template',
+  BOOKMARK_SET_TAGS: 'cmd:bookmark:set-tags',
   BOOKMARK_PICK_FOLDER: 'cmd:bookmark:pick-folder',
-  PATH_REMOVE_FROM_RECENT: 'cmd:path:remove-from-recent',
 
   // SSH profile / remote path 域
   SSH_PROFILE_LIST: 'cmd:ssh-profile:list',
@@ -516,6 +516,11 @@ export interface RemoveBookmarkPayload {
   pathId: string;
 }
 
+export interface SetBookmarkTagsPayload {
+  pathId: string;
+  tags: string[];
+}
+
 export interface RenameBookmarkPayload {
   pathId: string;
   newDisplayName: string;
@@ -537,10 +542,6 @@ export interface PickFolderPayload {
 export interface PickFolderResponse {
   /** 用户取消 → null */
   path: string | null;
-}
-
-export interface RemoveFromRecentPayload {
-  path: string;
 }
 
 // ──────────────────────────────────────────────────────────────────

@@ -1317,7 +1317,7 @@ function MoveToPcSection({
       const lines = [
         tx(`来自 ${found.hostname} 的导出,将导入:`, `Export from ${found.hostname}. This will import:`),
         tx(
-          '· Ceteris 设置和收藏(替换当前的,你的 API Key 和远程访问设置保持不变)',
+          '· Ceteris 设置和文件夹(替换当前的,你的 API Key 和远程访问设置保持不变)',
           '· Ceteris settings and bookmarks (replacing the current ones; your API keys and remote access setup stay)',
         ),
         tx(`· ${found.tabs} 个标签页`, `· ${found.tabs} tabs`),
@@ -1661,7 +1661,7 @@ function DataPanel({
 
       <SettingRow
         label={tx('导出设置', 'Export settings')}
-        hint={tx('把全部配置(收藏 / 最近 / 模板 / 设置)导出为 JSON 文件', 'Export everything (bookmarks / recent / templates / settings) to a JSON file')}
+        hint={tx('把全部配置(文件夹 / 模板 / 设置)导出为 JSON 文件', 'Export everything (folders / templates / settings) to a JSON file')}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <button
@@ -2108,7 +2108,7 @@ function RemotePanel({
             className="settings-button"
             onClick={() => void handleAddRemoteBookmark()}
           >
-            {tx('加入收藏', 'Add bookmark')}
+            {tx('添加文件夹', 'Add folder')}
           </button>
         </div>
       </SettingRow>
@@ -2996,7 +2996,7 @@ function AdvancedPanel({
 
       <SettingRow
         label={tx('重置所有设置', 'Reset all settings')}
-        hint={tx('把所有设置回到出厂默认。收藏 / 模板 / 最近不受影响', 'Reset all settings to factory default. Bookmarks / templates / recent are unaffected.')}
+        hint={tx('把所有设置回到出厂默认。文件夹 / 模板不受影响', 'Reset all settings to factory default. Folders / templates are unaffected.')}
       >
         {!confirmingReset ? (
           <button

@@ -24,7 +24,6 @@ import {
   useRef,
   type DragEvent,
   type MouseEvent,
-  type ReactNode,
 } from 'react';
 import type { SidebarSegment } from '@shared/view-menu';
 import { PATH_DRAG_TYPE } from './path-drag';
@@ -37,8 +36,10 @@ import {
   ExpandMore,
   Terminal,
   Warning,
+  Folder,
 } from './material-symbols';
 import { FileTreePanel } from './FileTreePanel';
+import { TagEditor } from './TagEditor';
 import { RemoteFolderPicker } from './RemoteFolderPicker';
 import { focusTerminalDom } from '../focus';
 import {
@@ -51,6 +52,7 @@ import {
 import type {
   SshProfile, PathNode, SessionInfo } from '@shared/types';
 import { disambiguatePathNames } from '@shared/path-display';
+import { countTags, matchesTags } from '@shared/path-tags';
 import { useTranslation } from './LanguageProvider';
 import {
   findMyOwnedSessionId,
@@ -59,7 +61,7 @@ import {
   useAppStateRef,
   saveSidebarSegment,
 } from '../store';
-import { Icon, type IconName } from './icons';
+import { Icon } from './icons';
 import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useModal } from './Modal';
 import { useToast } from './Toast';
@@ -136,9 +138,7 @@ export function Sidebar(): JSX.Element {
   const [dragOver, setDragOver] = useState(false);
   const [remotePickerOpen, setRemotePickerOpen] = useState(false);
   const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
-  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   // Chosen from the title bar badge, which is the only switcher.
   const segment = state.sidebarSegment;
   useEffect(() => saveSidebarSegment(segment), [segment]);
@@ -225,41 +225,27 @@ export function Sidebar(): JSX.Element {
 
   const effectiveSegment: SidebarSegment = segment;
 
-  // SSH 方案 v2.1 §II.3:三栏按 segment 过滤(本地 = kind==='local',包含
+  // SSH 方案 v2.1 §II.3:列表按 segment 过滤(本地 = kind==='local',包含
   // WSL UNC 路径;远程 = kind==='ssh')。
-  const filterNodesBySegment = (nodes: PathNode[]): PathNode[] =>
-    effectiveSegment === 'remote'
-      ? nodes.filter((n) => n.kind === 'ssh')
-      : nodes.filter((n) => n.kind === 'local');
-  const bookmarksFiltered = useMemo(
-    () => filterNodesBySegment(state.pathTree.bookmarks),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.pathTree.bookmarks, effectiveSegment],
+  const { bookmarks, temporary } = state.pathTree;
+  const folders = useMemo(
+    () =>
+      [...bookmarks, ...temporary].filter((n) =>
+        effectiveSegment === 'remote' ? n.kind === 'ssh' : n.kind === 'local',
+      ),
+    [bookmarks, temporary, effectiveSegment],
   );
-  const temporaryFiltered = useMemo(
-    () => filterNodesBySegment(state.pathTree.temporary),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.pathTree.temporary, effectiveSegment],
-  );
-  const recentFiltered = useMemo(
-    () => filterNodesBySegment(state.pathTree.recent),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.pathTree.recent, effectiveSegment],
-  );
+  const allTags = useMemo(() => countTags(folders), [folders]);
+  // A selected tag whose last folder is gone has no chip left to turn it off, so it stops
+  // counting rather than leaving the list empty.
+  const activeTags = selectedTags.filter((tag) => allTags.some((c) => c.name === tag));
+  const visibleFolders = folders.filter((n) => matchesTags(n.tags, activeTags));
+  const reachableTags = new Set(countTags(visibleFolders).map((c) => c.name));
 
-  const isCategoryCollapsed = (categoryId: string): boolean =>
-    collapsedCategoryIds.has(categoryId);
-
-  const handleToggleCategory = (categoryId: string): void => {
-    setCollapsedCategoryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(categoryId)) {
-        next.delete(categoryId);
-      } else {
-        next.add(categoryId);
-      }
-      return next;
-    });
+  const toggleTag = (tag: string): void => {
+    setSelectedTags(
+      activeTags.includes(tag) ? activeTags.filter((x) => x !== tag) : [...activeTags, tag],
+    );
   };
 
   const addRemoteBookmark = async (profile: SshProfile, path: string): Promise<void> => {
@@ -325,47 +311,6 @@ export function Sidebar(): JSX.Element {
       toast.push({
         kind: 'error',
         message: `添加文件夹失败:${err instanceof Error ? err.message : String(err)}`,
-      });
-    }
-  };
-
-  /**
-   * 勘误第二轮 #6:临时栏 + 按钮 — 选文件夹后直接在该路径起一个 session。
-   * 临时分类完全从 PathManager.sessionToPath 推导,所以"加入临时"=" 在该
-   * 路径起一个 session 后让它自然出现在临时栏"。配合默认模板 (全局默认)。
-   */
-  const handlePickFolderForTemp = async (): Promise<void> => {
-    try {
-      const result = await window.api.invoke<unknown, PickFolderResponse>(
-        COMMAND_CHANNELS.BOOKMARK_PICK_FOLDER,
-        {},
-      );
-      if (result.path === null) return;
-      const templateId = state.defaultTemplateId ?? 'shell';
-      const dims = state.lastTerminalDims;
-      const res = await window.api.invoke<unknown, CreateSessionResponse>(
-        COMMAND_CHANNELS.SESSION_CREATE,
-        {
-          pathId: result.path,
-          templateId,
-          cols: dims.cols,
-          rows: dims.rows,
-        },
-      );
-      // session 创建后:store reducer 自动 select 它(因 ownerWindowId === myWindowId)。
-      // 这里再显式 dispatch 一次 select-path,防御性把视图切到该路径;紧随
-      // 其后 select-session 把焦点重新落到新 session 上 —— hideTopTabBar=true
-      // 模式下 view/select-path reducer 会清空 selectedSessionId,不补一次
-      // select-session 会落到 EmptyPathState(用户刚显式新建却看不到终端)。
-      dispatch({ type: 'view/select-path', pathId: res.session.pathId });
-      dispatch({ type: 'view/select-session', sessionId: res.session.id });
-      if (res.warning) {
-        toast.push({ kind: 'warn', message: res.warning });
-      }
-    } catch (err) {
-      toast.push({
-        kind: 'error',
-        message: `打开文件夹失败:${err instanceof Error ? err.message : String(err)}`,
       });
     }
   };
@@ -470,37 +415,34 @@ export function Sidebar(): JSX.Element {
         <span className="sidebar-drop-hint-label">{t('sidebar.dropHint')}</span>
       </div>
       <div className="sidebar-bookmarks-dropzone" data-segment={effectiveSegment}>
-        <Category
-          categoryId="bookmark"
-          title={t('sidebar.category.bookmark')}
-          iconName="bookmark"
-          paths={bookmarksFiltered}
-          collapsed={isCategoryCollapsed('bookmark')}
-          onToggleCollapsed={handleToggleCategory}
-          actionLabel={<Icon name="plus" size={12} />}
-          actionTitle={t('sidebar.addBookmark.title')}
-          onAction={() => void handleAddBookmark()}
-        />
-        <Category
-          categoryId="temporary"
-          title={t('sidebar.category.temporary')}
-          iconName="clock"
-          paths={temporaryFiltered}
-          collapsed={isCategoryCollapsed('temporary')}
-          onToggleCollapsed={handleToggleCategory}
-          actionLabel={<Icon name="plus" size={12} />}
-          actionTitle={t('sidebar.addTemporary.title')}
-          onAction={() => void handlePickFolderForTemp()}
-        />
-        <Category
-          categoryId="recent"
-          title={t('sidebar.category.recent')}
-          iconName="history"
-          paths={recentFiltered}
-          collapsed={isCategoryCollapsed('recent')}
-          onToggleCollapsed={handleToggleCategory}
-        />
+        <FolderList folders={visibleFolders} onAdd={() => void handleAddBookmark()} />
       </div>
+      {allTags.length > 0 && (
+        <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
+          {allTags.map(({ name, count }) => {
+            const active = activeTags.includes(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                className={`tag-chip${active ? ' active' : ''}`}
+                aria-pressed={active}
+                disabled={!active && !reachableTags.has(name)}
+                title={name}
+                onClick={() => toggleTag(name)}
+              >
+                {name}
+                <span className="tag-chip-count">{count}</span>
+              </button>
+            );
+          })}
+          {activeTags.length > 0 && (
+            <button type="button" className="tag-clear" onClick={() => setSelectedTags([])}>
+              {tx('清除', 'Clear')}
+            </button>
+          )}
+        </div>
+      )}
       {fileTreeOpen && <FileTreePanel />}
       {remotePickerOpen && (
         <RemoteFolderPicker
@@ -563,74 +505,40 @@ export function Sidebar(): JSX.Element {
   );
 }
 
-interface CategoryProps {
-  categoryId: string;
-  title: string;
-  iconName: IconName;
-  paths: PathNode[];
-  collapsed: boolean;
-  onToggleCollapsed: (categoryId: string) => void;
-  /** affordance 内容 — 通常是 lucide icon (<Icon name="plus" .../>) */
-  actionLabel?: ReactNode;
-  actionTitle?: string;
-  onAction?: () => void;
-}
-
-function Category({
-  categoryId,
-  title,
-  iconName,
-  paths,
-  collapsed,
-  onToggleCollapsed,
-  actionLabel,
-  actionTitle,
-  onAction,
-}: CategoryProps): JSX.Element {
-  // BETA-014:同 category 内末级文件夹同名时自动补父目录区分;手动命名的不参与。
-  const displayNames = useMemo(() => disambiguatePathNames(paths), [paths]);
-  // An empty section says so by its quiet header alone: nothing to fold, nothing to count.
-  const empty = paths.length === 0;
+function FolderList({
+  folders,
+  onAdd,
+}: {
+  folders: PathNode[];
+  onAdd: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  // BETA-014:末级文件夹同名时自动补父目录区分;手动命名的不参与。
+  const displayNames = useMemo(() => disambiguatePathNames(folders), [folders]);
+  const empty = folders.length === 0;
   return (
-    <section
-      className={`sidebar-category${collapsed ? ' collapsed' : ''}${empty ? ' empty' : ''}`}
-    >
-      <header
-        className="sidebar-category-header"
-        {...(empty
-          ? {}
-          : {
-              onClick: () => onToggleCollapsed(categoryId),
-              title: collapsed ? '展开分组' : '折叠分组',
-            })}
-      >
-        <span className="sidebar-category-chevron" aria-hidden="true">
-          {empty ? null : collapsed ? <ChevronRight size={16} /> : <ExpandMore size={16} />}
-        </span>
+    <section className={`sidebar-category${empty ? ' empty' : ''}`}>
+      <header className="sidebar-category-header">
+        <span className="sidebar-category-chevron" aria-hidden="true" />
         <span className="sidebar-category-title">
           <span className="sidebar-category-icon" aria-hidden="true">
-            <Icon name={iconName} size={12} />
+            <Folder size={12} />
           </span>
-          {title}
+          {t('sidebar.folders')}
         </span>
-        {!empty && <span className="sidebar-category-count">{paths.length}</span>}
-        {actionLabel && (
-          <button
-            type="button"
-            className="sidebar-category-action"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAction?.();
-            }}
-            title={actionTitle}
-          >
-            {actionLabel}
-          </button>
-        )}
+        {!empty && <span className="sidebar-category-count">{folders.length}</span>}
+        <button
+          type="button"
+          className="sidebar-category-action"
+          onClick={onAdd}
+          title={t('sidebar.addBookmark.title')}
+        >
+          <Icon name="plus" size={12} />
+        </button>
       </header>
-      {collapsed || empty ? null : (
+      {!empty && (
         <ul className="sidebar-paths">
-          {paths.map((p) => {
+          {folders.map((p) => {
             const override = p.kind === 'ssh' ? undefined : displayNames.get(p.id);
             return (
               <PathItem
@@ -657,6 +565,8 @@ function PathItem({
   const dispatch = useAppDispatch();
   const ctxMenu = useContextMenuApi();
   const toast = useToast();
+  const { tx } = useTranslation();
+  const [tagging, setTagging] = useState(false);
   const expanded = state.expandedPathIds.has(node.id);
   const selected = state.selectedPathId === node.id;
   const sessions = useMemo(
@@ -664,7 +574,7 @@ function PathItem({
     [node.sessionIds, state.sessions],
   );
   const activeCount = sessions.length;
-  // BETA-014:优先用 Category 算好的去重名;退到本节点 displayName / 末段
+  // BETA-014:优先用 FolderList 算好的去重名;退到本节点 displayName / 末段
   const displayName =
     displayNameOverride ??
     node.displayName ??
@@ -782,24 +692,15 @@ function PathItem({
     if (node.category === 'bookmarked') {
       items.push({ divider: true, label: '' });
       items.push({ label: '重命名…', onSelect: beginRename });
+      items.push({ label: tx('标签…', 'Tags…'), onSelect: () => setTagging(true) });
       items.push({
-        label: '移除收藏',
+        label: tx('从列表移除', 'Remove from list'),
         danger: true,
         onSelect: () => {
-          const removeBookmark = async (): Promise<void> => {
-            await window.api.invoke(COMMAND_CHANNELS.BOOKMARK_REMOVE, { pathId: node.id });
-            // 首页已经不单独展示"收藏"分组。无 session 的收藏被移除后,
-            // PathManager 会按状态机放入 recent;对用户来说这看起来像"没删掉",
-            // 需要再右键"从最近移除"一次。这里把这两个 UI 动作合成一次。
-            if (node.sessionIds.length === 0) {
-              await window.api.invoke(COMMAND_CHANNELS.PATH_REMOVE_FROM_RECENT, {
-                path: node.id,
-              });
-            }
-          };
-          removeBookmark()
+          window.api
+            .invoke(COMMAND_CHANNELS.BOOKMARK_REMOVE, { pathId: node.id })
             .then(() =>
-              toast.push({ kind: 'success', message: `已移除收藏 ${displayName}` }),
+              toast.push({ kind: 'success', message: `已从列表移除 ${displayName}` }),
             )
             .catch((err: unknown) =>
               toast.push({
@@ -832,10 +733,10 @@ function PathItem({
           },
         });
       }
-    } else if (node.category === 'temporary' || node.category === 'recent') {
+    } else {
       items.push({ divider: true, label: '' });
       items.push({
-        label: '加入收藏',
+        label: tx('保留在列表中', 'Keep in list'),
         onSelect: () => {
           window.api
             .invoke(
@@ -850,31 +751,15 @@ function PathItem({
                   }
                 : { path: node.path },
             )
-            .then(() => toast.push({ kind: 'success', message: `已加入收藏 ${displayName}` }))
+            .then(() => toast.push({ kind: 'success', message: `已保留 ${displayName}` }))
             .catch((err: unknown) =>
               toast.push({
                 kind: 'error',
-                message: `加入收藏失败:${err instanceof Error ? err.message : String(err)}`,
+                message: `保留失败:${err instanceof Error ? err.message : String(err)}`,
               }),
             );
         },
       });
-      if (node.category === 'recent') {
-        items.push({
-          label: '从最近移除',
-          danger: true,
-          onSelect: () => {
-            window.api
-              .invoke(COMMAND_CHANNELS.PATH_REMOVE_FROM_RECENT, { path: node.id })
-              .catch((err: unknown) =>
-                toast.push({
-                  kind: 'error',
-                  message: `从最近移除失败:${err instanceof Error ? err.message : String(err)}`,
-                }),
-              );
-          },
-        });
-      }
     }
 
     ctxMenu.open({
@@ -887,6 +772,13 @@ function PathItem({
 
   return (
     <li className={`path-item${selected ? ' selected' : ''}${node.invalid ? ' invalid' : ''}`}>
+      {tagging && (
+        <TagEditor
+          pathId={node.id}
+          title={tx(`${displayName} 的标签`, `Tags for ${displayName}`)}
+          onClose={() => setTagging(false)}
+        />
+      )}
       <div
         className="path-item-row"
         draggable={!renaming}
@@ -896,7 +788,7 @@ function PathItem({
         }}
         onClick={handleRowClick}
         onContextMenu={handleContextMenu}
-        title={node.invalid ? `${node.path}\n⚠️ 路径不可访问` : node.path}
+        title={`${node.invalid ? `${node.path}\n⚠️ 路径不可访问` : node.path}${node.tags ? `\n${node.tags.join(', ')}` : ''}`}
       >
         {/*
           F2(beta 勘误2):左侧固定 12px 槽位,按优先级选一个内容渲染 —

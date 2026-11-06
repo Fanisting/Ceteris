@@ -30,7 +30,7 @@ If you've ever:
 Ceteris rethinks how terminal sessions should be managed:
 
 - **🔒 Sessions survive window closure.** Close every window. Sessions keep running in the background. Reopen any window to see them.
-- **📍 Paths are first-class.** Bookmark working directories. Sessions are organized by where they live, not by which profile spawned them.
+- **📍 Paths are first-class.** Keep working directories in one list and filter it by tag. Sessions are organized by where they live, not by which profile spawned them.
 - **🖱️ Mouse-first.** No keyboard shortcuts to memorize. No `cd` typing. Click paths in the sidebar — that's the workflow.
 - **🪟 All windows are equal.** No "main window" concept. Open as many as you want, close any of them — the app keeps running.
 
@@ -42,8 +42,8 @@ Ceteris rethinks how terminal sessions should be managed:
 ┌────────────────────────────────────────────────────────────────────┐
 │ Ceteris — Window 1                                    [_] [□] [×]  │
 ├──────────────────────┬─────────────────────────────────────────────┤
-│ [Bookmarks] [Active] │  ┌─[claude] [shell] [pytest] [codex⚪]┐    │
-│ [Recent]             │  └────────────────────────────────────┘   │
+│ [Folders] [Tags]     │  ┌─[claude] [shell] [pytest] [codex⚪]┐    │
+│                      │  └────────────────────────────────────┘   │
 │                      │                                              │
 │ ▼ ⌘ ~/projects/auth  │   ┌──────────────────────────────────────┐  │
 │   ├─ ● claude code   │   │ $ claude                             │  │
@@ -53,11 +53,11 @@ Ceteris rethinks how terminal sessions should be managed:
 │   └─ ● codex         │   │ █                                    │  │
 │ ▶ ⌘ ~/scripts        │   │                                      │  │
 │                      │   │                                      │  │
-│ ───── Active ─────   │   │                                      │  │
+│                      │   │                                      │  │
 │ ▼ ⌚ ~/Downloads     │   │                                      │  │
 │   └─ ○ shell         │   │                                      │  │
 │                      │   │                                      │  │
-│ ───── Recent ─────   │   │                                      │  │
+│                      │   │                                      │  │
 │ • ~/test123          │   │                                      │  │
 │ • D:\old\project     │   └──────────────────────────────────────┘  │
 │                      │                                             │
@@ -118,9 +118,9 @@ Ceteris gives you:
 ### First-Run
 
 - A window opens. The sidebar is empty.
-- Click the **+** next to "Bookmarks" — pick a folder to add it
+- Click the **+** next to "Folders" and pick a folder to add it
 - Or drag a folder from File Explorer directly onto the sidebar (or onto the terminal area)
-- Double-click a bookmarked path to open a terminal there
+- Double-click a folder to open a terminal there
 - Click `+` in the tab bar to start a Claude Code / Codex / shell session
 - For remote work, add an SSH profile in Settings, bookmark a remote path such as `~/repo`, then connect normally or with tmux from the path view
 
@@ -139,7 +139,7 @@ That's it. That's the product.
 
 ### V1 (Current — alpha)
 
-- ✅ **Path management**: bookmark, rename, reorder; auto-tracked "active" and "recent"
+- ✅ **Path management**: one folder list with renaming and tag filters; any folder you open stays listed
 - ✅ **Remote paths**: SSH profiles, remote bookmarks, and sidebar labels that show profile + remote path context
 - ✅ **Session lifecycle**: `active / idle / exited`; exited sessions stay visible until you close them manually (no time-based eviction, per ADR-008)
 - ✅ **Launch templates**: built-in (Shell / Claude Code / Codex / OpenCode) + custom

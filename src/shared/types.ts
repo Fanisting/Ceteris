@@ -24,7 +24,7 @@ import type { QuickLaunchItem } from './quick-launch';
  * 改为干净安装时种入收藏(见 PathManager.initialize + PlatformAdapter
  * .getDefaultBookmarkSeeds),不再是独立分组。
  */
-export type PathCategory = 'bookmarked' | 'temporary' | 'recent';
+export type PathCategory = 'bookmarked' | 'temporary';
 
 /**
  * Path 的来源。local 是本机文件夹;ssh 是某个 SSH profile 下的远程目录。
@@ -233,6 +233,8 @@ interface PathNodeBase {
   sessionIds: string[];
   /** 收藏路径才有: 双击新建终端的默认模板 */
   defaultTemplateId?: string;
+  /** Labels for filtering the sidebar, see path-tags.ts. */
+  tags?: string[];
   /**
    * BETA-043:启动期扫描发现该路径已不可访问(被外部删除 / 权限变化等)。
    * 仅做 UI 标记(置灰 + ⚠️ icon),不自动从列表里清除,留给用户决定。
@@ -264,7 +266,6 @@ export type PathNode = LocalPathNode | RemotePathNode;
 export interface PathTree {
   bookmarks: PathNode[];
   temporary: PathNode[];
-  recent: PathNode[];
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -543,6 +544,7 @@ export interface PersistedBookmark {
   path: string;
   kind?: PathKind;
   sshProfileId?: string;
+  tags?: string[];
   displayName?: string;
   defaultTemplateId?: string;
   addedAt: number;
@@ -553,6 +555,7 @@ interface BookmarkBase {
   path: string;
   displayName?: string;
   defaultTemplateId?: string;
+  tags?: string[];
   /** Unix ms */
   addedAt: number;
 }

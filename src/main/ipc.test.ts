@@ -175,13 +175,11 @@ function makeStubs() {
   interface PathTreeShape {
     bookmarked: TreeNode[];
     temporary: TreeNode[];
-    recent: TreeNode[];
   }
   const pathManager = {
     getTree: vi.fn<[], PathTreeShape>(() => ({
       bookmarked: [],
       temporary: [],
-      recent: [],
     })),
     on: vi.fn(),
     listBookmarks: vi.fn(() => []),
@@ -351,8 +349,8 @@ describe('IPC SESSION_CREATE', () => {
     stubs.pathManager.getTree.mockImplementation(() => {
       callN++;
       return callN === 1
-        ? { bookmarked: [], temporary: [], recent: [] }
-        : { bookmarked: [], temporary: [{ id: 'C:\\new', path: 'C:\\new' }], recent: [] };
+        ? { bookmarked: [], temporary: [] }
+        : { bookmarked: [], temporary: [{ id: 'C:\\new', path: 'C:\\new' }] };
     });
     installIpcLayer(deps as Parameters<typeof installIpcLayer>[0]);
 

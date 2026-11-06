@@ -1,7 +1,6 @@
 /**
  * @file src/main/path-manager.test.ts
- * @purpose PathManager 单元测试。覆盖 Path 状态机所有转移、容量限制、
- *   bookmark 增删改查、归类优先级、错误码。
+ * @purpose PathManager 单元测试。覆盖文件夹列表的增删改查、旧数据并入、标签、错误码。
  *
  * @关键设计:
  * - 用 in-memory FakeJsonStore 替代真实 JsonStore,避免 fs I/O 影响测试
@@ -9,8 +8,7 @@
  *   单独覆盖,这里只验证 PathManager 调对了 store.set
  * - 每个测试用 new PathManager 隔离状态,绝不共享
  *
- * @对应文档章节: AGENTS.md 5.3 (Path 状态机必测;PathManager 增删改查;
- *   容量限制 30 个最近);软件定义书.md 8.2 (状态机)
+ * @对应文档章节: AGENTS.md 5.3 (PathManager 增删改查);软件定义书.md ADR-015
  */
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import type { BookmarksFile, RecentFile } from '@shared/types';
@@ -101,13 +99,10 @@ describe('normalizePath', () => {
 });
 
 describe('PathManager — 初始化', () => {
-  it('空 store 时 tree 三栏全空', async () => {
+  it('空 store 时 tree 为空', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
-    const tree = mgr.getTree();
-    expect(tree.bookmarks).toEqual([]);
-    expect(tree.temporary).toEqual([]);
-    expect(tree.recent).toEqual([]);
+    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [] });
   });
 
   it('从持久化恢复 bookmarks', async () => {
@@ -127,8 +122,12 @@ describe('PathManager — 初始化', () => {
     expect(tree.bookmarks[1]!.displayName).toBe('Project B');
   });
 
-  it('从持久化恢复 recent,按 lastUsedAt 降序', async () => {
-    const { mgr } = makeManager({
+  it('旧的最近文件夹并入列表,最近用过的在前,已有的不重复', async () => {
+    const { mgr, recentStore } = makeManager({
+      initialBookmarks: {
+        version: 1,
+        paths: [{ id: 'kept', path: TEST_PATH_C, addedAt: 1 }],
+      },
       initialRecent: {
         version: 1,
         paths: [
@@ -139,8 +138,30 @@ describe('PathManager — 初始化', () => {
       },
     });
     await mgr.initialize();
-    const tree = mgr.getTree();
-    expect(tree.recent.map((r) => r.path)).toEqual([TEST_PATH_B, TEST_PATH_C, TEST_PATH_A]);
+    expect(mgr.getTree().bookmarks.map((n) => n.path)).toEqual([
+      TEST_PATH_C,
+      TEST_PATH_B,
+      TEST_PATH_A,
+    ]);
+    expect(recentStore.getInMemory()?.paths).toEqual([]);
+  });
+
+  it('并入后再次启动不会让已移除的文件夹回来', async () => {
+    const { mgr, bookmarksStore, recentStore } = makeManager({
+      initialRecent: {
+        version: 1,
+        paths: [{ path: TEST_PATH_A, lastUsedAt: 100, useCount: 1 }],
+      },
+    });
+    await mgr.initialize();
+    mgr.removeBookmark(TEST_PATH_A);
+
+    const next = new PathManager(
+      bookmarksStore as unknown as JsonStore<BookmarksFile>,
+      recentStore as unknown as JsonStore<RecentFile>,
+    );
+    await next.initialize();
+    expect(next.getTree().bookmarks).toEqual([]);
   });
 
   // ──────────────────────────────────────────────────────────────────
@@ -161,17 +182,15 @@ describe('PathManager — 初始化', () => {
     expect(tree.bookmarks[0]!.kind).toBe('local');
   });
 
-  it('迁移:旧 recent 缺 kind → 自动按 local 加载', async () => {
+  it('迁移:旧 recent 缺 kind → 按 local 并入', async () => {
     const { mgr } = makeManager({
       initialRecent: {
         version: 1,
-        paths: [{ path: TEST_PATH_A, lastUsedAt: 100, useCount: 3 }],
+        paths: [{ path: TEST_PATH_A, lastUsedAt: 100, useCount: 1 }],
       },
     });
     await mgr.initialize();
-    const tree = mgr.getTree();
-    expect(tree.recent).toHaveLength(1);
-    expect(tree.recent[0]!.kind).toBe('local');
+    expect(mgr.getTree().bookmarks[0]?.kind).toBe('local');
   });
 
   it('迁移:kind=ssh 但缺 sshProfileId 的 bookmark → 启动期静默丢弃', async () => {
@@ -241,42 +260,24 @@ describe('PathManager — addBookmark / removeBookmark', () => {
     );
   });
 
-  it('addBookmark 自动从 recent 移除 (避免重复出现)', async () => {
-    const { mgr } = makeManager({
-      initialRecent: {
-        version: 1,
-        paths: [{ path: TEST_PATH_A, lastUsedAt: 100, useCount: 1 }],
-      },
-    });
-    await mgr.initialize();
-    mgr.addBookmark({ path: TEST_PATH_A });
-
-    const tree = mgr.getTree();
-    expect(tree.bookmarks).toHaveLength(1);
-    expect(tree.recent).toHaveLength(0);
-  });
-
-  it('removeBookmark 移除并进入最近 (无 session 时)', async () => {
+  it('removeBookmark 后文件夹离开列表', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
     mgr.addBookmark({ path: TEST_PATH_A });
     mgr.removeBookmark(TEST_PATH_A);
-    const tree = mgr.getTree();
-    expect(tree.bookmarks).toEqual([]);
-    expect(tree.recent.map((r) => r.path)).toContain(TEST_PATH_A);
+    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [] });
   });
 
-  it('removeBookmark 时若有 session → 进入临时而非最近', async () => {
+  it('removeBookmark 时若有 session → 终端关闭前仍显示,之后消失', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
     mgr.addBookmark({ path: TEST_PATH_A });
     mgr.attachSession('s1', TEST_PATH_A);
     mgr.removeBookmark(TEST_PATH_A);
+    expect(mgr.getTree().temporary.map((n) => n.path)).toEqual([TEST_PATH_A]);
 
-    const tree = mgr.getTree();
-    expect(tree.bookmarks).toEqual([]);
-    expect(tree.temporary.map((r) => r.path)).toContain(TEST_PATH_A);
-    expect(tree.recent.map((r) => r.path)).not.toContain(TEST_PATH_A);
+    mgr.detachSession('s1');
+    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [] });
   });
 
   it('removeBookmark 不存在 throw BookmarkNotFound', async () => {
@@ -373,64 +374,31 @@ describe('PathManager — renameBookmark / reorderBookmarks / setDefaultTemplate
   });
 });
 
-describe('PathManager — Session attach / detach 触发状态机', () => {
-  it('在非收藏路径 attach session → 临时分类', async () => {
-    const { mgr } = makeManager();
+describe('PathManager — Session attach / detach', () => {
+  it('在列表外的文件夹 attach session → 加入列表并保留', async () => {
+    const { mgr, bookmarksStore } = makeManager();
     await mgr.initialize();
     mgr.attachSession('s1', TEST_PATH_A);
+    expect(mgr.getTree().bookmarks.map((n) => n.path)).toEqual([TEST_PATH_A]);
+    expect(bookmarksStore.getInMemory()?.paths).toHaveLength(1);
 
-    const tree = mgr.getTree();
-    expect(tree.temporary).toHaveLength(1);
-    expect(tree.temporary[0]!.path).toBe(TEST_PATH_A);
-    expect(tree.temporary[0]!.sessionIds).toEqual(['s1']);
+    mgr.detachSession('s1');
+    const [folder] = mgr.getTree().bookmarks;
+    expect(folder?.path).toBe(TEST_PATH_A);
+    expect(folder?.sessionIds).toEqual([]);
   });
 
-  it('在收藏路径 attach session → 仍在收藏分类 (不重复出现)', async () => {
+  it('在列表内的文件夹 attach session → 不重复出现', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
     mgr.addBookmark({ path: TEST_PATH_A });
-    mgr.attachSession('s1', TEST_PATH_A);
-
-    const tree = mgr.getTree();
-    expect(tree.bookmarks).toHaveLength(1);
-    expect(tree.bookmarks[0]!.sessionIds).toEqual(['s1']);
-    expect(tree.temporary).toHaveLength(0);
-  });
-
-  it('detach 最后一个 session → 临时变最近', async () => {
-    const { mgr } = makeManager();
-    await mgr.initialize();
-    mgr.attachSession('s1', TEST_PATH_A);
-    mgr.detachSession('s1');
-
-    const tree = mgr.getTree();
-    expect(tree.temporary).toEqual([]);
-    expect(tree.recent.map((r) => r.path)).toContain(TEST_PATH_A);
-  });
-
-  it('detach 非最后 session → 仍在临时', async () => {
-    const { mgr } = makeManager();
-    await mgr.initialize();
     mgr.attachSession('s1', TEST_PATH_A);
     mgr.attachSession('s2', TEST_PATH_A);
-    mgr.detachSession('s1');
-
-    const tree = mgr.getTree();
-    expect(tree.temporary).toHaveLength(1);
-    expect(tree.temporary[0]!.sessionIds).toEqual(['s2']);
-  });
-
-  it('detach 收藏路径的 session → 仍在收藏 (不进最近)', async () => {
-    const { mgr } = makeManager();
-    await mgr.initialize();
-    mgr.addBookmark({ path: TEST_PATH_A });
-    mgr.attachSession('s1', TEST_PATH_A);
-    mgr.detachSession('s1');
 
     const tree = mgr.getTree();
     expect(tree.bookmarks).toHaveLength(1);
-    expect(tree.bookmarks[0]!.sessionIds).toEqual([]);
-    expect(tree.recent).toEqual([]);
+    expect(tree.bookmarks[0]?.sessionIds.sort()).toEqual(['s1', 's2']);
+    expect(tree.temporary).toEqual([]);
   });
 
   it('attach 已在的 session 到不同 path → 自动从旧 path detach', async () => {
@@ -439,74 +407,61 @@ describe('PathManager — Session attach / detach 触发状态机', () => {
     mgr.attachSession('s1', TEST_PATH_A);
     mgr.attachSession('s1', TEST_PATH_B);
 
-    const tree = mgr.getTree();
-    const aPath = tree.temporary.find((p) => p.path === TEST_PATH_A);
-    const bPath = tree.temporary.find((p) => p.path === TEST_PATH_B);
-    expect(aPath).toBeUndefined(); // A 不再有 session,变最近了
-    expect(bPath?.sessionIds).toEqual(['s1']);
-    expect(tree.recent.map((r) => r.path)).toContain(TEST_PATH_A);
+    const nodes = mgr.getTree().bookmarks;
+    expect(nodes.find((n) => n.path === TEST_PATH_A)?.sessionIds).toEqual([]);
+    expect(nodes.find((n) => n.path === TEST_PATH_B)?.sessionIds).toEqual(['s1']);
   });
 
   it('detach 不存在的 sessionId 不报错 (幂等)', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
-    expect(() => mgr.detachSession('s-nonexistent')).not.toThrow();
+    expect(() => mgr.detachSession('nope')).not.toThrow();
   });
 });
 
-describe('PathManager — Recent 容量与排序', () => {
-  it('容量上限 30,超出淘汰最旧', async () => {
-    const { mgr } = makeManager();
+describe('PathManager — 标签', () => {
+  it('setTags 清理后保存,并出现在 tree 和磁盘上', async () => {
+    const { mgr, bookmarksStore } = makeManager();
     await mgr.initialize();
-    // 创建 35 个不同的临时路径,关掉让他们都进 recent
-    for (let i = 0; i < 35; i++) {
-      const p = process.platform === 'win32' ? `C:\\p${i}` : `/p${i}`;
-      mgr.attachSession(`s${i}`, p);
-      mgr.detachSession(`s${i}`);
-    }
-    const tree = mgr.getTree();
-    expect(tree.recent.length).toBe(30);
-    // 最新的 30 个应在,最旧的 5 个被淘汰 (p0-p4)
-    const pathsInRecent = new Set(tree.recent.map((r) => r.path));
-    expect(pathsInRecent.has(process.platform === 'win32' ? 'C:\\p34' : '/p34')).toBe(
-      true,
-    );
-    expect(pathsInRecent.has(process.platform === 'win32' ? 'C:\\p0' : '/p0')).toBe(false);
+    mgr.addBookmark({ path: TEST_PATH_A });
+    mgr.setTags(TEST_PATH_A, [' paper ', 'Paper', 'teaching']);
+
+    expect(mgr.getTree().bookmarks[0]?.tags).toEqual(['paper', 'teaching']);
+    expect(bookmarksStore.getInMemory()?.paths[0]?.tags).toEqual(['paper', 'teaching']);
   });
 
-  it('removeFromRecent 移除指定 path', async () => {
+  it('空列表清掉标签字段', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
-    mgr.attachSession('s1', TEST_PATH_A);
-    mgr.detachSession('s1'); // 进入 recent
-    mgr.removeFromRecent(TEST_PATH_A);
-    expect(mgr.getTree().recent).toEqual([]);
+    mgr.addBookmark({ path: TEST_PATH_A });
+    mgr.setTags(TEST_PATH_A, ['paper']);
+    mgr.setTags(TEST_PATH_A, []);
+    expect(mgr.getTree().bookmarks[0]).not.toHaveProperty('tags');
   });
 
-  it('removeFromRecent 不存在 throw PathNotInRecent', async () => {
+  it('不在列表的文件夹 throw BookmarkNotFound', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
-    expect(() => mgr.removeFromRecent(TEST_PATH_A)).toThrowError(/PathNotInRecent/);
+    expect(() => mgr.setTags(TEST_PATH_A, ['paper'])).toThrow(PathManagerError);
   });
-});
 
-describe('PathManager — 分类优先级 (无重叠)', () => {
-  it('同一 path 不会同时出现在两个分类', async () => {
+  it('标签随重启和导入保留', async () => {
     const { mgr } = makeManager({
-      initialRecent: {
+      initialBookmarks: {
         version: 1,
-        paths: [{ path: TEST_PATH_A, lastUsedAt: 100, useCount: 1 }],
+        paths: [{ id: 'a', path: TEST_PATH_A, addedAt: 1, tags: ['paper'] }],
       },
     });
     await mgr.initialize();
-    mgr.addBookmark({ path: TEST_PATH_A });
-    mgr.attachSession('s1', TEST_PATH_A);
+    expect(mgr.getTree().bookmarks[0]?.tags).toEqual(['paper']);
 
+    mgr.replaceAll({
+      bookmarks: [{ id: 'b', path: TEST_PATH_B, addedAt: 2, tags: ['teaching'] }],
+      recent: [{ path: TEST_PATH_C, lastUsedAt: 3, useCount: 1 }],
+    });
     const tree = mgr.getTree();
-    const inBookmarks = tree.bookmarks.some((p) => p.path === TEST_PATH_A);
-    const inTemporary = tree.temporary.some((p) => p.path === TEST_PATH_A);
-    const inRecent = tree.recent.some((p) => p.path === TEST_PATH_A);
-    expect([inBookmarks, inTemporary, inRecent]).toEqual([true, false, false]);
+    expect(tree.bookmarks.map((n) => n.path)).toEqual([TEST_PATH_B, TEST_PATH_C]);
+    expect(tree.bookmarks[0]?.tags).toEqual(['teaching']);
   });
 });
 

@@ -115,7 +115,6 @@ export interface AppState {
 const EMPTY_TREE: PathTree = {
   bookmarks: [],
   temporary: [],
-  recent: [],
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -192,7 +191,6 @@ function reducer(state: AppState, action: AppAction): AppState {
       const validPathIds = new Set([
         ...action.tree.bookmarks.map((p) => p.id),
         ...action.tree.temporary.map((p) => p.id),
-        ...action.tree.recent.map((p) => p.id),
       ]);
       const expandedPathIds = new Set(
         [...state.expandedPathIds].filter((pathId) => validPathIds.has(pathId)),
@@ -423,7 +421,7 @@ function reducer(state: AppState, action: AppAction): AppState {
 }
 
 /**
- * 在三栏(bookmarks / temporary / recent)里找指定 pathId 的 PathNode。
+ * 在 bookmarks / temporary 里找指定 pathId 的 PathNode。
  *
  * 公共导出:多处需要按 pathId 拿完整 PathNode(选中路径 / Tab 右键拿 cwd /
  * 历史搜索 等),曾经有调用方在外面重写过这条 fallback 链(MainPane Tab 内
@@ -435,8 +433,7 @@ export function findPathNode(
 ): PathNode | undefined {
   return (
     tree.bookmarks.find((p) => p.id === pathId) ??
-    tree.temporary.find((p) => p.id === pathId) ??
-    tree.recent.find((p) => p.id === pathId)
+    tree.temporary.find((p) => p.id === pathId)
   );
 }
 

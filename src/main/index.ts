@@ -39,7 +39,8 @@ const PDF_VIEWER_ORIGIN = 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/'
 import { AIClient } from './ai-client';
 import { WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
-import { getBuildType, isBetaBuild } from './build-type';
+import { getBuildType, getChannel, isBetaBuild } from './build-type';
+import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
 import { logger } from './logger';
 import type {
@@ -193,7 +194,12 @@ function bootstrap(): void {
   );
   const templatesStore = new JsonStore<TemplatesFile>(join(dataDir, 'templates.json'));
 
-  const settingsManager = new SettingsManager(settingsStore);
+  const channel = CHANNELS[getChannel()];
+  logger.info('main', 'channel profile', { ...channel });
+  const settingsManager = new SettingsManager(settingsStore, {
+    ...DEFAULT_SETTINGS,
+    link: { ...DEFAULT_SETTINGS.link, hostPort: channel.linkPort },
+  });
   const pathManager = new PathManager(bookmarksStore, recentStore);
   const sshProfileManager = new SshProfileManager(sshProfilesStore);
   const knownHostsManager = new KnownHostsManager(knownHostsStore);
@@ -216,6 +222,7 @@ function bootstrap(): void {
       // 透传到子 shell 的 TERM_PROGRAM_VERSION,模仿 iTerm2 / WezTerm。
       // 用户在 .bashrc / Profile.ps1 里可以拿这个版本号做条件判断。
       appVersion: app.getVersion(),
+      tmuxSocket: channel.tmuxSocket,
     },
   );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);

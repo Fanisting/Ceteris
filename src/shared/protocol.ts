@@ -289,6 +289,8 @@ export interface GetProtocolVersionResponse {
    * 与 SYSTEM_GET_BUILD_TYPE 同源,只是放进握手响应里,首次握手就拿到。
    */
   buildType: 'dev' | 'portable' | 'installed';
+  /** Ceteris, Ceteris Beta or Ceteris (dev), for the title bar and the taskbar. */
+  appLabel: string;
 }
 
 export interface GetSnapshotPayload {

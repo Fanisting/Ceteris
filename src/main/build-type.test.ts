@@ -18,6 +18,7 @@ let origPortable: string | undefined;
 import {
   __resetBuildTypeCacheForTest,
   getAppLabel,
+  getChannel,
   getBuildType,
   isBetaBuild,
 } from './build-type';
@@ -41,6 +42,13 @@ describe('beta isolation', () => {
     expect(isBetaBuild()).toBe(true);
     expect(getBuildType()).toBe('portable');
     expect(getAppLabel()).toBe('Ceteris Beta');
+    expect(getChannel()).toBe('beta');
+  });
+
+  it('npm run dev is its own channel', () => {
+    mockIsPackaged = false;
+    expect(getChannel()).toBe('dev');
+    expect(getAppLabel()).toBe('Ceteris (dev)');
   });
 
   it('the installed Ceteris.exe is not a beta', () => {
@@ -50,6 +58,7 @@ describe('beta isolation', () => {
     expect(isBetaBuild()).toBe(false);
     expect(getBuildType()).toBe('installed');
     expect(getAppLabel()).toBe('Ceteris');
+    expect(getChannel()).toBe('stable');
   });
 
   it('an unpackaged run is not a beta even with that exe name', () => {

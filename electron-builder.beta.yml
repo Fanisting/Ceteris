@@ -1,4 +1,4 @@
-# electron-builder 配置 —— Ceteris Link beta 测试专用
+# electron-builder 配置:与稳定版并行运行的测试版
 #
 # 与 electron-builder.yml 的两点差异,都是为了让这个包能在**没有离线构建
 # 产物**的机器上直接打出来:
@@ -14,7 +14,8 @@
 #    Link 完全无关;缺失时主配置会让打包直接失败,所以这里剥掉。
 #    代价:本包内 "设置 → 系统集成" 的 Win11 新菜单开关不可用(会报缺资源)。
 #
-# 用法:npm run build:beta
+# 用法:npm run build:beta,产物在 release/beta,版本号由 scripts/build-channel.mjs 生成。
+# Link 端口和 tmux socket 的隔离在 src/shared/channel.ts。
 #
 # Isolation from the installed Ceteris: appId, productName and executableName all
 # differ on purpose. Do not change them back.

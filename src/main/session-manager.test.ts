@@ -16,6 +16,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildSshLaunchParams,
   SessionManager,
   SessionManagerError,
   inferDisplayName,
@@ -691,6 +692,22 @@ describe('SessionManager — createSession', () => {
     expect(command).toContain('CETERIS_TMUX_BASE=');
     expect(command).toContain('ceteris-app');
     expect(command).not.toContain('deploy.api');
+  });
+
+  it('tmux socket 由 buildSshLaunchParams 的选项决定,默认是 stable', () => {
+    const profile = {
+      host: 'example.com',
+      port: 22,
+      username: 'alice',
+      authType: 'agent' as const,
+      tmuxMode: 'attach-or-create' as const,
+    };
+    const lastArg = (options?: { tmuxSocket?: string }): string =>
+      buildSshLaunchParams(profile, '/srv/app', options).args.at(-1)!;
+
+    // The value sits inside nested shell quotes, so only the name and the socket are fixed.
+    expect(lastArg()).toMatch(/CETERIS_TMUX_SOCKET=\W*ceteris\W/);
+    expect(lastArg({ tmuxSocket: 'ceteris-beta' })).toMatch(/CETERIS_TMUX_SOCKET=\W*ceteris-beta\W/);
   });
 
   it('SSH tmux 可配置远端缺 tmux 时直接失败', async () => {

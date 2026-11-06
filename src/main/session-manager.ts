@@ -74,6 +74,7 @@ import { getPlatformAdapter, type PlatformAdapter, type ShellInfo } from './plat
 import { buildSpawnEnv, injectTerminalHintEnv, validateDimensions } from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import { CHANNELS } from '@shared/channel';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
 // Ceteris launched from that shell would misidentify itself as a portable build.
@@ -489,6 +490,8 @@ export interface SessionManagerOptions {
    * (避免 CI 上从 VS Code 终端继承到的 vscode 版本号污染断言)。
    */
   appVersion?: string;
+  /** tmux -L name on remote hosts, so builds cannot attach to each other's sessions. */
+  tmuxSocket?: string;
 }
 
 export class SessionManager extends EventEmitter {
@@ -503,6 +506,7 @@ export class SessionManager extends EventEmitter {
   private readonly skipCwdValidation: boolean;
   private readonly emitBatchMs: number;
   private readonly appVersion: string;
+  private readonly tmuxSocket: string | undefined;
   /**
    * 最近一次 createSession 的非阻塞警告(例如保存了密码但缺 sshpass)。
    * ipc 层在 createSession resolve 后立即读取并清空,传给 renderer 弹 toast。
@@ -544,6 +548,7 @@ export class SessionManager extends EventEmitter {
     // 测试缺省传 0(立即 emit,保持时序断言)
     this.emitBatchMs = options.emitBatchMs ?? EMIT_BATCH_MS;
     this.appVersion = options.appVersion ?? '';
+    this.tmuxSocket = options.tmuxSocket;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -646,7 +651,10 @@ export class SessionManager extends EventEmitter {
       }
     }
     const launchParams = isSsh
-      ? buildSshLaunchParams(input.sshProfile!, pathRef.path, sshLaunchOptions)
+      ? buildSshLaunchParams(input.sshProfile!, pathRef.path, {
+          ...sshLaunchOptions,
+          ...(this.tmuxSocket ? { tmuxSocket: this.tmuxSocket } : {}),
+        })
       : this.platformAdapter.buildShellLaunchParams(
           shell,
           hookFile,
@@ -1897,6 +1905,7 @@ export function buildSshLaunchParams(
   },
   remoteCwd: string,
   options: {
+    tmuxSocket?: string;
     forceTmuxChoice?: boolean;
     commandToRun?: { command: string; args: string[]; env?: Record<string, string> };
     /** SSH 方案 §阶段 3.5:启用 ControlMaster 复用同 host 连接。默认 false。 */
@@ -1951,6 +1960,7 @@ function buildRemoteLoginCommand(
   },
   options: {
     forceTmuxChoice?: boolean;
+    tmuxSocket?: string;
     commandToRun?: { command: string; args: string[]; env?: Record<string, string> };
   } = {},
 ): string {
@@ -1988,6 +1998,7 @@ function buildRemoteLoginCommand(
   const tmuxCommand = buildSmartTmuxCommand(
     baseSessionName,
     !!options.forceTmuxChoice,
+    options.tmuxSocket ?? CHANNELS.stable.tmuxSocket,
   );
   const failCommand =
     'printf %s\\\\n "Ceteris: tmux attach/create failed on the remote host." >&2; exit 127';
@@ -2051,7 +2062,11 @@ function defaultTmuxSessionName(remoteCwd: string): string {
   return `ceteris-${digest}`;
 }
 
-function buildSmartTmuxCommand(baseSessionName: string, forceChoice: boolean): string {
+function buildSmartTmuxCommand(
+  baseSessionName: string,
+  forceChoice: boolean,
+  socket: string,
+): string {
   const base = shQuote(baseSessionName);
   const force = forceChoice ? '1' : '0';
   const script = Buffer.from(SMART_TMUX_SCRIPT, 'utf8').toString('base64');
@@ -2068,6 +2083,7 @@ function buildSmartTmuxCommand(baseSessionName: string, forceChoice: boolean): s
   // 直接断开 SSH。
   return (
     `CETERIS_TMUX_BASE=${base} CETERIS_TMUX_FORCE_CHOICE=${force} ` +
+    `CETERIS_TMUX_SOCKET=${shQuote(socket)} ` +
     `sh -c "$(printf %s ${shQuote(script)} | base64 -d)"`
   );
 }
@@ -2075,7 +2091,8 @@ function buildSmartTmuxCommand(baseSessionName: string, forceChoice: boolean): s
 const SMART_TMUX_SCRIPT = `
 base=$CETERIS_TMUX_BASE
 force=$CETERIS_TMUX_FORCE_CHOICE
-sessions=$(tmux -L ceteris list-sessions -F '#S' 2>/dev/null | while IFS= read -r s; do
+socket=$CETERIS_TMUX_SOCKET
+sessions=$(tmux -L "$socket" list-sessions -F '#S' 2>/dev/null | while IFS= read -r s; do
   if [ "$s" = "$base" ]; then
     printf '%s\\n' "$s"
     continue
@@ -2089,16 +2106,16 @@ done)
 count=$(printf '%s\\n' "$sessions" | sed '/^$/d' | wc -l | tr -d ' ')
 new_session() {
   i=1
-  while tmux -L ceteris has-session -t "$base-$i" 2>/dev/null; do i=$((i + 1)); done
-  tmux -L ceteris new-session -s "$base-$i"
+  while tmux -L "$socket" has-session -t "$base-$i" 2>/dev/null; do i=$((i + 1)); done
+  tmux -L "$socket" new-session -s "$base-$i"
   exit $?
 }
 if [ "$count" = "0" ]; then
-  tmux -L ceteris new-session -s "$base"
+  tmux -L "$socket" new-session -s "$base"
   exit $?
 fi
 if [ "$count" = "1" ] && [ "$force" != "1" ]; then
-  tmux -L ceteris attach-session -t "$sessions"
+  tmux -L "$socket" attach-session -t "$sessions"
   exit $?
 fi
 printf '\\nCeteris found tmux sessions for %s:\\n' "$base"
@@ -2117,7 +2134,7 @@ if [ "$ans" -lt 1 ] 2>/dev/null; then
 fi
 target=$(printf '%s\\n' "$sessions" | sed '/^$/d' | sed -n "$ans"p)
 if [ -n "$target" ]; then
-  tmux -L ceteris attach-session -t "$target"
+  tmux -L "$socket" attach-session -t "$target"
   exit $?
 fi
 new_session

@@ -40,14 +40,11 @@ import { useAppState } from '../store';
 
 interface Props {
   windowStyle: WindowStyle;
-  /**
-   * DEV-COEXIST 2026-05-16:'dev' / 'portable' 时在 "Ceteris" 字样后追加
-   * 后缀,避免 npm run dev 与打包版同时跑混淆。'installed' 保持原样。
-   */
-  buildType: 'dev' | 'portable' | 'installed';
+  /** Which build this is, so stable, beta and dev cannot be mistaken for each other. */
+  appLabel: string;
 }
 
-export function WindowChrome({ windowStyle, buildType }: Props): JSX.Element {
+export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
   const [maximized, setMaximized] = useState(false);
   const state = useAppState();
   const hoverSymbols = state.settings.appearance?.macOSTrafficLightHoverSymbols ?? false;
@@ -105,9 +102,6 @@ export function WindowChrome({ windowStyle, buildType }: Props): JSX.Element {
     }
     callToggleMax();
   };
-
-  // DEV-COEXIST:only npm run dev needs telling apart while working on Ceteris itself.
-  const appLabel = buildType === 'dev' ? 'Ceteris (dev)' : 'Ceteris';
 
   if (windowStyle === 'macos') {
     return (

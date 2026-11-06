@@ -152,10 +152,15 @@ export class SettingsError extends Error {
 }
 
 export class SettingsManager extends EventEmitter {
-  private settings: Settings = DEFAULT_SETTINGS;
+  private settings: Settings;
 
-  constructor(private readonly store: JsonStore<Settings>) {
+  /** @param defaults what a new data folder starts with. Each channel changes a little. */
+  constructor(
+    private readonly store: JsonStore<Settings>,
+    private readonly defaults: Settings = DEFAULT_SETTINGS,
+  ) {
     super();
+    this.settings = defaults;
   }
 
   /**
@@ -164,13 +169,13 @@ export class SettingsManager extends EventEmitter {
    * @returns 来源:'main' / 'bak' / 'default'
    */
   async initialize(): Promise<'main' | 'bak' | 'default'> {
-    const result = await this.store.load(DEFAULT_SETTINGS);
+    const result = await this.store.load(this.defaults);
     // v1.5+ 迁移:explorerContextMenu 从 settings 移到系统状态,如果老 settings.json
     // 残留这个字段,静默剥掉(避免 deepMerge 原样带进运行时 settings 对象,污染
     // 导入导出归档 + TS 类型断言失败)。
     const migrated = stripUnknownLegacyFields(result.value);
     // 不论从哪加载,都要走一遍 deep merge 防止用户文件少字段
-    const merged = deepMerge(DEFAULT_SETTINGS, migrated as DeepPartial<Settings>);
+    const merged = deepMerge(this.defaults, migrated as DeepPartial<Settings>);
     // 版本不兼容直接拒绝 (CP-4 加迁移逻辑;CP-2 简单粗暴)
     if (merged.version !== 1) {
       throw new SettingsError(
@@ -220,7 +225,7 @@ export class SettingsManager extends EventEmitter {
    */
   reset(): void {
     const oldSettings = this.settings;
-    this.settings = structuredClone(DEFAULT_SETTINGS);
+    this.settings = structuredClone(this.defaults);
     const changedKeys = diffKeys('', oldSettings, this.settings);
     this.store.set(structuredClone(this.settings));
     if (changedKeys.length > 0) {
@@ -240,7 +245,7 @@ export class SettingsManager extends EventEmitter {
    */
   replaceAll(newSettings: Partial<Settings>): void {
     const cleaned = stripUnknownLegacyFields(newSettings);
-    const merged = deepMerge(DEFAULT_SETTINGS, cleaned as DeepPartial<Settings>);
+    const merged = deepMerge(this.defaults, cleaned as DeepPartial<Settings>);
     if (merged.version !== 1) {
       throw new SettingsError(
         'IncompatibleVersion',

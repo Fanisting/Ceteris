@@ -25,7 +25,7 @@ import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
-import { getBuildType } from './build-type';
+import { getAppLabel, getBuildType } from './build-type';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -553,6 +553,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       protocolVersion: PROTOCOL_VERSION,
       buildVersion: app.getVersion(),
       buildType: getBuildType(),
+      appLabel: getAppLabel(),
     }),
   );
 

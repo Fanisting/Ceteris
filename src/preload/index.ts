@@ -106,6 +106,7 @@ const api = {
     buildVersion: string;
     /** DEV-COEXIST 2026-05-16:dev / portable / installed,titlebar 后缀用 */
     buildType: 'dev' | 'portable' | 'installed';
+    appLabel: string;
   }> => invoke(COMMAND_CHANNELS.APP_GET_PROTOCOL_VERSION, undefined),
 
   /** 通用命令调用,channel 名从 @shared/protocol 取常量 */

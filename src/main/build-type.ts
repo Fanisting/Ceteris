@@ -16,6 +16,7 @@
  * 第三方打包 / 用户自己重命名 exe 不会触发,这是设计上可接受的(用户行为 ≠ 我们的产品形态)。
  */
 import { app } from 'electron';
+import { CHANNELS, type Channel } from '@shared/channel';
 
 export type BuildType = 'dev' | 'portable' | 'installed';
 
@@ -36,9 +37,15 @@ export function isBetaBuild(): boolean {
   return process.execPath.split(/[\\/]/).pop()?.toLowerCase() === BETA_EXECUTABLE;
 }
 
-/** User-facing app name, so the tray can tell a beta from the installed Ceteris. */
+/** Which row of CHANNELS this process is. A portable stable build counts as stable. */
+export function getChannel(): Channel {
+  if (!app.isPackaged) return 'dev';
+  return isBetaBuild() ? 'beta' : 'stable';
+}
+
+/** User-facing app name, so the tray and title bar show which build this is. */
 export function getAppLabel(): string {
-  return isBetaBuild() ? 'Ceteris Beta' : 'Ceteris';
+  return CHANNELS[getChannel()].label;
 }
 
 export function getBuildType(): BuildType {

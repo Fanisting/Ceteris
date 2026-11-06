@@ -25,7 +25,7 @@ import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge'
 
 type HandshakeState =
   | { status: 'pending' }
-  | { status: 'ok'; buildVersion: string; buildType: 'dev' | 'portable' | 'installed' }
+  | { status: 'ok'; appLabel: string }
   | { status: 'mismatch'; mainVersion: number; rendererVersion: number }
   | { status: 'error'; message: string };
 
@@ -91,7 +91,7 @@ export function App(): JSX.Element {
     }
     window.api
       .getProtocolVersion()
-      .then(({ protocolVersion, buildVersion, buildType }) => {
+      .then(({ protocolVersion, appLabel }) => {
         if (protocolVersion !== PROTOCOL_VERSION) {
           setHandshake({
             status: 'mismatch',
@@ -100,7 +100,8 @@ export function App(): JSX.Element {
           });
           return;
         }
-        setHandshake({ status: 'ok', buildVersion, buildType });
+        document.title = appLabel;
+        setHandshake({ status: 'ok', appLabel });
       })
       .catch((err: unknown) => {
         setHandshake({
@@ -143,17 +144,13 @@ export function App(): JSX.Element {
       myWindowNumber={window.api.windowNumber}
     >
       <ConnectedShell
-        buildType={handshake.buildType}
+        appLabel={handshake.appLabel}
       />
     </AppStateProvider>
   );
 }
 
-function ConnectedShell({
-  buildType,
-}: {
-  buildType: 'dev' | 'portable' | 'installed';
-}): JSX.Element {
+function ConnectedShell({ appLabel }: { appLabel: string }): JSX.Element {
   const sync = useIpcSync();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -271,7 +268,7 @@ function ConnectedShell({
           >
             <WindowChrome
               windowStyle={windowStyle}
-              buildType={buildType}
+              appLabel={appLabel}
             />
             {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
             <LinkConnectionBanner />

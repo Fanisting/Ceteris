@@ -10,6 +10,28 @@ export const NEXT_PROMPT_DEFAULT_MODEL = 'meta-llama/llama-3.1-8b-instruct';
 /** The end of the screen is what matters, and input size is the running cost. */
 export const NEXT_PROMPT_MAX_SCREEN_CHARS = 4_000;
 
+export const NEXT_PROMPT_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
+
+/**
+ * The chat completions URL for a base address. Accepts the address as a provider's docs
+ * give it, with or without the final path.
+ *
+ * @param baseURL undefined in settings saved before this option existed
+ * @throws Error the address is not http or https
+ */
+export function nextPromptEndpoint(baseURL: string | undefined): string {
+  const base = (baseURL?.trim() || NEXT_PROMPT_DEFAULT_BASE_URL).replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(base)) {
+    throw new Error(`API 地址必须以 http:// 或 https:// 开头:${base}`);
+  }
+  return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`;
+}
+
+/** A custom address may be a local model with no key, so either one is enough to run. */
+export function nextPromptConfigured(config: { apiKey: string; baseURL?: string }): boolean {
+  return !!config.apiKey.trim() || !!config.baseURL?.trim();
+}
+
 const MAX_SUGGESTION_CHARS = 160;
 
 export const NEXT_PROMPT_SYSTEM =

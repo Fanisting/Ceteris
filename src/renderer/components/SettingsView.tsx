@@ -72,7 +72,9 @@ import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
-import { NEXT_PROMPT_DEFAULT_MODEL } from '@shared/next-prompt';
+import { NEXT_PROMPT_DEFAULT_BASE_URL,
+  NEXT_PROMPT_DEFAULT_MODEL,
+  nextPromptConfigured } from '@shared/next-prompt';
 import type {
   CreateSessionResponse,
   DataAgentStats,
@@ -2582,7 +2584,8 @@ function AiPanel({
   const statusRecheckSource = ai?.statusRecheckSource ?? 'headless';
   const [testing, setTesting] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', model: '' };
+  const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', baseURL: '', model: '' };
+  const nextPromptReady = nextPromptConfigured(nextPrompt);
   const [testingNextPrompt, setTestingNextPrompt] = useState(false);
 
   const handleTestNextPrompt = async (): Promise<void> => {
@@ -2816,8 +2819,8 @@ function AiPanel({
       <h3 className="link-subsection-title">{tx('下一步提示建议', 'Next prompt suggestions')}</h3>
       <p className="settings-panel-hint">
         {tx(
-          'Claude Code 或 Codex 停下时,用 OpenRouter 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字会发送给 OpenRouter,所以屏幕上的密钥或私密内容也会被发送。',
-          'When Claude Code or Codex stops, OpenRouter guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen goes to OpenRouter, including anything private shown there.',
+          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字会发送给 OpenRouter,所以屏幕上的密钥或私密内容也会被发送。',
+          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen goes to OpenRouter, including anything private shown there.',
         )}
       </p>
 
@@ -2829,15 +2832,34 @@ function AiPanel({
             onChange={(e) =>
               void updateSettings({ ai: { nextPrompt: { enabled: e.target.checked } } }, setError)
             }
-            disabled={!nextPrompt.apiKey.trim()}
+            disabled={!nextPromptReady}
           />
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
 
       <SettingRow
-        label={tx('OpenRouter API Key', 'OpenRouter API key')}
-        hint={tx('填写后才能启用', 'Required before enabling')}
+        label={tx('API 地址', 'API address')}
+        hint={tx(
+          '留空使用 OpenRouter。可填任何兼容 OpenAI 的地址,模型名也要一起改',
+          'Leave empty for OpenRouter. Any OpenAI compatible address works; set its model too',
+        )}
+      >
+        <input
+          className="settings-input"
+          type="text"
+          spellCheck={false}
+          placeholder={NEXT_PROMPT_DEFAULT_BASE_URL}
+          value={nextPrompt.baseURL ?? ''}
+          onChange={(e) =>
+            void updateSettings({ ai: { nextPrompt: { baseURL: e.target.value } } }, setError)
+          }
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('API Key', 'API key')}
+        hint={tx('使用 OpenRouter 时必填,本地模型可留空', 'Required for OpenRouter; a local model may not need one')}
       >
         <input
           className="settings-input"
@@ -2871,7 +2893,7 @@ function AiPanel({
         <button
           type="button"
           className="settings-button"
-          disabled={testingNextPrompt || !nextPrompt.apiKey.trim()}
+          disabled={testingNextPrompt || !nextPromptReady}
           onClick={() => void handleTestNextPrompt()}
         >
           {testingNextPrompt ? tx('测试中…', 'Testing…') : tx('发送一次测试', 'Send a test')}

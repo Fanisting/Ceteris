@@ -183,7 +183,7 @@ function makeStubSettingsManager(
     },
     ai: {
       provider: null,
-      nextPrompt: { enabled: false, apiKey: '', model: '' },
+      nextPrompt: { enabled: false, apiKey: '', baseURL: '', model: '' },
       apiKey: '',
       baseURL: '',
       model: '',

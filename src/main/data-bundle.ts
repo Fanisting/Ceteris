@@ -13,6 +13,7 @@
  *
  * @对应文档章节: docs/远程访问指南.md
  */
+import { nextPromptConfigured } from '@shared/next-prompt';
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { SettingsArchiveV1 } from '@shared/protocol';
@@ -201,7 +202,7 @@ export function withLocalSecrets(
   ai.apiKey = current.ai.apiKey;
   ai.nextPrompt.apiKey = current.ai.nextPrompt.apiKey;
   if (!ai.apiKey) ai.statusRecheckEnabled = false;
-  if (!ai.nextPrompt.apiKey) ai.nextPrompt.enabled = false;
+  if (!nextPromptConfigured(ai.nextPrompt)) ai.nextPrompt.enabled = false;
   copy.settings.link = current.link;
   return copy;
 }

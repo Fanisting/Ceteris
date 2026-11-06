@@ -492,13 +492,15 @@ export interface Settings {
     /** 例如 'claude-haiku-4-5-20251001' / 'gpt-4o-mini',空串走 provider 默认 */
     model: string;
     /**
-     * Guess the next prompt for Claude Code and Codex through OpenRouter. Off by default,
+     * Guess the next prompt for Claude Code and Codex. Off by default,
      * because the end of the terminal screen leaves the machine. Separate from apiKey
-     * above: this one is always OpenRouter and works with no provider selected.
+     * above: this one works with no provider selected.
      */
     nextPrompt: {
       enabled: boolean;
       apiKey: string;
+      /** Any OpenAI compatible API. Empty uses OpenRouter. */
+      baseURL: string;
       /** Empty uses NEXT_PROMPT_DEFAULT_MODEL */
       model: string;
     };

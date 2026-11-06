@@ -5,7 +5,7 @@ import { suggestNextPrompt } from './next-prompt-client';
 const reply = (content: string, status = 200) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status });
 
-const CONFIG = { apiKey: 'test-key', model: '' };
+const CONFIG = { apiKey: 'test-key', baseURL: '', model: '' };
 
 describe('suggestNextPrompt', () => {
   it('returns the cleaned guess', async () => {
@@ -16,7 +16,7 @@ describe('suggestNextPrompt', () => {
   it('uses the default model when none is set, and a set one otherwise', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => reply('ok'));
     await suggestNextPrompt(CONFIG, 's', fetchImpl as never);
-    await suggestNextPrompt({ apiKey: 'k', model: 'a/b' }, 's', fetchImpl as never);
+    await suggestNextPrompt({ apiKey: 'k', baseURL: '', model: 'a/b' }, 's', fetchImpl as never);
     const models = fetchImpl.mock.calls.map((c) => JSON.parse(c[1].body as string).model);
     expect(models).toEqual([NEXT_PROMPT_DEFAULT_MODEL, 'a/b']);
   });
@@ -45,9 +45,55 @@ describe('suggestNextPrompt', () => {
 
   it('does not call out without a key', async () => {
     const fetchImpl = vi.fn();
-    await expect(suggestNextPrompt({ apiKey: ' ', model: '' }, 's', fetchImpl as never)).rejects.toThrow(
+    await expect(suggestNextPrompt({ apiKey: ' ', baseURL: '', model: '' }, 's', fetchImpl as never)).rejects.toThrow(
       /API Key/,
     );
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('custom API address', () => {
+  const reply = (): Response =>
+    new Response(JSON.stringify({ choices: [{ message: { content: 'run the tests' } }] }));
+
+  it('posts to the address given, with or without the final path', async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(url);
+      return reply();
+    }) as unknown as typeof fetch;
+    const config = { apiKey: 'k', model: 'm' };
+    await suggestNextPrompt({ ...config, baseURL: '' }, 'x', fetchImpl);
+    await suggestNextPrompt({ ...config, baseURL: 'https://api.example.com/v1/' }, 'x', fetchImpl);
+    await suggestNextPrompt(
+      { ...config, baseURL: 'https://api.example.com/v1/chat/completions' },
+      'x',
+      fetchImpl,
+    );
+    expect(urls).toEqual([
+      'https://openrouter.ai/api/v1/chat/completions',
+      'https://api.example.com/v1/chat/completions',
+      'https://api.example.com/v1/chat/completions',
+    ]);
+  });
+
+  it('sends no key to a local model that has none', async () => {
+    let headers: Record<string, string> = {};
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      headers = init.headers as Record<string, string>;
+      return reply();
+    }) as unknown as typeof fetch;
+    await suggestNextPrompt(
+      { apiKey: '', baseURL: 'http://127.0.0.1:11434/v1', model: 'm' },
+      'x',
+      fetchImpl,
+    );
+    expect(headers).not.toHaveProperty('Authorization');
+  });
+
+  it('refuses an address that is not http', async () => {
+    await expect(
+      suggestNextPrompt({ apiKey: 'k', baseURL: 'file:///etc/passwd', model: 'm' }, 'x'),
+    ).rejects.toThrow('http');
   });
 });

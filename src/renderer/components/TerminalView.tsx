@@ -71,6 +71,7 @@
  *   软件定义书.md 5.1.4 (终端体验)、5.1.9 (主题)、6.6.2 (行为)、8.4 (owner);
  *   ipc-protocol.md 5.2、6.2、第 8 (字节流)
  */
+import { nextPromptConfigured } from '@shared/next-prompt';
 import {
   useCallback,
   useEffect,
@@ -659,7 +660,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const appState = useAppState();
   const selectedAtMountRef = useRef(appState.selectedSessionId === session.id);
   const nextPrompt = appState.settings.ai?.nextPrompt;
-  const nextPromptOn = !!nextPrompt?.enabled && !!nextPrompt.apiKey.trim();
+  const nextPromptOn = !!nextPrompt?.enabled && nextPromptConfigured(nextPrompt);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const lastSuggestedScreenRef = useRef('');
   const dispatch = useAppDispatch();

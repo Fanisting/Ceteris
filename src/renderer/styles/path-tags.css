@@ -1,14 +1,22 @@
 /* Folder tags: the filter above the file panel and the dialog that edits them. */
 
-.sidebar-tags {
+.sidebar-tag-bar {
   flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 12px 2px;
+}
+
+.sidebar-tags {
+  flex: 1 1 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   max-height: 84px;
   overflow-y: auto;
-  padding: 6px 12px 2px;
 }
 
 .sidebar-tags::-webkit-scrollbar {
@@ -138,6 +146,7 @@ button.tag-chip {
 }
 
 .tag-clear {
+  flex: 0 0 auto;
   background: transparent;
   color: var(--md-primary, #f0f);
 }

@@ -425,8 +425,9 @@ export function Sidebar(): JSX.Element {
         />
       </div>
       {allTags.length > 0 && (
-        <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
-          {allTags.map(({ name, count }) => {
+        <div className="sidebar-tag-bar">
+          <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
+            {allTags.map(({ name, count }) => {
             const active = activeTags.includes(name);
             return (
               <div
@@ -460,6 +461,8 @@ export function Sidebar(): JSX.Element {
               </div>
             );
           })}
+          </div>
+          {/* Outside the scrolling list, which would otherwise carry it out of view. */}
           {activeTags.length > 0 && (
             <button type="button" className="tag-clear" onClick={() => setSelectedTags([])}>
               {tx('清除', 'Clear')}

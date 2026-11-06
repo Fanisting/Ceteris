@@ -317,6 +317,33 @@ button:focus-visible,
   font-weight: 400;
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.settings-tab {
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: transparent;
+  color: var(--md-on-surface-variant, #f0f);
+  font-family: var(--ui-font-family, sans-serif);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.settings-tab.active {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
 /* Both handwriting fonts ship with Windows, so no font file is bundled. */
 .welcome-state h2.welcome-signature {
   display: flex;

@@ -202,7 +202,6 @@ export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
   if (!link) {
     return (
       <section className="settings-panel">
-        <h2 className="settings-panel-title">{tx('远程访问', 'Remote access')}</h2>
         <p className="settings-info-text">{tx('设置加载中…', 'Loading settings…')}</p>
       </section>
     );
@@ -212,7 +211,6 @@ export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
 
   return (
     <section className="settings-panel">
-      <h2 className="settings-panel-title">{tx('远程访问', 'Remote access')}</h2>
 
       <p className="settings-info-text" style={{ marginBottom: 16 }}>
         {tx(

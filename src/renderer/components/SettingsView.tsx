@@ -97,7 +97,6 @@ type CategoryId =
   | 'behavior'
   | 'data'
   | 'remote'
-  | 'link'
   | 'system-integration'
   | 'ai'
   | 'advanced'
@@ -117,11 +116,6 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'shell', iconName: 'shell', titleKey: 'settings.category.shell' },
   { id: 'behavior', iconName: 'behavior', titleKey: 'settings.category.behavior' },
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
-  // Ceteris Link(远程挂载)。与 'remote'(SSH)是两回事,故独立成一类:
-  // SSH 是"在远端跑一个 shell",Link 是"接管远端 Ceteris 的全部会话"。
-  // 这一类**无条件显示** —— 它不像 SSH 那样需要先配 profile 才有意义,
-  // 用户第一次找"怎么在另一台机器上看我的终端"时必须能直接找到入口。
-  { id: 'link', iconName: 'server', titleKey: 'settings.category.link' },
   { id: 'system-integration', iconName: 'systemIntegration', titleKey: 'settings.category.systemIntegration' },
   { id: 'ai', iconName: 'ai', titleKey: 'settings.category.ai' },
   { id: 'advanced', iconName: 'advanced', titleKey: 'settings.category.advanced' },
@@ -158,7 +152,9 @@ async function updateSettings(
 export function SettingsView(): JSX.Element {
   const dispatch = useAppDispatch();
   const { t } = useTranslation();
-  const requested = useAppState().settingsCategory as CategoryId | null;
+  // 'link' is the Tailscale tab of the remote category, see RemoteCategory.
+  const requestedRaw = useAppState().settingsCategory;
+  const requested = (requestedRaw === 'link' ? 'remote' : requestedRaw) as CategoryId | null;
   const [active, setActive] = useState<CategoryId>(requested ?? 'appearance');
   useEffect(() => {
     if (requested) setActive(requested);
@@ -229,9 +225,7 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
     case 'data':
       return <DataPanel setError={setError} />;
     case 'remote':
-      return <RemotePanel setError={setError} />;
-    case 'link':
-      return <LinkPanel setError={setError} />;
+      return <RemoteCategory setError={setError} />;
     case 'system-integration':
       return <SystemIntegrationPanel setError={setError} />;
     case 'ai':
@@ -1705,6 +1699,45 @@ function DataPanel({
 //   - 远程文件夹收藏(挂在某个 profile 下的 RemoteBookmark)
 // ──────────────────────────────────────────────────────────────────
 
+/**
+ * Both ways of reaching another machine in one place. A tab each, because the two pages are
+ * long and most people use only one of them. The title bar badge opens the matching tab.
+ */
+function RemoteCategory({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const requested = useAppState().settingsCategory;
+  const [tab, setTab] = useState<'link' | 'ssh'>(requested === 'remote' ? 'ssh' : 'link');
+  useEffect(() => {
+    if (requested === 'link') setTab('link');
+    if (requested === 'remote') setTab('ssh');
+  }, [requested]);
+
+  return (
+    <>
+      <h2 className="settings-panel-title">{tx('远程', 'Remote')}</h2>
+      <div className="settings-tabs" role="tablist">
+        {(['link', 'ssh'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={`settings-tab${tab === id ? ' active' : ''}`}
+            onClick={() => setTab(id)}
+          >
+            {id === 'link' ? 'Tailscale' : 'SSH'}
+          </button>
+        ))}
+      </div>
+      {tab === 'link' ? <LinkPanel setError={setError} /> : <RemotePanel setError={setError} />}
+    </>
+  );
+}
+
 function RemotePanel({
   setError,
 }: {
@@ -1908,7 +1941,6 @@ function RemotePanel({
 
   return (
     <section className="settings-panel" data-testid="settings-remote-panel">
-      <h2 className="settings-panel-title">{tx('远程', 'Remote')}</h2>
 
       <SettingRow
         label={tx('SSH 服务器', 'SSH servers')}

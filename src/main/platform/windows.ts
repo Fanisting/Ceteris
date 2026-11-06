@@ -60,11 +60,14 @@ let explorerLabel = 'Ceteris';
 
 /**
  * A login item must not point at a portable build's temp copy, which is gone after exit.
- * The explicit name keeps it apart from the installed app's entry in the Run key.
+ * A beta's own name keeps it apart from the installed app's entry in the Run key.
  */
-function portableLoginItem(): { path: string; name: string } | Record<string, never> {
+function loginItemIdentity(): { path?: string; name?: string } {
   const exe = process.env['PORTABLE_EXECUTABLE_FILE'];
-  return exe ? { path: exe, name: explorerLabel } : {};
+  return {
+    ...(exe ? { path: exe } : {}),
+    ...(explorerLabel === 'Ceteris' ? {} : { name: explorerLabel }),
+  };
 }
 
 export function setExplorerLabel(label: string): void {
@@ -570,13 +573,13 @@ export class WindowsAdapter implements PlatformAdapter {
     app.setLoginItemSettings({
       openAtLogin: enabled,
       args: ['--auto-start'],
-      ...portableLoginItem(),
+      ...loginItemIdentity(),
     });
   }
 
   async isAutoStartEnabled(): Promise<boolean> {
     const { app } = await import('electron');
-    return app.getLoginItemSettings({ args: ['--auto-start'], ...portableLoginItem() }).openAtLogin;
+    return app.getLoginItemSettings({ args: ['--auto-start'], ...loginItemIdentity() }).openAtLogin;
   }
 
   /**

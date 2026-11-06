@@ -8,7 +8,7 @@
  * inherit stable's identity, and a leftover PORTABLE_EXECUTABLE_DIR changes the build type.
  */
 import { spawn } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const FOLDER = join('release', 'beta');
@@ -21,8 +21,8 @@ function newestBeta() {
     return null;
   }
   const builds = names
-    .filter((name) => /^CeterisBeta-.*\.exe$/.test(name))
-    .map((name) => join(FOLDER, name))
+    .map((name) => join(FOLDER, name, 'win-unpacked', 'CeterisBeta.exe'))
+    .filter((exe) => existsSync(exe))
     .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
   return builds[0] ?? null;
 }

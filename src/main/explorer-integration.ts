@@ -14,8 +14,10 @@
  *
  * 三类构建产物的策略(build-type.ts 探测):
  * - dev:全部 unsupported,不允许写系统状态(exe 路径是临时的,改了会脏)
- * - portable:经典菜单可用,指向用户启动的 exe,每次启动刷新路径。Win11 新菜单不可用:
- *   它是 MSIX 包,靠安装目录定位 exe。便携版没有卸载程序,关闭要在设置里手动做。
+ * - portable (beta 文件夹版):经典菜单可用,每次启动刷新路径。Win11 新菜单不可用:它是
+ *   MSIX 包,靠安装目录定位 exe。没有卸载程序,关闭要在设置里手动做。
+ * - 单文件便携版 (有 PORTABLE_EXECUTABLE_DIR):不可用。右键会再次启动这个 exe,而第二次
+ *   启动会删掉运行中程序的文件,实测 18 个文件剩 9 个。
  * - installed:正常工作
  */
 import { execFile } from 'node:child_process';
@@ -160,6 +162,9 @@ function checkModernSupport(buildType: BuildType): [boolean, string | null] {
 function checkClassicSupport(buildType: BuildType): [boolean, string | null] {
   if (buildType === 'dev') {
     return [false, '调试模式下不可用 —— 当前 exe 路径不稳定,会污染注册表'];
+  }
+  if (process.env['PORTABLE_EXECUTABLE_DIR']) {
+    return [false, '单文件便携版不可用:再次启动它会破坏正在运行的程序。请使用安装版或测试版。'];
   }
   if (process.platform !== 'win32') {
     return [false, '仅 Windows 支持'];

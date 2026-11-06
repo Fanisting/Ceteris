@@ -14,7 +14,9 @@
 #    Link 完全无关;缺失时主配置会让打包直接失败,所以这里剥掉。
 #    代价:本包内 "设置 → 系统集成" 的 Win11 新菜单开关不可用(会报缺资源)。
 #
-# 用法:npm run build:beta,产物在 release/beta,版本号由 scripts/build-channel.mjs 生成。
+# 用法:npm run build:beta,产物在 release/beta/<version>/win-unpacked,版本号由
+# scripts/build-channel.mjs 生成。它用 --win dir 打包,不走下面的 portable target:单文件
+# 便携版第二次启动时会删掉运行中程序的文件。
 # Link 端口和 tmux socket 的隔离在 src/shared/channel.ts。
 #
 # Isolation from the installed Ceteris: appId, productName and executableName all

@@ -17,23 +17,15 @@
  *
  * @对应文档章节: 软件定义书 6.7 (窗口视觉),M1 待办 P0-1
  */
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from 'react';
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
   type GetWindowMaxStateResponse,
-  type ViewStateResponse,
-  type ViewSwitchPayload,
-  type ViewTarget,
   type WindowMaxStateChangedPayload,
 } from '@shared/protocol';
 import type { WindowStyle } from '@shared/types';
-import { useContextMenuApi } from './ContextMenu';
+import { ViewSwitchButton } from './ViewSwitchButton';
 import { Close, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
 import { focusTerminalDom } from '../focus';
 import { useAppState } from '../store';
@@ -158,71 +150,6 @@ export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
         </button>
       </div>
     </div>
-  );
-}
-
-/**
- * Shows which machine this window is looking at, and switches to the other one.
- *
- * One other view: click swaps straight to it. Several: click opens a menu. None: it is a
- * plain label, so a machine with no Hosts connected gets no dead button.
- */
-function ViewSwitchButton(): JSX.Element {
-  const [targets, setTargets] = useState<ViewTarget[]>([]);
-  const menu = useContextMenuApi();
-
-  const refresh = useCallback(() => {
-    void window.api
-      .invoke<undefined, ViewStateResponse>(COMMAND_CHANNELS.VIEW_GET_STATE, undefined)
-      .then((res) => setTargets(res.targets))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    return window.api.on(EVENT_CHANNELS.VIEW_STATE_CHANGED, refresh);
-  }, [refresh]);
-
-  const switchTo = (targetId: string): void => {
-    void window.api.invoke<ViewSwitchPayload, void>(COMMAND_CHANNELS.VIEW_SWITCH, { targetId });
-  };
-
-  const current = targets.find((t) => t.active)?.label ?? 'Local';
-  const others = targets.filter((t) => !t.active);
-  const only = others[0];
-
-  if (others.length === 0) {
-    return <span className="titlebar-window-badge">{current}</span>;
-  }
-
-  const handleClick = (e: ReactMouseEvent<HTMLButtonElement>): void => {
-    if (only && others.length === 1) {
-      switchTo(only.id);
-      return;
-    }
-    const rect = e.currentTarget.getBoundingClientRect();
-    menu.open({
-      x: rect.left,
-      y: rect.bottom + 4,
-      items: targets.map((t) => ({
-        label: t.label,
-        checked: t.active,
-        onSelect: () => {
-          if (!t.active) switchTo(t.id);
-        },
-      })),
-    });
-  };
-
-  return (
-    <button
-      type="button"
-      className="titlebar-window-badge titlebar-view-switch"
-      onClick={handleClick}
-      title={only && others.length === 1 ? `Switch to ${only.label}` : 'Switch view'}
-    >
-      {current}
-    </button>
   );
 }
 

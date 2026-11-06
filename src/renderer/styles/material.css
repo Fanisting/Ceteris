@@ -1368,6 +1368,8 @@ select.settings-input option {
 }
 
 .titlebar-view-switch {
+  gap: 2px;
+  padding-right: 4px;
   border: none;
   cursor: pointer;
   transition: filter var(--md-duration-short, 100ms) var(--md-easing-standard, ease);

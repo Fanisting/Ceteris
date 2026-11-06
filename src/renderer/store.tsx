@@ -17,6 +17,7 @@
  * @对应文档章节: 软件定义书.md 9.2.2、9.3;ipc-protocol.md 第 4 (handshake)
  */
 import { computePaneSlots, type PaneLayoutId } from '@shared/pane-layout';
+import type { SidebarSegment } from '@shared/view-menu';
 import {
   createContext,
   useContext,
@@ -80,6 +81,10 @@ export interface AppState {
   selectedSessionId: string | null;
   /** Split layout of this window. In memory only, like the selection. */
   paneLayout: PaneLayoutId;
+  /** Shared because the title bar badge switches it too. */
+  sidebarSegment: SidebarSegment;
+  /** Settings page to open next; null is the default page. */
+  settingsCategory: string | null;
   expandedPathIds: Set<string>;
   /** 是否在设置视图 (CP-2 暂不实现设置 UI,字段保留供 CP-4) */
   inSettingsView: boolean;
@@ -133,11 +138,12 @@ export type AppAction =
   | { type: 'view/select-path'; pathId: string | null }
   | { type: 'view/select-session'; sessionId: string | null }
   | { type: 'view/set-pane-layout'; layout: PaneLayoutId }
+  | { type: 'view/set-sidebar-segment'; segment: SidebarSegment }
   | { type: 'view/toggle-path-expand'; pathId: string }
   | { type: 'view/toggle-simple-mode' }
   | { type: 'view/set-simple-mode'; value: boolean }
   | { type: 'view/expand-path'; pathId: string }
-  | { type: 'view/enter-settings' }
+  | { type: 'view/enter-settings'; category?: string }
   | { type: 'view/exit-settings' }
   | {
       type: 'view/focus-requested';
@@ -350,6 +356,9 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'view/set-pane-layout':
       return { ...state, paneLayout: action.layout };
 
+    case 'view/set-sidebar-segment':
+      return { ...state, sidebarSegment: action.segment };
+
     case 'view/toggle-path-expand': {
       const expanded = new Set(state.expandedPathIds);
       if (expanded.has(action.pathId)) expanded.delete(action.pathId);
@@ -371,10 +380,10 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'view/enter-settings':
-      return { ...state, inSettingsView: true };
+      return { ...state, inSettingsView: true, settingsCategory: action.category ?? null };
 
     case 'view/exit-settings':
-      return { ...state, inSettingsView: false };
+      return { ...state, inSettingsView: false, settingsCategory: null };
 
     case 'view/focus-requested': {
       // session-click / tray-click / tray-session-click / tray-open-settings 等 main 推送的聚焦请求
@@ -435,6 +444,25 @@ export function findPathNode(
 // 默认 state (handshake / snapshot 之前用)
 // ──────────────────────────────────────────────────────────────────
 
+const SIDEBAR_SEGMENT_LS_KEY = 'ceteris.sidebar.segment';
+
+function readSidebarSegment(): SidebarSegment {
+  try {
+    return window.localStorage?.getItem(SIDEBAR_SEGMENT_LS_KEY) === 'remote' ? 'remote' : 'local';
+  } catch {
+    return 'local';
+  }
+}
+
+/** Remembers the sidebar tab across restarts. */
+export function saveSidebarSegment(segment: SidebarSegment): void {
+  try {
+    window.localStorage?.setItem(SIDEBAR_SEGMENT_LS_KEY, segment);
+  } catch {
+    // localStorage 在 incognito / 严格模式下可能抛 SecurityError,忽略即可
+  }
+}
+
 export function makeDefaultState(myWindowId: string, myWindowNumber: number): AppState {
   return {
     pathTree: EMPTY_TREE,
@@ -450,6 +478,8 @@ export function makeDefaultState(myWindowId: string, myWindowNumber: number): Ap
     selectedPathId: null,
     selectedSessionId: null,
     paneLayout: 'single',
+    sidebarSegment: readSidebarSegment(),
+    settingsCategory: null,
     expandedPathIds: new Set(),
     inSettingsView: false,
     lastTerminalDims: { cols: 120, rows: 30 },

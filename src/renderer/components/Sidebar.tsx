@@ -26,7 +26,9 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
+import type { SidebarSegment } from '@shared/view-menu';
 import { PATH_DRAG_TYPE } from './path-drag';
+import { PICK_REMOTE_FOLDER_EVENT } from './ViewSwitchButton';
 import {
   AccountTree,
   CheckBold,
@@ -55,6 +57,7 @@ import {
   useAppDispatch,
   useAppState,
   useAppStateRef,
+  saveSidebarSegment,
 } from '../store';
 import { Icon, type IconName } from './icons';
 import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
@@ -88,8 +91,6 @@ const STATE_DOT_COLOR: Record<SessionInfo['state'], string> = {
  * 'local' = 本机 + 所有 WSL 发行版,'remote' = 所有 SSH profile。
  * 持久化到 localStorage,跨重启保留。
  */
-type SidebarSegment = 'local' | 'remote';
-const SIDEBAR_SEGMENT_LS_KEY = 'ceteris.sidebar.segment';
 const FILE_TREE_OPEN_LS_KEY = 'ceteris.sidebar.fileTreeOpen';
 
 function readFileTreeOpenFromStorage(): boolean {
@@ -98,12 +99,6 @@ function readFileTreeOpenFromStorage(): boolean {
   } catch {
     return false;
   }
-}
-
-function readSegmentFromStorage(): SidebarSegment {
-  if (typeof window === 'undefined' || !window.localStorage) return 'local';
-  const v = window.localStorage.getItem(SIDEBAR_SEGMENT_LS_KEY);
-  return v === 'remote' ? 'remote' : 'local';
 }
 
 /**
@@ -140,20 +135,26 @@ export function Sidebar(): JSX.Element {
   const { t } = useTranslation();
   const [dragOver, setDragOver] = useState(false);
   const [remotePickerOpen, setRemotePickerOpen] = useState(false);
+  const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [segment, setSegmentState] = useState<SidebarSegment>(() =>
-    readSegmentFromStorage(),
-  );
+  // The title bar badge switches this too, so it lives in the store.
+  const segment = state.sidebarSegment;
   const setSegment = (next: SidebarSegment): void => {
-    setSegmentState(next);
-    try {
-      window.localStorage?.setItem(SIDEBAR_SEGMENT_LS_KEY, next);
-    } catch {
-      // localStorage 在 incognito / 严格模式下可能抛 SecurityError,忽略即可
-    }
+    dispatch({ type: 'view/set-sidebar-segment', segment: next });
   };
+  useEffect(() => saveSidebarSegment(segment), [segment]);
+
+  // The badge asks for this when a server has no saved folder yet.
+  useEffect(() => {
+    const open = (e: Event): void => {
+      setRemotePickerProfileId((e as CustomEvent<{ profileId: string }>).detail.profileId);
+      setRemotePickerOpen(true);
+    };
+    window.addEventListener(PICK_REMOTE_FOLDER_EVENT, open);
+    return () => window.removeEventListener(PICK_REMOTE_FOLDER_EVENT, open);
+  }, []);
 
   const [fileTreeOpen, setFileTreeOpen] = useState<boolean>(() => readFileTreeOpenFromStorage());
   const toggleFileTree = (): void => {
@@ -533,16 +534,25 @@ export function Sidebar(): JSX.Element {
       {fileTreeOpen && <FileTreePanel />}
       {remotePickerOpen && (
         <RemoteFolderPicker
-          profiles={state.sshProfiles}
+          profiles={
+            remotePickerProfileId
+              ? state.sshProfiles.filter((p) => p.id === remotePickerProfileId)
+              : state.sshProfiles
+          }
           onPick={(profile, path) => {
             setRemotePickerOpen(false);
+            setRemotePickerProfileId(null);
             void addRemoteBookmark(profile, path);
           }}
           onManual={(profile) => {
             setRemotePickerOpen(false);
+            setRemotePickerProfileId(null);
             void typeRemotePath(profile);
           }}
-          onCancel={() => setRemotePickerOpen(false)}
+          onCancel={() => {
+            setRemotePickerOpen(false);
+            setRemotePickerProfileId(null);
+          }}
         />
       )}
       <div className="sidebar-footer">

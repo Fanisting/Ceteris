@@ -156,7 +156,11 @@ async function updateSettings(
 export function SettingsView(): JSX.Element {
   const dispatch = useAppDispatch();
   const { t } = useTranslation();
-  const [active, setActive] = useState<CategoryId>('appearance');
+  const requested = useAppState().settingsCategory as CategoryId | null;
+  const [active, setActive] = useState<CategoryId>(requested ?? 'appearance');
+  useEffect(() => {
+    if (requested) setActive(requested);
+  }, [requested]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleClose = useCallback(() => {

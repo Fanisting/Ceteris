@@ -28,8 +28,8 @@ jobs:
           npx electron-vite build
           npx electron-builder --mac dmg --arm64 --x64 --publish never --config electron-builder.yml -c.directories.output=release/mac
 
-      - name: Show the signature
-        run: codesign -dv release/mac/mac-arm64/Ceteris.app 2>&1 | head -8
+      - name: Check the signature
+        run: codesign --verify --deep --strict --verbose=2 release/mac/mac-arm64/Ceteris.app
 
       - name: Run the app
         run: node --experimental-websocket scripts/smoke-mac.mjs release/mac/mac-arm64/Ceteris.app

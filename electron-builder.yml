@@ -26,6 +26,9 @@ files:
   - '!**/node_modules/*.d.ts'
   - '!**/node_modules/.bin'
 
+# Mac only: fixes node-pty permissions and signs the app. See the script.
+afterPack: scripts/after-pack.cjs
+
 asar: true
 asarUnpack:
   - node_modules/node-pty/**

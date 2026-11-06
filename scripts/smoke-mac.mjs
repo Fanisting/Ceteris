@@ -87,9 +87,9 @@ try {
 
   const J = JSON.stringify;
   const sessionId = await ev(
-    `window.api.invoke('cmd:session:create',{pathId:${J(work)},templateId:'shell',cols:100,rows:30}).then(r=>r.session.id)`,
+    `window.api.invoke('cmd:session:create',{pathId:${J(work)},templateId:'shell',shellId:'zsh',cols:100,rows:30}).then(r=>r.session.id).catch(e=>'ERROR '+e.message)`,
   );
-  check('a terminal opens', sessionId, sessionId ?? '');
+  check('a terminal opens', sessionId && !sessionId.startsWith('ERROR'), sessionId ?? '');
   await sleep(3000);
 
   const screen = () =>

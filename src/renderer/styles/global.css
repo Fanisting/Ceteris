@@ -1471,28 +1471,6 @@ html[data-maximized='true'] .app-root.with-shell {
   overflow-y: auto;
 }
 
-.empty-hint {
-  margin: 0;
-  color: var(--color-text-secondary, #f0f);
-  font-size: 13px;
-  text-align: center;
-}
-
-/* 选择器多一层,否则 material.css 的同名规则靠加载顺序盖掉这里的颜色和圆角 */
-.empty-path-state .empty-hint code {
-  display: inline-block;
-  max-width: 100%;
-  font-family: var(--terminal-font-family, monospace);
-  font-size: 15px;
-  font-weight: 500;
-  background-color: var(--color-bg-elevated, #f0f);
-  border: 1px solid color-mix(in srgb, var(--color-warning, #f0f) 45%, transparent);
-  padding: 6px 14px;
-  border-radius: 8px;
-  color: var(--color-warning, #f0f);
-  overflow-wrap: anywhere;
-}
-
 .empty-section {
   display: flex;
   flex-direction: column;

@@ -422,80 +422,85 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   const wslShellId = isWslPath ? visibleShells?.[0]?.id : undefined;
 
   return (
-    <div className="empty-path-state">
-      <p className="empty-hint">
-        <code>{displayPath}</code>
-      </p>
-
-      {isSshPath && (
-        <div className="empty-section">
-          <div className="empty-section-title">SSH</div>
-          <div className="empty-button-grid">
-            <button
-              type="button"
-              className="template-button"
-              onClick={() => void handleCreate('shell', undefined, 'disabled')}
-              disabled={creating}
-              title={displayPath}
-            >
-              <span className="template-icon">
-                <Icon name="shell" size={18} />
-              </span>
-              <span className="template-label">{tx('连接', 'Connect')}</span>
-            </button>
-            <button
-              type="button"
-              className="template-button"
-              onClick={() => void handleCreate('shell', undefined, 'attach-or-create')}
-              disabled={creating}
-              title={tx(`通过 tmux 连接 ${displayPath}`, `Connect with tmux to ${displayPath}`)}
-            >
-              <span className="template-icon">
-                <Icon name="templateShell" size={18} />
-              </span>
-              <span className="template-label">tmux</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!isSshPath && visibleShells && visibleShells.length > 0 && (
-        <div className="empty-section">
-          <div className="empty-section-title">{tx('检测到的 Shell', 'Detected shells')}</div>
-          <div className="empty-button-grid">
-            {visibleShells.map((s) => (
+    <>
+      {/* The same bar a terminal has, so the path stays put when switching to this page. */}
+      <div className="terminal-statusbar">
+        <span className="status-text">{tx('新建终端', 'New terminal')}</span>
+        <span className="status-cwd" title={displayPath}>
+          {displayPath}
+        </span>
+      </div>
+      <div className="empty-path-state">
+        {isSshPath && (
+          <div className="empty-section">
+            <div className="empty-section-title">SSH</div>
+            <div className="empty-button-grid">
               <button
-                key={s.id}
                 type="button"
                 className="template-button"
-                onClick={() => void handleCreate('shell', s.id)}
+                onClick={() => void handleCreate('shell', undefined, 'disabled')}
                 disabled={creating}
-                title={`${s.displayName}\n${s.executablePath}`}
+                title={displayPath}
               >
                 <span className="template-icon">
-                  <Icon name={shellIcon(s.id)} size={18} />
+                  <Icon name="shell" size={18} />
                 </span>
-                <span className="template-label">{s.displayName}</span>
+                <span className="template-label">{tx('连接', 'Connect')}</span>
               </button>
+              <button
+                type="button"
+                className="template-button"
+                onClick={() => void handleCreate('shell', undefined, 'attach-or-create')}
+                disabled={creating}
+                title={tx(`通过 tmux 连接 ${displayPath}`, `Connect with tmux to ${displayPath}`)}
+              >
+                <span className="template-icon">
+                  <Icon name="templateShell" size={18} />
+                </span>
+                <span className="template-label">tmux</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isSshPath && visibleShells && visibleShells.length > 0 && (
+          <div className="empty-section">
+            <div className="empty-section-title">{tx('检测到的 Shell', 'Detected shells')}</div>
+            <div className="empty-button-grid">
+              {visibleShells.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="template-button"
+                  onClick={() => void handleCreate('shell', s.id)}
+                  disabled={creating}
+                  title={`${s.displayName}\n${s.executablePath}`}
+                >
+                  <span className="template-icon">
+                    <Icon name={shellIcon(s.id)} size={18} />
+                  </span>
+                  <span className="template-label">{s.displayName}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="empty-section">
+          <div className="empty-section-title">{tx('启动模板', 'Launch templates')}</div>
+          <div className="empty-button-grid">
+            {(isSshPath || !isWslPath || wslShellId) && templates.map((t) => (
+              <TemplateLaunchButton
+                key={t.id}
+                template={t}
+                creating={creating}
+                onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
+              />
             ))}
           </div>
         </div>
-      )}
-
-      <div className="empty-section">
-        <div className="empty-section-title">{tx('启动模板', 'Launch templates')}</div>
-        <div className="empty-button-grid">
-          {(isSshPath || !isWslPath || wslShellId) && templates.map((t) => (
-            <TemplateLaunchButton
-              key={t.id}
-              template={t}
-              creating={creating}
-              onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
-            />
-          ))}
-        </div>
       </div>
-    </div>
+    </>
   );
 }
 

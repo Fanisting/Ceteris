@@ -623,7 +623,7 @@ button:focus-visible,
 }
 
 .terminal-statusbar {
-  min-height: 28px;
+  min-height: 32px;
   background-color: var(--md-surface, #f0f);
   box-shadow: inset 0 -1px 0 var(--md-outline-variant, #f0f);
   font-family: inherit;
@@ -722,16 +722,6 @@ button:focus-visible,
 }
 
 /* ── 空状态与启动模板 ──────────────────────────────────────────── */
-
-.empty-hint {
-  color: var(--md-on-surface-variant, #f0f);
-}
-
-.empty-hint code {
-  border-radius: var(--md-shape-xs, 4px);
-  background-color: var(--md-surface-container, #f0f);
-  color: var(--md-on-surface, #f0f);
-}
 
 .empty-section-title {
   color: var(--md-on-surface-variant, #f0f);
@@ -1316,8 +1306,6 @@ select.settings-input option {
 .tab-name,
 .tab.orphan .tab-name,
 .settings-entry,
-.empty-hint,
-.empty-hint code,
 .empty-button-grid button {
   font-family: var(--ui-font-family, sans-serif);
   font-size: 13px;

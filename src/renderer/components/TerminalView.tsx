@@ -1983,7 +1983,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
               : t('terminal.toolbar.toSimple')
           }
         >
-          {simpleMode ? <OpenInFull size={13} /> : <CloseFullscreen size={13} />}
+          {simpleMode ? <CloseFullscreen size={13} /> : <OpenInFull size={13} />}
         </button>
         <span
           className="status-cwd"

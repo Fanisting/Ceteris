@@ -87,8 +87,8 @@
   "terminal.toolbar.copyAll": "Copy all scrollback",
   "terminal.toolbar.clear": "Clear",
   "terminal.toolbar.search": "Search (Ctrl+F)",
-  "terminal.toolbar.toSimple": "Enter simple view",
-  "terminal.toolbar.fromSimple": "Exit simple view",
+  "terminal.toolbar.toSimple": "Enter focus mode",
+  "terminal.toolbar.fromSimple": "Exit focus mode",
   "terminal.toolbar.copied": "Copied {lines} lines of scrollback",
   "terminal.toolbar.emptyScrollback": "Scrollback is empty",
 

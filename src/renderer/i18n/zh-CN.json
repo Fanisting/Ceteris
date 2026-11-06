@@ -87,8 +87,8 @@
   "terminal.toolbar.copyAll": "复制全部 scrollback",
   "terminal.toolbar.clear": "清屏",
   "terminal.toolbar.search": "搜索(Ctrl+F)",
-  "terminal.toolbar.toSimple": "切换到简易页面",
-  "terminal.toolbar.fromSimple": "退出简易页面",
+  "terminal.toolbar.toSimple": "进入专注模式",
+  "terminal.toolbar.fromSimple": "退出专注模式",
   "terminal.toolbar.copied": "已复制 {lines} 行 scrollback",
   "terminal.toolbar.emptyScrollback": "当前 scrollback 为空",
 

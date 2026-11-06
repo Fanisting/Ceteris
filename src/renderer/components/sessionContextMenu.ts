@@ -81,7 +81,7 @@ export function buildSessionContextMenu(
       },
     },
     {
-      label: '在简易窗口中打开',
+      label: '在专注模式窗口中打开',
       disabled: isOther,
       ...(isOther ? { hint: '其他窗口持有,无法移动' } : {}),
       onSelect: () => {
@@ -90,7 +90,7 @@ export function buildSessionContextMenu(
           simpleMode: true,
         }).catch((err: unknown) =>
           toastError(
-            `打开简易窗口失败:${err instanceof Error ? err.message : String(err)}`,
+            `打开专注模式窗口失败:${err instanceof Error ? err.message : String(err)}`,
           ),
         );
       },

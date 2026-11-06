@@ -1,7 +1,6 @@
 /**
  * @file src/shared/beamer-themes.ts
- * @purpose 取自 LaTeX Beamer 模板配色的主题清单和终端配色。Overleaf 上的 Beamer
- *   模板用的就是这些内置主题和 Metropolis。
+ * @purpose 取自 LaTeX Beamer 模板配色的主题清单和终端配色。
  *
  * @关键设计:
  * - 色值来自 TeX Live 的 beamercolortheme*.sty 和 beamercolorthememetropolis.sty,
@@ -182,20 +181,20 @@ export const BEAMER_THEMES: BeamerTheme[] = [
       brightWhite: '#1a1a1a',
     },
   },
-  // AnnArbor = wolverine:密歇根蓝 + 玉米黄。取模板里的深蓝条作底色,
-  // 模板的黄色标题栏面积太大,不适合做终端底色
+  // AnnArbor = wolverine:密歇根蓝 + 玉米黄。模板的黄色标题栏不适合做终端底色,
+  // 底色用 wolverine 里的 darkblue!50!black
   {
     id: 'ann-arbor',
     label: 'AnnArbor',
     tone: '深色',
     note: 'Beamer',
     terminal: {
-      background: '#000052',
+      background: '#000066',
       foreground: '#ffffe6',
       cursor: '#ffcc00',
-      cursorAccent: '#000052',
+      cursorAccent: '#000066',
       selectionBackground: '#0000a3',
-      black: '#00003d',
+      black: '#000052',
       red: '#ff8f8f',
       green: '#7fe08f',
       yellow: '#ffcc00',

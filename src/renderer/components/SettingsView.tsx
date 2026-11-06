@@ -1024,9 +1024,9 @@ function TemplateEditor({
           onClick={() => void handleSave()}
           disabled={saving || !draft.name.trim()}
           style={{
-            background: 'var(--color-accent-special, #f0f)',
-            color: 'var(--color-bg-primary, #f0f)',
-            borderColor: 'var(--color-accent-special, #f0f)',
+            background: 'var(--md-primary, #f0f)',
+            color: 'var(--md-on-primary, #f0f)',
+            borderColor: 'var(--md-primary, #f0f)',
           }}
         >
           {saving ? tx('保存中…', 'Saving…') : isCreate ? tx('创建', 'Create') : tx('保存', 'Save')}

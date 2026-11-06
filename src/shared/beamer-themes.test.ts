@@ -1,7 +1,8 @@
 /**
  * @file src/shared/beamer-themes.test.ts
- * @purpose 检查 Beamer 主题的界面配色和终端配色:token 完整、两边底色一致、
- *   文字达到 WCAG AA。这些主题的状态色是手工调的,目测看不出 4.3:1 和 4.5:1 的差别。
+ * @purpose 检查 Beamer 主题的配色规则。每条规则一个测试,在所有主题上循环,
+ *   失败时列出全部不达标的主题和颜色。这些状态色是手工调的,目测看不出 4.3:1
+ *   和 4.5:1 的差别。
  *
  * @不在 src/renderer 写的原因:同 css-var-fallback.test.ts,vitest 不收集 renderer。
  */
@@ -10,8 +11,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BEAMER_THEMES, BEAMER_THEME_IDS, type TerminalPalette } from './beamer-themes';
 
-const CSS = readFileSync(resolve(__dirname, '../renderer/styles/beamer-themes.css'), 'utf8');
+const RENDERER = resolve(__dirname, '../renderer');
+const CSS = readFileSync(resolve(RENDERER, 'styles/beamer-themes.css'), 'utf8');
 const AA = 4.5;
+/** MD3 hover 状态层:当前文字色 8% 叠在背景上 (material.css --md-state-hover) */
+const HOVER_LAYER = 8;
 
 const REQUIRED_TOKENS = [
   '--color-bg-primary',
@@ -33,8 +37,7 @@ const REQUIRED_TOKENS = [
 
 function blockFor(id: string): string {
   const start = CSS.indexOf(`[data-theme='${id}'] {`);
-  expect(start, `no CSS block for ${id}`).toBeGreaterThanOrEqual(0);
-  return CSS.slice(start, CSS.indexOf('}', start));
+  return start < 0 ? '' : CSS.slice(start, CSS.indexOf('}', start));
 }
 
 function tokensOf(id: string): Record<string, string> {
@@ -46,8 +49,8 @@ function tokensOf(id: string): Record<string, string> {
 }
 
 function rgb(hex: string): number[] {
-  if (hex.length === 4) hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
-  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const full = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+  return [1, 3, 5].map((i) => parseInt(full.slice(i, i + 2), 16));
 }
 
 function luminance(hex: string): number {
@@ -70,113 +73,142 @@ function mix(a: string, b: string, weight: number): string {
   return `#${channels.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function textWeight(tokens: Record<string, string>, name: string): number {
-  return parseInt(tokens[name] ?? '100%', 10);
+/** 收集所有低于 AA 的颜色对,让一次失败列出全部问题。 */
+function collectUnreadable(
+  visit: (check: (label: string, fg: string, bg: string) => void) => void,
+): string[] {
+  const failures: string[] = [];
+  visit((label, fg, bg) => {
+    const ratio = contrast(fg, bg);
+    if (ratio < AA) failures.push(`${label}: ${fg} on ${bg} is ${ratio.toFixed(2)}`);
+  });
+  return failures;
 }
 
+const THEMES = BEAMER_THEMES.map((theme) => {
+  const t = tokensOf(theme.id);
+  const accent = t['--md-primary'] ?? t['--color-accent-special']!;
+  const onSurface = t['--color-text-primary']!;
+  return {
+    theme,
+    t,
+    surfaces: [t['--color-bg-primary']!, t['--color-bg-secondary']!],
+    accent,
+    onSurface,
+    primaryText: mix(accent, onSurface, parseInt(t['--md-primary-text-weight'] ?? '100%', 10)),
+    errorText: mix(
+      t['--color-danger']!,
+      onSurface,
+      parseInt(t['--md-error-text-weight'] ?? '100%', 10),
+    ),
+  };
+});
+
 describe('beamer themes', () => {
-  it('lists every id exactly once', () => {
+  it('lists every id once and defines every token', () => {
     expect(BEAMER_THEMES.map((t) => t.id)).toEqual([...BEAMER_THEME_IDS]);
+    for (const { theme, t } of THEMES) {
+      for (const name of REQUIRED_TOKENS) {
+        expect(t[name], `${theme.id} ${name}`).toMatch(/^#[0-9a-f]{6}$/);
+      }
+    }
   });
 
-  describe.each(BEAMER_THEMES)('$id', (theme) => {
-    const tokens = tokensOf(theme.id);
-    const bgPrimary = tokens['--color-bg-primary']!;
-    const bgSecondary = tokens['--color-bg-secondary']!;
-    const surfaces = [bgPrimary, bgSecondary];
+  it('loads after material.css, which it overrides at equal specificity', () => {
+    const entry = readFileSync(resolve(RENDERER, 'index.tsx'), 'utf8');
+    const material = entry.indexOf("import './styles/material.css'");
+    expect(material).toBeGreaterThanOrEqual(0);
+    expect(entry.indexOf("import './styles/beamer-themes.css'")).toBeGreaterThan(material);
+  });
 
-    it('defines every semantic token', () => {
-      for (const name of REQUIRED_TOKENS) expect(tokens[name], name).toMatch(/^#[0-9a-f]{6}$/);
-    });
+  it('matches its tone, and shares base colors with the terminal', () => {
+    for (const { theme, t } of THEMES) {
+      const light = theme.tone === '浅色';
+      expect(luminance(t['--color-bg-primary']!) > 0.5, theme.id).toBe(light);
+      expect(/color-scheme:\s*light/.test(blockFor(theme.id)), theme.id).toBe(light);
+      expect(theme.terminal.background, theme.id).toBe(t['--color-bg-primary']);
+      expect(theme.terminal.foreground, theme.id).toBe(t['--color-text-primary']);
+    }
+  });
 
-    it('declares color-scheme only for light themes', () => {
-      expect(tokens['color-scheme']).toBeUndefined();
-      expect(/color-scheme:\s*light/.test(blockFor(theme.id))).toBe(theme.tone === '浅色');
-    });
-
-    it('matches its tone by background brightness', () => {
-      expect(luminance(bgPrimary) > 0.5).toBe(theme.tone === '浅色');
-    });
-
-    it('uses the same base colors in the UI and the terminal', () => {
-      expect(theme.terminal.background).toBe(bgPrimary);
-      expect(theme.terminal.foreground).toBe(tokens['--color-text-primary']);
-    });
-
-    it.each(['--color-text-primary', '--color-text-secondary', '--color-text-muted'])(
-      '%s is readable on primary and secondary surfaces',
-      (name) => {
-        for (const bg of surfaces) expect(contrast(tokens[name]!, bg)).toBeGreaterThanOrEqual(AA);
-      },
-    );
-
-    it('keeps primary text readable on hover and selected rows', () => {
-      const selected =
-        tokens['--md-secondary-container'] ?? mix(tokens['--color-accent-special']!, bgSecondary, 24);
-      const backgrounds = [
-        tokens['--color-bg-elevated']!,
-        tokens['--color-bg-hover']!,
-        tokens['--color-bg-active']!,
-        selected,
-      ];
-      for (const bg of backgrounds) {
-        expect(contrast(tokens['--color-text-primary']!, bg), bg).toBeGreaterThanOrEqual(AA);
+  it('keeps text and status colors readable on primary and secondary surfaces', () => {
+    const names = [
+      '--color-text-primary',
+      '--color-text-secondary',
+      '--color-text-muted',
+      '--color-danger',
+      '--color-warning',
+      '--color-success',
+      '--color-info',
+    ];
+    const failures = collectUnreadable((check) => {
+      for (const { theme, t, surfaces } of THEMES) {
+        for (const name of names) {
+          for (const bg of surfaces) check(`${theme.id} ${name}`, t[name]!, bg);
+        }
       }
     });
+    expect(failures).toEqual([]);
+  });
 
-    it.each(['--color-warning', '--color-success', '--color-info'])(
-      '%s is readable on primary and secondary surfaces',
-      (name) => {
-        for (const bg of surfaces) expect(contrast(tokens[name]!, bg)).toBeGreaterThanOrEqual(AA);
-      },
-    );
-
-    it('keeps accent and error text readable after the weight mix', () => {
-      const onSurface = tokens['--color-text-primary']!;
-      const primaryText = mix(
-        tokens['--color-accent-special']!,
-        onSurface,
-        textWeight(tokens, '--md-primary-text-weight'),
-      );
-      const errorText = mix(
-        tokens['--color-danger']!,
-        onSurface,
-        textWeight(tokens, '--md-error-text-weight'),
-      );
-      for (const bg of surfaces) {
-        expect(contrast(primaryText, bg), 'primary text').toBeGreaterThanOrEqual(AA);
-        expect(contrast(errorText, bg), 'error text').toBeGreaterThanOrEqual(AA);
+  it('keeps primary text readable on elevated, hover and selected backgrounds', () => {
+    const failures = collectUnreadable((check) => {
+      for (const { theme, t, accent, onSurface, surfaces } of THEMES) {
+        const selected = t['--md-secondary-container'] ?? mix(accent, surfaces[1]!, 24);
+        const backgrounds = [
+          t['--color-bg-elevated']!,
+          t['--color-bg-hover']!,
+          t['--color-bg-active']!,
+          selected,
+        ];
+        for (const bg of backgrounds) check(theme.id, onSurface, bg);
       }
     });
+    expect(failures).toEqual([]);
+  });
 
-    it('keeps filled button labels readable', () => {
-      const onPrimary = tokens['--md-on-primary'] ?? bgPrimary;
-      const onError = tokens['--md-on-error'] ?? bgPrimary;
-      expect(contrast(onPrimary, tokens['--color-accent-special']!)).toBeGreaterThanOrEqual(AA);
-      expect(contrast(onError, tokens['--color-danger']!)).toBeGreaterThanOrEqual(AA);
-    });
-
-    it('keeps terminal colors readable on the terminal background', () => {
-      // 深色主题的 black 本来就贴近底色,用作背景块而不是文字
-      const skipped = theme.tone === '深色' ? ['black'] : [];
-      const roles = Object.keys(theme.terminal).filter(
-        (key) =>
-          !['background', 'cursor', 'cursorAccent', 'selectionBackground'].includes(key) &&
-          !skipped.includes(key),
-      ) as Array<keyof TerminalPalette>;
-      expect(roles).toHaveLength(theme.tone === '深色' ? 16 : 17);
-      for (const role of roles) {
-        expect(
-          contrast(theme.terminal[role], theme.terminal.background),
-          role,
-        ).toBeGreaterThanOrEqual(AA);
+  it('keeps accent and error text readable, including under the hover layer', () => {
+    const failures = collectUnreadable((check) => {
+      for (const { theme, surfaces, primaryText, errorText } of THEMES) {
+        for (const bg of surfaces) {
+          check(`${theme.id} primary`, primaryText, bg);
+          check(`${theme.id} error`, errorText, bg);
+          check(`${theme.id} primary hover`, primaryText, mix(primaryText, bg, HOVER_LAYER));
+          check(`${theme.id} error hover`, errorText, mix(errorText, bg, HOVER_LAYER));
+        }
       }
     });
+    expect(failures).toEqual([]);
+  });
 
-    it('keeps terminal text readable while selected', () => {
-      expect(
-        contrast(theme.terminal.foreground, theme.terminal.selectionBackground),
-      ).toBeGreaterThanOrEqual(AA);
+  it('keeps filled button labels readable, including under the hover layer', () => {
+    const failures = collectUnreadable((check) => {
+      for (const { theme, t, accent, surfaces } of THEMES) {
+        const onPrimary = t['--md-on-primary'] ?? surfaces[0]!;
+        const onError = t['--md-on-error'] ?? surfaces[0]!;
+        const danger = t['--color-danger']!;
+        check(`${theme.id} on-primary`, onPrimary, accent);
+        check(`${theme.id} on-primary hover`, onPrimary, mix(onPrimary, accent, HOVER_LAYER));
+        check(`${theme.id} on-error`, onError, danger);
+      }
     });
+    expect(failures).toEqual([]);
+  });
+
+  it('keeps terminal colors readable, also on a selection', () => {
+    const notText = ['background', 'cursor', 'cursorAccent', 'selectionBackground'];
+    const failures = collectUnreadable((check) => {
+      for (const { theme } of THEMES) {
+        const { terminal } = theme;
+        const roles = Object.keys(terminal) as Array<keyof TerminalPalette>;
+        for (const role of roles) {
+          // 深色主题的 black 本来就贴近底色,用作背景块而不是文字
+          if (notText.includes(role) || (role === 'black' && theme.tone === '深色')) continue;
+          check(`${theme.id} ${role}`, terminal[role], terminal.background);
+        }
+        check(`${theme.id} selection`, terminal.foreground, terminal.selectionBackground);
+      }
+    });
+    expect(failures).toEqual([]);
   });
 });

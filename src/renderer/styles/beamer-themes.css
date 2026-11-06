@@ -5,25 +5,26 @@
  * 共享文件。必须在 material.css 之后加载:--md-on-primary 这类覆写和 material.css
  * 的 :root 推导特异性相同,后加载者胜。
  *
- * 色值来源:TeX Live 的 beamercolortheme*.sty。注释里的 a!60!b 是 Beamer 原始的
- * 混色写法,色值是换算结果。没有注明来源的是按模板色相调出的状态色或过渡色,
- * Beamer 模板没有对应的颜色。
+ * 色值来源:TeX Live 的 beamercolortheme*.sty。注释里的 a!60!b 是 Beamer 的混色
+ * 写法,色值是换算结果。标 (推导) 的表达式不在源文件里,是按同样规则算出的过渡色。
+ * 没有注明来源的是按模板色相调出的状态色或过渡色,Beamer 模板没有对应的颜色。
  *
  * --md-*-text-weight 的算法同 material.css:取让文字在 bg-primary 和 bg-secondary
- * 上都达到 4.5:1 的最大权重。改配色后跑 beamer-themes.test.ts 核对。
+ * 上都达到 4.5:1 的最大权重,这里还要算上 hover 状态层。改配色后跑
+ * beamer-themes.test.ts 核对。
  *
  * 终端配色在 src/shared/beamer-themes.ts。
  *
  * 对应文档章节:软件定义书.md 5.1.9
  */
 
-/* Metropolis:最常用的 Overleaf Beamer 模板 */
+/* Metropolis */
 [data-theme='metropolis'] {
   --color-bg-primary: #fafafa;       /* black!2 (normal text bg) */
-  --color-bg-secondary: #e5e7e7;     /* block body */
+  --color-bg-secondary: #e5e7e7;     /* block body (block=fill) */
   --color-bg-elevated: #f0f1f1;
   --color-bg-hover: #dadddd;
-  --color-bg-active: #cfd3d4;        /* block title */
+  --color-bg-active: #cfd3d4;        /* block title (block=fill) */
   --color-bg-strong: #b4bbbc;
   --color-text-primary: #23373b;     /* mDarkTeal */
   --color-text-secondary: #3a4e52;
@@ -37,7 +38,7 @@
 
   /* 橙色配近白底文字只有 2.6:1:填充控件用黑字,作文字时与正文色混合 */
   --md-on-primary: #000;
-  --md-primary-text-weight: 50%;
+  --md-primary-text-weight: 40%;
 
   color-scheme: light;
 }
@@ -45,11 +46,11 @@
 /* Metropolis 的 background=dark */
 [data-theme='metropolis-dark'] {
   --color-bg-primary: #23373b;       /* mDarkTeal */
-  --color-bg-secondary: #1c2c2f;     /* mDarkTeal!80!black */
+  --color-bg-secondary: #1c2c2f;     /* mDarkTeal!80!black (推导) */
   --color-bg-elevated: #2e4246;
   --color-bg-hover: #2b4044;
-  --color-bg-active: #394b4e;        /* block body */
-  --color-bg-strong: #4e5e61;        /* block title */
+  --color-bg-active: #394b4e;        /* block body (block=fill) */
+  --color-bg-strong: #4e5e61;        /* block title (block=fill) */
   --color-text-primary: #fafafa;     /* black!2 */
   --color-text-secondary: #cfd6d7;
   --color-text-muted: #a3b0b2;
@@ -59,6 +60,10 @@
   --color-info: #8fc7d1;
   --color-accent-secondary: #c9a98a; /* mDarkBrown 调亮 */
   --color-accent-special: #eb811b;   /* mLightBrown */
+
+  /* 橙色只比 4.5:1 高一点,hover 状态层会把它压到线下 */
+  --md-on-primary: #000;
+  --md-primary-text-weight: 80%;
 }
 
 /* Madrid:whale + orchid,Berkeley / Warsaw / Berlin 共用这套蓝 */
@@ -67,8 +72,8 @@
   --color-bg-secondary: #e9e9f3;     /* orchid block body */
   --color-bg-elevated: #f4f4f9;
   --color-bg-hover: #dedeed;
-  --color-bg-active: #d6d6f0;        /* structure!20!white */
-  --color-bg-strong: #adade1;        /* structure!40!white */
+  --color-bg-active: #d6d6f0;        /* structure.fg!20!bg */
+  --color-bg-strong: #adade1;        /* structure.fg!40!bg */
   --color-text-primary: #1a1a5a;     /* structure!50!black (palette tertiary) */
   --color-text-secondary: #262686;   /* structure!75!black (palette secondary) */
   --color-text-muted: #4a4a7a;
@@ -100,15 +105,19 @@
   --color-accent-secondary: #7a0000; /* darkred!60!black (palette primary) */
   --color-accent-special: #a30000;   /* darkred!80!black (palette tertiary) */
 
+  /* darkred 只比 4.5:1 高一点,hover 状态层会把它压到线下 */
+  --md-error-text-weight: 90%;
+
   color-scheme: light;
 }
 
-/* AnnArbor:wolverine。模板的黄色标题栏不适合铺满终端,底色取蓝,黄色作强调 */
+/* AnnArbor:wolverine。模板的黄色标题栏不适合铺满终端,底色取蓝,黄色作强调。
+   模板的深蓝条 #0000a3 作底色太亮,这里用同一主题里更深的 darkblue!50!black */
 [data-theme='ann-arbor'] {
-  --color-bg-primary: #000052;       /* darkblue!40!black */
-  --color-bg-secondary: #00003d;     /* darkblue!30!black */
-  --color-bg-elevated: #00006b;
-  --color-bg-hover: #000066;
+  --color-bg-primary: #000066;       /* darkblue!50!black (palette sidebar tertiary) */
+  --color-bg-secondary: #000052;     /* darkblue!40!black (推导) */
+  --color-bg-elevated: #000070;
+  --color-bg-hover: #00006e;
   --color-bg-active: #00007a;        /* darkblue!60!black (palette primary fg) */
   --color-bg-strong: #0000a3;        /* darkblue!80!black (palette tertiary) */
   --color-text-primary: #ffffe6;
@@ -122,10 +131,10 @@
   --color-accent-special: #ffcc00;   /* yellow!60!orange (palette secondary bg) */
 
   /* 默认推导把黄色混进深蓝,选中行会发棕。这里直接用模板的蓝 */
-  --md-secondary-container: #00007a; /* darkblue!60!black */
+  --md-secondary-container: #0000a3; /* darkblue!80!black (palette tertiary) */
 }
 
-/* Spruce:MSUgreen */
+/* Spruce:配色主题,MSUgreen */
 [data-theme='spruce'] {
   --color-bg-primary: #ffffff;
   --color-bg-secondary: #e6f0eb;     /* white!90!MSUgreen (frametitle) */

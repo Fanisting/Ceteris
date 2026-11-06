@@ -1,0 +1,299 @@
+/*
+ * 侧栏文件树与底部开关按钮。独立成文件,加载顺序在 material.css 之后,
+ * 这样 .sidebar-footer 的布局改动不必去动 global.css / material.css。
+ */
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-footer .settings-entry {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.file-tree-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: transparent;
+  color: var(--md-on-surface-variant, #f0f);
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.file-tree-toggle:hover {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
+}
+
+.file-tree-toggle.active {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.file-tree-panel {
+  flex: 0 0 45%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--md-outline-variant, #f0f);
+}
+
+.file-tree-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.file-tree-header svg {
+  flex: 0 0 auto;
+}
+
+.file-tree-header-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.file-tree-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 4px 6px;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding-right: 6px;
+  border-radius: 6px;
+  color: var(--md-on-surface, #f0f);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.file-tree-row:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.file-tree-row.selected {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.file-tree-chevron {
+  flex: 0 0 16px;
+  display: inline-flex;
+  width: 16px;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.file-tree-icon {
+  flex: 0 0 auto;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-hint {
+  margin: 0;
+  padding: 4px 12px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+}
+
+.file-tree-hint.nested {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* 终端区域:PdfOverlay 以它为定位基准,盖在终端上 */
+.session-stage {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pdf-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-primary, #f0f);
+}
+
+.pdf-overlay-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px 0 12px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  font-size: 12px;
+}
+
+.pdf-overlay-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-overlay-close {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+  cursor: pointer;
+}
+
+.pdf-overlay-close:hover {
+  background-color: var(--color-danger, #f0f);
+  color: var(--color-bg-primary, #f0f);
+}
+
+.pdf-overlay-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  border: none;
+}
+
+.pdf-overlay-status {
+  margin: auto;
+  color: var(--color-text-muted, #f0f);
+}
+
+.remote-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(520px, calc(100vw - 32px));
+}
+
+.remote-picker:focus {
+  outline: none;
+}
+
+.remote-picker-server {
+  padding: 4px 6px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: 4px;
+}
+
+.remote-picker-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.remote-picker-path code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-picker-up {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  cursor: pointer;
+}
+
+.remote-picker-up:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.remote-picker-list {
+  height: 280px;
+  overflow: auto;
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: 4px;
+}
+
+.remote-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  text-align: left;
+  cursor: pointer;
+}
+
+.remote-picker-row span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-picker-row:hover {
+  background-color: var(--color-bg-secondary, #f0f);
+}
+
+.remote-picker-up-icon {
+  transform: rotate(180deg);
+}
+
+.file-tree-retry {
+  margin: 0 12px 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  cursor: pointer;
+}

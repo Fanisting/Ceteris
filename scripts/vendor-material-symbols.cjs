@@ -91,6 +91,12 @@ const SYMBOLS = [
   ['AutoAwesome', 'auto_awesome', 'default'],
   ['Atr', 'atr', 'default'],
   ['DeployedCode', 'deployed_code', 'default'],
+
+  // 文件树
+  ['AccountTree', 'account_tree', 'default'],
+  ['Folder', 'folder', 'default'],
+  ['FolderOpen', 'folder_open', 'default'],
+  ['Draft', 'draft', 'default'],
 ];
 
 /** 只接受 SVG path 指令用到的字符,挡住任何混进 d 属性的非路径内容。 */

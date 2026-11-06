@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.hoisted: 把 mock class 定义连同 vi.mock 提升到模块顶部,
 // 解决"Cannot access X before initialization"问题
-const { MockBrowserWindow } = vi.hoisted(() => {
+const { MockBrowserWindow, shellMock } = vi.hoisted(() => {
   type MockListener = (...args: unknown[]) => void;
 
   class MockBrowserWindow {
@@ -26,6 +26,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
 
     public readonly webContents: {
       id: number;
+      getURL: () => string;
       openDevTools: () => void;
       toggleDevTools: () => void;
       on: (event: string, listener: MockListener) => unknown;
@@ -46,6 +47,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
     constructor(public readonly options: Record<string, unknown>) {
       this.webContents = {
         id: MockBrowserWindow.nextWebContentsId++,
+        getURL: () => 'file:///app/out/renderer/index.html',
         openDevTools: vi.fn(),
         toggleDevTools: vi.fn(),
         on: vi.fn(),
@@ -113,11 +115,12 @@ const { MockBrowserWindow } = vi.hoisted(() => {
     }
   }
 
-  return { MockBrowserWindow };
+  return { MockBrowserWindow, shellMock: { openExternal: vi.fn() } };
 });
 
 vi.mock('electron', () => ({
   BrowserWindow: MockBrowserWindow,
+  shell: shellMock,
 }));
 
 // 必须在 vi.mock 注册之后再 import 被测模块
@@ -128,6 +131,7 @@ describe('WindowManager', () => {
 
   beforeEach(() => {
     MockBrowserWindow.reset();
+    shellMock.openExternal.mockClear();
     mgr = new WindowManager();
   });
 
@@ -177,6 +181,34 @@ describe('WindowManager', () => {
       // 创建 20 个,第 21 个应失败
       for (let i = 0; i < 20; i++) mgr.createWindow();
       expect(() => mgr.createWindow()).toThrow(/MaxWindowsReached/);
+    });
+  });
+
+  describe('will-navigate', () => {
+    function navigate(url: string): { prevented: boolean } {
+      mgr.createWindow();
+      const win = MockBrowserWindow.instances.at(-1)!;
+      const on = win.webContents.on as ReturnType<typeof vi.fn>;
+      const call = on.mock.calls.find(([event]) => event === 'will-navigate')!;
+      const handler = call[1] as (e: { preventDefault: () => void }, url: string) => void;
+      const result = { prevented: false };
+      handler({ preventDefault: () => (result.prevented = true) }, url);
+      return result;
+    }
+
+    it('阻止窗口离开应用页面,preload 导航后依然生效', () => {
+      expect(navigate('https://example.com/a').prevented).toBe(true);
+      expect(shellMock.openExternal).toHaveBeenCalledWith('https://example.com/a');
+    });
+
+    it('不允许的协议也阻止,而且不交给系统打开', () => {
+      expect(navigate('file:///C:/evil.html').prevented).toBe(true);
+      expect(navigate('javascript:alert(1)').prevented).toBe(true);
+      expect(shellMock.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('放行同一地址的刷新', () => {
+      expect(navigate('file:///app/out/renderer/index.html').prevented).toBe(false);
     });
   });
 

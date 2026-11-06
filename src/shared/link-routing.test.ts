@@ -83,6 +83,10 @@ describe('必须转发到 Host 的命令', () => {
     COMMAND_CHANNELS.SETTINGS_GET,
     COMMAND_CHANNELS.SETTINGS_UPDATE,
     COMMAND_CHANNELS.SSH_PROFILE_LIST,
+    // 文件树的路径是 Host 的路径。若在 Client 本地执行,可能改到本机同路径的文件。
+    COMMAND_CHANNELS.FS_LIST_DIR,
+    COMMAND_CHANNELS.FS_RENAME,
+    COMMAND_CHANNELS.FS_READ_PDF,
   ];
 
   it.each(mustForward)('%s 会被转发', (channel) => {

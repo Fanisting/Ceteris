@@ -631,16 +631,18 @@ export class SessionManager extends EventEmitter {
     }
     // SSH 方案 §阶段 3.5:ControlMaster 由 settings.advanced.enableControlMaster
     // 控制。socket 放在 userData/ssh-control/ 下,文件名包含 %r %h %p 占位符,
-    // OpenSSH 自动替换为 user / host / port。Windows OpenSSH 走 named pipe
-    // (\\.\pipe\openssh-ssh-*) 不读 ControlPath,我们传它它会忽略 — 还是开
-    // 收益:Linux/macOS / Cygwin OpenSSH 都吃这个路径。
+    // OpenSSH 自动替换为 user / host / port。Windows 版 OpenSSH 不支持
+    // ControlMaster,adapter 返回 null,这时不传这组参数。
     if (isSsh) {
       const settings = this.settingsManager.get();
       if (settings.advanced.enableControlMaster) {
-        sshLaunchOptions.enableControlMaster = true;
-        sshLaunchOptions.controlPath = this.platformAdapter.getSshControlPath
+        const controlPath = this.platformAdapter.getSshControlPath
           ? this.platformAdapter.getSshControlPath()
           : '~/.ssh/cm-%r@%h:%p';
+        if (controlPath) {
+          sshLaunchOptions.enableControlMaster = true;
+          sshLaunchOptions.controlPath = controlPath;
+        }
       }
     }
     const launchParams = isSsh
@@ -1923,8 +1925,7 @@ export function buildSshLaunchParams(
   // ControlMaster:同 host 连接复用。auto = 第一次正常连,后续 attach 到
   // 已有 master(通过 ControlPath socket)。ControlPersist=10m 让 master
   // 在最后一个 client 断开后保留 10 分钟,期间新 session 0 握手。
-  // Windows OpenSSH 8.x+ 支持但不太稳,失败时 OpenSSH 自动回退到新连接,
-  // Marina 不需要兜底逻辑。
+  // Windows 版 OpenSSH 不支持,调用方不会在 Windows 上开这个选项。
   if (options.enableControlMaster && options.controlPath) {
     args.push(
       '-o', 'ControlMaster=auto',

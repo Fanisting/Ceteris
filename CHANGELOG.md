@@ -16,11 +16,26 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 - **新应用图标。** 按 Material Design 重新设计:平涂海青底上居中的 `>` 提示符,底部一层浅青水面。托盘、标题栏、exe 和右键菜单一起更新。
 
+- **侧栏文件树。** 点设置行最右侧的图标,在会话列表下方显示当前会话所在的文件夹。右键或慢速点击两次文件名可以重命名,同名时不会覆盖。
+
+- **SSH 文件树。** SSH 会话现在也能使用侧栏文件树,通过 SFTP 只读浏览,不新增依赖。登录方式与终端相同:ssh_config、agent、ProxyJump、known_hosts。后台连接无法输入密码,需要用密钥、agent,或者安装 sshpass。
+
+- **SFTP 文件夹选择。** 在远程分类添加文件夹时,直接浏览服务器上的目录,不用手打路径。连不上时仍可手动输入。
+
+- **PDF 查看。** 在文件树点击 PDF,就在终端区域显示,本地和 SSH 都支持,关闭后回到原来的终端。PDF 里的链接用系统浏览器打开。
+
+- **右键 + 号快捷启动。** 在标签栏右键 + 号,周围弹出一圈小圆,点一下就在当前路径启动。默认是 Claude Code 和 Codex,可在 设置 → 行为 里改成新建页上的任意模板或 shell,最多 8 项。
+
 ### 变更
 
-- **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 38 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
+- **UI 图标换为 Material Symbols (Rounded)。** 只把用到的 42 个图标 vendored 进 `material-symbols.tsx`,不新增运行时依赖,并移除 `lucide-react`。新增图标时改 `scripts/vendor-material-symbols.cjs` 后运行 `npm run vendor-symbols`。
+- **SSH 入口始终显示。** 侧栏的本地/远程切换和设置页的远程分类不再隐藏,移除了“启用远程入口”开关。
+- **新建页只显示路径。** 去掉了“在 X 新建终端”的句子,路径框加大并描边。
+- **远程窗口的主题与本机一致。** 主题跟随你面前的这台机器:本地窗口和远程窗口颜色相同,在任一窗口切换都会一起变,切换不改动 Host 的主题。字体等其余设置仍来自 Host。
 
 ### 修复
+
+- **Windows 上 SSH 终端连不上。** ControlMaster 默认开启,而 Windows 版 OpenSSH 不支持,所有 SSH 会话都以 `getsockname failed: Not a socket` 退出。现在 Windows 上不再传这组参数。
 
 - 6 套旧主题的填充按钮文字对比度提到 4.5:1 以上(Light Pink、Tokyo Night Day、Fairyfloss、Rose Pine Dawn、Cutie、Ubuntu),强调色作文字时也按主题调深。Tokyo Night Day 的强调色文字约 4.15:1,受该主题正文色本身限制。
 

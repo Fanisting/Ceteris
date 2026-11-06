@@ -12,7 +12,7 @@
  *
  * @不要在这里做的事:
  * - 不校验远程路径是否存在(需要连接远端,不是纯规范化职责)
- * - 不展开 "~"(展开规则取决于远端 shell / 用户)
+ * - 不决定 home 是什么(由调用方传入,见 expandHome)
  * - 不处理本地路径(本地路径由 PathManager.normalizePath 负责)
  */
 
@@ -31,4 +31,20 @@ export function normalizeRemotePath(input: string): string {
   value = value.replace(/\/+/g, '/');
   if (value.length > 1 && value.endsWith('/')) value = value.slice(0, -1);
   return value;
+}
+
+export function joinRemotePath(dir: string, name: string): string {
+  return dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`;
+}
+
+/** 把开头的 ~ 换成 home。"~user" 这种写法不是 Marina 产生的,原样返回。 */
+export function expandHome(path: string, home: string): string {
+  if (path === '~') return home;
+  return path.startsWith('~/') ? joinRemotePath(home, path.slice(2)) : path;
+}
+
+export function remoteDirname(path: string): string {
+  const cut = path.lastIndexOf('/');
+  if (cut < 0) return '.';
+  return cut === 0 ? '/' : path.slice(0, cut);
 }

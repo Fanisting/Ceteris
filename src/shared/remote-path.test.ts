@@ -10,7 +10,7 @@
  * @对应文档章节: 软件定义书.md 第 5.1.1、11.1 节
  */
 import { describe, expect, it } from 'vitest';
-import { normalizeRemotePath } from './remote-path';
+import { expandHome, joinRemotePath, normalizeRemotePath, remoteDirname } from './remote-path';
 
 describe('normalizeRemotePath', () => {
   it('空白输入回退到远程 home 简写', () => {
@@ -25,5 +25,25 @@ describe('normalizeRemotePath', () => {
   it('保留根路径与 home 简写', () => {
     expect(normalizeRemotePath('/')).toBe('/');
     expect(normalizeRemotePath('~/')).toBe('~');
+  });
+});
+
+describe('远端路径工具', () => {
+  it('expandHome 只展开开头的 ~', () => {
+    expect(expandHome('~', '/home/x')).toBe('/home/x');
+    expect(expandHome('~/a', '/home/x')).toBe('/home/x/a');
+    expect(expandHome('/a/~', '/home/x')).toBe('/a/~');
+    expect(expandHome('~other', '/home/x')).toBe('~other');
+  });
+
+  it('joinRemotePath 不产生双斜杠', () => {
+    expect(joinRemotePath('/', 'a')).toBe('/a');
+    expect(joinRemotePath('/x', 'a')).toBe('/x/a');
+  });
+
+  it('remoteDirname', () => {
+    expect(remoteDirname('/a/b')).toBe('/a');
+    expect(remoteDirname('/b')).toBe('/');
+    expect(remoteDirname('b')).toBe('.');
   });
 });

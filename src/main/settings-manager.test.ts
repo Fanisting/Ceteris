@@ -14,6 +14,7 @@ import {
   deepMerge,
   diffKeys,
   validateSettings,
+  stripUnknownLegacyFields,
 } from './settings-manager';
 import type { Settings } from '@shared/types';
 import type { JsonStore } from './persistence';
@@ -124,6 +125,19 @@ describe('validateSettings', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     (bad.appearance as { theme: string }).theme = 'nonexistent';
     expect(() => validateSettings(bad)).toThrowError(/InvalidSettings/);
+  });
+
+  it('quickLaunch 默认是 Claude Code 和 Codex', () => {
+    expect(DEFAULT_SETTINGS.behavior.quickLaunch).toEqual([
+      { kind: 'template', id: 'claude-code' },
+      { kind: 'template', id: 'codex' },
+    ]);
+  });
+
+  it('非法 quickLaunch throw', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    (bad.behavior as { quickLaunch: unknown }).quickLaunch = [{ kind: 'command', id: 'x' }];
+    expect(() => validateSettings(bad)).toThrowError(/behavior\.quickLaunch/);
   });
 
   it('字号越界 throw', () => {
@@ -321,5 +335,13 @@ describe('SettingsError', () => {
     const err = new SettingsError('InvalidSettings', 'foo', { field: 'theme' });
     expect(err.code).toBe('InvalidSettings');
     expect(err.details).toEqual({ field: 'theme' });
+  });
+});
+
+describe('stripUnknownLegacyFields: advanced.enableRemote', () => {
+  it('丢弃老文件里的开关,保留其它高级设置', () => {
+    const raw = { advanced: { enableRemote: false, logLevel: 'DEBUG' } };
+    expect(stripUnknownLegacyFields(raw)).toEqual({ advanced: { logLevel: 'DEBUG' } });
+    expect(raw.advanced.enableRemote).toBe(false);
   });
 });

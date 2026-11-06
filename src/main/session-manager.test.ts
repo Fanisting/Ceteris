@@ -196,6 +196,7 @@ function makeStubSettingsManager(
       confirmOnQuit: true,
       selectOnCopy: true,
       terminalRightClick: 'menu',
+      quickLaunch: [],
       bracketedPaste: true,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
@@ -204,7 +205,6 @@ function makeStubSettingsManager(
       activeIdleThresholdSeconds: 2,
       includeSshConfig: false,
       enableControlMaster: false,
-      enableRemote: false,
       terminalRenderer: 'auto',
       ...overrides,
     },
@@ -937,6 +937,38 @@ describe('SessionManager — createSession', () => {
     expect(args).toContain('ControlMaster=auto');
     expect(args).toContain('ControlPath=~/.ssh/cm-%r@%h:%p');
     expect(args).toContain('ControlPersist=10m');
+  });
+
+  it('平台不支持时即使设置开着也不传 ControlMaster,否则 Windows 的 ssh.exe 直接退出', async () => {
+    const adapter: PlatformAdapter = {
+      ...makeFakeAdapter(),
+      resolveExecutable(commandName: string) {
+        return commandName === 'ssh' ? 'C:\\Windows\\System32\\OpenSSH\\ssh.exe' : null;
+      },
+      getSshControlPath: () => null,
+    };
+    const { mgr } = makeManager({
+      adapter,
+      settings: makeStubSettingsManager({ enableControlMaster: true }),
+    });
+    const pathId = makePathId({ kind: 'ssh', sshProfileId: 'p1', path: '~' });
+    await mgr.createSession({
+      pathId,
+      templateId: 'shell',
+      ownerWindowId: 'w-1',
+      cols: 80,
+      rows: 24,
+      sshProfile: {
+        id: 'p1',
+        name: 'prod',
+        host: 'example.com',
+        port: 22,
+        username: 'alice',
+        authType: 'agent',
+      },
+    });
+    const args = FakePty.instances[0]!.args as string[];
+    expect(args.some((a) => a.startsWith('Control'))).toBe(false);
   });
 
   it('ControlMaster 关闭时 args 不出现 ControlMaster=', async () => {

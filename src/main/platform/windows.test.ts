@@ -388,3 +388,9 @@ describe('WindowsAdapter — normalizeSpawnEnv (BETA-ENV-1 兜底层)', () => {
 
 // 让 vi 引用不报未使用警告
 void vi;
+
+describe('WindowsAdapter.getSshControlPath', () => {
+  it('返回 null:Windows 版 ssh.exe 收到 ControlMaster=auto 会直接退出', () => {
+    expect(new WindowsAdapter().getSshControlPath()).toBeNull();
+  });
+});

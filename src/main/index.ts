@@ -29,9 +29,13 @@ import { KnownHostsManager, type KnownHostsHistoryFile } from './known-hosts-man
 import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
-import { broadcastLinkStatus, installIpcLayer } from './ipc';
+import { broadcastLinkStatus, decryptStoredPassword, installIpcLayer } from './ipc';
 import { LinkManager } from './link/link-manager';
 import { getPlatformAdapter } from './platform';
+import { SftpPool } from './sftp-client';
+
+/** Chromium 内置 PDF 查看器扩展的固定 origin,id 由 Chromium 写死。 */
+const PDF_VIEWER_ORIGIN = 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/';
 import { AIClient } from './ai-client';
 import { WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
@@ -193,6 +197,15 @@ function bootstrap(): void {
   const pathManager = new PathManager(bookmarksStore, recentStore);
   const sshProfileManager = new SshProfileManager(sshProfilesStore);
   const knownHostsManager = new KnownHostsManager(knownHostsStore);
+  const sftpPool = new SftpPool({
+    getProfile: (profileId) => {
+      const profile = sshProfileManager.getInternal(profileId);
+      if (!profile) return null;
+      const { passwordEncrypted, ...rest } = profile;
+      return { ...rest, ...(passwordEncrypted ? decryptStoredPassword(passwordEncrypted) : {}) };
+    },
+    resolveExecutable: (name, env) => getPlatformAdapter().resolveExecutable(name, env),
+  });
   const templatesManager = new TemplatesManager(templatesStore);
   const sessionManager = new SessionManager(
     windowManager,
@@ -344,16 +357,21 @@ function bootstrap(): void {
       // 生产 (file://) 不需要。
       const cspProd =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-        "font-src 'self' data:; img-src 'self' data:; connect-src 'self'";
+        "font-src 'self' data:; img-src 'self' data:; connect-src 'self'; frame-src blob:";
       const cspDev =
         "default-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; " +
         "script-src 'self' 'unsafe-eval' 'unsafe-inline' http://127.0.0.1:*; " +
         "style-src 'self' 'unsafe-inline' http://127.0.0.1:*; " +
         "font-src 'self' data: http://127.0.0.1:*; " +
         "img-src 'self' data: http://127.0.0.1:*; " +
-        "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*";
+        "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; frame-src blob:";
       electronSession.defaultSession.webRequest.onHeadersReceived(
         (details, callback) => {
+          // Chromium PDF 查看器是个内置扩展页,套上应用的 CSP 后整页空白。
+          if (details.url.startsWith(PDF_VIEWER_ORIGIN)) {
+            callback(details.responseHeaders ? { responseHeaders: details.responseHeaders } : {});
+            return;
+          }
           callback({
             responseHeaders: {
               ...details.responseHeaders,
@@ -423,6 +441,7 @@ function bootstrap(): void {
         templatesManager,
         aiClient,
         linkManager,
+        sftpPool,
       });
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
@@ -660,6 +679,7 @@ function bootstrap(): void {
     if (!isQuitting) return; // 防御性:不该走到这,因为 before-quit 已 set
     logger.info('main', 'will-quit: shutting down session manager + flushing stores');
     sessionManager.shutdown();
+    sftpPool.shutdown();
     // 先关 Link:停止监听并断开所有连接,让对端立刻知道我们要走了,
     // 而不是等它们的心跳超时(最长 50 秒)才发现。
     if (linkManagerRef) {

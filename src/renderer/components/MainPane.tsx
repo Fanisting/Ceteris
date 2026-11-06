@@ -34,6 +34,7 @@ import {
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
+import type { Point } from '@shared/quick-launch';
 import type { SessionInfo, Template } from '@shared/types';
 import {
   findMyOwnedSessionId,
@@ -47,22 +48,25 @@ import {
 } from '../store';
 import { PaneLayoutBar } from './PaneLayoutBar';
 import { PATH_DRAG_TYPE } from './path-drag';
+import { PdfOverlay } from './PdfOverlay';
 import { TerminalView } from './TerminalView';
+import { prunePdfViews } from '../pdf-view-store';
 import { focusTerminalDom } from '../focus';
-import { Icon, type IconName } from './icons';
+import { Icon } from './icons';
 import { TemplateIcon } from './TemplateIcon';
 import { useContextMenuApi } from './ContextMenu';
 import { useToast } from './Toast';
+import {
+  filterShellsForWslPath,
+  getWslDistroName,
+  shellIcon,
+  type DetectedShell,
+} from './launch-options';
+import { QuickLaunchOverlay } from './QuickLaunchOverlay';
 import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
 import { useTranslation } from './LanguageProvider';
-
-interface DetectedShell {
-  id: string;
-  displayName: string;
-  executablePath: string;
-}
 
 // ── 终端尺寸估算用常量(P2-25) ──
 // 这是"PTY spawn 前的兜底估算":xterm 实际 mount 后由 fitAddon 写回真实
@@ -82,47 +86,14 @@ const MIN_ROWS = 5;
 
 // builtinTemplateIcon 已抽到 TemplateIcon 组件复用(P2-14)。
 
-/**
- * shell id → lucide 图标。WindowsAdapter.getShellCandidates 用的 id
- * (pwsh / powershell / cmd / git-bash) 都有对应映射;其他平台未来扩展时
- * 落到 templateShell 兜底。
- */
-function shellIcon(id: string): IconName {
-  if (id === 'wsl' || id.startsWith('wsl:')) return 'shell';
-  switch (id) {
-    case 'pwsh':
-      return 'shellPwsh';
-    case 'powershell':
-      return 'shellPowershell';
-    case 'cmd':
-      return 'shellCmd';
-    case 'git-bash':
-      return 'shellGitBash';
-    default:
-      return 'templateShell';
-  }
-}
-
-function getWslDistroName(path: string): string | null {
-  const match = path.match(/^\\\\(?:wsl\$|wsl\.localhost)\\([^\\]+)(?:\\|$)/i);
-  return match?.[1] ?? null;
-}
-
-function filterShellsForWslPath(
-  shells: DetectedShell[],
-  distroName: string | null,
-): DetectedShell[] {
-  if (!distroName) return shells;
-  const targetId = `wsl:${distroName}`.toLowerCase();
-  const distroShells = shells.filter((s) => s.id.toLowerCase() === targetId);
-  if (distroShells.length > 0) return distroShells;
-  return shells.filter((s) => s.id.toLowerCase() === 'wsl');
-}
-
 export function MainPane(): JSX.Element {
   const state = useAppState();
   const dispatch = useAppDispatch();
   const sessions = getSessionsInSelectedPath(state);
+
+  useEffect(() => {
+    prunePdfViews(new Set(state.sessions.keys()));
+  }, [state.sessions]);
   const displayable = getDisplayableSession(state);
   const layout = getEffectivePaneLayout(state);
   const slots = getPaneSlots(state);
@@ -298,7 +269,12 @@ export function MainPane(): JSX.Element {
               <EmptyPathState pathId={state.selectedPathId as string} />
             ) : s.ownerWindowId === myWindowId ? (
               <>
-                <TerminalView session={s} />
+                {/* The PDF covers its own pane only. Its header sits above .pane-close, so
+                    while a PDF is open the one visible x closes the PDF, not the session. */}
+                <div className="session-stage">
+                  <TerminalView session={s} />
+                  <PdfOverlay sessionId={s.id} />
+                </div>
                 {layout !== 'single' && <PaneCloseButton sessionId={s.id} />}
               </>
             ) : null}
@@ -435,8 +411,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   return (
     <div className="empty-path-state">
       <p className="empty-hint">
-        {tx('在', 'New terminal in')} <code>{displayPath}</code>
-        {tx(' 新建终端', '')}
+        <code>{displayPath}</code>
       </p>
 
       {isSshPath && (
@@ -552,6 +527,15 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   const state = useAppState();
   const dispatch = useAppDispatch();
 
+  const [quickLaunchAnchor, setQuickLaunchAnchor] = useState<Point | null>(null);
+
+  const handleBlankTabContextMenu = (e: MouseEvent<HTMLButtonElement>): void => {
+    e.preventDefault();
+    const icon = e.currentTarget.querySelector('.tab-blank-icon') ?? e.currentTarget;
+    const rect = icon.getBoundingClientRect();
+    setQuickLaunchAnchor({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+  };
+
   const handleClickBlankTab = (): void => {
     // 已经显示 EmptyPathState → 取消选中真正的 session,确保新建页保持当前态。
     // 多数情况下 selectedSessionId 已经是非 mine 的 session id,这里只是让
@@ -586,12 +570,20 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           type="button"
           className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
           onClick={handleClickBlankTab}
+          onContextMenu={handleBlankTabContextMenu}
           title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
           aria-label={tx('新建终端', 'New terminal')}
         >
           <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={18} /></span>
         </button>
       </div>
+      {quickLaunchAnchor && state.selectedPathId && (
+        <QuickLaunchOverlay
+          pathId={state.selectedPathId}
+          anchor={quickLaunchAnchor}
+          onClose={() => setQuickLaunchAnchor(null)}
+        />
+      )}
     </div>
   );
 }

@@ -20,6 +20,11 @@
  */
 import { EventEmitter } from 'node:events';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
+import {
+  DEFAULT_QUICK_LAUNCH_ITEMS,
+  QUICK_LAUNCH_MAX_ITEMS,
+  isValidQuickLaunchItems,
+} from '@shared/quick-launch';
 import type { Settings, ThemeId } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
@@ -60,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
     confirmOnQuit: true,
     selectOnCopy: true,
     terminalRightClick: 'menu',
+    quickLaunch: [...DEFAULT_QUICK_LAUNCH_ITEMS],
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Marina 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
@@ -75,13 +81,9 @@ export const DEFAULT_SETTINGS: Settings = {
     // 暴露了他们的远端清单。
     includeSshConfig: false,
     // SSH 方案 v2.1 §阶段 3.5:默认开 ControlMaster,同 host 多 session
-    // 性能从 ~3s 握手 / 个降到 <100ms / 个。OpenSSH 8.x+ Windows 支持,
-    // 老版本失败时 OpenSSH 自身会回退到新连接,Marina 不需要兜底逻辑。
+    // 性能从 ~3s 握手 / 个降到 <100ms / 个。只在 Linux / macOS 生效,Windows
+    // 版 OpenSSH 不支持,SessionManager 会跳过。
     enableControlMaster: true,
-    // SSH 方案 v2.1 §II.6:本地用户视野守护。默认 false,只有当用户加了
-    // SshProfile 或主动勾此项时,远程相关 UI 才出现。本地用户的 sidebar /
-    // 设置页视野与 beta.9 一致。
-    enableRemote: false,
     // 终端渲染器默认 'auto':Windows/macOS WebGL、Linux DOM(PER-LINUX,
     // BETA-003 修复)。'webgl' / 'dom' 是显式覆盖,通常给调研某些 WebGL
     // 兼容性 bug 用(例如某些 TUI 的光标渲染在 WebGL 下异常)。
@@ -295,6 +297,14 @@ export function stripUnknownLegacyFields<T>(raw: T): T {
     return next;
   };
 
+  // SSH 入口改为始终显示后,老文件里的 advanced.enableRemote 不再有意义。
+  const advanced = obj['advanced'];
+  if (advanced && typeof advanced === 'object' && 'enableRemote' in advanced) {
+    const cleaned = { ...(advanced as Record<string, unknown>) };
+    delete cleaned['enableRemote'];
+    ensureClone()['advanced'] = cleaned;
+  }
+
   if (
     obj['systemIntegration'] &&
     typeof obj['systemIntegration'] === 'object' &&
@@ -505,6 +515,14 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `behavior.startupBehavior="${s.behavior.startupBehavior}" 必须是 open-window 或 tray-only`,
+    );
+  }
+  if (!isValidQuickLaunchItems(s.behavior.quickLaunch)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.quickLaunch 无效:必须是最多 ${QUICK_LAUNCH_MAX_ITEMS} 项的不重复列表,` +
+        `每项为 { kind: 'template' | 'shell', id }。`,
+      { field: 'behavior.quickLaunch', got: s.behavior.quickLaunch },
     );
   }
   if (!['default', 'last-used'].includes(s.shell.newTerminalShellPolicy)) {

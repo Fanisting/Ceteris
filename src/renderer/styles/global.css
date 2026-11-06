@@ -1019,8 +1019,7 @@ html[data-maximized='true'] .app-root.with-shell {
   transition: background-color 100ms ease;
 }
 
-/* SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。本地用户(无 profile
-   且未启用远程)看不到这段 — 仅在 hasSshProfiles || enableRemote 时渲染。 */
+/* SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。 */
 .sidebar-segmented {
   display: flex;
   gap: 2px;
@@ -1479,12 +1478,19 @@ html[data-maximized='true'] .app-root.with-shell {
   text-align: center;
 }
 
-.empty-hint code {
+/* 选择器多一层,否则 material.css 的同名规则靠加载顺序盖掉这里的颜色和圆角 */
+.empty-path-state .empty-hint code {
+  display: inline-block;
+  max-width: 100%;
   font-family: var(--terminal-font-family, monospace);
+  font-size: 15px;
+  font-weight: 500;
   background-color: var(--color-bg-elevated, #f0f);
-  padding: 2px 6px;
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--color-warning, #f0f) 45%, transparent);
+  padding: 6px 14px;
+  border-radius: 8px;
   color: var(--color-warning, #f0f);
+  overflow-wrap: anywhere;
 }
 
 .empty-section {

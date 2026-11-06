@@ -140,6 +140,12 @@ export const COMMAND_CHANNELS = {
   /** BETA-039:返回 app.getPath('userData'),让设置页显示真实数据目录而非硬编码 */
   SYSTEM_GET_DATA_DIR: 'cmd:system:get-data-dir',
 
+  // 文件树域 (类型见 @shared/file-tree)。Link 远程窗口会转发到 Host:路径是 Host 的路径
+  FS_LIST_DIR: 'cmd:fs:list-dir',
+  FS_RENAME: 'cmd:fs:rename',
+  /** 分块读取 PDF。本地文件或 SFTP 文件,Link 下数据从 Host 分块传回 */
+  FS_READ_PDF: 'cmd:fs:read-pdf',
+
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */
   EXPLORER_INTEGRATION_GET_STATUS: 'cmd:explorer-integration:get-status',

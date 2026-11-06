@@ -6,23 +6,24 @@
 .sidebar-footer {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
 }
 
-.sidebar-footer .settings-entry {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-}
-
+/* Both footer buttons are icons of one size, and .pane-layout-btn uses the same icon size. */
+.sidebar-footer .settings-entry,
 .file-tree-toggle {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
   padding: 0;
+}
+
+.file-tree-toggle {
   border: none;
   border-radius: var(--md-shape-full, 999px);
   background: transparent;

@@ -1523,7 +1523,7 @@ select.settings-input option {
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  height: 30px;
+  height: 34px;
   padding: 0 8px;
 }
 
@@ -1531,8 +1531,8 @@ select.settings-input option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: none;
   border-radius: var(--md-shape-sm, 8px);

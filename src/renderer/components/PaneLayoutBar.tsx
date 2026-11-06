@@ -46,7 +46,7 @@ export function PaneLayoutBar(): JSX.Element {
               focusTerminalDom();
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.2" />
               {o.lines && <path d={o.lines} stroke="currentColor" strokeWidth="1.2" />}
             </svg>

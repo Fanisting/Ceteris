@@ -132,7 +132,7 @@ export function Sidebar(): JSX.Element {
   const dispatch = useAppDispatch();
   const toast = useToast();
   const modal = useModal();
-  const { t } = useTranslation();
+  const { t, tx } = useTranslation();
   const [dragOver, setDragOver] = useState(false);
   const [remotePickerOpen, setRemotePickerOpen] = useState(false);
   const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
@@ -530,10 +530,10 @@ export function Sidebar(): JSX.Element {
           type="button"
           className="settings-entry"
           onClick={() => dispatch({ type: 'view/enter-settings' })}
-          title="设置"
+          title={tx('设置', 'Settings')}
+          aria-label={tx('设置', 'Settings')}
         >
-          <Icon name="settings" size={14} />
-          <span>设置</span>
+          <Icon name="settings" size={20} />
         </button>
         <button
           type="button"
@@ -544,7 +544,7 @@ export function Sidebar(): JSX.Element {
           aria-pressed={fileTreeOpen}
           data-testid="file-tree-toggle"
         >
-          <AccountTree size={18} />
+          <AccountTree size={20} />
         </button>
       </div>
       {/*

@@ -33,6 +33,7 @@ import {
 } from './explorer-integration';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import { homedir, hostname } from 'node:os';
 import { join as joinPath } from 'node:path';
 import {
   COMMAND_CHANNELS,
@@ -41,6 +42,12 @@ import {
   type AddBookmarkPayload,
   type AddBookmarkResponse,
   type AddRemoteBookmarkPayload,
+  type DataAgentStats,
+  type DataBundleSummary,
+  type DataExportPayload,
+  type DataExportResponse,
+  type DataImportPayload,
+  type DataImportResponse,
   type SetPaneSessionsPayload,
   type SuggestNextPromptPayload,
   type SuggestNextPromptResponse,
@@ -152,6 +159,16 @@ import { logger } from './logger';
 import { setQuitting } from './index';
 import { generateLinkToken } from './link/link-crypto';
 import { listBindCandidates, type LinkManager } from './link/link-manager';
+import {
+  importAgents,
+  measureAgentChats,
+  readArchive,
+  readManifest,
+  readTabs,
+  withLocalSecrets,
+  writeBundle,
+} from './data-bundle';
+import { detectAgent } from '@shared/next-prompt';
 import { suggestNextPrompt } from './next-prompt-client';
 import type { ViewSwitcher } from './view-switcher';
 
@@ -1399,6 +1416,89 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       }
       await fs.writeFile(result.filePath, JSON.stringify(archive, null, 2), 'utf-8');
       return { filePath: result.filePath };
+    },
+  );
+
+  const parentWindow = (e: IpcMainInvokeEvent): BrowserWindow =>
+    (BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow())!;
+
+  handleCommand(
+    COMMAND_CHANNELS.DATA_MEASURE_AGENTS,
+    async (): Promise<{ claude: DataAgentStats; codex: DataAgentStats }> => {
+      const home = homedir();
+      return {
+        claude: await measureAgentChats(home, 'claude'),
+        codex: await measureAgentChats(home, 'codex'),
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.DATA_EXPORT_BUNDLE,
+    async (e, envelope: CommandEnvelope<DataExportPayload>): Promise<DataExportResponse> => {
+      const picked = await dialog.showOpenDialog(parentWindow(e), {
+        title: '选择导出位置',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      const parent = picked.filePaths[0];
+      if (picked.canceled || !parent) return { dir: null, tabs: 0 };
+
+      const tabs = sessionManager
+        .list()
+        .filter((s) => s.state !== 'exited' && pathRefFromId(s.pathId).kind !== 'ssh')
+        .map((s) => ({
+          pathId: s.pathId,
+          templateId: s.templateId,
+          displayName: s.displayName,
+          currentCwd: s.currentCwd ?? null,
+          agent: detectAgent(s.templateId, sessionManager.getScreenTail(s.id, 40)),
+        }));
+      const dir = joinPath(parent, `Marina-Export-${formatDateForFilename(new Date())}`);
+      const { claude, codex } = envelope.payload;
+      const manifest = await writeBundle({
+        dir,
+        home: homedir(),
+        hostname: hostname(),
+        now: Date.now(),
+        archive: await buildArchive(deps),
+        tabs,
+        agents: [...(claude ? (['claude'] as const) : []), ...(codex ? (['codex'] as const) : [])],
+      });
+      return { dir, tabs: tabs.length, ...manifest.agents };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.DATA_PICK_BUNDLE,
+    async (e): Promise<DataBundleSummary | null> => {
+      const picked = await dialog.showOpenDialog(parentWindow(e), {
+        title: '选择 Marina 导出文件夹',
+        properties: ['openDirectory'],
+      });
+      const dir = picked.filePaths[0];
+      if (picked.canceled || !dir) return null;
+      const manifest = await readManifest(dir);
+      return {
+        dir,
+        hostname: manifest.hostname,
+        createdAt: manifest.createdAt,
+        tabs: manifest.tabs,
+        ...manifest.agents,
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.DATA_IMPORT_BUNDLE,
+    async (_e, envelope: CommandEnvelope<DataImportPayload>): Promise<DataImportResponse> => {
+      const { dir } = envelope.payload;
+      const home = homedir();
+      const manifest = await readManifest(dir);
+      const archive = withLocalSecrets(await readArchive(dir), deps.settingsManager.get());
+      await applyArchiveInMemory(deps, archive);
+      const agents = await importAgents(dir, home, manifest);
+      const { tabs, missing } = await readTabs(dir, home, manifest.home);
+      return { ...agents, tabs, missingTabs: missing };
     },
   );
 

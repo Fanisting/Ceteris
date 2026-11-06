@@ -119,6 +119,10 @@ export const COMMAND_CHANNELS = {
   SETTINGS_GET_AUTO_START: 'cmd:settings:get-auto-start',
   SETTINGS_EXPORT: 'cmd:settings:export',
   SETTINGS_IMPORT: 'cmd:settings:import',
+  DATA_MEASURE_AGENTS: 'cmd:data:measure-agents',
+  DATA_EXPORT_BUNDLE: 'cmd:data:export-bundle',
+  DATA_PICK_BUNDLE: 'cmd:data:pick-bundle',
+  DATA_IMPORT_BUNDLE: 'cmd:data:import-bundle',
 
   // Templates 域 (CP-4 chunk 4 起 CRUD 暴露给 renderer)
   TEMPLATE_ADD: 'cmd:template:add',
@@ -1071,6 +1075,47 @@ export interface FocusSessionOwnerResponse {
    * 调用方应当选中该 session。
    */
   transferred: boolean;
+}
+
+export interface DataAgentStats {
+  files: number;
+  bytes: number;
+  /** Files that could not be read, usually held open by a running agent. */
+  failed: number;
+}
+
+export interface DataExportPayload {
+  claude: boolean;
+  codex: boolean;
+}
+
+export interface DataExportResponse {
+  /** Null when the user cancelled the folder picker. */
+  dir: string | null;
+  tabs: number;
+  claude?: DataAgentStats;
+  codex?: DataAgentStats;
+}
+
+export interface DataBundleSummary {
+  dir: string;
+  hostname: string;
+  createdAt: number;
+  tabs: number;
+  claude?: DataAgentStats;
+  codex?: DataAgentStats;
+}
+
+export interface DataImportPayload {
+  dir: string;
+}
+
+export interface DataImportResponse {
+  claude?: DataAgentStats;
+  codex?: DataAgentStats;
+  /** Saved tabs whose folder does not exist on this PC. */
+  missingTabs: number;
+  tabs: Array<{ pathId: string; templateId: string; displayName: string; input: string }>;
 }
 
 export interface SuggestNextPromptPayload {

@@ -399,6 +399,11 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:link:list-bind-candidates',
   'cmd:link:get-window-state',
   'cmd:link:ack-unconfirmed',
+  // Export and import read and write the disk of the machine in front of the user.
+  'cmd:data:measure-agents',
+  'cmd:data:export-bundle',
+  'cmd:data:pick-bundle',
+  'cmd:data:import-bundle',
   // The view switcher moves windows on the machine in front of the user.
   'cmd:view:get-state',
   'cmd:view:switch',

@@ -73,6 +73,13 @@ import { LinkPanel } from './LinkPanel';
 import { useModal } from './Modal';
 import { NEXT_PROMPT_DEFAULT_MODEL } from '@shared/next-prompt';
 import type {
+  CreateSessionResponse,
+  DataAgentStats,
+  DataBundleSummary,
+  DataExportPayload,
+  DataExportResponse,
+  DataImportPayload,
+  DataImportResponse,
   SuggestNextPromptPayload,
   SuggestNextPromptResponse,
 } from '@shared/protocol';
@@ -1230,6 +1237,216 @@ function KeybindingsReference(): JSX.Element {
 // 数据分类 (chunk 4 完整接通,chunk 2 仅 "打开数据目录")
 // ──────────────────────────────────────────────────────────────────
 
+const formatSize = (bytes: number): string => {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+};
+
+/**
+ * Carry a setup to another PC as one folder. Marina's own data always goes and stays
+ * small; each agent's chats are optional because they can run to gigabytes.
+ */
+function MoveToPcSection({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const toast = useToast();
+  const modal = useModal();
+  const state = useAppState();
+  const dispatch = useAppDispatch();
+  const [sizes, setSizes] = useState<{ claude: DataAgentStats; codex: DataAgentStats } | null>(null);
+  const [claude, setClaude] = useState(false);
+  const [codex, setCodex] = useState(false);
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    window.api
+      .invoke<undefined, { claude: DataAgentStats; codex: DataAgentStats }>(
+        COMMAND_CHANNELS.DATA_MEASURE_AGENTS,
+        undefined,
+      )
+      .then((res) => {
+        if (!cancelled) setSizes(res);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleExport = async (): Promise<void> => {
+    setError(null);
+    setBusy('export');
+    try {
+      const res = await window.api.invoke<DataExportPayload, DataExportResponse>(
+        COMMAND_CHANNELS.DATA_EXPORT_BUNDLE,
+        { claude, codex },
+      );
+      if (!res.dir) return;
+      const failed = (res.claude?.failed ?? 0) + (res.codex?.failed ?? 0);
+      toast.push({
+        kind: failed > 0 ? 'warn' : 'success',
+        message:
+          tx(`已导出到 ${res.dir}`, `Exported to ${res.dir}`) +
+          (failed > 0
+            ? tx(
+                `。${failed} 个文件正被占用未能复制,关闭 Claude Code 和 Codex 后再导出可包含它们。`,
+                `. ${failed} files were in use and skipped. Close Claude Code and Codex and export again to include them.`,
+              )
+            : ''),
+        durationMs: 10000,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleImport = async (): Promise<void> => {
+    setError(null);
+    setBusy('import');
+    try {
+      const found = await window.api.invoke<undefined, DataBundleSummary | null>(
+        COMMAND_CHANNELS.DATA_PICK_BUNDLE,
+        undefined,
+      );
+      if (!found) return;
+      const lines = [
+        tx(`来自 ${found.hostname} 的导出,将导入:`, `Export from ${found.hostname}. This will import:`),
+        tx(
+          '· Marina 设置和收藏(替换当前的,你的 API Key 和远程访问设置保持不变)',
+          '· Marina settings and bookmarks (replacing the current ones; your API keys and remote access setup stay)',
+        ),
+        tx(`· ${found.tabs} 个标签页`, `· ${found.tabs} tabs`),
+      ];
+      if (found.claude) {
+        lines.push(
+          tx(
+            `· Claude Code 聊天,复制到 ~/.claude(${formatSize(found.claude.bytes)})`,
+            `· Claude Code chats into ~/.claude (${formatSize(found.claude.bytes)})`,
+          ),
+        );
+      }
+      if (found.codex) {
+        lines.push(
+          tx(
+            `· Codex 聊天,复制到 ~/.codex(${formatSize(found.codex.bytes)})`,
+            `· Codex chats into ~/.codex (${formatSize(found.codex.bytes)})`,
+          ),
+        );
+      }
+      lines.push(
+        tx(
+          '已有的聊天不会被删除,更新的文件也不会被覆盖。',
+          'Existing chats are never deleted, and newer files are not overwritten.',
+        ),
+      );
+      const ok = await modal.confirm({
+        title: tx('导入 Marina 数据', 'Import Marina data'),
+        message: lines.join('\n'),
+        confirmLabel: tx('导入', 'Import'),
+      });
+      if (!ok) return;
+
+      const res = await window.api.invoke<DataImportPayload, DataImportResponse>(
+        COMMAND_CHANNELS.DATA_IMPORT_BUNDLE,
+        { dir: found.dir },
+      );
+      const dims = state.lastTerminalDims;
+      for (const tab of res.tabs) {
+        const created = await window.api.invoke<unknown, CreateSessionResponse>(
+          COMMAND_CHANNELS.SESSION_CREATE,
+          { pathId: tab.pathId, templateId: tab.templateId, cols: dims.cols, rows: dims.rows },
+        );
+        if (tab.input) {
+          await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
+            sessionId: created.session.id,
+            data: tab.input,
+          });
+        }
+      }
+      if (res.tabs.length > 0) dispatch({ type: 'view/exit-settings' });
+      toast.push({
+        kind: res.missingTabs > 0 ? 'warn' : 'success',
+        message:
+          tx(`导入完成,已打开 ${res.tabs.length} 个标签页`, `Imported. Opened ${res.tabs.length} tabs`) +
+          (res.missingTabs > 0
+            ? tx(
+                `,${res.missingTabs} 个的文件夹在这台电脑上不存在`,
+                `. ${res.missingTabs} folders do not exist on this PC`,
+              )
+            : ''),
+        durationMs: 10000,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const agentLabel = (name: string, stats: DataAgentStats | undefined): string => {
+    if (!sizes) return name;
+    return `${name} (${stats?.files ? formatSize(stats.bytes) : tx('未找到', 'not found')})`;
+  };
+
+  return (
+    <>
+      <h3 className="link-subsection-title">{tx('搬到另一台电脑', 'Move to another PC')}</h3>
+      <p className="settings-panel-hint">
+        {tx(
+          '导出一个文件夹,复制到新电脑后在这里导入。Marina 数据总是包含,而且很小。聊天是复制的,原来的不受影响。账号登录、API Key 和令牌不会导出,所以换电脑后需要重新登录。聊天记录本身可能包含敏感内容,请妥善保管导出的文件夹。',
+          'Export a folder, copy it over, and import it here. Marina data is always included and stays small. Chats are copied, so the originals are untouched. Logins, API keys and tokens are never exported, so you will log in again on the new PC. Chats themselves can hold private content, so keep the folder safe.',
+        )}
+      </p>
+      <SettingRow label={tx('同时导出聊天', 'Also export chats')}>
+        <div className="data-agent-options">
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={claude}
+              disabled={!sizes?.claude.files}
+              onChange={(e) => setClaude(e.target.checked)}
+            />
+            <span>{agentLabel('Claude Code', sizes?.claude)}</span>
+          </label>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={codex}
+              disabled={!sizes?.codex.files}
+              onChange={(e) => setCodex(e.target.checked)}
+            />
+            <span>{agentLabel('Codex', sizes?.codex)}</span>
+          </label>
+        </div>
+      </SettingRow>
+      <SettingRow label={tx('操作', 'Actions')}>
+        <button
+          type="button"
+          className="settings-button"
+          disabled={busy !== null}
+          onClick={() => void handleExport()}
+        >
+          {busy === 'export' ? tx('导出中…', 'Exporting…') : tx('导出…', 'Export…')}
+        </button>{' '}
+        <button
+          type="button"
+          className="settings-button"
+          disabled={busy !== null}
+          onClick={() => void handleImport()}
+        >
+          {busy === 'import' ? tx('导入中…', 'Importing…') : tx('导入…', 'Import…')}
+        </button>
+      </SettingRow>
+    </>
+  );
+}
+
 function DataPanel({
   setError,
 }: {
@@ -1392,6 +1609,7 @@ function DataPanel({
   return (
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('数据', 'Data')}</h2>
+      <MoveToPcSection setError={setError} />
 
       <SettingRow
         label={tx('WSL 文件夹', 'WSL folder')}

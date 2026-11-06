@@ -1654,6 +1654,12 @@ export class SessionManager extends EventEmitter {
    * 不剪空格 / 不 strip 尾空白 — buffer 已经是"渲染后"的字符矩阵,没有
    * ANSI 转义,自然干净。
    */
+  /** The end of a session's screen as plain text. Empty for an unknown session. */
+  getScreenTail(sessionId: string, maxRows: number): string {
+    const managed = this.sessions.get(sessionId);
+    return managed ? this.getHeadlessTail(managed, maxRows) : '';
+  }
+
   private getHeadlessTail(managed: ManagedSession, maxRows: number): string {
     if (!managed.headlessTerm) return '';
     const buf = managed.headlessTerm.buffer.active;

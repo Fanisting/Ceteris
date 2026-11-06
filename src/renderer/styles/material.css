@@ -1596,6 +1596,16 @@ select.settings-input option {
   color: var(--md-on-secondary-container, #f0f);
 }
 
+/* Predicted keystrokes on a remote terminal. The underline marks them as not yet real. */
+.local-echo-overlay {
+  position: absolute;
+  z-index: 6;
+  white-space: pre;
+  pointer-events: none;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
 /* ── Long session names, folder drop, running tabs ─────────── */
 
 /* Two lines before truncating; the tooltip holds the rest. */

@@ -109,6 +109,10 @@ import {
 import { isDeviceAttributesResponse } from '@shared/terminal-input-filter';
 import { activateMarinaUnicodeWidth } from '@shared/terminal-unicode-width';
 import { useAppDispatch, useAppState } from '../store';
+import { attachLocalEcho, type LocalEcho } from '../local-echo';
+import type {
+  LinkConnectionStatePayload,
+} from '@shared/protocol';
 import { readClipboardText, writeClipboardText } from '../clipboard';
 import { Icon } from './icons';
 import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
@@ -1375,6 +1379,19 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     let pending: Array<{ seq: number; bytes: Uint8Array }> = [];
     let lastReplayedSeq = -1;
 
+    // Remote windows only: on a local terminal the echo is already instant.
+    let echo: LocalEcho | null = null;
+    const outputDecoder = new TextDecoder();
+    void window.api
+      .invoke<undefined, LinkConnectionStatePayload | null>(
+        COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
+        undefined,
+      )
+      .then((link) => {
+        if (link && !disposed) echo = attachLocalEcho(term);
+      })
+      .catch(() => {});
+
     const cleanupOutput = window.api.on<SessionOutputPayload>(
       EVENT_CHANNELS.SESSION_OUTPUT,
       (payload) => {
@@ -1385,7 +1402,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           return;
         }
         if (payload.seq > lastReplayedSeq) {
-          term.write(bytes);
+          term.write(bytes, () => echo?.noteOutput(outputDecoder.decode(bytes, { stream: true })));
         }
       },
     );
@@ -1623,13 +1640,18 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         return;
       }
       const base64 = encodeStringToBase64(data);
+      const echoId = echo?.noteInput(data) ?? null;
       void window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
           COMMAND_CHANNELS.SESSION_SEND_INPUT,
           { sessionId: session.id, data: base64 },
         )
         .then((res) => {
-          if (res.accepted) return;
+          if (res.accepted) {
+            if (echoId !== null) echo?.ack(echoId);
+            return;
+          }
+          echo?.reset();
           const now = Date.now();
           if (now - lastInputRejectToastAtRef.current < 5000) return;
           lastInputRejectToastAtRef.current = now;
@@ -1645,7 +1667,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
                     : '输入未送达';
           toastRef.current.push({ kind: 'warn', message: msg });
         })
-        .catch((err) => console.error('[TerminalView] send-input failed', err));
+        .catch((err) => {
+          echo?.reset();
+          console.error('[TerminalView] send-input failed', err);
+        });
     });
 
     return () => {
@@ -1653,6 +1678,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();
+      echo?.dispose();
       cleanupOutput();
       detachImeWorkaround?.();
       detachImePositionLock?.();

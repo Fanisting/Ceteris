@@ -29,6 +29,7 @@ import { KnownHostsManager, type KnownHostsHistoryFile } from './known-hosts-man
 import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
+import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
 import { broadcastLinkStatus, decryptStoredPassword, installIpcLayer } from './ipc';
 import { LinkManager } from './link/link-manager';
 import { getPlatformAdapter } from './platform';
@@ -192,6 +193,9 @@ function bootstrap(): void {
     join(dataDir, 'known-hosts-history.json'),
   );
   const templatesStore = new JsonStore<TemplatesFile>(join(dataDir, 'templates.json'));
+  const nextPromptUsage = new NextPromptUsageTracker(
+    new JsonStore<NextPromptUsageFile>(join(dataDir, 'next-prompt-usage.json')),
+  );
 
   const channel = CHANNELS[getChannel()];
   logger.info('main', 'channel profile', { ...channel });
@@ -395,6 +399,7 @@ function bootstrap(): void {
         settingsManager.get().advanced.logLevel === 'DEBUG' ? 'debug' : 'info',
       );
       const { bookmarksSource } = await pathManager.initialize();
+      await nextPromptUsage.initialize();
       logger.info('main', `bookmarks loaded from: ${bookmarksSource}`);
       const sshProfilesSrc = await sshProfileManager.initialize();
       logger.info('main', `ssh profiles loaded from: ${sshProfilesSrc}`);
@@ -699,6 +704,7 @@ function bootstrap(): void {
       const flushAll = Promise.all([
         settingsManager.flush(),
         pathManager.flush(),
+        nextPromptUsage.flush(),
         sshProfileManager.flush(),
         knownHostsManager.flush(),
         templatesManager.flush(),

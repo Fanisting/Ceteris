@@ -21,6 +21,8 @@
  * - cmd:session:create / close / claim / release / focus-owner / send-input / resize
  * - 所有 evt:* 广播
  */
+import { EMPTY_NEXT_PROMPT_USAGE, type NextPromptUsage } from '@shared/next-prompt';
+import type { NextPromptUsageTracker } from './next-prompt-usage';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -195,6 +197,8 @@ import { suggestNextPrompt } from './next-prompt-client';
 import type { ViewSwitcher } from './view-switcher';
 
 export interface IpcLayerDeps {
+  /** Optional like aiClient, so tests need not build it. */
+  nextPromptUsage?: NextPromptUsageTracker;
   windowManager: WindowManager;
   pathManager: PathManager;
   settingsManager: SettingsManager;
@@ -1355,9 +1359,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       envelope: CommandEnvelope<SuggestNextPromptPayload>,
     ): Promise<SuggestNextPromptResponse> => {
       const config = settingsManager.get().ai.nextPrompt;
-      return { suggestion: await suggestNextPrompt(config, envelope.payload.screen) };
+      const suggestion = await suggestNextPrompt(config, envelope.payload.screen, fetch, (usage) =>
+        deps.nextPromptUsage?.record(usage),
+      );
+      return { suggestion };
     },
   );
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_GET_NEXT_PROMPT_USAGE,
+    (): NextPromptUsage => deps.nextPromptUsage?.get() ?? EMPTY_NEXT_PROMPT_USAGE,
+  );
+
+  handleCommand(COMMAND_CHANNELS.AI_RESET_NEXT_PROMPT_USAGE, (): void => {
+    deps.nextPromptUsage?.reset();
+  });
 
   handleCommand(
     COMMAND_CHANNELS.AI_TEST_CONNECTION,

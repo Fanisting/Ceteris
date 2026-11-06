@@ -172,6 +172,8 @@ export const COMMAND_CHANNELS = {
   /** BETA-031:AI 助手测试连接 — 主进程用 SDK 跑一次 ping,返回成功 / 错误描述 */
   AI_TEST_CONNECTION: 'cmd:ai:test-connection',
   AI_SUGGEST_NEXT_PROMPT: 'cmd:ai:suggest-next-prompt',
+  AI_GET_NEXT_PROMPT_USAGE: 'cmd:ai:get-next-prompt-usage',
+  AI_RESET_NEXT_PROMPT_USAGE: 'cmd:ai:reset-next-prompt-usage',
 
   /**
    * IME-1 探针 dump — renderer 在 onData 检测到疑似 LEAK 时,把 ring buffer

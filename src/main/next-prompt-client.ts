@@ -9,6 +9,7 @@
  */
 import {
   cleanSuggestion,
+  NEXT_PROMPT_DEFAULT_BASE_URL,
   NEXT_PROMPT_DEFAULT_MODEL,
   NEXT_PROMPT_MAX_SCREEN_CHARS,
   NEXT_PROMPT_SYSTEM,
@@ -42,6 +43,10 @@ async function post(
       model: config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL,
       max_tokens: MAX_REPLY_TOKENS,
       temperature: 0.3,
+      // Asks OpenRouter for the price. Another provider may refuse the unknown field.
+      ...(nextPromptEndpoint(config.baseURL).startsWith(NEXT_PROMPT_DEFAULT_BASE_URL)
+        ? { usage: { include: true } }
+        : {}),
       ...(disableReasoning ? { reasoning: { enabled: false } } : {}),
       messages: [
         { role: 'system', content: NEXT_PROMPT_SYSTEM },
@@ -52,11 +57,15 @@ async function post(
   });
 }
 
-/** @returns text to offer, or null when the model has no useful guess */
+/**
+ * @param onUsage receives each successful response's usage field, for the cost total
+ * @returns text to offer, or null when the model has no useful guess
+ */
 export async function suggestNextPrompt(
   config: NextPromptConfig,
   screen: string,
   fetchImpl: typeof fetch = fetch,
+  onUsage?: (usage: unknown) => void,
 ): Promise<string | null> {
   if (!nextPromptConfigured(config)) throw new Error('未填写 API Key 或 API 地址');
 
@@ -69,6 +78,8 @@ export async function suggestNextPrompt(
   }
   const body = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: unknown;
   };
+  onUsage?.(body.usage);
   return cleanSuggestion(body.choices?.[0]?.message?.content ?? '');
 }

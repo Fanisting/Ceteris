@@ -12,6 +12,44 @@ export const NEXT_PROMPT_MAX_SCREEN_CHARS = 4_000;
 
 export const NEXT_PROMPT_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
 
+/** Running totals, kept on the machine that makes the calls. */
+export interface NextPromptUsage {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  /** Calls whose provider gave no price, so costUsd is missing them. */
+  unpricedCalls: number;
+}
+
+export const EMPTY_NEXT_PROMPT_USAGE: NextPromptUsage = {
+  calls: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  costUsd: 0,
+  unpricedCalls: 0,
+};
+
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/**
+ * Adds one response's usage field to the totals. Only OpenRouter reports a price, so
+ * another provider counts as a call and its tokens with no cost.
+ */
+export function addNextPromptUsage(total: NextPromptUsage, usage: unknown): NextPromptUsage {
+  const u = (typeof usage === 'object' && usage !== null ? usage : {}) as Record<string, unknown>;
+  const priced = typeof u['cost'] === 'number' && Number.isFinite(u['cost']) && u['cost'] >= 0;
+  return {
+    calls: total.calls + 1,
+    inputTokens: total.inputTokens + count(u['prompt_tokens']),
+    outputTokens: total.outputTokens + count(u['completion_tokens']),
+    costUsd: total.costUsd + count(u['cost']),
+    unpricedCalls: total.unpricedCalls + (priced ? 0 : 1),
+  };
+}
+
 /**
  * The chat completions URL for a base address. Accepts the address as a provider's docs
  * give it, with or without the final path.

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NEXT_PROMPT_DEFAULT_MODEL, NEXT_PROMPT_MAX_SCREEN_CHARS } from '@shared/next-prompt';
+import {
+  EMPTY_NEXT_PROMPT_USAGE,
+  NEXT_PROMPT_DEFAULT_MODEL,
+  NEXT_PROMPT_MAX_SCREEN_CHARS,
+  addNextPromptUsage,
+} from '@shared/next-prompt';
 import { suggestNextPrompt } from './next-prompt-client';
 
 const reply = (content: string, status = 200) =>
@@ -95,5 +100,37 @@ describe('custom API address', () => {
     await expect(
       suggestNextPrompt({ apiKey: 'k', baseURL: 'file:///etc/passwd', model: 'm' }, 'x'),
     ).rejects.toThrow('http');
+  });
+});
+
+describe('cost total', () => {
+  it('adds priced calls, and counts a call with no price separately', () => {
+    let total = EMPTY_NEXT_PROMPT_USAGE;
+    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 });
+    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 });
+    total = addNextPromptUsage(total, undefined);
+    expect(total).toEqual({
+      calls: 3,
+      inputTokens: 150,
+      outputTokens: 15,
+      costUsd: 0.002,
+      unpricedCalls: 2,
+    });
+  });
+
+  it('reports usage from a response, and asks only OpenRouter for the price', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(init.body as string) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: 'go' } }], usage: { cost: 0.001 } }),
+      );
+    }) as unknown as typeof fetch;
+    const seen: unknown[] = [];
+    await suggestNextPrompt(CONFIG, 'x', fetchImpl, (u) => seen.push(u));
+    await suggestNextPrompt({ ...CONFIG, baseURL: 'https://api.example.com/v1' }, 'x', fetchImpl);
+    expect(seen).toEqual([{ cost: 0.001 }]);
+    expect(bodies[0]).toHaveProperty('usage');
+    expect(bodies[1]).not.toHaveProperty('usage');
   });
 });

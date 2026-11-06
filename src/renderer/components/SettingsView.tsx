@@ -74,6 +74,7 @@ import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
 import { NEXT_PROMPT_DEFAULT_BASE_URL,
   NEXT_PROMPT_DEFAULT_MODEL,
+  type NextPromptUsage,
   nextPromptConfigured } from '@shared/next-prompt';
 import type {
   CreateSessionResponse,
@@ -2619,6 +2620,14 @@ function AiPanel({
   const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', baseURL: '', model: '' };
   const nextPromptReady = nextPromptConfigured(nextPrompt);
   const [testingNextPrompt, setTestingNextPrompt] = useState(false);
+  const [usage, setUsage] = useState<NextPromptUsage | null>(null);
+  const refreshUsage = useCallback(() => {
+    window.api
+      .invoke<undefined, NextPromptUsage>(COMMAND_CHANNELS.AI_GET_NEXT_PROMPT_USAGE, undefined)
+      .then(setUsage)
+      .catch((err) => console.error('[Settings] read usage failed', err));
+  }, []);
+  useEffect(refreshUsage, [refreshUsage]);
 
   const handleTestNextPrompt = async (): Promise<void> => {
     setTestingNextPrompt(true);
@@ -2643,6 +2652,7 @@ function AiPanel({
       });
     } finally {
       setTestingNextPrompt(false);
+      refreshUsage();
     }
   };
 
@@ -2929,6 +2939,39 @@ function AiPanel({
           onClick={() => void handleTestNextPrompt()}
         >
           {testingNextPrompt ? tx('测试中…', 'Testing…') : tx('发送一次测试', 'Send a test')}
+        </button>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('累计花费', 'Total cost')}
+        hint={
+          usage?.unpricedCalls
+            ? tx(
+                `其中 ${usage.unpricedCalls} 次服务商未返回价格,没有计入金额`,
+                `${usage.unpricedCalls} calls had no price from the provider and are not in the total`,
+              )
+            : tx('从开启这项统计起计算', 'Counted from when this was added')
+        }
+      >
+        <span className="settings-usage">
+          {usage
+            ? `$${usage.costUsd.toFixed(usage.costUsd < 0.01 ? 6 : 4)} · ${usage.calls} ${tx('次', 'calls')} · ${(
+                usage.inputTokens + usage.outputTokens
+              ).toLocaleString()} tokens`
+            : '…'}
+        </span>
+        <button
+          type="button"
+          className="settings-button"
+          disabled={!usage?.calls}
+          onClick={() => {
+            window.api
+              .invoke(COMMAND_CHANNELS.AI_RESET_NEXT_PROMPT_USAGE, undefined)
+              .then(refreshUsage)
+              .catch((err: unknown) => setError(String(err)));
+          }}
+        >
+          {tx('清零', 'Reset')}
         </button>
       </SettingRow>
     </section>

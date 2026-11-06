@@ -33,6 +33,17 @@ export function normalizeRemotePath(input: string): string {
   return value;
 }
 
+/**
+ * The Windows form of a remote path, or null when it is not one. A drive letter is the only
+ * sign of a Windows host available before connecting. SFTP on Windows reports paths as
+ * /C:/Users/name, so that form counts too.
+ */
+export function windowsRemotePath(path: string): string | null {
+  const match = /^\/?([A-Za-z]:)(\/.*)?$/.exec(path.trim());
+  if (!match) return null;
+  return `${match[1]}${(match[2] ?? '/').replace(/\//g, '\\')}`;
+}
+
 export function joinRemotePath(dir: string, name: string): string {
   return dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`;
 }

@@ -70,6 +70,7 @@ const { SerializeAddon } = xtermSerialize;
 type SerializeAddon = InstanceType<typeof SerializeAddon>;
 import { Osc1337Parser } from './osc1337-parser';
 import { pathRefFromId } from './path-manager';
+import { windowsRemotePath } from '@shared/remote-path';
 import { getPlatformAdapter, type PlatformAdapter, type ShellInfo } from './platform';
 import {
   AGENT_SESSION_ENV,
@@ -1949,7 +1950,8 @@ export function buildSshLaunchParams(
     );
   }
   args.push(`${profile.username}@${profile.host}`);
-  args.push(buildRemoteLoginCommand(remoteCwd, profile, options));
+  const remoteCommand = buildRemoteLoginCommand(remoteCwd, profile, options);
+  if (remoteCommand) args.push(remoteCommand);
   return { args, env: {} };
 }
 
@@ -1971,6 +1973,11 @@ function buildRemoteLoginCommand(
   } = {},
 ): string {
   const cwd = remoteCwd.trim() || '~';
+  const windowsCwd = windowsRemotePath(cwd);
+  if (windowsCwd) return buildWindowsLoginCommand(windowsCwd, options.commandToRun);
+  // Nothing to set up, so the host's own login shell starts. This is also the only form
+  // that works on a Windows host before anything has shown it is one.
+  if (cwd === '~' && !options.commandToRun && profile.tmuxMode !== 'attach-or-create') return '';
   let cdCommand: string;
   if (cwd === '~') {
     // `cd '~'` 会把 ~ 当普通目录名,不会展开到 home。无参数 cd 是 POSIX
@@ -2026,6 +2033,31 @@ function buildRemoteLoginCommand(
   // 会报 "server exited unexpectedly"。启用 tmux 时先显式进入 login shell 执行
   // bootstrap,让自动路径尽量贴近用户手动成功的路径。
   return `exec "\${SHELL:-/bin/sh}" -lc ${shQuote(tmuxBootstrap)}`;
+}
+
+/**
+ * The same job as buildRemoteLoginCommand for a Windows host, where sshd hands the command
+ * to cmd.exe unless DefaultShell was changed. There is no tmux on Windows, so that step
+ * does not apply. PowerShell 7 is preferred, and the exit after it stops Windows PowerShell
+ * starting once the user leaves it.
+ */
+function buildWindowsLoginCommand(
+  cwd: string,
+  commandToRun?: { command: string; args: string[]; env?: Record<string, string> },
+): string {
+  const shell = '(where pwsh >nul 2>nul && (pwsh -NoLogo & exit)) & powershell -NoLogo';
+  const setEnv = Object.entries(commandToRun?.env ?? {})
+    .filter(([key]) => key.length > 0)
+    .map(([key, value]) => `set "${key}=${value}" & `)
+    .join('');
+  const template = commandToRun
+    ? `${setEnv}${[commandToRun.command, ...commandToRun.args].map(cmdQuote).join(' ')} & `
+    : '';
+  return `cd /d ${cmdQuote(cwd)} && ${template}${shell}`;
+}
+
+function cmdQuote(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function shQuote(value: string): string {

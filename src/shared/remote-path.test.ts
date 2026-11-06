@@ -10,7 +10,7 @@
  * @对应文档章节: 软件定义书.md 第 5.1.1、11.1 节
  */
 import { describe, expect, it } from 'vitest';
-import { expandHome, joinRemotePath, normalizeRemotePath, remoteDirname } from './remote-path';
+import { expandHome, joinRemotePath, normalizeRemotePath, remoteDirname, windowsRemotePath } from './remote-path';
 
 describe('normalizeRemotePath', () => {
   it('空白输入回退到远程 home 简写', () => {
@@ -45,5 +45,19 @@ describe('远端路径工具', () => {
     expect(remoteDirname('/a/b')).toBe('/a');
     expect(remoteDirname('/b')).toBe('/');
     expect(remoteDirname('b')).toBe('.');
+  });
+});
+
+describe('windowsRemotePath', () => {
+  it('recognises drive paths in the forms ssh and SFTP use', () => {
+    expect(windowsRemotePath('C:/Users/me')).toBe('C:\\Users\\me');
+    expect(windowsRemotePath('/C:/Users/me')).toBe('C:\\Users\\me');
+    expect(windowsRemotePath('D:')).toBe('D:\\');
+  });
+
+  it('leaves POSIX paths alone', () => {
+    expect(windowsRemotePath('/home/me')).toBeNull();
+    expect(windowsRemotePath('~/repo')).toBeNull();
+    expect(windowsRemotePath('/c/users')).toBeNull();
   });
 });

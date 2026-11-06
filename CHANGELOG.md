@@ -67,6 +67,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 修复
 
+- 通过 SSH 连接 Windows 主机时不再报“文件名、目录名或卷标语法不正确”。盘符路径改用 Windows 命令进入文件夹,并启动 PowerShell。
+
 - 修复 Windows 上用保存的密码时文件浏览提示“无法通过 SFTP 连接”。现在通过 SSH 自带的 askpass 传密码,文件浏览不再需要 sshpass。
 
 - 从 Claude Code 里启动 Ceteris 时,终端不再继承那个会话的环境变量。此前在这些终端里运行 Claude Code 会提示不保存对话记录。

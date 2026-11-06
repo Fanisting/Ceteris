@@ -41,6 +41,7 @@ import { WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, isBetaBuild } from './build-type';
 import { ViewSwitcher } from './view-switcher';
+import { copyLegacyData, legacyAppName } from './legacy-data';
 import { logger } from './logger';
 import type {
   BookmarksFile,
@@ -99,6 +100,29 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
     logger.info('main', `BETA-043 invalid paths detected: ${invalid.length}`);
   }
   pathManager.setInvalidPaths(invalid);
+}
+
+/**
+ * First run after the rename from Marina: copies the old data folder's contents in.
+ *
+ * Only for the default data folder. A custom --user-data-dir is a deliberately separate
+ * profile, such as an isolated test run, and must not fill up with real user data.
+ */
+function carryOverLegacyData(dataDir: string): void {
+  const legacyName = legacyAppName(app.getName());
+  const appData = app.getPath('appData');
+  if (!legacyName || dataDir !== join(appData, app.getName())) return;
+
+  const from = join(appData, legacyName);
+  const result = copyLegacyData(from, dataDir);
+  if (result.skipped) {
+    logger.info('main', `legacy data not copied: ${result.skipped}`, { from });
+    return;
+  }
+  logger.info('main', 'copied legacy data', { from, items: result.copied });
+  for (const { item, error } of result.failed) {
+    logger.warn('main', `legacy data item not copied: ${item}`, { error });
+  }
 }
 
 function bootstrap(): void {
@@ -181,6 +205,7 @@ function bootstrap(): void {
   // M1-D:绑定日志目录 (fire-and-forget,在此之前的 logger 调用先缓存到内存)
   void logger.setLogDir(join(dataDir, 'logs'));
   logger.info('main', 'bootstrap starting', { dataDir });
+  carryOverLegacyData(dataDir);
   const settingsStore = new JsonStore<Settings>(join(dataDir, 'settings.json'));
   const bookmarksStore = new JsonStore<BookmarksFile>(join(dataDir, 'bookmarks.json'));
   const recentStore = new JsonStore<RecentFile>(join(dataDir, 'recent.json'));

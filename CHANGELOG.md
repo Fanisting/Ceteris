@@ -8,6 +8,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
+- **管理员终端。** 启动模板新增 Admin Shell。开启 Windows sudo 内联模式时直接在标签页里运行,否则确认系统提示后在单独窗口打开。
+
 - **下一步提示建议可以指定 API。** 设置里新增 API 地址,默认仍是 OpenRouter,也可以填任何兼容 OpenAI 的服务或本地模型。
 
 - **文件面板可以查看图片和 markdown。** 点击 PNG、JPG、GIF、WebP、BMP、SVG 或 .md 文件,会在主区域显示,只读。

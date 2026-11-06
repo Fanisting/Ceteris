@@ -21,6 +21,32 @@ import type { Template, TemplatesFile } from '@shared/types';
 import type { JsonStore } from './persistence';
 
 /**
+ * Opens an administrator shell in the current folder.
+ *
+ * This app runs unelevated, and Windows will not let it host an elevated process directly.
+ * Windows sudo in inline mode (Enabled = 3) is the one way to get one inside the tab. Without
+ * it the shell opens in its own window after the usual Windows prompt, which needs no setup.
+ *
+ * Sent with -EncodedCommand so that no layer between here and PowerShell can break its quotes.
+ */
+const ADMIN_SHELL_SCRIPT = [
+  `$dir = (Get-Location).Path`,
+  `$shell = (Get-Command pwsh -ErrorAction SilentlyContinue).Source`,
+  `if (-not $shell) { $shell = 'powershell.exe' }`,
+  `$key = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Sudo'`,
+  `$sudo = (Get-ItemProperty $key -ErrorAction SilentlyContinue).Enabled`,
+  `if ($sudo -eq 3) { & sudo $shell -NoLogo; exit }`,
+  `$enter = "Set-Location -LiteralPath '" + $dir.Replace("'", "''") + "'"`,
+  `$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($enter))`,
+  `try {`,
+  `  Start-Process $shell -Verb RunAs -ErrorAction Stop -ArgumentList '-NoExit', '-NoLogo', '-EncodedCommand', $encoded`,
+  `  Write-Host 'Administrator window opened.'`,
+  `} catch {`,
+  `  Write-Host 'Administrator window was not opened.'`,
+  `}`,
+].join('\n');
+
+/**
  * 内置模板。
  *
  * - shell:启动用户默认 shell,无 command;新建终端的兜底
@@ -28,6 +54,7 @@ import type { JsonStore } from './persistence';
  * - codex:启动 OpenAI Codex CLI (`codex`)
  * - opencode:启动 OpenCode CLI (`opencode`)
  * - gemini-cli / github-copilot / cursor / aider:同样是常用的终端编码助手
+ * - admin-shell:管理员 shell,见 ADMIN_SHELL_SCRIPT
  *
  * 命令找不到时由 shell 自然报错 (PowerShell: "不是 cmdlet";cmd: "不是内
  * 部或外部命令"),不弹对话框 (软件定义书 ADR-005 的最小化干扰)。
@@ -121,6 +148,22 @@ export const BUILTIN_TEMPLATES: Template[] = [
     isBuiltin: true,
     command: 'aider',
     args: [],
+    env: {},
+    shellFirst: true,
+    postExitAction: 'keep_shell',
+  },
+  {
+    id: 'admin-shell',
+    name: 'Admin Shell',
+    icon: '🛡️',
+    isBuiltin: true,
+    command: 'powershell.exe',
+    args: [
+      '-NoProfile',
+      '-NoLogo',
+      '-EncodedCommand',
+      Buffer.from(ADMIN_SHELL_SCRIPT, 'utf16le').toString('base64'),
+    ],
     env: {},
     shellFirst: true,
     postExitAction: 'keep_shell',

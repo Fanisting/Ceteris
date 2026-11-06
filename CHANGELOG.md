@@ -56,6 +56,10 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 - **托盘菜单可以重新启动。** 右键托盘图标选择"重新启动",应用会退出并重新打开,比如在安装更新之后。运行中的终端不会恢复,所以有终端在运行时会先询问。
 
+- **7 个珠光主题。** Lapis、Sapphire、Rose Dew、Ember、Jade、Moonlight、Frost,配色取自 7 组小红书色板:标签页是珠光白,正文用色板的墨色,主色作强调,金色作警告;外框是更深的宝石色调,左上和左下各有一层微光。文字对比度 4.5:1 以上,由 `pearl-themes.test.ts` 检查。
+
+- **6 个 Beamer 模板配色主题。** Metropolis、Metropolis Dark、Madrid、CambridgeUS、AnnArbor、Spruce。标志色取自 TeX Live 的 Beamer 配色源文件,状态色和终端 ANSI 色按模板色相调到 4.5:1,由 `beamer-themes.test.ts` 检查。AnnArbor 用模板的深蓝作底、玉米黄作强调,Spruce 和 Madrid 等保持白底。Beamer 模板没有终端配色,这部分是新设计的。
+
 - **Material Design 3 外观。** 窗口改为一整块外壳上嵌圆角内容卡片,侧栏和设置导航用胶囊式活动项,标签改为 MD3 primary tabs,设置项开关改为 Switch,文本框改为 outlined text field,对话框、菜单、通知都换成 MD3 的形状、阴影和动效。尺寸按鼠标为主的桌面密度收缩,没有照搬触屏的 56px 行高。
 
   外观集中在 `src/renderer/styles/material.css`,在 `global.css` 之后加载,`global.css` 本身没有改动。所有主题都走这一层:没有 MD3 色板的主题从现有语义 token 推导颜色角色。

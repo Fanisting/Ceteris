@@ -48,6 +48,7 @@ import {
   type UpdateTemplatePayload,
   type UpdateTemplateResponse,
 } from '@shared/protocol';
+import { BEAMER_THEMES } from '@shared/beamer-themes';
 import { formatDisplayPath, toWslUncPath } from '@shared/path-display';
 import type {
   NewTerminalShellPolicy,
@@ -273,6 +274,7 @@ const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; not
   { id: 'pearl-jade', label: 'Jade', tone: '浅色', note: '翠玉金瞳' },
   { id: 'pearl-moon', label: 'Moonlight', tone: '浅色', note: '月白珠光' },
   { id: 'pearl-frost', label: 'Frost', tone: '浅色', note: '银蓝霜露' },
+  ...BEAMER_THEMES,
 ];
 
 function AppearancePanel({

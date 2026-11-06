@@ -19,6 +19,7 @@
  * 完整 schema 校验 + 版本迁移 + export/import 在 CP-4。
  */
 import { EventEmitter } from 'node:events';
+import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
@@ -145,6 +146,7 @@ const VALID_THEMES: ThemeId[] = [
   'pearl-jade',
   'pearl-moon',
   'pearl-frost',
+  ...BEAMER_THEME_IDS,
 ];
 
 /**

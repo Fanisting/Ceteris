@@ -25,6 +25,8 @@ import './styles/global.css';
 import './styles/material.css';
 // 必须在 material.css 之后:珠光主题要覆写 material.css 在 :root 推导的 --md-on-primary
 import './styles/pearl-themes.css';
+// 必须在 material.css 之后:Beamer 主题块要覆写它在 :root 推导的 --md-* 角色
+import './styles/beamer-themes.css';
 import './styles/file-tree.css';
 import './styles/path-tags.css';
 import './styles/quick-launch.css';

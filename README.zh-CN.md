@@ -172,7 +172,7 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **多窗口**:任意数量平等窗口;关窗即托盘模式;跨窗口 session 可见
 - ✅ **Ceteris Link(远程挂载)**:在另一台 Windows 机器上打开这台机器正在跑的终端标签页。同一批 session、同一份 scrollback、同一个正在跑的 agent;会话始终留在原机器运行。端到端加密(X25519 + AES-256-GCM),预共享令牌**从不上线路**。见 [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD 跟踪**:OSC 1337 hook 注入 PowerShell + cmd.exe
-- ✅ **17 套主题**:Ceteris Dark(默认) / Ceteris Light / Rose Pine(3 款) / Catppuccin(2 款) / Tokyo Night(2 款) / Dracula / One Dark Pro / Cutie / Light Pink / Fairyfloss / Business / Ubuntu / Windows Terminal
+- ✅ **30 套主题**:Ceteris Dark(默认) / Ceteris Light / Rose Pine(3 款) / Catppuccin(2 款) / Tokyo Night(2 款) / Dracula / One Dark Pro / Cutie / Light Pink / Fairyfloss / Business / Ubuntu / Windows Terminal,7 款珠光主题(Lapis / Sapphire / Rose Dew / Ember / Jade / Moonlight / Frost),以及 6 款 LaTeX Beamer 模板配色(Metropolis / Metropolis Dark / Madrid / CambridgeUS / AnnArbor / Spruce)
 - ✅ **窗口风格**:Windows / macOS 双布局(只影响标题栏 chrome,不影响配色)
 - ✅ **设置即改即生效**,无保存按钮;导出 / 导入归档(支持敏感字段擦除选项)
 - ✅ **系统托盘**:常驻,含"正在运行的会话"子菜单 + 设置 + 完全退出二次确认

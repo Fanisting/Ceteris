@@ -107,6 +107,7 @@ import {
   type SendInputResponse,
   type SessionOutputPayload,
 } from '@shared/protocol';
+import { BEAMER_THEMES, type BeamerThemeId } from '@shared/beamer-themes';
 import type { SessionInfo, ThemeId } from '@shared/types';
 import { attachImeCompositionEndCleaner } from '@shared/ime-textarea-workaround';
 import { attachImeCompositionPositionLock } from '@shared/ime-composition-position-lock';
@@ -164,6 +165,17 @@ function buildLightExtendedAnsi(): string[] {
   return out;
 }
 const LIGHT_EXTENDED_ANSI = buildLightExtendedAnsi();
+
+/** Beamer 主题的终端配色在 shared,这里只补上浅色主题的 256 色表。 */
+function buildBeamerXtermThemes(): Record<BeamerThemeId, ITheme> {
+  const entries = BEAMER_THEMES.map((theme) => [
+    theme.id,
+    theme.tone === '浅色'
+      ? { ...theme.terminal, extendedAnsi: LIGHT_EXTENDED_ANSI }
+      : theme.terminal,
+  ]);
+  return Object.fromEntries(entries) as Record<BeamerThemeId, ITheme>;
+}
 
 /**
  * 7 套主题对应的 xterm theme 颜色 (软件定义书 5.1.9)。
@@ -770,6 +782,7 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
     brightWhite: '#16212e',
     extendedAnsi: LIGHT_EXTENDED_ANSI,
   },
+  ...buildBeamerXtermThemes(),
 };
 
 function getXtermTheme(themeId: ThemeId | undefined): ITheme {

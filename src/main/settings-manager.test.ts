@@ -16,6 +16,7 @@ import {
   validateSettings,
   stripUnknownLegacyFields,
 } from './settings-manager';
+import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import type { Settings } from '@shared/types';
 import type { JsonStore } from './persistence';
 
@@ -275,6 +276,7 @@ describe('SettingsManager — update', () => {
     'business',
     'ubuntu',
     'windows-terminal',
+    ...BEAMER_THEME_IDS,
   ] as const)('合法主题 %s 通过校验', async (theme) => {
     const { mgr } = makeManager();
     await mgr.initialize();

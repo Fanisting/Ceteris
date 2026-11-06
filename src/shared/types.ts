@@ -14,6 +14,8 @@
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 
+import type { BeamerThemeId } from './beamer-themes';
+
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
 // ──────────────────────────────────────────────────────────────────
@@ -114,7 +116,9 @@ export type ThemeId =
   | 'pearl-ember'
   | 'pearl-jade'
   | 'pearl-moon'
-  | 'pearl-frost';
+  | 'pearl-frost'
+  // 取自 LaTeX Beamer 模板配色,清单见 beamer-themes.ts
+  | BeamerThemeId;
 
 /**
  * 窗口外观风格 (M1-A 引入,Milestone 1)。

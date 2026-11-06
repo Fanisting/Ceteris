@@ -1,5 +1,16 @@
 ; Ceteris NSIS 安装器自定义脚本
 ;
+; customWelcomePage 在所有页面之前展开,欢迎页带侧栏图,一打开就能看到。
+!macro customWelcomePage
+  !insertmacro MUI_PAGE_WELCOME
+!macroend
+
+; NSIS 默认用旧的等宽宋体。语言要先加载,所以放在 customHeader 而不是上面。
+!macro customHeader
+  SetFont /LANG=2052 "Microsoft YaHei UI" 9
+  SetFont /LANG=1033 "Segoe UI" 9
+!macroend
+
 ; electron-builder 提供 5 个 hook macro:
 ;   customHeader / preInit / customInit / customInstall / customUnInstall
 ;

@@ -74,6 +74,10 @@ nsis:
   shortcutName: Ceteris
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
+  # Material art, drawn by scripts/generate-installer-art.cjs.
+  installerSidebar: build/installer-sidebar.bmp
+  uninstallerSidebar: build/installer-sidebar.bmp
+  installerHeader: build/installer-header.bmp
   # 卸载时清理 Explorer 右键集成的 HKCU 注册表项,避免旧 command 指向已删 exe
   # (prelease 前勘误 #16:用户看到 "unable to find electron app at ...")。
   include: build/installer.nsh

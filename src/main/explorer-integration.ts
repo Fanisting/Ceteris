@@ -14,7 +14,8 @@
  *
  * 三类构建产物的策略(build-type.ts 探测):
  * - dev:全部 unsupported,不允许写系统状态(exe 路径是临时的,改了会脏)
- * - portable:全部 unsupported,卸载干净性受不了
+ * - portable:经典菜单可用,指向用户启动的 exe,每次启动刷新路径。Win11 新菜单不可用:
+ *   它是 MSIX 包,靠安装目录定位 exe。便携版没有卸载程序,关闭要在设置里手动做。
  * - installed:正常工作
  */
 import { execFile } from 'node:child_process';
@@ -136,11 +137,14 @@ function checkModernSupport(buildType: BuildType): [boolean, string | null] {
       false,
       buildType === 'dev'
         ? '调试模式下不可用 —— 当前 exe 路径不稳定,会污染注册表'
-        : '便携版不可用 —— 安装版才提供 Win11 新菜单集成',
+        : '便携版不可用:Win11 新菜单是 MSIX 包,靠安装目录定位程序。请用下面的经典右键菜单。',
     ];
   }
   if (process.platform !== 'win32') {
     return [false, '仅 Windows 支持'];
+  }
+  if (!getMsixAssetPath('CeterisContextMenu.msix')) {
+    return [false, '这个版本没有打包 Win11 新菜单,请用下面的经典右键菜单。'];
   }
   const b = getWindowsBuildNumber();
   if (b === null) return [false, '无法识别 Windows 版本'];
@@ -154,13 +158,8 @@ function checkModernSupport(buildType: BuildType): [boolean, string | null] {
 }
 
 function checkClassicSupport(buildType: BuildType): [boolean, string | null] {
-  if (buildType !== 'installed') {
-    return [
-      false,
-      buildType === 'dev'
-        ? '调试模式下不可用 —— 当前 exe 路径不稳定,会污染注册表'
-        : '便携版不可用 —— 安装版才提供右键菜单集成',
-    ];
+  if (buildType === 'dev') {
+    return [false, '调试模式下不可用 —— 当前 exe 路径不稳定,会污染注册表'];
   }
   if (process.platform !== 'win32') {
     return [false, '仅 Windows 支持'];
@@ -231,7 +230,7 @@ export async function getExplorerIntegrationStatus(): Promise<ExplorerIntegratio
 }
 
 /**
- * 经典菜单开/关。仅 installed 形态允许写。返回操作后实际状态。
+ * 经典菜单开/关。dev 形态不允许写。返回操作后实际状态。
  */
 export async function setClassicIntegration(
   enabled: boolean,

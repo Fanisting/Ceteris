@@ -52,15 +52,31 @@ function parseRegPathOutput(stdout: string): string | null {
  * Directory\shell  = 右键文件夹本身; %1 = 被点击文件夹的全路径
  * Directory\Background\shell = 右键文件夹空白处; %V = 当前打开的目录全路径
  *
- * 选用 Ceteris 这个固定 key 名(不带版本/平台后缀);设置开关 off 时 unregister 同名 key。
+ * The key is named after the build (no version), so stable and beta each keep their own
+ * menu entry and neither can overwrite or remove the other's. index.ts sets the label.
  * 改名前 EasyTerm 时代的旧 key 在 main/index.ts 启动期单独清理。
  */
-const EXPLORER_INTEGRATION_KEYS = [
-  { hive: 'HKCU\\Software\\Classes\\Directory\\shell\\Ceteris', argToken: '%1' },
-  { hive: 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\Ceteris', argToken: '%V' },
-] as const;
+let explorerLabel = 'Ceteris';
 
-const EXPLORER_INTEGRATION_MENU_TEXT = '在 Ceteris 终端中打开';
+/**
+ * A login item must not point at a portable build's temp copy, which is gone after exit.
+ * The explicit name keeps it apart from the installed app's entry in the Run key.
+ */
+function portableLoginItem(): { path: string; name: string } | Record<string, never> {
+  const exe = process.env['PORTABLE_EXECUTABLE_FILE'];
+  return exe ? { path: exe, name: explorerLabel } : {};
+}
+
+export function setExplorerLabel(label: string): void {
+  explorerLabel = label;
+}
+
+function explorerKeys(): ReadonlyArray<{ hive: string; argToken: string }> {
+  return [
+    { hive: `HKCU\\Software\\Classes\\Directory\\shell\\${explorerLabel}`, argToken: '%1' },
+    { hive: `HKCU\\Software\\Classes\\Directory\\Background\\shell\\${explorerLabel}`, argToken: '%V' },
+  ];
+}
 
 /**
  * 旧 EasyTerm 注册表 key (v1.5 改名前可能残留)。
@@ -402,14 +418,14 @@ export class WindowsAdapter implements PlatformAdapter {
     // 把 build/icon.ico 编入 PE 资源段),Explorer 自动按需缩放到 16×16。
     const iconValue = `${appExePath},0`;
 
-    for (const { hive, argToken } of EXPLORER_INTEGRATION_KEYS) {
+    for (const { hive, argToken } of explorerKeys()) {
       // 菜单文案写到根 key 的默认值
       await runReg([
         'add',
         hive,
         '/ve',
         '/d',
-        EXPLORER_INTEGRATION_MENU_TEXT,
+        `在 ${explorerLabel} 终端中打开`,
         '/f',
       ]);
       // Icon 值 — Explorer 经典菜单条目左侧图标
@@ -455,7 +471,7 @@ export class WindowsAdapter implements PlatformAdapter {
    * 其他错误向上抛,由调用方决定是 warn 还是 toast。
    */
   async unregisterFileManagerIntegration(): Promise<void> {
-    for (const { hive } of EXPLORER_INTEGRATION_KEYS) {
+    for (const { hive } of explorerKeys()) {
       await runReg(['delete', hive, '/f'], { allowNotFound: true });
     }
   }
@@ -472,7 +488,7 @@ export class WindowsAdapter implements PlatformAdapter {
    */
   async syncFileManagerIntegrationIfPresent(appExePath: string): Promise<void> {
     const iconValue = `${appExePath},0`;
-    for (const { hive, argToken } of EXPLORER_INTEGRATION_KEYS) {
+    for (const { hive, argToken } of explorerKeys()) {
       // reg query 不存在的 key:code=1 → runReg 抛错。捕获后跳过该 hive。
       let exists = true;
       try {
@@ -507,7 +523,7 @@ export class WindowsAdapter implements PlatformAdapter {
    * 现场查 HKCU 经典菜单是否已注册。两个 hive 都存在才算 enabled。
    */
   async isFileManagerIntegrationEnabled(): Promise<boolean> {
-    for (const { hive } of EXPLORER_INTEGRATION_KEYS) {
+    for (const { hive } of explorerKeys()) {
       try {
         await runReg(['query', hive]);
       } catch {
@@ -554,12 +570,13 @@ export class WindowsAdapter implements PlatformAdapter {
     app.setLoginItemSettings({
       openAtLogin: enabled,
       args: ['--auto-start'],
+      ...portableLoginItem(),
     });
   }
 
   async isAutoStartEnabled(): Promise<boolean> {
     const { app } = await import('electron');
-    return app.getLoginItemSettings().openAtLogin;
+    return app.getLoginItemSettings({ args: ['--auto-start'], ...portableLoginItem() }).openAtLogin;
   }
 
   /**

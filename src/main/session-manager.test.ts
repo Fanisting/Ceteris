@@ -2420,10 +2420,10 @@ describe('Osc1337Parser', () => {
 // ──────────────────────────────────────────────────────────────────
 
 describe('TemplatesManager.mergeBuiltins', () => {
-  it('空文件 → 4 个内置模板齐全,defaultId=shell', () => {
+  it('空文件 → 内置模板齐全,defaultId=shell', () => {
     const r = mergeBuiltins([], '');
-    expect(r.templates).toHaveLength(4);
-    expect(r.templates.map((t) => t.id)).toEqual(['shell', 'claude-code', 'codex', 'opencode']);
+    expect(r.templates.map((t) => t.id)).toEqual(BUILTIN_TEMPLATES.map((t) => t.id));
+    expect(r.templates.map((t) => t.id).slice(0, 4)).toEqual(['shell', 'claude-code', 'codex', 'opencode']);
     expect(r.defaultId).toBe('shell');
     expect(r.mutated).toBe(true);
   });

@@ -49,6 +49,15 @@ export function getAppLabel(): string {
 }
 
 /**
+ * The exe that should be started from outside the app. A portable build runs from a temp
+ * copy that is deleted on exit, so Explorer and login items must point at the exe the
+ * user launched.
+ */
+export function getLaunchExePath(): string {
+  return process.env['PORTABLE_EXECUTABLE_FILE'] ?? app.getPath('exe');
+}
+
+/**
  * Options for app.relaunch. A portable build runs from a temp copy that is deleted on
  * exit, so it has to restart through the exe the user launched. Electron drops the
  * launch arguments when given another exe, so they are passed along explicitly.

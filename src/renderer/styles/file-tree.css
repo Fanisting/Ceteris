@@ -40,12 +40,16 @@
   color: var(--md-on-secondary-container, #f0f);
 }
 
+/* A card of its own, so files read as a separate area from the sessions above. */
 .file-tree-panel {
   flex: 0 0 45%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--md-outline-variant, #f0f);
+  margin: 10px 8px 4px;
+  overflow: hidden;
+  border-radius: var(--md-shape-md, 12px);
+  background-color: var(--md-surface-container-high, #f0f);
 }
 
 .file-tree-header {
@@ -296,4 +300,10 @@
   background: transparent;
   color: var(--color-text-primary, #f0f);
   cursor: pointer;
+}
+
+.template-list-item.hidden-template .template-list-name,
+.template-list-item.hidden-template .template-list-icon,
+.template-list-item.hidden-template .template-list-cmd {
+  opacity: 0.5;
 }

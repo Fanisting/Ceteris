@@ -812,7 +812,7 @@ function PathItem({
 
       // 设默认模板(沿用 CP-4 既有逻辑)— 作为子菜单的扁平展开
       items.push({ divider: true, label: '' });
-      for (const t of state.templates) {
+      for (const t of state.templates.filter((x) => !x.hidden || x.id === node.defaultTemplateId)) {
         items.push({
           label: `${t.icon} 设默认模板:${t.name}`,
           hint: t.command ? `启动命令: ${t.command}` : '系统默认 shell',

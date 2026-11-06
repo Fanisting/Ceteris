@@ -25,7 +25,7 @@ import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
-import { getAppLabel, getBuildType } from './build-type';
+import { getAppLabel, getBuildType, getLaunchExePath } from './build-type';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -1374,10 +1374,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       _e,
       envelope: CommandEnvelope<{ enabled: boolean }>,
     ) => {
-      const result = await setClassicIntegration(
-        envelope.payload.enabled,
-        app.getPath('exe'),
-      );
+      const result = await setClassicIntegration(envelope.payload.enabled, getLaunchExePath());
       const status = await getExplorerIntegrationStatus();
       return { ok: result.ok, message: result.message, status };
     },
@@ -1398,7 +1395,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_GET_PS_COMMANDS,
     (_e, _envelope: CommandEnvelope<undefined>) => {
-      return getPsCommands(app.getPath('exe'));
+      return getPsCommands(getLaunchExePath());
     },
   );
 

@@ -95,6 +95,10 @@ export const Icons = {
   templateClaudeCode: AutoAwesome, // 与 Claude 品牌星形相近
   templateCodex: Atr, // OpenAI 圆轨道意象
   templateOpenCode: DeployedCode, // 与 OpenCode 立方体 logo 相近
+  templateGemini: Psychology,
+  templateCopilot: ForkRight,
+  templateCursor: Code,
+  templateAider: Build,
 
   // shell 图标:不同 shell 用不同符号区分
   shellPwsh: Terminal, // PowerShell 7

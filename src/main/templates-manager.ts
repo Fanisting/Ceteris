@@ -4,8 +4,8 @@
  *   templates.json 持久化,与 SettingsManager 类似的 deep-merge / atomic write。
  *
  * @关键设计:
- * - 4 个内置模板永远存在 (id 固定为 'shell' / 'claude-code' / 'codex' /
- *   'opencode')。即使持久化文件残缺也会被 ensureBuiltins 补齐
+ * - 内置模板永远存在 (id 固定,见 BUILTIN_TEMPLATES)。即使持久化文件残缺也会被
+ *   ensureBuiltins 补齐。不想看到的内置模板用 hidden 隐藏,而不是删除
  * - 自定义模板用 UUID,与内置同列存储;CRUD 接口 V1 不暴露给 renderer
  *   (CP-4 模板编辑子页面才接入),CP-3 只用 read 路径 + 内置默认值
  * - 默认模板 id 必须存在于 templates 列表中;不存在时回退到 'shell'
@@ -21,12 +21,13 @@ import type { Template, TemplatesFile } from '@shared/types';
 import type { JsonStore } from './persistence';
 
 /**
- * 4 个内置模板。
+ * 内置模板。
  *
  * - shell:启动用户默认 shell,无 command;新建终端的兜底
  * - claude-code:启动 Anthropic Claude Code CLI (`claude`)
  * - codex:启动 OpenAI Codex CLI (`codex`)
  * - opencode:启动 OpenCode CLI (`opencode`)
+ * - gemini-cli / github-copilot / cursor / aider:同样是常用的终端编码助手
  *
  * 命令找不到时由 shell 自然报错 (PowerShell: "不是 cmdlet";cmd: "不是内
  * 部或外部命令"),不弹对话框 (软件定义书 ADR-005 的最小化干扰)。
@@ -75,6 +76,50 @@ export const BUILTIN_TEMPLATES: Template[] = [
     icon: '📦',
     isBuiltin: true,
     command: 'opencode',
+    args: [],
+    env: {},
+    shellFirst: true,
+    postExitAction: 'keep_shell',
+  },
+  {
+    id: 'gemini-cli',
+    name: 'Gemini CLI',
+    icon: '✨',
+    isBuiltin: true,
+    command: 'gemini',
+    args: [],
+    env: {},
+    shellFirst: true,
+    postExitAction: 'keep_shell',
+  },
+  {
+    id: 'github-copilot',
+    name: 'GitHub Copilot',
+    icon: '🐙',
+    isBuiltin: true,
+    command: 'copilot',
+    args: [],
+    env: {},
+    shellFirst: true,
+    postExitAction: 'keep_shell',
+  },
+  {
+    id: 'cursor',
+    name: 'Cursor',
+    icon: '🖱️',
+    isBuiltin: true,
+    command: 'agent',
+    args: [],
+    env: {},
+    shellFirst: true,
+    postExitAction: 'keep_shell',
+  },
+  {
+    id: 'aider',
+    name: 'Aider',
+    icon: '🛠️',
+    isBuiltin: true,
+    command: 'aider',
     args: [],
     env: {},
     shellFirst: true,
@@ -179,6 +224,9 @@ export class TemplatesManager extends EventEmitter {
     }
     if (this.defaultTemplateId === templateId) return;
     this.defaultTemplateId = templateId;
+    // The default is what opens with one click, so it cannot stay hidden.
+    const chosen = this.templates.find((t) => t.id === templateId);
+    if (chosen?.hidden) chosen.hidden = false;
     this.persist();
     this.emitUpdated();
   }
@@ -244,6 +292,12 @@ export class TemplatesManager extends EventEmitter {
       env: partial.env ? { ...partial.env } : { ...current.env },
     };
     validateTemplateInput(merged);
+    if (merged.hidden && id === this.defaultTemplateId) {
+      throw new TemplatesManagerError(
+        'InvalidTemplate',
+        `"${merged.name}" 是默认模板,不能隐藏。请先把别的模板设为默认。`,
+      );
+    }
     this.templates[idx] = merged;
     this.persist();
     this.emitUpdated();

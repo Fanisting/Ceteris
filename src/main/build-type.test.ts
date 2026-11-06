@@ -19,6 +19,7 @@ import {
   __resetBuildTypeCacheForTest,
   getAppLabel,
   getChannel,
+  getLaunchExePath,
   getRelaunchOptions,
   getBuildType,
   isBetaBuild,
@@ -44,6 +45,12 @@ describe('beta isolation', () => {
     expect(getBuildType()).toBe('portable');
     expect(getAppLabel()).toBe('Ceteris Beta');
     expect(getChannel()).toBe('beta');
+  });
+
+  it('Explorer starts the exe the user launched, not the temp copy', () => {
+    process.env['PORTABLE_EXECUTABLE_FILE'] = 'C:\\tools\\CeterisBeta-1.0.0.exe';
+    expect(getLaunchExePath()).toBe('C:\\tools\\CeterisBeta-1.0.0.exe');
+    delete process.env['PORTABLE_EXECUTABLE_FILE'];
   });
 
   it('an installed build restarts itself', () => {

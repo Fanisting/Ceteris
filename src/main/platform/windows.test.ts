@@ -20,6 +20,7 @@ import {
   __setListWslDistrosImplForTest,
   __setReadRegistryPathImplForTest,
   __setRunRegImplForTest,
+  setExplorerLabel,
 } from './windows';
 
 describe('WindowsAdapter — WSL shell support', () => {
@@ -142,6 +143,20 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
       const dIdx = c.indexOf('/d');
       expect(c[dIdx + 1]).toBe('C:\\Program Files\\Ceteris\\Ceteris.exe,0');
     }
+  });
+
+  it('beta 有自己的注册表项,不碰稳定版的菜单', async () => {
+    const adapter = new WindowsAdapter();
+    setExplorerLabel('Ceteris Beta');
+    try {
+      await adapter.registerFileManagerIntegration('C:\\tools\\CeterisBeta.exe');
+      await adapter.unregisterFileManagerIntegration();
+    } finally {
+      setExplorerLabel('Ceteris');
+    }
+    const keys = calls.map((a) => a[1] ?? '');
+    expect(keys.some((k) => k.endsWith('Directory\\shell\\Ceteris Beta'))).toBe(true);
+    expect(keys.some((k) => /shell\\Ceteris(\\command)?$/.test(k))).toBe(false);
   });
 
   it('register 写菜单文案 "在 Ceteris 终端中打开"', async () => {

@@ -417,7 +417,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
     }
   };
 
-  const templates = state.templates;
+  const templates = state.templates.filter((t) => !t.hidden);
   const visibleShells = shells ? filterShellsForWslPath(shells, wslDistroName) : null;
   const wslShellId = isWslPath ? visibleShells?.[0]?.id : undefined;
 

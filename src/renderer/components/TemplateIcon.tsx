@@ -25,6 +25,14 @@ function builtinTemplateIcon(id: string): IconName | null {
       return 'templateCodex';
     case 'opencode':
       return 'templateOpenCode';
+    case 'gemini-cli':
+      return 'templateGemini';
+    case 'github-copilot':
+      return 'templateCopilot';
+    case 'cursor':
+      return 'templateCursor';
+    case 'aider':
+      return 'templateAider';
     default:
       return null;
   }

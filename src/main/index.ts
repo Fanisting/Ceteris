@@ -37,9 +37,9 @@ import { SftpPool } from './sftp-client';
 /** Chromium 内置 PDF 查看器扩展的固定 origin,id 由 Chromium 写死。 */
 const PDF_VIEWER_ORIGIN = 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/';
 import { AIClient } from './ai-client';
-import { WindowsAdapter } from './platform/windows';
+import { setExplorerLabel, WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
-import { getBuildType, getChannel, isBetaBuild } from './build-type';
+import { getBuildType, getChannel, getLaunchExePath, isBetaBuild } from './build-type';
 import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
 import { logger } from './logger';
@@ -196,6 +196,7 @@ function bootstrap(): void {
 
   const channel = CHANNELS[getChannel()];
   logger.info('main', 'channel profile', { ...channel });
+  setExplorerLabel(channel.label);
   const settingsManager = new SettingsManager(settingsStore, {
     ...DEFAULT_SETTINGS,
     link: { ...DEFAULT_SETTINGS.link, hostPort: channel.linkPort },
@@ -551,13 +552,11 @@ function bootstrap(): void {
 
       // 启动期同步:如果 HKCU 经典菜单已存在但 exe 路径变了(用户卸载重装、
       // 或从 portable/dev 路径切到 installed 路径),刷新 command 字段。
-      // 仅 installed 形态做此动作 —— dev/portable 不应在启动期写注册表。
-      if (
-        platformAdapter instanceof WindowsAdapter &&
-        getBuildType() === 'installed'
-      ) {
+      // A beta's file name changes with every build, so this also keeps its menu pointing
+      // at the newest one. dev 不应在启动期写注册表。
+      if (platformAdapter instanceof WindowsAdapter && getBuildType() !== 'dev') {
         platformAdapter
-          .syncFileManagerIntegrationIfPresent(app.getPath('exe'))
+          .syncFileManagerIntegrationIfPresent(getLaunchExePath())
           .catch((err) =>
             logger.warn('main', 'syncFileManagerIntegrationIfPresent failed', err),
           );

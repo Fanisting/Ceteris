@@ -664,7 +664,7 @@ export interface TemplatesFile {
 }
 
 export interface Template {
-  /** 内置模板 id 固定 (shell / claude-code / codex / opencode),自定义为 UUID */
+  /** 内置模板 id 固定,自定义为 UUID */
   id: string;
   name: string;
   /** emoji 或简单图标 */
@@ -675,6 +675,8 @@ export interface Template {
   env: Record<string, string>;
   shellFirst: boolean;
   postExitAction: PostExitAction;
+  /** Left off the new tab page. It stays in Settings and still works where it is in use. */
+  hidden?: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────────

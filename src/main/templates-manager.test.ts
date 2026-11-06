@@ -50,18 +50,13 @@ function makeMockStore(): MockStore {
 }
 
 describe('TemplatesManager — initialize', () => {
-  it('空 store 加载 → 4 个内置模板齐全,defaultId=shell', async () => {
+  it('空 store 加载 → 内置模板齐全,defaultId=shell', async () => {
     const store = makeMockStore();
     const mgr = new TemplatesManager(store);
     const src = await mgr.initialize();
     expect(src).toBe('default');
-    expect(mgr.list()).toHaveLength(4);
-    expect(mgr.list().map((t) => t.id)).toEqual([
-      'shell',
-      'claude-code',
-      'codex',
-      'opencode',
-    ]);
+    expect(mgr.list()).toHaveLength(BUILTIN_TEMPLATES.length);
+    expect(mgr.list().map((t) => t.id)).toEqual(BUILTIN_TEMPLATES.map((b) => b.id));
     expect(mgr.getDefaultTemplateId()).toBe('shell');
   });
 
@@ -100,7 +95,7 @@ describe('TemplatesManager — initialize', () => {
     await mgr.initialize();
     const written = store.__getSet();
     expect(written).not.toBeNull();
-    expect(written!.templates).toHaveLength(4);
+    expect(written!.templates).toHaveLength(BUILTIN_TEMPLATES.length);
   });
 
   it('persistence 损坏 → 走默认值', async () => {
@@ -115,7 +110,7 @@ describe('TemplatesManager — initialize', () => {
     // defaultId 应该回退到 shell
     expect(mgr.getDefaultTemplateId()).toBe('shell');
     // 4 个内置补齐
-    expect(mgr.list()).toHaveLength(4);
+    expect(mgr.list()).toHaveLength(BUILTIN_TEMPLATES.length);
   });
 });
 
@@ -290,5 +285,53 @@ describe('TemplatesManager — add / update / delete (CP-4)', () => {
     const mgr = new TemplatesManager(makeMockStore());
     await mgr.initialize();
     expect(() => mgr.delete('nope')).toThrowError(/TemplateNotFound/);
+  });
+
+  describe('显示和隐藏', () => {
+    async function ready(): Promise<TemplatesManager> {
+      const manager = new TemplatesManager(makeMockStore());
+      await manager.initialize();
+      return manager;
+    }
+
+    it('内置模板可以隐藏,也可以再显示', async () => {
+      const manager = await ready();
+      expect(manager.update('aider', { hidden: true }).hidden).toBe(true);
+      expect(manager.update('aider', { hidden: false }).hidden).toBe(false);
+    });
+
+    it('隐藏后仍然在列表里,不是删除', async () => {
+      const manager = await ready();
+      manager.update('codex', { hidden: true });
+      expect(manager.get('codex')?.command).toBe('codex');
+    });
+
+    it('默认模板不能隐藏', async () => {
+      const manager = await ready();
+      expect(() => manager.update('shell', { hidden: true })).toThrow(/默认模板/);
+    });
+
+    it('把隐藏的模板设为默认时自动显示', async () => {
+      const manager = await ready();
+      manager.update('aider', { hidden: true });
+      manager.setDefault('aider');
+      expect(manager.get('aider')?.hidden).toBe(false);
+    });
+
+    it('编辑其他字段不会改变隐藏状态', async () => {
+      const manager = await ready();
+      manager.update('aider', { hidden: true });
+      expect(manager.update('aider', { name: 'My Aider' }).hidden).toBe(true);
+    });
+  });
+
+  it('新增的内置模板用的是各工具当前的命令', () => {
+    const commands = Object.fromEntries(BUILTIN_TEMPLATES.map((b) => [b.id, b.command]));
+    expect(commands).toMatchObject({
+      'gemini-cli': 'gemini',
+      'github-copilot': 'copilot',
+      cursor: 'agent',
+      aider: 'aider',
+    });
   });
 });

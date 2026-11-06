@@ -669,6 +669,15 @@ function TemplateList({
       });
   };
 
+  const handleSetHidden = (id: string, hidden: boolean): void => {
+    setError(null);
+    window.api
+      .invoke(COMMAND_CHANNELS.TEMPLATE_UPDATE, { id, partial: { hidden } })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  };
+
   const handleDelete = async (id: string): Promise<void> => {
     // CPB-P2 / FOC-5 一致化:原生 confirm 关闭后焦点不可控,且不走主题样式。
     // 统一走 modal.confirm,与项目其他危险操作风格一致。
@@ -693,7 +702,7 @@ function TemplateList({
   return (
     <div className="template-list">
       {templates.map((t) => (
-        <div key={t.id} className="template-list-item">
+        <div key={t.id} className={`template-list-item${t.hidden ? ' hidden-template' : ''}`}>
           <span className="template-list-icon">
             {/* P2-14:与 MainPane.TemplateLaunchButton 一致 — builtin 走 lucide
                 矢量,自定义模板 fallback emoji。原 {t.icon} 让 builtin 列表里
@@ -703,6 +712,7 @@ function TemplateList({
           <span className="template-list-name">{t.name}</span>
           {t.isBuiltin && <span className="template-list-tag">{tx('内置', 'Built-in')}</span>}
           {t.id === defaultId && <span className="template-list-tag default">{tx('默认', 'Default')}</span>}
+          {t.hidden && <span className="template-list-tag">{tx('已隐藏', 'Hidden')}</span>}
           <span className="template-list-cmd" title={t.command || tx('(纯 shell)', '(plain shell)')}>
             {t.command || tx('(纯 shell)', '(plain shell)')}
           </span>
@@ -723,6 +733,16 @@ function TemplateList({
             >
               {tx('编辑', 'Edit')}
             </button>
+            {t.id !== defaultId && (
+              <button
+                type="button"
+                className="settings-button"
+                title={tx('控制是否显示在新建页面', 'Whether it appears on the new tab page')}
+                onClick={() => handleSetHidden(t.id, !t.hidden)}
+              >
+                {t.hidden ? tx('显示', 'Show') : tx('隐藏', 'Hide')}
+              </button>
+            )}
             {!t.isBuiltin && (
               <button
                 type="button"
@@ -2289,7 +2309,7 @@ function RemotePanel({
 //
 // 经典菜单(HKCU 注册表)和 Win11 新菜单(MSIX + 证书)各自独立卡片,
 // 独立开关。状态来自现场查 HKCU / Get-AppxPackage(IPC),不进 settings.json。
-// 仅 installed 构建可写;dev / portable 全部置灰。
+// dev 全部置灰。便携版可用经典菜单和开机启动,Win11 新菜单需要安装版。
 // ──────────────────────────────────────────────────────────────────
 
 function SystemIntegrationPanel({
@@ -2411,7 +2431,16 @@ function SystemIntegrationPanel({
         unsupportedReason={status?.classicUnsupportedReason ?? null}
         busy={busy === 'classic'}
         onToggle={(next) => void handleSet('classic', next)}
-        detail={null}
+        detail={
+          status?.buildType === 'portable' ? (
+            <div className="explorer-integration-meta">
+              {tx(
+                '便携版没有卸载程序。删除这个程序之前,请先在这里关闭菜单。',
+                'A portable build has no uninstaller. Turn this off here before deleting the app.',
+              )}
+            </div>
+          ) : null
+        }
         certInfo={null}
       />
 

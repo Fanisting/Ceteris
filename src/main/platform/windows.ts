@@ -578,8 +578,18 @@ export class WindowsAdapter implements PlatformAdapter {
   }
 
   async isAutoStartEnabled(): Promise<boolean> {
+    const { name } = loginItemIdentity();
+    if (name) {
+      // Electron looks up its default name, so it cannot see an entry written under another.
+      try {
+        await runReg(['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', name]);
+        return true;
+      } catch {
+        return false;
+      }
+    }
     const { app } = await import('electron');
-    return app.getLoginItemSettings({ args: ['--auto-start'], ...loginItemIdentity() }).openAtLogin;
+    return app.getLoginItemSettings({ args: ['--auto-start'] }).openAtLogin;
   }
 
   /**

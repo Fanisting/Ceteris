@@ -543,26 +543,26 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
     extendedAnsi: LIGHT_EXTENDED_ANSI,
   },
   // UI-2 — Light Pink(浅色可爱,mgwg/light-pink-theme 上游)
-  // 上游 ANSI 颜色在 #fbe4ee bg 上多处不达 AA(yellow/magenta/cyan),
+  // 上游 ANSI 颜色在 #f5f5f5 bg 上多处不达 AA(yellow/magenta/cyan),
   // 按 BETA-035 标准统一加深到 ≥4.5:1
   'light-pink': {
-    background: '#fbe4ee',
+    background: '#f5f5f5',
     foreground: '#54494b',
     cursor: '#ff7ab3',
-    cursorAccent: '#fbe4ee',
-    selectionBackground: '#f3c6da',
+    cursorAccent: '#f5f5f5',
+    selectionBackground: '#f1dde9',
     black: '#54494b',
-    red: '#b8233c',
-    green: '#3a6b49',
-    yellow: '#7c5f16',    // 上游 #b08b35 在浅底 ~3.2:1,加深到 ≥4.5
+    red: '#d2304b',
+    green: '#4a7559',
+    yellow: '#8a6c1f',    // 上游 #b08b35 在浅底 ~3.2:1,加深到 ≥4.5
     blue: '#1f6e89',
     magenta: '#9d3c5e',   // 上游 function 色,本身已 ≥4.5
     cyan: '#2d6b75',      // 上游 #458a96 仅 ~3.7,加深到 ≥4.5
     white: '#54494b',
-    brightBlack: '#665560',
-    brightRed: '#b8233c',
-    brightGreen: '#3a6b49',
-    brightYellow: '#7c5f16',
+    brightBlack: '#7d6770',
+    brightRed: '#d2304b',
+    brightGreen: '#4a7559',
+    brightYellow: '#8a6c1f',
     brightBlue: '#1f6e89',
     brightMagenta: '#8855a0',   // 加深后的紫莓
     brightCyan: '#2d6b75',

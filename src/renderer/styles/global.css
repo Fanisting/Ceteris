@@ -669,22 +669,21 @@
  * AA 对比度:所有 text-* / status 色 ≥4.5:1 on bg #f5f5f5
  *   (原主题 comment #BA9AB9 在 #f5f5f5 上仅 ~2.5:1,muted 已加深到 #7d6770) */
 [data-theme='light-pink'] {
-  /* Layer 2 — Semantic。背景比上游更粉:上游的灰白看起来太淡。文字和状态色相应加深,
-     在 bg-primary 和 bg-secondary 上都保持 ≥4.5:1,改背景时要重新核对。 */
-  --color-bg-primary: #fbe4ee;
-  --color-bg-secondary: #f6d5e3;
-  --color-bg-elevated: #f2c9db;
-  --color-bg-hover: #efc0d5;
-  --color-bg-active: #ecb4cd;
-  --color-bg-strong: #ffb8ca;
-  --color-text-primary: #54494b;
-  --color-text-secondary: #5f5457;
-  --color-text-muted: #665560;
-  --color-danger: #b8233c;
-  --color-warning: #755910;
-  --color-success: #3a6b49;
-  --color-info: #1b5f76;
-  --color-accent-secondary: #77498c;
+  /* Layer 2 — Semantic;直接采用上游 hex,无独立 Layer 1 调色板词汇 */
+  --color-bg-primary: #f5f5f5;       /* 冷灰白(editor.background) */
+  --color-bg-secondary: #f5f0f3;     /* 奶霜粉(sideBar) */
+  --color-bg-elevated: #f5e3ef;      /* 樱花霜(sideBarSectionHeader) */
+  --color-bg-hover: #ede5ed;         /* 淡灰粉 hover */
+  --color-bg-active: #f1dde9;        /* 莓糖选中态 */
+  --color-bg-strong: #ffb8ca;        /* 婴儿粉(emphasis) */
+  --color-text-primary: #54494b;     /* 暖炭灰(editorCursor) */
+  --color-text-secondary: #736a6d;   /* 暖中灰(lineNumber) ≥4.5:1 */
+  --color-text-muted: #7d6770;       /* 暖莓棕 ≥4.5:1(上游 #BA9AB9 不达标,加深) */
+  --color-danger: #d2304b;           /* 玫瑰红(invalid) */
+  --color-warning: #b08b35;          /* 暖金(constants) */
+  --color-success: #4d8a5e;          /* 鼠尾草绿(上游无 success,与 Cutie 一致) */
+  --color-info: #1f6e89;             /* 海蓝(comment.documentation) */
+  --color-accent-secondary: #9466aa; /* 紫莓(types/classes) — 多色少女的紫调点睛 */
   --color-accent-special: #ff7ab3;   /* 热粉(statusbar) — Light Pink 标志色 */
 
   /* Layer 3 (旧 --base / --surface 等别名) 故意省略 — 全代码库零消费者 */

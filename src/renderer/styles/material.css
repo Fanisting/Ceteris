@@ -173,9 +173,7 @@
 }
 
 [data-theme='light-pink'] {
-  --md-primary-text-weight: 20%;
-  --md-surface-container-high: #f2c9db;
-  --md-surface-container-highest: #ecb4cd;
+  --md-primary-text-weight: 30%;
   --md-error-text-weight: 80%;
 }
 

@@ -273,7 +273,7 @@ function AppearancePanel({
   const { tx } = useTranslation();
   const state = useAppState();
   const a = state.settings.appearance;
-  const theme = a?.theme ?? 'ceteris-dark';
+  const theme = a?.theme ?? 'light-pink';
   const windowStyle: WindowStyle = a?.windowStyle ?? 'windows';
   const terminalFontFamily = a?.terminalFontFamily ?? '';
   const terminalFontSize = a?.terminalFontSize ?? 13;

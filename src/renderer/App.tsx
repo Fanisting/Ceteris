@@ -155,7 +155,7 @@ function ConnectedShell({ appLabel }: { appLabel: string }): JSX.Element {
   const state = useAppState();
   const dispatch = useAppDispatch();
 
-  const currentTheme = state.settings.appearance?.theme ?? 'ceteris-dark';
+  const currentTheme = state.settings.appearance?.theme ?? 'light-pink';
   const windowStyle = state.settings.appearance?.windowStyle ?? 'windows';
   const uiZoom = state.settings.appearance?.uiZoom ?? 1;
   const uiFontFamily = state.settings.appearance?.uiFontFamily ?? '';

@@ -245,8 +245,8 @@ export class WindowManager implements IWindowManager {
       // 看到方角窗口,这与 gnome-terminal / wezterm 等所有主流 Linux 终端
       // 一致;CSS 端配合 <html data-platform='linux'> 在 .app-root 上去掉
       // border-radius 避免内部出现 #191724 实色边角。
-      // 与默认主题 ceteris-dark 的外壳底色一致,避免首帧闪出其它颜色
-      backgroundColor: '#1a2121',
+      // 与默认主题 light-pink 的外壳底色一致,避免首帧闪出其它颜色
+      backgroundColor: '#f5f0f3',
       transparent: false,
       // M1-A:自绘标题栏。frame:false 把整条 OS 标题栏拿掉,renderer 端用
       // -webkit-app-region:drag 实现拖动,用 cmd:window:* 实现按钮动作。

@@ -56,6 +56,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 变更
 
+- 新安装默认使用 Light Pink 主题。已有设置不受影响。
+
 - **稳定版和测试版可以同时运行。** `npm run build:stable` 生成安装包,`npm run build:beta` 生成 Ceteris Beta,`npm run beta` 打开最新的测试版。两者的数据目录、单实例锁、app ID、exe 名、标题栏名称、Link 默认端口和远端 tmux socket 都是独立的,`npm run dev` 同样独立。
 
 - **改名为 Ceteris。** 应用名、exe、安装包、app ID、注册表项、右键菜单、数据目录,以及环境变量、主题 id、tmux socket 和 Link 握手前缀都已更换。

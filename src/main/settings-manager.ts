@@ -40,7 +40,7 @@ export type { DeepPartial };
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   appearance: {
-    theme: 'ceteris-dark',
+    theme: 'light-pink',
     windowStyle: 'windows',
     language: 'system',
     terminalFontFamily:

@@ -40,13 +40,39 @@
   color: var(--md-on-secondary-container, #f0f);
 }
 
+/* The gap above the card is the drag handle, so it needs no space of its own. */
+.file-tree-resize {
+  flex: 0 0 10px;
+  position: relative;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.file-tree-resize::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 36px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: transparent;
+  transform: translateX(-50%);
+  transition: background-color var(--md-duration-short, 100ms);
+}
+
+.file-tree-resize:hover::after,
+.file-tree-resize.dragging::after {
+  background-color: var(--md-primary, #f0f);
+}
+
 /* A card of its own, so files read as a separate area from the sessions above. */
 .file-tree-panel {
   flex: 0 0 45%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  margin: 10px 8px 4px;
+  margin: 0 8px 4px;
   overflow: hidden;
   border-radius: var(--md-shape-md, 12px);
   background-color: var(--md-surface-container-high, #f0f);

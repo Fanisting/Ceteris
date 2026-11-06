@@ -18,6 +18,7 @@
   "fileTree.toggle": "显示或隐藏文件树",
   "fileTree.retry": "重试",
   "fileTree.rename": "重命名",
+  "fileTree.resize": "拖动调整高度,双击恢复默认",
   "fileTree.empty.noSession": "选择一个会话以查看它的文件夹",
   "fileTree.connecting": "正在通过 SFTP 连接…",
   "fileTree.empty.folder": "空文件夹",

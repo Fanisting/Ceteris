@@ -18,6 +18,7 @@
   "fileTree.toggle": "Show or hide the file tree",
   "fileTree.retry": "Try again",
   "fileTree.rename": "Rename",
+  "fileTree.resize": "Drag to resize. Double-click to reset.",
   "fileTree.empty.noSession": "Select a session to see its folder",
   "fileTree.connecting": "Connecting over SFTP…",
   "fileTree.empty.folder": "Empty folder",

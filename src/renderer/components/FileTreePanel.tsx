@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent,
 } from 'react';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import {
@@ -77,19 +78,34 @@ export function FileTreePanel(): JSX.Element {
   const state = useAppState();
   const { t } = useTranslation();
   const session = getSelectedSession(state);
-  const node = session ? (findPathNode(state.pathTree, session.pathId) ?? null) : null;
-  const root = resolveFileTreeRoot(session, node);
+  // A clicked folder shows its files straight away, before any terminal is open in it.
+  const pathId = session?.pathId ?? state.selectedPathId;
+  const node = pathId ? (findPathNode(state.pathTree, pathId) ?? null) : null;
+  const root = session ? resolveFileTreeRoot(session, node) : (node?.path ?? null);
   const sshProfileId = node?.kind === 'ssh' ? node.sshProfileId : undefined;
+  const { height, handleProps } = useResizableHeight();
 
   return (
-    <section className="file-tree-panel" aria-label={t('fileTree.title')}>
+    <>
+    <div
+      className="file-tree-resize"
+      role="separator"
+      aria-orientation="horizontal"
+      title={t('fileTree.resize')}
+      {...handleProps}
+    />
+    <section
+      className="file-tree-panel"
+      aria-label={t('fileTree.title')}
+      style={height === null ? undefined : { flexBasis: height }}
+    >
       <div className="file-tree-header" title={root ?? undefined}>
         <Folder size={14} />
         <span className="file-tree-header-label">
           {root ? folderLabel(root) : t('fileTree.title')}
         </span>
       </div>
-      {root && session ? (
+      {root ? (
         <FileTreeBody
           key={`${sshProfileId ?? ''}|${root}`}
           root={root}
@@ -100,7 +116,76 @@ export function FileTreePanel(): JSX.Element {
         <p className="file-tree-hint">{t('fileTree.empty.noSession')}</p>
       )}
     </section>
+    </>
   );
+}
+
+const HEIGHT_KEY = 'ceteris.sidebar.fileTreeHeight';
+const MIN_HEIGHT = 120;
+/** What must stay visible above the panel, so folders can always be reached. */
+const MIN_ABOVE = 180;
+
+function readHeight(): number | null {
+  try {
+    const value = Number(window.localStorage?.getItem(HEIGHT_KEY));
+    return value >= MIN_HEIGHT ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveHeight(value: number | null): void {
+  try {
+    if (value === null) window.localStorage?.removeItem(HEIGHT_KEY);
+    else window.localStorage?.setItem(HEIGHT_KEY, String(value));
+  } catch {
+    // Only a remembered height is lost, so nothing needs reporting.
+  }
+}
+
+/** Drag the handle to resize, double-click to go back to the default height. */
+function useResizableHeight(): {
+  height: number | null;
+  handleProps: {
+    onPointerDown: (e: PointerEvent<HTMLDivElement>) => void;
+    onDoubleClick: () => void;
+  };
+} {
+  const [height, setHeight] = useState<number | null>(readHeight);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
+    const handle = e.currentTarget;
+    const panel = handle.nextElementSibling as HTMLElement;
+    const sidebar = handle.closest('.sidebar') as HTMLElement;
+    const startY = e.clientY;
+    const startHeight = panel.getBoundingClientRect().height;
+    const max = Math.max(MIN_HEIGHT, sidebar.clientHeight - MIN_ABOVE);
+    let latest = startHeight;
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+
+    const move = (ev: globalThis.PointerEvent): void => {
+      latest = Math.min(max, Math.max(MIN_HEIGHT, startHeight + startY - ev.clientY));
+      setHeight(latest);
+    };
+    const end = (): void => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      handle.classList.remove('dragging');
+      saveHeight(Math.round(latest));
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  };
+
+  const onDoubleClick = (): void => {
+    setHeight(null);
+    saveHeight(null);
+  };
+
+  return { height, handleProps: { onPointerDown, onDoubleClick } };
 }
 
 function FileTreeBody({ root, pdfSessionId, sshProfileId }: FileTreeBodyProps): JSX.Element {

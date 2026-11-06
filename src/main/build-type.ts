@@ -48,6 +48,15 @@ export function getAppLabel(): string {
   return CHANNELS[getChannel()].label;
 }
 
+/**
+ * Options for app.relaunch. A portable build runs from a temp copy that is deleted on
+ * exit, so it has to restart through the exe the user launched.
+ */
+export function getRelaunchOptions(): { execPath?: string } {
+  const portableExe = process.env['PORTABLE_EXECUTABLE_FILE'];
+  return portableExe ? { execPath: portableExe } : {};
+}
+
 export function getBuildType(): BuildType {
   if (cached) return cached;
   if (!app.isPackaged) {

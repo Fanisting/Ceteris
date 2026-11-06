@@ -19,6 +19,7 @@ import {
   __resetBuildTypeCacheForTest,
   getAppLabel,
   getChannel,
+  getRelaunchOptions,
   getBuildType,
   isBetaBuild,
 } from './build-type';
@@ -43,6 +44,17 @@ describe('beta isolation', () => {
     expect(getBuildType()).toBe('portable');
     expect(getAppLabel()).toBe('Ceteris Beta');
     expect(getChannel()).toBe('beta');
+  });
+
+  it('an installed build restarts itself', () => {
+    delete process.env['PORTABLE_EXECUTABLE_FILE'];
+    expect(getRelaunchOptions()).toEqual({});
+  });
+
+  it('a portable build restarts through the exe the user launched', () => {
+    process.env['PORTABLE_EXECUTABLE_FILE'] = 'C:\\tools\\CeterisBeta-1.0.0.exe';
+    expect(getRelaunchOptions()).toEqual({ execPath: 'C:\\tools\\CeterisBeta-1.0.0.exe' });
+    delete process.env['PORTABLE_EXECUTABLE_FILE'];
   });
 
   it('npm run dev is its own channel', () => {

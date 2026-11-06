@@ -8,6 +8,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
+- **托盘菜单可以重新启动。** 右键托盘图标选择"重新启动",应用会退出并重新打开,比如在安装更新之后。运行中的终端不会恢复,所以有终端在运行时会先询问。
+
 - **Material Design 3 外观。** 窗口改为一整块外壳上嵌圆角内容卡片,侧栏和设置导航用胶囊式活动项,标签改为 MD3 primary tabs,设置项开关改为 Switch,文本框改为 outlined text field,对话框、菜单、通知都换成 MD3 的形状、阴影和动效。尺寸按鼠标为主的桌面密度收缩,没有照搬触屏的 56px 行高。
 
   外观集中在 `src/renderer/styles/material.css`,在 `global.css` 之后加载,`global.css` 本身没有改动。所有主题都走这一层:没有 MD3 色板的主题从现有语义 token 推导颜色角色。

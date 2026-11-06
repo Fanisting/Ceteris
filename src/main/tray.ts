@@ -38,7 +38,7 @@ import type { WindowManager } from './window-manager';
 import type { SessionInfo } from '@shared/types';
 import type { SessionManager } from './session-manager';
 import type { SettingsManager } from './settings-manager';
-import { getAppLabel } from './build-type';
+import { getAppLabel, getChannel, getRelaunchOptions } from './build-type';
 import { logger } from './logger';
 import { setQuitting } from './index';
 
@@ -223,6 +223,7 @@ export class TrayManager {
    *   - 正在运行的会话(子菜单,>=1 session 时)
    *   - --
    *   - 设置
+   *   - 重新启动(npm run dev 下没有:重启会断开 dev server)
    *   - 完全退出 Ceteris
    */
   private rebuildContextMenu(): void {
@@ -291,6 +292,13 @@ export class TrayManager {
     });
 
     items.push({ type: 'separator' });
+
+    if (getChannel() !== 'dev') {
+      items.push({
+        label: `重新启动 ${getAppLabel()}`,
+        click: () => void this.restartApp(),
+      });
+    }
 
     items.push({
       label: `完全退出 ${getAppLabel()}${liveSessions.length > 0 ? ` (${liveSessions.length} 个会话运行中)` : ''}`,
@@ -382,25 +390,54 @@ export class TrayManager {
    * 关闭单窗口绝对不调到这里 (软件定义书 7.4.1, AGENTS.md 红线)。
    */
   private async quitApp(): Promise<void> {
+    const proceed = await this.confirmEndingSessions(
+      '完全退出',
+      '如果只想隐藏窗口,请关闭窗口而不是"完全退出"。',
+    );
+    if (proceed) this.leave();
+  }
+
+  /**
+   * Quits and starts again, so an installed update or a stuck app starts fresh.
+   *
+   * Terminals live in this process, so a restart ends them just as quitting does. Session
+   * restore is not built, which is why the warning says they do not come back.
+   */
+  private async restartApp(): Promise<void> {
+    const proceed = await this.confirmEndingSessions(
+      '重新启动',
+      '窗口会重新打开,但这些终端不会恢复。',
+    );
+    if (!proceed) return;
+    logger.info('TrayManager', 'restarting');
+    // relaunch only schedules the new process; it starts once this one has exited.
+    app.relaunch(getRelaunchOptions());
+    this.leave();
+  }
+
+  /** Asks before ending running terminals, if the user wants to be asked. */
+  private async confirmEndingSessions(action: string, detail: string): Promise<boolean> {
     const settings = this.settingsManager?.get();
     const confirmOnQuit = settings?.behavior?.confirmOnQuit ?? true;
     const sessions = this.sessionManager?.list() ?? [];
     const liveCount = sessions.filter((s) => s.state !== 'exited').length;
+    if (!confirmOnQuit || liveCount === 0) return true;
 
-    if (confirmOnQuit && liveCount > 0) {
-      const owner = this.windowManager.getMostRecentlyActive();
-      const result = await dialog.showMessageBox(owner ?? undefined as never, {
-        type: 'warning',
-        title: `完全退出 ${getAppLabel()}?`,
-        message: `还有 ${liveCount} 个终端在运行,完全退出会关掉它们。`,
-        detail: '如果只想隐藏窗口,请关闭窗口而不是"完全退出"。',
-        buttons: ['取消', '完全退出'],
-        defaultId: 0,
-        cancelId: 0,
-      });
-      if (result.response !== 1) return;
-    }
+    const owner = this.windowManager.getMostRecentlyActive();
+    const result = await dialog.showMessageBox(owner ?? undefined as never, {
+      type: 'warning',
+      title: `${action} ${getAppLabel()}?`,
+      message: `还有 ${liveCount} 个终端在运行,${action}会关掉它们。`,
+      detail,
+      buttons: ['取消', action],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    return result.response === 1;
+  }
 
+  /** The standard exit: before-quit, then will-quit shuts sessions down and saves. */
+  private leave(): void {
     setQuitting();
     this.destroy();
     app.quit();

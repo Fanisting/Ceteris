@@ -349,38 +349,6 @@ button:focus-visible,
 }
 
 /* 分段按钮:外框一体,选中段用 secondary container */
-.sidebar-segmented {
-  gap: 0;
-  margin: 0 12px 8px;
-  padding: 0;
-  overflow: hidden;
-  background-color: transparent;
-  border: 1px solid var(--md-outline, #f0f);
-  border-radius: var(--md-shape-full, 999px);
-}
-
-.sidebar-segmented-item {
-  padding: 4px 10px;
-  border: none;
-  border-radius: 0;
-  color: var(--md-on-surface, #f0f);
-}
-
-.sidebar-segmented-item:hover {
-  background-color: var(--md-state-hover, transparent);
-  color: var(--md-on-surface, #f0f);
-}
-
-/* 容器 overflow:hidden 会裁掉向外的焦点框 */
-.sidebar-segmented-item:focus-visible {
-  outline-offset: -2px;
-}
-
-.sidebar-segmented-item.active {
-  background-color: var(--md-secondary-container, #f0f);
-  color: var(--md-on-secondary-container, #f0f);
-}
-
 .sidebar-bookmarks-dropzone {
   padding: 0 8px 8px;
 }

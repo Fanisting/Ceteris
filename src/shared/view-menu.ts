@@ -7,8 +7,8 @@
  * @关键设计:
  * - The badge is the one place to reach another machine, so it always has a menu, even
  *   with nothing set up yet. That menu then offers to add a Host or a server.
- * - A Link Host replaces the whole window, while an SSH server only changes what the
- *   sidebar lists. The badge covers both because to the user they are the same question:
+ * - This is the only switcher. A Link Host replaces the whole window, while an SSH server
+ *   only changes what the sidebar lists, but to the user they are the same question:
  *   which machine am I on?
  * - Inside a remote view, settings and SSH servers belong to the Host, and a Link
  *   connection made there would run on the wrong machine. So a remote view only offers

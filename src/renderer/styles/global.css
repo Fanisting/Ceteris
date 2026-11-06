@@ -1019,40 +1019,6 @@ html[data-maximized='true'] .app-root.with-shell {
   transition: background-color 100ms ease;
 }
 
-/* SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。 */
-.sidebar-segmented {
-  display: flex;
-  gap: 2px;
-  padding: 6px 8px;
-  background-color: var(--color-bg-secondary, #f0f);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text-muted, #888) 18%, transparent);
-}
-
-.sidebar-segmented-item {
-  flex: 1 1 0;
-  padding: 5px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-muted, #888);
-  background-color: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  transition:
-    background-color 100ms ease,
-    color 100ms ease;
-}
-
-.sidebar-segmented-item:hover {
-  color: var(--color-text-primary, #fff);
-  background-color: color-mix(in srgb, var(--color-text-muted, #888) 10%, transparent);
-}
-
-.sidebar-segmented-item.active {
-  color: var(--color-text-primary, #fff);
-  background-color: color-mix(in srgb, var(--color-accent-special, #c4a7e7) 22%, transparent);
-}
-
 /* F11(beta 勘误2 续 v4):dropzone 视觉 — 纯背景洗涤 + 居中浮卡。
  *
  * 历史尝试与撤回原因:

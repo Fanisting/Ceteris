@@ -11,7 +11,7 @@
  *   是否被其他窗口持有 (灰显 + ↗ 图标)
  * - 拖 Explorer 文件夹到 .sidebar-bookmarks-dropzone (CP-2 完成标志):
  *   先校验 file:// path 是否存在且是目录,然后调 cmd:bookmark:add
- * - SSH 方案 v2.1 §II.3:顶部 [本地] [远程] segmented control,按 kind 过滤三栏内容。
+ * - The list shows local folders or SSH folders, chosen from the title bar badge.
  * - 设置入口固定在底部 (CP-2 占位,CP-4 接入完整设置)
  *
  * @对应文档章节: 软件定义书.md 6.2 (左侧栏)、7.3 (拖拽规格)
@@ -87,7 +87,7 @@ const STATE_DOT_COLOR: Record<SessionInfo['state'], string> = {
 // ──────────────────────────────────────────────────────────────────
 
 /**
- * SSH 方案 v2.1 §II.3:Sidebar 顶部 segmented control。
+ * What the list shows, chosen from the title bar badge (ViewSwitchButton.tsx).
  * 'local' = 本机 + 所有 WSL 发行版,'remote' = 所有 SSH profile。
  * 持久化到 localStorage,跨重启保留。
  */
@@ -139,11 +139,8 @@ export function Sidebar(): JSX.Element {
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(
     () => new Set(),
   );
-  // The title bar badge switches this too, so it lives in the store.
+  // Chosen from the title bar badge, which is the only switcher.
   const segment = state.sidebarSegment;
-  const setSegment = (next: SidebarSegment): void => {
-    dispatch({ type: 'view/set-sidebar-segment', segment: next });
-  };
   useEffect(() => saveSidebarSegment(segment), [segment]);
 
   // The badge asks for this when a server has no saved folder yet.
@@ -471,33 +468,6 @@ export function Sidebar(): JSX.Element {
       <div className="sidebar-drop-hint" aria-hidden="true">
         <span className="sidebar-drop-hint-icon">📁</span>
         <span className="sidebar-drop-hint-label">{t('sidebar.dropHint')}</span>
-      </div>
-      <div
-        className="sidebar-segmented"
-        role="tablist"
-        aria-label={t('sidebar.segment.label') || '路径来源'}
-        data-testid="sidebar-segmented"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={effectiveSegment === 'local'}
-          className={`sidebar-segmented-item${effectiveSegment === 'local' ? ' active' : ''}`}
-          onClick={() => setSegment('local')}
-          data-testid="sidebar-segment-local"
-        >
-          {t('sidebar.segment.local') || '本地'}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={effectiveSegment === 'remote'}
-          className={`sidebar-segmented-item${effectiveSegment === 'remote' ? ' active' : ''}`}
-          onClick={() => setSegment('remote')}
-          data-testid="sidebar-segment-remote"
-        >
-          {t('sidebar.segment.remote') || '远程'}
-        </button>
       </div>
       <div className="sidebar-bookmarks-dropzone" data-segment={effectiveSegment}>
         <Category

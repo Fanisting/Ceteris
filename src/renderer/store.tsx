@@ -81,7 +81,7 @@ export interface AppState {
   selectedSessionId: string | null;
   /** Split layout of this window. In memory only, like the selection. */
   paneLayout: PaneLayoutId;
-  /** Shared because the title bar badge switches it too. */
+  /** Local folders or SSH folders. Set by the title bar badge. */
   sidebarSegment: SidebarSegment;
   /** Settings page to open next; null is the default page. */
   settingsCategory: string | null;
@@ -454,7 +454,7 @@ function readSidebarSegment(): SidebarSegment {
   }
 }
 
-/** Remembers the sidebar tab across restarts. */
+/** Remembers what the sidebar lists across restarts. */
 export function saveSidebarSegment(segment: SidebarSegment): void {
   try {
     window.localStorage?.setItem(SIDEBAR_SEGMENT_LS_KEY, segment);

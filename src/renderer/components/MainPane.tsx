@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type DragEvent,
 } from 'react';
 import {
   COMMAND_CHANNELS,
@@ -45,6 +46,7 @@ import {
   useAppState,
 } from '../store';
 import { PaneLayoutBar } from './PaneLayoutBar';
+import { PATH_DRAG_TYPE } from './path-drag';
 import { TerminalView } from './TerminalView';
 import { focusTerminalDom } from '../focus';
 import { Icon, type IconName } from './icons';
@@ -135,6 +137,8 @@ export function MainPane(): JSX.Element {
       ? ''
       : slots.flatMap((s) => (s && s.ownerWindowId === null ? [s.id] : [])).join(',');
   const failedClaims = useRef(new Set<string>());
+  const [pathDragOver, setPathDragOver] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     window.api
@@ -206,16 +210,65 @@ export function MainPane(): JSX.Element {
     dispatch({ type: 'view/update-terminal-dims', dims: { cols, rows } });
   }, [dispatch, fontSize, lineHeight]);
 
+  // A folder dragged from the sidebar opens a terminal there. Capture phase, because
+  // xterm consumes drops to paste file paths, and that must keep working for real files.
+  const isPathDrag = (e: DragEvent<HTMLElement>): boolean =>
+    e.dataTransfer.types.includes(PATH_DRAG_TYPE);
+
+  const openDroppedPath = async (pathId: string): Promise<void> => {
+    const node = findPathNode(state.pathTree, pathId);
+    if (!node) return;
+    try {
+      const dims = state.lastTerminalDims;
+      const res = await window.api.invoke<unknown, CreateSessionResponse>(
+        COMMAND_CHANNELS.SESSION_CREATE,
+        {
+          pathId,
+          templateId: node.defaultTemplateId ?? state.defaultTemplateId ?? 'shell',
+          cols: dims.cols,
+          rows: dims.rows,
+        },
+      );
+      dispatch({ type: 'view/select-path', pathId });
+      dispatch({ type: 'view/select-session', sessionId: res.session.id });
+      if (res.warning) toast.push({ kind: 'warn', message: res.warning });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.push({ kind: 'error', message: `打开终端失败 (${node.path}):${msg}` });
+    }
+  };
+
+  const dropProps = {
+    onDragOverCapture: (e: DragEvent<HTMLElement>): void => {
+      if (!isPathDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      setPathDragOver(true);
+    },
+    onDragLeave: (e: DragEvent<HTMLElement>): void => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPathDragOver(false);
+    },
+    onDropCapture: (e: DragEvent<HTMLElement>): void => {
+      setPathDragOver(false);
+      if (!isPathDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void openDroppedPath(e.dataTransfer.getData(PATH_DRAG_TYPE));
+    },
+  };
+  const mainClass = `main-pane${pathDragOver ? ' path-drag-over' : ''}`;
+
   if (!state.selectedPathId) {
     return (
-      <main className="main-pane" ref={containerRef}>
+      <main className={mainClass} ref={containerRef} {...dropProps}>
         <WelcomeState />
       </main>
     );
   }
 
   return (
-    <main className="main-pane" ref={containerRef}>
+    <main className={mainClass} ref={containerRef} {...dropProps}>
       {/* BETA-027:简易模式下 Tab bar 隐藏(浮动工具栏由 App.tsx 直接渲染)
           issue #4:appearance.hideTopTabBar=true 时也隐藏 TabBar(Sidebar 仍在) */}
       {!state.simpleMode && !state.settings.appearance?.hideTopTabBar && (
@@ -533,10 +586,10 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           type="button"
           className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
           onClick={handleClickBlankTab}
-          title={tx('新建终端 — 选择 Shell 或模板', 'New terminal — pick a shell or template')}
+          title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
+          aria-label={tx('新建终端', 'New terminal')}
         >
-          <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={16} /></span>
-          <span className="tab-name">{tx('新建', 'New')}</span>
+          <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={18} /></span>
         </button>
       </div>
     </div>
@@ -717,7 +770,8 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
         (selected ? ' selected' : '') +
         (variant === 'other' ? ' owned-by-other' : '') +
         (variant === 'orphan' ? ' orphan' : '') +
-        (session.state === 'exited' ? ' exited' : '')
+        (session.state === 'exited' ? ' exited' : '') +
+        (session.state === 'active' ? ' running' : '')
       }
       onClick={handleClick}
       onContextMenu={handleContextMenu}

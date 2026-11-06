@@ -2,7 +2,7 @@
  * @file src/renderer/components/Sidebar.tsx
  * @purpose 三栏侧栏 (收藏 / 临时 / 最近),路径节点 + 子 session 节点。
  *   含 + 按钮调文件夹选择器、拖文件夹到收藏区加入收藏 (drag-drop)、
- *   单击选中、双击新建 session、右键菜单 (CP-2 简化菜单)。
+ *   单击折叠展开、右侧终端图标新建 session、右键菜单 (CP-2 简化菜单)。
  *
  * @关键设计:
  * - 三栏始终显示,即使空 (软件定义书 6.2.1: 默认全部展开)
@@ -28,7 +28,8 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { CheckBold, ChevronRight, CloseBold, ExpandMore, Warning } from './material-symbols';
+import { PATH_DRAG_TYPE } from './path-drag';
+import { CheckBold, ChevronRight, CloseBold, ExpandMore, Terminal, Warning } from './material-symbols';
 import {
   COMMAND_CHANNELS,
   type AddBookmarkResponse,
@@ -539,7 +540,6 @@ interface CategoryProps {
   title: string;
   iconName: IconName;
   paths: PathNode[];
-  emptyLabel?: string;
   collapsed: boolean;
   onToggleCollapsed: (categoryId: string) => void;
   /** affordance 内容 — 通常是 lucide icon (<Icon name="plus" .../>) */
@@ -553,7 +553,6 @@ function Category({
   title,
   iconName,
   paths,
-  emptyLabel = '空',
   collapsed,
   onToggleCollapsed,
   actionLabel,
@@ -562,17 +561,23 @@ function Category({
 }: CategoryProps): JSX.Element {
   // BETA-014:同 category 内末级文件夹同名时自动补父目录区分;手动命名的不参与。
   const displayNames = useMemo(() => disambiguatePathNames(paths), [paths]);
+  // An empty section says so by its quiet header alone: nothing to fold, nothing to count.
+  const empty = paths.length === 0;
   return (
     <section
-      className={`sidebar-category${collapsed ? ' collapsed' : ''}`}
+      className={`sidebar-category${collapsed ? ' collapsed' : ''}${empty ? ' empty' : ''}`}
     >
       <header
         className="sidebar-category-header"
-        onClick={() => onToggleCollapsed(categoryId)}
-        title={collapsed ? '展开分组' : '折叠分组'}
+        {...(empty
+          ? {}
+          : {
+              onClick: () => onToggleCollapsed(categoryId),
+              title: collapsed ? '展开分组' : '折叠分组',
+            })}
       >
         <span className="sidebar-category-chevron" aria-hidden="true">
-          {collapsed ? <ChevronRight size={16} /> : <ExpandMore size={16} />}
+          {empty ? null : collapsed ? <ChevronRight size={16} /> : <ExpandMore size={16} />}
         </span>
         <span className="sidebar-category-title">
           <span className="sidebar-category-icon" aria-hidden="true">
@@ -580,7 +585,7 @@ function Category({
           </span>
           {title}
         </span>
-        <span className="sidebar-category-count">{paths.length}</span>
+        {!empty && <span className="sidebar-category-count">{paths.length}</span>}
         {actionLabel && (
           <button
             type="button"
@@ -595,9 +600,7 @@ function Category({
           </button>
         )}
       </header>
-      {collapsed ? null : paths.length === 0 ? (
-        <p className="sidebar-empty">{emptyLabel}</p>
-      ) : (
+      {collapsed || empty ? null : (
         <ul className="sidebar-paths">
           {paths.map((p) => {
             const override = p.kind === 'ssh' ? undefined : displayNames.get(p.id);
@@ -670,18 +673,21 @@ function PathItem({
       });
   };
 
-  const handleSelect = (): void => {
+  // One click folds or unfolds, the same for every folder. Selecting already expands, and
+  // selecting the current path again would drop its session, so each case is explicit.
+  const handleRowClick = (): void => {
     if (renaming) return;
+    if (selected) {
+      dispatch({ type: 'view/toggle-path-expand', pathId: node.id });
+      return;
+    }
     dispatch({ type: 'view/select-path', pathId: node.id });
+    if (expanded) dispatch({ type: 'view/toggle-path-expand', pathId: node.id });
   };
 
-  const handleToggleExpand = (e: MouseEvent<HTMLSpanElement>): void => {
+  const handleOpenTerminal = async (e: MouseEvent<HTMLButtonElement>): Promise<void> => {
     e.stopPropagation();
-    dispatch({ type: 'view/toggle-path-expand', pathId: node.id });
-  };
-
-  const handleDoubleClick = async (): Promise<void> => {
-    // 双击 = 在该 path 下用默认模板新建 session
+    // 在该 path 下用默认模板新建 session
     // 优先级:bookmark.defaultTemplateId > 全局 defaultTemplateId > 'shell' 兜底
     const templateId =
       node.defaultTemplateId ?? state.defaultTemplateId ?? 'shell';
@@ -855,8 +861,12 @@ function PathItem({
     <li className={`path-item${selected ? ' selected' : ''}${node.invalid ? ' invalid' : ''}`}>
       <div
         className="path-item-row"
-        onClick={handleSelect}
-        onDoubleClick={() => void handleDoubleClick()}
+        draggable={!renaming}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(PATH_DRAG_TYPE, node.id);
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
+        onClick={handleRowClick}
         onContextMenu={handleContextMenu}
         title={node.invalid ? `${node.path}\n⚠️ 路径不可访问` : node.path}
       >
@@ -868,20 +878,14 @@ function PathItem({
           有会话且 invalid 的极少数情况(session 创建后路径被删):展开
           箭头优先,⚠️ 通过 title tooltip 提示。
         */}
-        {sessions.length > 0 ? (
-          <span
-            className="path-expand-arrow"
-            onClick={handleToggleExpand}
-            aria-label={expanded ? '收起' : '展开'}
-          >
-            {expanded ? <ExpandMore size={16} /> : <ChevronRight size={16} />}
-          </span>
-        ) : node.invalid ? (
+        {node.invalid && sessions.length === 0 ? (
           <span className="path-expand-arrow path-invalid-slot" aria-label="路径不可访问">
             <Warning size={14} className="path-invalid-icon" />
           </span>
         ) : (
-          <span className="path-expand-arrow placeholder" />
+          <span className="path-expand-arrow" aria-label={expanded ? '收起' : '展开'}>
+            {expanded ? <ExpandMore size={16} /> : <ChevronRight size={16} />}
+          </span>
         )}
         {renaming ? (
           <input
@@ -909,6 +913,17 @@ function PathItem({
           <span className="path-session-count" title={`${activeCount} 个终端`}>
             {activeCount}
           </span>
+        )}
+        {!renaming && (
+          <button
+            type="button"
+            className="path-open-terminal"
+            title={`在终端中打开 ${node.path}`}
+            aria-label={`在终端中打开 ${node.path}`}
+            onClick={(e) => void handleOpenTerminal(e)}
+          >
+            <Terminal size={14} />
+          </button>
         )}
       </div>
       {expanded && sessions.length > 0 && (
@@ -1130,7 +1145,7 @@ function SessionItemImpl({
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="session-name">{session.displayName}</span>
+        <span className="session-name" title={session.displayName}>{session.displayName}</span>
       )}
       {cwdDrifted && !renaming && (
         <span className="session-cwd-drift" aria-label="当前目录已变" title={session.currentCwd}>

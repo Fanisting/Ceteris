@@ -1299,6 +1299,86 @@ select.settings-input option {
 .bootstrap-placeholder .error-pre {
   border-radius: var(--md-shape-sm, 8px);
 }
+
+/* ── Type scale and vertical alignment ─────────────────────── */
+
+/*
+ * The main page uses one family, two sizes and one weight, and no italics. Active states
+ * are carried by colour and the tab indicator, so nothing changes width when selected.
+ *   13px: what you read and click (paths, sessions, tabs, cards, app name)
+ *   12px: what labels it (section titles, counts, status bar)
+ * Fixed line heights keep every row centred whichever UI font the user picks.
+ */
+.titlebar-app-name,
+.path-name,
+.session-name,
+.tab,
+.tab-name,
+.tab.orphan .tab-name,
+.settings-entry,
+.empty-hint,
+.empty-hint code,
+.empty-button-grid button {
+  font-family: var(--ui-font-family, sans-serif);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 20px;
+}
+
+.titlebar-window-badge,
+.sidebar-category-header,
+.sidebar-category-title,
+.sidebar-category-count,
+.path-session-count,
+.sidebar-empty,
+.empty-section-title,
+.terminal-statusbar,
+.status-text,
+.status-cwd {
+  font-family: var(--ui-font-family, sans-serif);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 16px;
+}
+
+.tab.orphan,
+.settings-placeholder {
+  font-style: normal;
+}
+
+.path-session-count {
+  line-height: 18px;
+}
+
+/* Inline SVGs sit on the text baseline, which puts them above the text centre. */
+.sidebar-category-icon,
+.sidebar-category-chevron,
+.sidebar-category-count {
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-titlebar svg,
+.sidebar-category-header svg,
+.tab svg,
+.settings-entry svg,
+.empty-button-grid svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.titlebar-window-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  line-height: 1;
+}
+
 .titlebar-view-switch {
   border: none;
   cursor: pointer;
@@ -1308,6 +1388,81 @@ select.settings-input option {
 
 .titlebar-view-switch:hover {
   filter: brightness(1.15);
+}
+
+/* ── Tab bar new button, path rows, empty sections ─────────── */
+
+.tab.tab-blank {
+  flex: 0 0 32px;
+  justify-content: center;
+  align-self: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  margin-left: 4px;
+  padding: 0;
+  border-radius: var(--md-shape-full, 999px);
+}
+
+.tab.tab-blank .tab-blank-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.tab.tab-blank:hover,
+.tab.tab-blank.selected {
+  background-color: var(--md-secondary-container, transparent);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.tab.tab-blank.selected::after {
+  content: none;
+}
+
+.path-open-terminal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--md-on-surface-variant, #f0f);
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.path-item-row:hover .path-open-terminal,
+.path-item.selected > .path-item-row .path-open-terminal,
+.path-open-terminal:focus-visible {
+  opacity: 1;
+}
+
+.path-open-terminal:hover {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
+}
+
+.path-open-terminal svg {
+  display: block;
+}
+
+.sidebar-category.empty {
+  padding-bottom: 0;
+}
+
+.sidebar-category.empty .sidebar-category-header {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sidebar-category.empty .sidebar-category-header:hover {
+  background-color: transparent;
 }
 
 /* ── Split panes ───────────────────────────────────────────── */
@@ -1439,5 +1594,59 @@ select.settings-input option {
 .pane-layout-btn.active {
   background-color: var(--md-secondary-container, transparent);
   color: var(--md-on-secondary-container, #f0f);
+}
+
+/* ── Long session names, folder drop, running tabs ─────────── */
+
+/* Two lines before truncating; the tooltip holds the rest. */
+.session-name {
+  display: -webkit-box;
+  overflow: hidden;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.main-pane.path-drag-over {
+  outline: 2px dashed var(--md-primary, #f0f);
+  outline-offset: -4px;
+}
+
+/* MD3 wavy activity indicator, drawn with a mask so it follows the theme colour. */
+.tab.running::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 4px;
+  background-color: var(--md-on-surface-variant, #f0f);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='4'%3E%3Cpath d='M0 2Q3 0 6 2T12 2' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E");
+  mask-repeat: repeat-x;
+  mask-size: 12px 4px;
+  animation: tab-wave 900ms linear infinite;
+}
+
+.tab.running.selected::before {
+  background-color: var(--md-primary, #f0f);
+}
+
+.tab.running.selected::after {
+  content: none;
+}
+
+@keyframes tab-wave {
+  to {
+    mask-position: 12px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab.running::before {
+    animation: none;
+  }
 }
 

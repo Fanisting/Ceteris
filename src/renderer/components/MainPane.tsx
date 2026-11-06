@@ -341,10 +341,21 @@ function WelcomeState(): JSX.Element {
   const { tx } = useTranslation();
   return (
     <div className="welcome-state">
-      <h2>Ceteris</h2>
+      <h2 className="welcome-signature">
+        Ceteris
+        <svg viewBox="0 0 240 22" fill="none" aria-hidden="true">
+          <path
+            d="M6 15C58 7 128 3 234 7C176 9 118 12 78 19"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </h2>
       <p>
         {tx('从左侧选一个路径开始,或点击', 'Pick a path on the left, or click')}{' '}
-        <strong>{tx('收藏 +', 'Bookmark +')}</strong>{' '}
+        <strong>{tx('文件夹 +', 'Folders +')}</strong>{' '}
         {tx('添加文件夹。', 'to add a folder.')}
       </p>
     </div>

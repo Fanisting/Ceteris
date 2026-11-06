@@ -53,7 +53,10 @@ describe('beta isolation', () => {
 
   it('a portable build restarts through the exe the user launched', () => {
     process.env['PORTABLE_EXECUTABLE_FILE'] = 'C:\\tools\\CeterisBeta-1.0.0.exe';
-    expect(getRelaunchOptions()).toEqual({ execPath: 'C:\\tools\\CeterisBeta-1.0.0.exe' });
+    expect(getRelaunchOptions()).toEqual({
+      execPath: 'C:\\tools\\CeterisBeta-1.0.0.exe',
+      args: process.argv.slice(1),
+    });
     delete process.env['PORTABLE_EXECUTABLE_FILE'];
   });
 

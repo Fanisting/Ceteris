@@ -50,11 +50,12 @@ export function getAppLabel(): string {
 
 /**
  * Options for app.relaunch. A portable build runs from a temp copy that is deleted on
- * exit, so it has to restart through the exe the user launched.
+ * exit, so it has to restart through the exe the user launched. Electron drops the
+ * launch arguments when given another exe, so they are passed along explicitly.
  */
-export function getRelaunchOptions(): { execPath?: string } {
+export function getRelaunchOptions(): { execPath?: string; args?: string[] } {
   const portableExe = process.env['PORTABLE_EXECUTABLE_FILE'];
-  return portableExe ? { execPath: portableExe } : {};
+  return portableExe ? { execPath: portableExe, args: process.argv.slice(1) } : {};
 }
 
 export function getBuildType(): BuildType {

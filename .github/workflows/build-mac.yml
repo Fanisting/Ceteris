@@ -19,8 +19,9 @@ jobs:
 
       - run: npm ci
 
-      - name: Unit tests
-        run: npx vitest run
+      # The full suite also covers Windows paths and WSL, which only hold on Windows.
+      - name: Mac unit tests
+        run: npx vitest run src/main/platform/macos.test.ts src/main/platform/index.test.ts
 
       - name: Build
         run: |

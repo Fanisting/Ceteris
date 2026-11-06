@@ -123,32 +123,3 @@ export function Icon({
   const Comp = Icons[name];
   return <Comp size={size} className={className} {...rest} />;
 }
-
-/**
- * Marina 品牌标记,用于标题栏。配色和几何取自 scripts/generate-icon.cjs 的 SMALL
- * 版本,这个尺寸下完整版的波浪会糊成直线。改应用图标时两处要一起改。
- */
-export function MarinaMark({ size = 18 }: { size?: number }): ReactElement {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 256 256"
-      aria-hidden
-      className="marina-mark"
-    >
-      <defs>
-        <linearGradient id="marina-mark-bg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#007a79" />
-          <stop offset="100%" stopColor="#005353" />
-        </linearGradient>
-      </defs>
-      <rect width="256" height="256" rx="72" fill="url(#marina-mark-bg)" />
-      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M62 206 q33 -30 66 0 q33 30 66 0" stroke="#9cf1f0" strokeWidth="30" />
-        <polyline points="64,40 124,88 64,136" stroke="#ffffff" strokeWidth="40" />
-      </g>
-    </svg>
-  );
-}

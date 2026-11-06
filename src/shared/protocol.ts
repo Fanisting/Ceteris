@@ -183,6 +183,8 @@ export const COMMAND_CHANNELS = {
   LINK_GET_WINDOW_STATE: 'cmd:link:get-window-state',
   /** 用户确认已看过"输入未确认"提示 */
   LINK_ACK_UNCONFIRMED: 'cmd:link:ack-unconfirmed',
+  VIEW_GET_STATE: 'cmd:view:get-state',
+  VIEW_SWITCH: 'cmd:view:switch',
 } as const;
 
 export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHANNELS];
@@ -241,6 +243,7 @@ export const EVENT_CHANNELS = {
    * 否则用户只会看到一个突然不响应的终端,完全不知道发生了什么。
    */
   LINK_CONNECTION_STATE: 'evt:link:connection-state',
+  VIEW_STATE_CHANGED: 'evt:view:state-changed',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];
@@ -1061,6 +1064,25 @@ export interface FocusSessionOwnerResponse {
    * 调用方应当选中该 session。
    */
   transferred: boolean;
+}
+
+/** ViewTarget.id of the local view. Remote views use their window id. */
+export const VIEW_TARGET_LOCAL = 'local';
+
+/** One entry of the title bar view switcher: Local, or a connected Host. */
+export interface ViewTarget {
+  id: string;
+  label: string;
+  /** True for the view this window shows. */
+  active: boolean;
+}
+
+export interface ViewStateResponse {
+  targets: ViewTarget[];
+}
+
+export interface ViewSwitchPayload {
+  targetId: string;
 }
 
 export interface LinkConnectionStatePayload {

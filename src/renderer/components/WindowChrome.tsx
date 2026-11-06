@@ -12,27 +12,34 @@
  *
  *   主进程已 `frame: false`,这里要负责:
  *   - 提供 -webkit-app-region: drag 拖动区
- *   - 显示应用标题 + 窗口编号 + 版本号
+ *   - 显示应用标题 + 视图切换按钮(版本号在 设置 → 关于)
  *   - 监听 evt:window:max-state-changed 切按钮图标 / app-root 圆角
  *
  * @对应文档章节: 软件定义书 6.7 (窗口视觉),M1 待办 P0-1
  */
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
   type GetWindowMaxStateResponse,
+  type ViewStateResponse,
+  type ViewSwitchPayload,
+  type ViewTarget,
   type WindowMaxStateChangedPayload,
 } from '@shared/protocol';
 import type { WindowStyle } from '@shared/types';
-import { MarinaMark } from './icons';
+import { useContextMenuApi } from './ContextMenu';
 import { Close, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
 import { focusTerminalDom } from '../focus';
 import { useAppState } from '../store';
 
 interface Props {
   windowStyle: WindowStyle;
-  buildVersion: string;
   /**
    * DEV-COEXIST 2026-05-16:'dev' / 'portable' 时在 "Marina" 字样后追加
    * 后缀,避免 npm run dev 与打包版同时跑混淆。'installed' 保持原样。
@@ -40,11 +47,7 @@ interface Props {
   buildType: 'dev' | 'portable' | 'installed';
 }
 
-export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): JSX.Element {
-  // P2-18:本组件唯一需要的全局值是 windowNumber,而它在本窗口生命周期内不变
-  // (preload 从 URL query 解析,见 ipc-protocol.md 2.2)。直接读 window.api,
-  // 避免 useAppState 订阅整个 state 引发的无关重渲。
-  const windowNumber = window.api.windowNumber;
+export function WindowChrome({ windowStyle, buildType }: Props): JSX.Element {
   const [maximized, setMaximized] = useState(false);
   const state = useAppState();
   const hoverSymbols = state.settings.appearance?.macOSTrafficLightHoverSymbols ?? false;
@@ -97,20 +100,19 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
   // 双击标题栏拖动区切最大化(原生 frame 默认行为,自绘后需要自己接)
   const handleDragRegionDblClick = (e: ReactMouseEvent<HTMLDivElement>): void => {
     // 只在拖动区本身触发,不要被按钮冒泡进来
-    if ((e.target as HTMLElement).closest('.titlebar-btn,.titlebar-traffic')) return;
+    if ((e.target as HTMLElement).closest('.titlebar-btn,.titlebar-traffic,.titlebar-view-switch')) {
+      return;
+    }
     callToggleMax();
   };
 
-  // DEV-COEXIST:'Marina (dev) — Window 1' / 'Marina (portable) — ...' / 'Marina — ...'
-  const appLabel =
-    buildType === 'dev' ? 'Marina (dev)' : buildType === 'portable' ? 'Marina (portable)' : 'Marina';
+  // DEV-COEXIST:only npm run dev needs telling apart while working on Marina itself.
+  const appLabel = buildType === 'dev' ? 'Marina (dev)' : 'Marina';
 
   if (windowStyle === 'macos') {
     return (
       <MacosTitlebar
-        buildVersion={buildVersion}
         appLabel={appLabel}
-        windowNumber={windowNumber}
         maximized={maximized}
         callMin={callMin}
         callClose={callClose}
@@ -128,12 +130,10 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
       onDoubleClick={handleDragRegionDblClick}
     >
       <div className="titlebar-title titlebar-drag">
-        <MarinaMark />
         <span className="titlebar-app-name">{appLabel}</span>
-        <span className="titlebar-window-badge">Window {windowNumber || '?'}</span>
+        <ViewSwitchButton />
       </div>
       <div className="titlebar-spacer titlebar-drag" />
-      <span className="titlebar-version titlebar-drag">v{buildVersion}</span>
       <div className="titlebar-controls" aria-label="窗口控制(Windows 风格)">
         <button
           type="button"
@@ -168,6 +168,71 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
 }
 
 /**
+ * Shows which machine this window is looking at, and switches to the other one.
+ *
+ * One other view: click swaps straight to it. Several: click opens a menu. None: it is a
+ * plain label, so a machine with no Hosts connected gets no dead button.
+ */
+function ViewSwitchButton(): JSX.Element {
+  const [targets, setTargets] = useState<ViewTarget[]>([]);
+  const menu = useContextMenuApi();
+
+  const refresh = useCallback(() => {
+    void window.api
+      .invoke<undefined, ViewStateResponse>(COMMAND_CHANNELS.VIEW_GET_STATE, undefined)
+      .then((res) => setTargets(res.targets))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    return window.api.on(EVENT_CHANNELS.VIEW_STATE_CHANGED, refresh);
+  }, [refresh]);
+
+  const switchTo = (targetId: string): void => {
+    void window.api.invoke<ViewSwitchPayload, void>(COMMAND_CHANNELS.VIEW_SWITCH, { targetId });
+  };
+
+  const current = targets.find((t) => t.active)?.label ?? 'Local';
+  const others = targets.filter((t) => !t.active);
+  const only = others[0];
+
+  if (others.length === 0) {
+    return <span className="titlebar-window-badge">{current}</span>;
+  }
+
+  const handleClick = (e: ReactMouseEvent<HTMLButtonElement>): void => {
+    if (only && others.length === 1) {
+      switchTo(only.id);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    menu.open({
+      x: rect.left,
+      y: rect.bottom + 4,
+      items: targets.map((t) => ({
+        label: t.label,
+        checked: t.active,
+        onSelect: () => {
+          if (!t.active) switchTo(t.id);
+        },
+      })),
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      className="titlebar-window-badge titlebar-view-switch"
+      onClick={handleClick}
+      title={only && others.length === 1 ? `Switch to ${only.label}` : 'Switch view'}
+    >
+      {current}
+    </button>
+  );
+}
+
+/**
  * macOS 风格标题栏(BETA-023 起从主组件抽出 — 需要读 settings)。
  *
  * 红绿灯按钮的内部符号:
@@ -182,9 +247,7 @@ export function WindowChrome({ windowStyle, buildVersion, buildType }: Props): J
  * 两者直接靠 .titlebar-title 的 gap 8px 分开,不加分隔符。
  */
 function MacosTitlebar({
-  buildVersion,
   appLabel,
-  windowNumber,
   maximized,
   callMin,
   callClose,
@@ -192,9 +255,7 @@ function MacosTitlebar({
   hoverSymbols,
   handleDragRegionDblClick,
 }: {
-  buildVersion: string;
   appLabel: string;
-  windowNumber: number;
   maximized: boolean;
   callMin: () => void;
   callClose: () => void;
@@ -251,12 +312,10 @@ function MacosTitlebar({
       </div>
       <div className="titlebar-spacer titlebar-drag" />
       <div className="titlebar-title titlebar-drag">
-        <MarinaMark />
         <span className="titlebar-app-name">{appLabel}</span>
-        <span className="titlebar-window-badge">Window {windowNumber || '?'}</span>
+        <ViewSwitchButton />
       </div>
       <div className="titlebar-spacer titlebar-drag" />
-      <span className="titlebar-version titlebar-drag">v{buildVersion}</span>
     </div>
   );
 }

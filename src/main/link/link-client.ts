@@ -84,6 +84,8 @@ export interface LinkClientDeps {
   getWindowOptions: () => CreateWindowOptions;
   /** 连接状态变化时回调,供 LinkManager 广播给 renderer 渲染状态条 */
   onStatusChange: (linkId: string, status: LinkClientStatus) => void;
+  /** Fires once per connection, after the hidden remote window exists. */
+  onRemoteWindowCreated?: (windowId: string) => void;
 }
 
 /**
@@ -272,6 +274,11 @@ export class LinkClient {
   }
 
   /** 更新配置(用户在设置里改了地址 / token),会触发一次重连。 */
+  /** Title bar name of this Host: what the user typed, else what the Host reported. */
+  get label(): string {
+    return this.config.label || this.hostName || this.config.host;
+  }
+
   updateConfig(config: LinkClientConfig): void {
     this.config = config;
     this.reconnectAttempt = 0;
@@ -461,8 +468,10 @@ export class LinkClient {
       this.deps.windowManager.createWindow({
         ...base,
         forcedWindowId: msg.virtualWindowId,
+        startHidden: true,
       });
       this.windowCreated = true;
+      this.deps.onRemoteWindowCreated?.(msg.virtualWindowId);
       logger.info(
         'LinkClient',
         `已连接 ${msg.hostName}(${this.targetAddress}),创建远程窗口 ` +

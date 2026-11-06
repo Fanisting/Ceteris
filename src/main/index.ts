@@ -36,6 +36,7 @@ import { AIClient } from './ai-client';
 import { WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, isBetaBuild } from './build-type';
+import { ViewSwitcher } from './view-switcher';
 import { logger } from './logger';
 import type {
   BookmarksFile,
@@ -271,6 +272,7 @@ function bootstrap(): void {
       const recent = windowManager.getMostRecentlyActive();
       if (recent) {
         if (recent.isMinimized()) recent.restore();
+        if (!recent.isVisible()) recent.show();
         recent.focus();
       } else {
         windowManager.createWindowFromFactory();
@@ -385,8 +387,15 @@ function bootstrap(): void {
       // installIpcLayer 注册的 handler 在运行时会用到它。
       // eslint-disable-next-line prefer-const -- 下面的 onStatusChange 闭包引用它,
       // 必须先声明再赋值;const 在同一语句里自引用会踩 TDZ。
+      const viewSwitcher = new ViewSwitcher({
+        windowManager,
+        getRemoteLabel: (windowId) => linkManager.getWindowLabel(windowId),
+      });
+
       const linkManager: LinkManager = new LinkManager({
         windowManager,
+        onRemoteWindowCreated: (windowId, reveal) =>
+          viewSwitcher.handleRemoteCreated(windowId, reveal),
         getSettings: () => settingsManager.get().link,
         // 远程窗口沿用与本地窗口相同的尺寸 / 位置策略(settings.windowDefaults)
         getWindowOptions: () => windowManager.getCreateOptions(),
@@ -405,6 +414,7 @@ function bootstrap(): void {
 
       installIpcLayer({
         windowManager,
+        viewSwitcher,
         pathManager,
         settingsManager,
         sessionManager,

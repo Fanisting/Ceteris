@@ -203,6 +203,7 @@ export class TrayManager {
     const recent = this.windowManager.getMostRecentlyActive();
     if (recent) {
       if (recent.isMinimized()) recent.restore();
+      if (!recent.isVisible()) recent.show();
       recent.focus();
       return;
     }
@@ -251,6 +252,9 @@ export class TrayManager {
           for (const info of this.windowManager.list()) {
             const w = this.windowManager.getById(info.id);
             if (!w || w.isDestroyed()) continue;
+            // Hidden windows are views swapped out by the ViewSwitcher. Their
+            // visible partner is the same window as far as the user can tell.
+            if (!w.isVisible()) continue;
             if (w.isMinimized()) w.restore();
             w.show();
           }

@@ -41,6 +41,8 @@ import {
   type AddBookmarkPayload,
   type AddBookmarkResponse,
   type AddRemoteBookmarkPayload,
+  type ViewStateResponse,
+  type ViewSwitchPayload,
   type AddSshProfilePayload,
   type AddSshProfileResponse,
   type AppStateChangedPayload,
@@ -147,6 +149,7 @@ import { logger } from './logger';
 import { setQuitting } from './index';
 import { generateLinkToken } from './link/link-crypto';
 import { listBindCandidates, type LinkManager } from './link/link-manager';
+import type { ViewSwitcher } from './view-switcher';
 
 export interface IpcLayerDeps {
   windowManager: WindowManager;
@@ -164,6 +167,8 @@ export interface IpcLayerDeps {
    * 其余 link 命令抛错。单测里的 deps 不带它。
    */
   linkManager?: LinkManager;
+  /** Marina Link Client side. Optional for the same reason as linkManager. */
+  viewSwitcher?: ViewSwitcher;
 }
 
 let installed = false;
@@ -1476,12 +1481,15 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         );
       }
       return {
-        linkId: lm.connectTo({
-          label: p.label || p.host,
-          host: p.host,
-          port: p.port,
-          token: p.token,
-        }),
+        linkId: lm.connectTo(
+          {
+            label: p.label || p.host,
+            host: p.host,
+            port: p.port,
+            token: p.token,
+          },
+          { reveal: true },
+        ),
       };
     },
   );
@@ -1509,6 +1517,19 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
     (_e, envelope: CommandEnvelope<undefined>): LinkConnectionStatePayload | null =>
       deps.linkManager?.getWindowConnectionState(envelope.windowId) ?? null,
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.VIEW_GET_STATE,
+    (_e, envelope: CommandEnvelope<undefined>): ViewStateResponse =>
+      deps.viewSwitcher?.getState(envelope.windowId) ?? { targets: [] },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.VIEW_SWITCH,
+    (_e, envelope: CommandEnvelope<ViewSwitchPayload>): void => {
+      deps.viewSwitcher?.switchTo(envelope.windowId, envelope.payload.targetId);
+    },
   );
 
   handleCommand(

@@ -94,6 +94,9 @@ const { MockBrowserWindow } = vi.hoisted(() => {
       this.focused = true;
       this.emit('focus');
     }
+    isVisible(): boolean {
+      return true;
+    }
     isMinimized(): boolean {
       return this.minimized;
     }

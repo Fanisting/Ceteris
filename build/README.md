@@ -16,7 +16,6 @@
 npm run generate-icon
 ```
 
-脚本不依赖任何 npm 包。要改设计,改 `scripts/generate-icon.cjs` 里的几何和配色,然后同步以下两处:
+脚本不依赖任何 npm 包。要改设计,改 `scripts/generate-icon.cjs` 里的几何和配色,然后同步以下一处:
 
-- `src/renderer/components/icons.tsx` 的 `MarinaMark`(标题栏)
 - `src/main/tray.ts` 的 `TRAY_PIXELS`(托盘,16px 像素图)

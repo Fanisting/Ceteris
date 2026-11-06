@@ -143,7 +143,6 @@ export function App(): JSX.Element {
       myWindowNumber={window.api.windowNumber}
     >
       <ConnectedShell
-        buildVersion={handshake.buildVersion}
         buildType={handshake.buildType}
       />
     </AppStateProvider>
@@ -151,10 +150,8 @@ export function App(): JSX.Element {
 }
 
 function ConnectedShell({
-  buildVersion,
   buildType,
 }: {
-  buildVersion: string;
   buildType: 'dev' | 'portable' | 'installed';
 }): JSX.Element {
   const sync = useIpcSync();
@@ -274,7 +271,6 @@ function ConnectedShell({
           >
             <WindowChrome
               windowStyle={windowStyle}
-              buildVersion={buildVersion}
               buildType={buildType}
             />
             {/* Marina Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}

@@ -39,6 +39,8 @@ export interface LinkManagerDeps {
   windowManager: WindowManager;
   getSettings: () => LinkSettings;
   getWindowOptions: () => CreateWindowOptions;
+  /** Called for each new remote window. reveal: the user pressed Connect. */
+  onRemoteWindowCreated?: (windowId: string, reveal: boolean) => void;
   /** 列出某窗口持有的 session,LinkServer 用它在重连后恢复归属。 */
   getOwnedSessionIds: (windowId: string) => string[];
   /** 连接状态变化时通知 renderer(设置页的状态条)。 */
@@ -142,12 +144,14 @@ export class LinkManager {
    *
    * @returns 本次连接的 linkId
    */
-  connectTo(config: LinkClientConfig): string {
+  connectTo(config: LinkClientConfig, options: { reveal?: boolean } = {}): string {
     const linkId = randomUUID();
     const client = new LinkClient(linkId, config, {
       windowManager: this.deps.windowManager,
       getWindowOptions: this.deps.getWindowOptions,
       onStatusChange: () => this.deps.onStatusChange(),
+      onRemoteWindowCreated: (windowId) =>
+        this.deps.onRemoteWindowCreated?.(windowId, options.reveal ?? false),
     });
     this.clients.set(linkId, client);
     client.connect();
@@ -188,6 +192,11 @@ export class LinkManager {
       };
     }
     return status;
+  }
+
+  /** Title bar name of a remote window; null for a local window. */
+  getWindowLabel(windowId: string): string | null {
+    return this.findClientByWindow(windowId)?.label ?? null;
   }
 
   /** 某个远程窗口的连接状态;普通本地窗口返回 null。 */

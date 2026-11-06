@@ -124,6 +124,11 @@ export interface CreateWindowOptions {
    * 只有 LinkClient 会传这个字段;普通开窗路径一律不传。
    */
   forcedWindowId?: string;
+  /**
+   * Do not show the window when its page is ready. Remote views use this: the
+   * ViewSwitcher decides when they appear, in place of the current window.
+   */
+  startHidden?: boolean;
 }
 
 export interface IWindowManager {
@@ -350,7 +355,7 @@ export class WindowManager implements IWindowManager {
     });
 
     win.once('ready-to-show', () => {
-      win.show();
+      if (!options.startHidden) win.show();
     });
 
     // F12 / Ctrl+Shift+I 切换 DevTools — dev / packed 都生效。
@@ -542,8 +547,18 @@ export class WindowManager implements IWindowManager {
    */
   getMostRecentlyActive(): BrowserWindow | null {
     let best: ManagedWindow | null = null;
+    // A view swapped out by the ViewSwitcher is hidden. Prefer what is on screen, or
+    // tray and second-instance would focus a window the user cannot see.
     for (const m of this.windows.values()) {
-      if (!best || m.lastFocusedAt > best.lastFocusedAt) {
+      if (!best) {
+        best = m;
+        continue;
+      }
+      const visible = m.electronWindow.isVisible();
+      const bestVisible = best.electronWindow.isVisible();
+      if (visible !== bestVisible) {
+        if (visible) best = m;
+      } else if (m.lastFocusedAt > best.lastFocusedAt) {
         best = m;
       }
     }

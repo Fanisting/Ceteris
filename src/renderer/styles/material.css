@@ -261,10 +261,6 @@ button:focus-visible,
   padding: 0 12px;
 }
 
-.marina-mark {
-  flex: 0 0 auto;
-}
-
 .titlebar-app-name {
   color: var(--md-on-surface, #f0f);
   font-size: 13px;
@@ -281,11 +277,6 @@ button:focus-visible,
   font-family: inherit;
   font-size: 11px;
   font-weight: 500;
-}
-
-.titlebar-version {
-  font-family: inherit;
-  font-size: 11px;
 }
 
 .titlebar-btn {
@@ -1308,3 +1299,14 @@ select.settings-input option {
 .bootstrap-placeholder .error-pre {
   border-radius: var(--md-shape-sm, 8px);
 }
+.titlebar-view-switch {
+  border: none;
+  cursor: pointer;
+  transition: filter var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-view-switch:hover {
+  filter: brightness(1.15);
+}
+

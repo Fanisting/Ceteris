@@ -1,14 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- 由 scripts/generate-icon.cjs 生成,不要手改。海青底 + ">" 提示符 + 波浪。 -->
+  <!-- 由 scripts/generate-icon.cjs 生成,不要手改。海青底 + ">" 提示符 + 水面。 -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#007a79"/>
-      <stop offset="100%" stop-color="#005353"/>
-    </linearGradient>
+    <clipPath id="tile"><rect width="256" height="256" rx="72"/></clipPath>
   </defs>
-  <rect width="256" height="256" rx="72" ry="72" fill="url(#bg)"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M62 192 q16.5 -24 33 0 q16.5 24 33 0 q16.5 -24 33 0 q16.5 24 33 0" stroke="#9cf1f0" stroke-width="20"/>
-    <polyline points="66,54 122,96 66,138" stroke="#ffffff" stroke-width="28"/>
+  <g clip-path="url(#tile)">
+    <rect width="256" height="256" fill="#006a6a"/>
+    <path d="M0 188 q32 -24 64 0 q32 24 64 0 q32 -24 64 0 q32 24 64 0 V256 H0 Z" fill="#9cf1f0"/>
+    <polyline points="101,56 151,100 101,144" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

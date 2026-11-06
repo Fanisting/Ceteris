@@ -45,25 +45,25 @@ import { setQuitting } from './index';
 /**
  * 16×16 托盘图标的像素图。设计与 build/icon.svg 同源:海青底、白色 ">"、
  * 浅青波浪。16px 下矢量缩放会糊,这里按像素手工对齐。
- *   . 透明   b 底色   f 提示符   w 波浪
+ *   . 透明   b 底色   f 提示符   w 水面
  */
 const TRAY_PIXELS = [
   '..bbbbbbbbbbbb..',
   '.bbbbbbbbbbbbbb.',
-  'bbbffbbbbbbbbbbb',
-  'bbbfffbbbbbbbbbb',
-  'bbbbfffbbbbbbbbb',
+  'bbbbbffbbbbbbbbb',
   'bbbbbfffbbbbbbbb',
   'bbbbbbfffbbbbbbb',
+  'bbbbbbbfffbbbbbb',
+  'bbbbbbbbfffbbbbb',
+  'bbbbbbbfffbbbbbb',
+  'bbbbbbfffbbbbbbb',
   'bbbbbfffbbbbbbbb',
-  'bbbbfffbbbbbbbbb',
-  'bbbfffbbbbbbbbbb',
-  'bbbffbbbbbbbbbbb',
+  'bbbbbffbbbbbbbbb',
   'bbbbbbbbbbbbbbbb',
-  'bbbbwwbbbbwwbbbb',
-  'bbbwwwwbbwwwwbbb',
-  '.bwwbbwwwwbbwwb.',
-  '..bbbbbbbbbbbb..',
+  'bbwwwwbbbbbbbbbb',
+  'wwwwwwwwbbbbwwww',
+  '.wwwwwwwwwwwwww.',
+  '..wwwwwwwwwwww..',
 ] as const;
 
 const TRAY_PALETTE: Record<string, readonly [number, number, number]> = {

@@ -14,7 +14,7 @@ Marina Link — 远程挂载(Windows ↔ Windows)。
 
 - **Marina Dark / Marina Light 主题,新安装默认 Marina Dark。** 配色由海青种子色 `#006a6a` 生成,终端 ANSI 色同步调整。已有 `settings.json` 的用户保持原主题和原字体。新安装的 UI 默认字体改为 Segoe UI。
 
-- **新应用图标。** 海青底上的 `>` 提示符加波浪,托盘、标题栏、安装包和 Win11 右键菜单同步更换。ICO 从单张 256px 改为 7 档尺寸,24px 及以下使用加粗的小尺寸几何,任务栏和托盘不再靠系统缩放。图标由 `npm run generate-icon` 从同一份几何定义生成。
+- **新应用图标。** 按 Material Design 重新设计:平涂海青底上居中的 `>` 提示符,底部一层浅青水面。托盘、标题栏、exe 和右键菜单一起更新。
 
 ### 变更
 

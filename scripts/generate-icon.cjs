@@ -12,19 +12,20 @@
  *   build/icon.ico                     16 到 256 共 7 档,exe 与 NSIS 用
  *   native/context-menu/package/assets Win11 右键菜单 MSIX 用的 PNG 与 ICO
  *
- * @设计: 海青色块 + 白色 ">" 提示符 + 浅青波浪。提示符表明这是终端,波浪取
- *   marina(港湾)的意象。配色取自 Marina Material 主题的种子色 #006a6a。
+ * @设计: Material Design 产品图标的做法:平涂色块分层,不用渐变,主体居中在
+ *   安全区内。海青底上一个白色 ">" 提示符,底部一层浅青的水面。提示符表明这是
+ *   终端,水面是 marina(港湾)的意象,波浪边与运行中标签页的指示线呼应。配色
+ *   取自 Marina Material 主题的种子色 #006a6a。
  *
  * @关键设计:
  * - 不依赖任何 npm 包(AGENTS.md 1.2 边界 2):用 SDF 算覆盖率实现抗锯齿,
  *   内置最小 PNG / ICO 编码器。
- * - 24px 及以下换用 SMALL 几何。大图的波浪振幅缩到 16px 只剩不到 1px,
- *   线条会糊成一条直线,所以小尺寸加粗并减少波峰数量。
+ * - 24px 及以下换用 SMALL 几何:提示符加粗,水面只留一个波峰。大图的波峰缩到
+ *   16px 只剩不到 1px,水面边缘会变成一条直线。
  * - ICO 里小于 256 的帧用 DIB,256 帧用 PNG。NSIS 与部分 Windows Shell 路径
  *   对 PNG 帧的小尺寸支持不可靠,这是 Windows 图标的传统布局。
  *
- * @同步点: 改几何或配色时,同步 src/renderer/components/icons.tsx 的 MarinaMark
- *   和 src/main/tray.ts 的像素图。
+ * @同步点: 改几何或配色时,同步 src/main/tray.ts 的像素图。
  */
 'use strict';
 
@@ -44,19 +45,19 @@ const SMALL_ICON_MAX = 24;
 /** 所有几何都定义在 256×256 坐标系里,渲染时按目标尺寸缩放。 */
 const DESIGN_SIZE = 256;
 const CORNER_RADIUS = 72;
-const BG_TOP = '#007a79';
-const BG_BOTTOM = '#005353';
+const BG_COLOR = '#006a6a';
 const PROMPT_COLOR = '#ffffff';
-const WAVE_COLOR = '#9cf1f0';
+const WATER_COLOR = '#9cf1f0';
 
+/** water:水面边缘是上下交替的二次贝塞尔,control 是相对 level 的控制点偏移。 */
 const FULL = {
-  prompt: { points: [[66, 54], [122, 96], [66, 138]], width: 28 },
-  wave: { start: [62, 192], segmentLength: 33, control: 24, segments: 4, width: 20 },
+  prompt: { points: [[101, 56], [151, 100], [101, 144]], width: 30 },
+  water: { level: 188, segmentLength: 64, control: 24 },
 };
 
 const SMALL = {
-  prompt: { points: [[64, 40], [124, 88], [64, 136]], width: 40 },
-  wave: { start: [62, 206], segmentLength: 66, control: 30, segments: 2, width: 30 },
+  prompt: { points: [[98, 36], [156, 84], [98, 132]], width: 42 },
+  water: { level: 188, segmentLength: 128, control: 28 },
 };
 
 function rgb(hex) {
@@ -71,34 +72,23 @@ function rgb(hex) {
 // 几何
 // ────────────────────────────────────────────────────────────────
 
-/** 波浪是上下交替的二次贝塞尔,展平成折线用于距离计算。 */
-function flattenWave(wave) {
-  const points = [wave.start];
-  let [x, y] = wave.start;
-  for (let s = 0; s < wave.segments; s++) {
-    const sign = s % 2 === 0 ? -1 : 1;
-    const x0 = x;
-    const cx = x + wave.segmentLength / 2;
-    const cy = y + sign * wave.control;
-    const x1 = x + wave.segmentLength;
-    for (let i = 1; i <= 16; i++) {
-      const t = i / 16;
-      const u = 1 - t;
-      points.push([u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y + 2 * u * t * cy + t * t * y]);
-    }
-    x = x1;
-  }
-  return points;
+/** 水面边缘在 x 处的高度。第一段向上,此后交替。 */
+function waterEdge(water, x) {
+  const segment = Math.floor(x / water.segmentLength);
+  const t = x / water.segmentLength - segment;
+  const sign = segment % 2 === 0 ? -1 : 1;
+  return water.level + sign * water.control * 2 * t * (1 - t);
 }
 
-function waveToSvgPath(wave) {
-  const half = wave.segmentLength / 2;
+function waterToSvgPath(water) {
+  const half = water.segmentLength / 2;
+  const count = Math.ceil(DESIGN_SIZE / water.segmentLength);
   const segments = [];
-  for (let s = 0; s < wave.segments; s++) {
+  for (let s = 0; s < count; s++) {
     const sign = s % 2 === 0 ? -1 : 1;
-    segments.push(`q${half} ${sign * wave.control} ${wave.segmentLength} 0`);
+    segments.push(`q${half} ${sign * water.control} ${water.segmentLength} 0`);
   }
-  return `M${wave.start[0]} ${wave.start[1]} ${segments.join(' ')}`;
+  return `M0 ${water.level} ${segments.join(' ')} V${DESIGN_SIZE} H0 Z`;
 }
 
 /** 点到折线的最短距离。 */
@@ -139,18 +129,13 @@ function coverage(signedDistance) {
 function renderIcon(size) {
   const geometry = size <= SMALL_ICON_MAX ? SMALL : FULL;
   const scale = size / DESIGN_SIZE;
-  const wavePoints = flattenWave(geometry.wave);
   const promptHalf = geometry.prompt.width / 2;
-  const waveHalf = geometry.wave.width / 2;
-  const top = rgb(BG_TOP);
-  const bottom = rgb(BG_BOTTOM);
+  const bg = rgb(BG_COLOR);
   const promptRgb = rgb(PROMPT_COLOR);
-  const waveRgb = rgb(WAVE_COLOR);
+  const waterRgb = rgb(WATER_COLOR);
   const buf = Buffer.alloc(size * size * 4);
 
   for (let y = 0; y < size; y++) {
-    const v = size === 1 ? 0 : y / (size - 1);
-    const bg = top.map((c, i) => c * (1 - v) + bottom[i] * v);
     for (let x = 0; x < size; x++) {
       const gx = (x + 0.5) / scale;
       const gy = (y + 0.5) / scale;
@@ -160,11 +145,11 @@ function renderIcon(size) {
       const promptCoverage = coverage(
         (distanceToPolyline(gx, gy, geometry.prompt.points) - promptHalf) * scale,
       );
-      const waveCoverage = coverage((distanceToPolyline(gx, gy, wavePoints) - waveHalf) * scale);
+      const waterCoverage = coverage((waterEdge(geometry.water, gx) - gy) * scale);
 
       const color = bg.slice();
       for (let c = 0; c < 3; c++) {
-        color[c] = color[c] * (1 - waveCoverage) + waveRgb[c] * waveCoverage;
+        color[c] = color[c] * (1 - waterCoverage) + waterRgb[c] * waterCoverage;
         color[c] = color[c] * (1 - promptCoverage) + promptRgb[c] * promptCoverage;
       }
       const i = (y * size + x) * 4;
@@ -273,17 +258,14 @@ function encodeIco(frames) {
 function buildSvg() {
   const points = FULL.prompt.points.map((p) => p.join(',')).join(' ');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${DESIGN_SIZE} ${DESIGN_SIZE}" width="${DESIGN_SIZE}" height="${DESIGN_SIZE}">
-  <!-- 由 scripts/generate-icon.cjs 生成,不要手改。海青底 + ">" 提示符 + 波浪。 -->
+  <!-- 由 scripts/generate-icon.cjs 生成,不要手改。海青底 + ">" 提示符 + 水面。 -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${BG_TOP}"/>
-      <stop offset="100%" stop-color="${BG_BOTTOM}"/>
-    </linearGradient>
+    <clipPath id="tile"><rect width="${DESIGN_SIZE}" height="${DESIGN_SIZE}" rx="${CORNER_RADIUS}"/></clipPath>
   </defs>
-  <rect width="${DESIGN_SIZE}" height="${DESIGN_SIZE}" rx="${CORNER_RADIUS}" ry="${CORNER_RADIUS}" fill="url(#bg)"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="${waveToSvgPath(FULL.wave)}" stroke="${WAVE_COLOR}" stroke-width="${FULL.wave.width}"/>
-    <polyline points="${points}" stroke="${PROMPT_COLOR}" stroke-width="${FULL.prompt.width}"/>
+  <g clip-path="url(#tile)">
+    <rect width="${DESIGN_SIZE}" height="${DESIGN_SIZE}" fill="${BG_COLOR}"/>
+    <path d="${waterToSvgPath(FULL.water)}" fill="${WATER_COLOR}"/>
+    <polyline points="${points}" fill="none" stroke="${PROMPT_COLOR}" stroke-width="${FULL.prompt.width}" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
 `;

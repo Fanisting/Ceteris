@@ -26,6 +26,7 @@ import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } fr
 import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
 import { getAppLabel, getBuildType, getLaunchExePath } from './build-type';
+import { getPlatformAdapter } from './platform';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -1233,9 +1234,13 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SETTINGS_GET_AUTO_START,
-    (_e, _envelope: CommandEnvelope<undefined>): GetAutoStartResponse => {
-      // Electron 跨平台 API,Windows 上读 Run 注册表
-      return { enabled: app.getLoginItemSettings().openAtLogin };
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<GetAutoStartResponse> => {
+      // The adapter knows the name each build registers under.
+      try {
+        return { enabled: await getPlatformAdapter().isAutoStartEnabled() };
+      } catch {
+        return { enabled: app.getLoginItemSettings().openAtLogin };
+      }
     },
   );
 

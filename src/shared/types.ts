@@ -498,6 +498,17 @@ export interface Settings {
     baseURL: string;
     /** 例如 'claude-haiku-4-5-20251001' / 'gpt-4o-mini',空串走 provider 默认 */
     model: string;
+    /**
+     * Guess the next prompt for Claude Code and Codex through OpenRouter. Off by default,
+     * because the end of the terminal screen leaves the machine. Separate from apiKey
+     * above: this one is always OpenRouter and works with no provider selected.
+     */
+    nextPrompt: {
+      enabled: boolean;
+      apiKey: string;
+      /** Empty uses NEXT_PROMPT_DEFAULT_MODEL */
+      model: string;
+    };
     /** BETA-006:active→idle 跃迁前调 LLM 复核,默认关。开启需 apiKey 非空。 */
     statusRecheckEnabled: boolean;
     /**

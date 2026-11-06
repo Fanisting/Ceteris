@@ -86,7 +86,14 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { CheckBold, CloseBold, CloseFullscreen, OpenInFull } from './material-symbols';
+import {
+  AutoAwesome,
+  CheckBold,
+  Close,
+  CloseBold,
+  CloseFullscreen,
+  OpenInFull,
+} from './material-symbols';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -110,8 +117,11 @@ import { isDeviceAttributesResponse } from '@shared/terminal-input-filter';
 import { activateMarinaUnicodeWidth } from '@shared/terminal-unicode-width';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
+import { detectAgent } from '@shared/next-prompt';
 import type {
   LinkConnectionStatePayload,
+  SuggestNextPromptPayload,
+  SuggestNextPromptResponse,
 } from '@shared/protocol';
 import { readClipboardText, writeClipboardText } from '../clipboard';
 import { Icon } from './icons';
@@ -601,6 +611,9 @@ function isLightTheme(themeId: ThemeId | undefined): boolean {
 const LIGHT_THEME_MIN_CONTRAST = 4.5;
 const SSH_STARTUP_DA_FILTER_MS = 5000;
 
+/** Lines from the end of the buffer used to guess the next prompt. */
+const SUGGEST_SCREEN_LINES = 60;
+
 interface TerminalViewProps {
   /**
    * 必须满足 session.ownerWindowId === state.myWindowId — 父组件 MainPane 通过
@@ -644,6 +657,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
 
   const appState = useAppState();
   const selectedAtMountRef = useRef(appState.selectedSessionId === session.id);
+  const nextPrompt = appState.settings.ai?.nextPrompt;
+  const nextPromptOn = !!nextPrompt?.enabled && !!nextPrompt.apiKey.trim();
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const lastSuggestedScreenRef = useRef('');
   const dispatch = useAppDispatch();
   const { t, tx } = useTranslation();
   const simpleMode = appState.simpleMode;
@@ -865,6 +882,54 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       searchInputRef.current?.select();
     });
   }, []);
+
+  // Guess the next prompt when an agent finishes. Only at the moment output settles, so a
+  // working agent costs nothing, and never twice for the same screen.
+  const sessionState = session.state;
+  const templateId = session.templateId;
+  useEffect(() => {
+    if (sessionState !== 'idle') {
+      setSuggestion(null);
+      return;
+    }
+    if (!nextPromptOn) return;
+    const term = termRef.current;
+    if (!term) return;
+    const buffer = term.buffer.active;
+    if (buffer.type === 'alternate') return;
+    const lines: string[] = [];
+    for (let y = Math.max(0, buffer.length - SUGGEST_SCREEN_LINES); y < buffer.length; y++) {
+      lines.push(buffer.getLine(y)?.translateToString(true) ?? '');
+    }
+    const screen = lines.join('\n').trim();
+    if (!detectAgent(templateId, screen) || screen === lastSuggestedScreenRef.current) return;
+    lastSuggestedScreenRef.current = screen;
+
+    let stale = false;
+    window.api
+      .invoke<SuggestNextPromptPayload, SuggestNextPromptResponse>(
+        COMMAND_CHANNELS.AI_SUGGEST_NEXT_PROMPT,
+        { screen },
+      )
+      .then((res) => {
+        if (!stale) setSuggestion(res.suggestion);
+      })
+      .catch((err) => console.warn('[TerminalView] next prompt failed', err));
+    return () => {
+      stale = true;
+    };
+  }, [sessionState, templateId, nextPromptOn]);
+
+  const acceptSuggestion = (): void => {
+    if (!suggestion) return;
+    // Typed, not sent: the user reads it and presses Enter themselves.
+    void window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
+      sessionId: session.id,
+      data: encodeStringToBase64(suggestion),
+    });
+    setSuggestion(null);
+    focusTerminal(termRef, searchVisibleRef);
+  };
 
   // BETA-028:终端工具栏通过 window CustomEvent 触达本组件 — 清屏 / 唤搜索栏。
   // detail.sessionId 必须匹配本实例的 session,否则忽略(多窗口时只有持有者响应)。
@@ -1640,6 +1705,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         return;
       }
       const base64 = encodeStringToBase64(data);
+      setSuggestion(null);
       const echoId = echo?.noteInput(data) ?? null;
       void window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
@@ -2024,6 +2090,30 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           {session.currentCwd}
         </span>
       </div>
+      {/* Floats over the terminal. Taking layout space would resize the PTY and make the
+          agent redraw every time a suggestion appears. */}
+      {suggestion && (
+        <div className="next-prompt-chip">
+          <button
+            type="button"
+            className="next-prompt-accept"
+            onClick={acceptSuggestion}
+            title={tx('点击填入,不会自动发送', 'Click to type it in. It is not sent.')}
+          >
+            <AutoAwesome size={14} />
+            <span className="next-prompt-text">{suggestion}</span>
+          </button>
+          <button
+            type="button"
+            className="next-prompt-dismiss"
+            onClick={() => setSuggestion(null)}
+            title={tx('忽略', 'Dismiss')}
+            aria-label={tx('忽略', 'Dismiss')}
+          >
+            <Close size={14} />
+          </button>
+        </div>
+      )}
       <div
         className="terminal-host"
         ref={containerRef}

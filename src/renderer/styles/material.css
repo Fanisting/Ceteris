@@ -1660,3 +1660,72 @@ select.settings-input option {
   }
 }
 
+/* ── Next prompt suggestion ────────────────────────────────── */
+
+.next-prompt-chip {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  max-width: min(70%, 560px);
+  border-radius: var(--md-shape-full, 999px);
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
+.next-prompt-accept {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 4px 0 12px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: var(--ui-font-family, sans-serif);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.next-prompt-accept svg,
+.next-prompt-dismiss svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.next-prompt-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.next-prompt-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.next-prompt-dismiss:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.data-agent-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}

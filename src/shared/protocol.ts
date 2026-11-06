@@ -157,6 +157,7 @@ export const COMMAND_CHANNELS = {
 
   /** BETA-031:AI 助手测试连接 — 主进程用 SDK 跑一次 ping,返回成功 / 错误描述 */
   AI_TEST_CONNECTION: 'cmd:ai:test-connection',
+  AI_SUGGEST_NEXT_PROMPT: 'cmd:ai:suggest-next-prompt',
 
   /**
    * IME-1 探针 dump — renderer 在 onData 检测到疑似 LEAK 时,把 ring buffer
@@ -1070,6 +1071,15 @@ export interface FocusSessionOwnerResponse {
    * 调用方应当选中该 session。
    */
   transferred: boolean;
+}
+
+export interface SuggestNextPromptPayload {
+  /** The end of the terminal screen, as plain text. */
+  screen: string;
+}
+
+export interface SuggestNextPromptResponse {
+  suggestion: string | null;
 }
 
 /** ViewTarget.id of the local view. Remote views use their window id. */

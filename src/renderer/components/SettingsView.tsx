@@ -71,6 +71,11 @@ import {
 import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
 import { useModal } from './Modal';
+import { NEXT_PROMPT_DEFAULT_MODEL } from '@shared/next-prompt';
+import type {
+  SuggestNextPromptPayload,
+  SuggestNextPromptResponse,
+} from '@shared/protocol';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
 import { useTranslation } from './LanguageProvider';
@@ -2377,6 +2382,34 @@ function AiPanel({
   const statusRecheckSource = ai?.statusRecheckSource ?? 'headless';
   const [testing, setTesting] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', model: '' };
+  const [testingNextPrompt, setTestingNextPrompt] = useState(false);
+
+  const handleTestNextPrompt = async (): Promise<void> => {
+    setTestingNextPrompt(true);
+    const started = performance.now();
+    try {
+      const res = await window.api.invoke<SuggestNextPromptPayload, SuggestNextPromptResponse>(
+        COMMAND_CHANNELS.AI_SUGGEST_NEXT_PROMPT,
+        { screen: 'All tests pass, but I have not committed the change yet.\n> \n? for shortcuts' },
+      );
+      const ms = Math.round(performance.now() - started);
+      toast.push({
+        kind: 'success',
+        message: `${ms}ms: ${res.suggestion ?? tx('模型没有给出建议', 'no suggestion')}`,
+      });
+    } catch (err) {
+      toast.push({
+        kind: 'error',
+        message: tx(
+          `测试失败:${err instanceof Error ? err.message : String(err)}`,
+          `Test failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      });
+    } finally {
+      setTestingNextPrompt(false);
+    }
+  };
 
   const handleTest = async (): Promise<void> => {
     setError(null);
@@ -2580,6 +2613,70 @@ function AiPanel({
           </SettingRow>
         </>
       )}
+      <h3 className="link-subsection-title">{tx('下一步提示建议', 'Next prompt suggestions')}</h3>
+      <p className="settings-panel-hint">
+        {tx(
+          'Claude Code 或 Codex 停下时,用 OpenRouter 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字会发送给 OpenRouter,所以屏幕上的密钥或私密内容也会被发送。',
+          'When Claude Code or Codex stops, OpenRouter guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen goes to OpenRouter, including anything private shown there.',
+        )}
+      </p>
+
+      <SettingRow label={tx('启用建议', 'Enable suggestions')}>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={nextPrompt.enabled}
+            onChange={(e) =>
+              void updateSettings({ ai: { nextPrompt: { enabled: e.target.checked } } }, setError)
+            }
+            disabled={!nextPrompt.apiKey.trim()}
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('OpenRouter API Key', 'OpenRouter API key')}
+        hint={tx('填写后才能启用', 'Required before enabling')}
+      >
+        <input
+          className="settings-input"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={nextPrompt.apiKey}
+          onChange={(e) =>
+            void updateSettings({ ai: { nextPrompt: { apiKey: e.target.value } } }, setError)
+          }
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('模型', 'Model')}
+        hint={tx('留空使用默认模型,约 0.2 秒一次', 'Leave empty for the default, about 0.2s per guess')}
+      >
+        <input
+          className="settings-input"
+          type="text"
+          spellCheck={false}
+          placeholder={NEXT_PROMPT_DEFAULT_MODEL}
+          value={nextPrompt.model}
+          onChange={(e) =>
+            void updateSettings({ ai: { nextPrompt: { model: e.target.value } } }, setError)
+          }
+        />
+      </SettingRow>
+
+      <SettingRow label={tx('测试', 'Test')}>
+        <button
+          type="button"
+          className="settings-button"
+          disabled={testingNextPrompt || !nextPrompt.apiKey.trim()}
+          onClick={() => void handleTestNextPrompt()}
+        >
+          {testingNextPrompt ? tx('测试中…', 'Testing…') : tx('发送一次测试', 'Send a test')}
+        </button>
+      </SettingRow>
     </section>
   );
 }

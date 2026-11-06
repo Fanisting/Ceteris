@@ -42,6 +42,8 @@ import {
   type AddBookmarkResponse,
   type AddRemoteBookmarkPayload,
   type SetPaneSessionsPayload,
+  type SuggestNextPromptPayload,
+  type SuggestNextPromptResponse,
   type ViewStateResponse,
   type ViewSwitchPayload,
   type AddSshProfilePayload,
@@ -150,6 +152,7 @@ import { logger } from './logger';
 import { setQuitting } from './index';
 import { generateLinkToken } from './link/link-crypto';
 import { listBindCandidates, type LinkManager } from './link/link-manager';
+import { suggestNextPrompt } from './next-prompt-client';
 import type { ViewSwitcher } from './view-switcher';
 
 export interface IpcLayerDeps {
@@ -1165,6 +1168,19 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // BETA-039:UI 设置页用真实绝对路径替代硬编码 %APPDATA%\Marina,
       // 在 portable / dev / 自定义 userData 场景下也保持准确。
       return { dataDir: app.getPath('userData') };
+    },
+  );
+
+  // Not local-only on purpose: a remote view sends this to the Host, whose settings
+  // hold the key, so the laptop needs no key of its own.
+  handleCommand(
+    COMMAND_CHANNELS.AI_SUGGEST_NEXT_PROMPT,
+    async (
+      _e,
+      envelope: CommandEnvelope<SuggestNextPromptPayload>,
+    ): Promise<SuggestNextPromptResponse> => {
+      const config = settingsManager.get().ai.nextPrompt;
+      return { suggestion: await suggestNextPrompt(config, envelope.payload.screen) };
     },
   );
 

@@ -475,7 +475,7 @@ describe('SessionManager — createSession', () => {
     ]);
   });
 
-  it('SSH remotePath 为 ~ 时使用无参数 cd,避免 quote 后禁用 home 展开', async () => {
+  it('SSH remotePath 为 ~ 时不发送远程命令,由主机的登录 shell 启动', async () => {
     const adapter: PlatformAdapter = {
       ...makeFakeAdapter(),
       resolveExecutable(commandName: string) {
@@ -505,9 +505,7 @@ describe('SessionManager — createSession', () => {
       },
     });
 
-    expect(FakePty.instances[0]!.args).toContain(
-      'cd && exec "${SHELL:-/bin/sh}" -l',
-    );
+    expect(FakePty.instances[0]!.args).not.toEqual(expect.arrayContaining([expect.stringContaining('exec')]));
   });
 
   it('SSH 启动模板在远端 cwd 中执行命令/参数/env', async () => {

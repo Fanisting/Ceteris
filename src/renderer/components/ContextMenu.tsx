@@ -6,6 +6,7 @@
  *   useContextMenuApi() 调 open(state) 弹菜单。Esc / 外部 click / 滚轮关闭。
  *
  *   菜单项支持 disabled / danger / divider 三个视觉变体。
+ *   An item with a submenu opens a second panel beside it on hover or click.
  */
 import {
   createContext,
@@ -38,6 +39,8 @@ export interface ContextMenuItem {
   danger?: boolean;
   /** 分隔符;若为 true,其他字段忽略 */
   divider?: boolean;
+  /** Choices shown in a second panel. The item itself then does nothing when picked. */
+  submenu?: ContextMenuItem[];
   /** 点击触发,菜单自动关闭 */
   onSelect?: () => void | Promise<void>;
 }
@@ -68,6 +71,10 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const subRef = useRef<HTMLDivElement | null>(null);
+  /** The open second panel: its choices and the row it hangs from. */
+  const [sub, setSub] = useState<{ items: ContextMenuItem[]; anchor: DOMRect } | null>(null);
+  const [subPos, setSubPos] = useState<{ x: number; y: number } | null>(null);
   // FOC-5:打开菜单前记录当前焦点 element,关闭时归还。
   //
   // 没有这个保护:用户右键终端 → 弹菜单 → 选/不选关闭 → 菜单 button
@@ -81,6 +88,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
 
   const close = useCallback(() => {
     setMenu(null);
+    setSub(null);
     const prev = previousActiveElementRef.current;
     previousActiveElementRef.current = null;
     if (!prev) return;
@@ -112,6 +120,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
           previousActiveElementRef.current = document.activeElement;
         }
         setPos(null);
+        setSub(null);
         setMenu(s);
       },
       close,
@@ -139,7 +148,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
     // 菜单外 wheel 仍按原行为关闭。
     const onWheel = (e: WheelEvent): void => {
       const target = e.target as Node | null;
-      if (target && menuRef.current?.contains(target)) return;
+      if (target && (menuRef.current?.contains(target) || subRef.current?.contains(target))) return;
       close();
     };
     window.addEventListener('keydown', onKey);
@@ -174,6 +183,62 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
     setPos({ x: nx, y: ny });
   }, [menu]);
 
+  // Beside its row, or on the other side when the window edge is in the way.
+  useLayoutEffect(() => {
+    const el = subRef.current;
+    if (!sub || !el) return;
+    const rect = el.getBoundingClientRect();
+    const margin = 4;
+    const right = sub.anchor.right + 2;
+    const x =
+      right + rect.width > window.innerWidth - margin
+        ? Math.max(margin, sub.anchor.left - rect.width - 2)
+        : right;
+    const y = Math.max(margin, Math.min(sub.anchor.top - 4, window.innerHeight - rect.height - margin));
+    setSubPos({ x, y });
+  }, [sub]);
+
+  const renderItem = (it: ContextMenuItem, idx: number, inSubmenu: boolean): JSX.Element => {
+    if (it.divider) {
+      return <div key={idx} className="ctx-menu-divider" role="separator" />;
+    }
+    const showSubmenu = (e: { currentTarget: HTMLElement }): void => {
+      if (it.submenu) {
+        const anchor = e.currentTarget.getBoundingClientRect();
+        setSubPos(null);
+        setSub({ items: it.submenu, anchor });
+      } else if (!inSubmenu) {
+        setSub(null);
+      }
+    };
+    return (
+      <button
+        key={idx}
+        type="button"
+        className={
+          'ctx-menu-item' + (it.checked ? ' checked' : '') + (it.danger ? ' danger' : '')
+        }
+        disabled={!!it.disabled}
+        title={it.hint}
+        aria-haspopup={it.submenu ? 'menu' : undefined}
+        onMouseEnter={showSubmenu}
+        onClick={(e) => {
+          if (it.disabled) return;
+          if (it.submenu) {
+            showSubmenu(e);
+            return;
+          }
+          void it.onSelect?.();
+          close();
+        }}
+      >
+        <span className="ctx-menu-check">{it.icon ?? (it.checked ? '✓' : ' ')}</span>
+        <span className="ctx-menu-label">{it.label}</span>
+        {it.submenu && <span className="ctx-menu-arrow">›</span>}
+      </button>
+    );
+  };
+
   return (
     <Ctx.Provider value={api}>
       {children}
@@ -190,34 +255,22 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
           role="menu"
         >
           {menu.title && <div className="ctx-menu-title">{menu.title}</div>}
-          {menu.items.map((it, idx) => {
-            if (it.divider) {
-              return <div key={idx} className="ctx-menu-divider" role="separator" />;
-            }
-            return (
-              <button
-                key={idx}
-                type="button"
-                className={
-                  'ctx-menu-item' +
-                  (it.checked ? ' checked' : '') +
-                  (it.danger ? ' danger' : '')
-                }
-                disabled={!!it.disabled}
-                title={it.hint}
-                onClick={() => {
-                  if (it.disabled) return;
-                  void it.onSelect?.();
-                  close();
-                }}
-              >
-                <span className="ctx-menu-check">
-                  {it.icon ?? (it.checked ? '✓' : ' ')}
-                </span>
-                <span className="ctx-menu-label">{it.label}</span>
-              </button>
-            );
-          })}
+          {menu.items.map((it, idx) => renderItem(it, idx, false))}
+        </div>
+      )}
+      {menu && sub && (
+        <div
+          ref={subRef}
+          className="ctx-menu"
+          style={{
+            left: subPos?.x ?? 0,
+            top: subPos?.y ?? 0,
+            visibility: subPos ? 'visible' : 'hidden',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          role="menu"
+        >
+          {sub.items.map((it, idx) => renderItem(it, idx, true))}
         </div>
       )}
     </Ctx.Provider>

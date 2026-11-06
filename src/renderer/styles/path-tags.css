@@ -183,3 +183,9 @@ button.tag-chip {
 .tag-delete {
   color: var(--md-error, #e5484d);
 }
+
+/* Sits at the far right of a row that opens a second panel. */
+.ctx-menu-arrow {
+  margin-left: auto;
+  padding-left: 12px;
+}

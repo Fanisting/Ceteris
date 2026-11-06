@@ -789,28 +789,30 @@ function PathItem({
         },
       });
 
-      // 设默认模板(沿用 CP-4 既有逻辑)— 作为子菜单的扁平展开
       items.push({ divider: true, label: '' });
-      for (const t of state.templates.filter((x) => !x.hidden || x.id === node.defaultTemplateId)) {
-        items.push({
-          label: `${t.icon} 设默认模板:${t.name}`,
-          hint: t.command ? `启动命令: ${t.command}` : '系统默认 shell',
-          checked: t.id === node.defaultTemplateId,
-          onSelect: () => {
-            window.api
-              .invoke(COMMAND_CHANNELS.BOOKMARK_SET_DEFAULT_TEMPLATE, {
-                pathId: node.id,
-                templateId: t.id,
-              })
-              .catch((err: unknown) =>
-                toast.push({
-                  kind: 'error',
-                  message: `设置默认模板失败:${err instanceof Error ? err.message : String(err)}`,
-                }),
-              );
-          },
-        });
-      }
+      items.push({
+        label: tx('设置启动模板', 'Launch template'),
+        submenu: state.templates
+          .filter((x) => !x.hidden || x.id === node.defaultTemplateId)
+          .map((template) => ({
+            label: template.name,
+            hint: template.command ? `启动命令: ${template.command}` : '系统默认 shell',
+            checked: template.id === node.defaultTemplateId,
+            onSelect: () => {
+              window.api
+                .invoke(COMMAND_CHANNELS.BOOKMARK_SET_DEFAULT_TEMPLATE, {
+                  pathId: node.id,
+                  templateId: template.id,
+                })
+                .catch((err: unknown) =>
+                  toast.push({
+                    kind: 'error',
+                    message: `设置默认模板失败:${err instanceof Error ? err.message : String(err)}`,
+                  }),
+                );
+            },
+          })),
+      });
     } else {
       items.push({ divider: true, label: '' });
       items.push({

@@ -1,6 +1,7 @@
 /**
  * @file src/renderer/components/PdfOverlay.tsx
  * @purpose 盖在 session 的终端区域上显示 PDF,关闭后露出原来的终端。
+ *   A folder with no terminal shows it over the new tab page in the same way.
  *
  * @关键设计:
  * - 盖在上面而不是替换 TerminalView:卸载 TerminalView 会重建 xterm,PTY 输出和
@@ -21,16 +22,16 @@ import { closePdf, markPdfShown, usePdfView } from '../pdf-view-store';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
 
-export function PdfOverlay({ sessionId }: { sessionId: string }): JSX.Element | null {
+export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null {
   const { t, tx } = useTranslation();
-  const view = usePdfView(sessionId);
+  const view = usePdfView(viewKey);
   const generation = view?.generation;
 
   useEffect(() => {
     if (generation === undefined) return;
-    markPdfShown(sessionId);
+    markPdfShown(viewKey);
     focusTerminalDom();
-  }, [generation, sessionId]);
+  }, [generation, viewKey]);
 
   if (!view) return null;
   const label = tx('关闭 PDF', 'Close PDF');
@@ -45,7 +46,7 @@ export function PdfOverlay({ sessionId }: { sessionId: string }): JSX.Element | 
           title={label}
           aria-label={label}
           onClick={() => {
-            closePdf(sessionId);
+            closePdf(viewKey);
             focusTerminalDom();
           }}
         >

@@ -50,7 +50,7 @@ import { PaneLayoutBar } from './PaneLayoutBar';
 import { PATH_DRAG_TYPE } from './path-drag';
 import { PdfOverlay } from './PdfOverlay';
 import { TerminalView } from './TerminalView';
-import { prunePdfViews } from '../pdf-view-store';
+import { closePdf, folderPdfKey, prunePdfViews } from '../pdf-view-store';
 import { focusTerminalDom } from '../focus';
 import { Icon } from './icons';
 import { TemplateIcon } from './TemplateIcon';
@@ -92,11 +92,19 @@ export function MainPane(): JSX.Element {
   const sessions = getSessionsInSelectedPath(state);
 
   useEffect(() => {
-    prunePdfViews(new Set(state.sessions.keys()));
-  }, [state.sessions]);
+    prunePdfViews((id) => state.sessions.has(id) || !!findPathNode(state.pathTree, id));
+  }, [state.sessions, state.pathTree]);
   const displayable = getDisplayableSession(state);
   const layout = getEffectivePaneLayout(state);
   const slots = getPaneSlots(state);
+
+  // A terminal the user just opened or picked must be what they see, so a PDF that was
+  // standing in for one closes rather than covering it or waiting to reappear.
+  const selectedPathId = state.selectedPathId;
+  const hasDisplayable = displayable !== null;
+  useEffect(() => {
+    if (hasDisplayable && selectedPathId) closePdf(folderPdfKey(selectedPathId));
+  }, [hasDisplayable, selectedPathId]);
   const myWindowId = state.myWindowId;
 
   // When the selection moves between panes without a click, such as the selected pane
@@ -245,6 +253,9 @@ export function MainPane(): JSX.Element {
     );
   }
 
+  // Several panes can be empty, and one PDF must not appear in each of them.
+  const folderPdfSlot = displayable ? -1 : layout === 'single' ? 0 : slots.indexOf(null);
+
   return (
     <main className={mainClass} ref={containerRef} {...dropProps}>
       {/* BETA-027:简易模式下 Tab bar 隐藏(浮动工具栏由 App.tsx 直接渲染)
@@ -273,14 +284,19 @@ export function MainPane(): JSX.Element {
             }}
           >
             {!s ? (
-              <EmptyPathState pathId={state.selectedPathId as string} />
+              <div className="session-stage">
+                <EmptyPathState pathId={state.selectedPathId as string} />
+                {i === folderPdfSlot && (
+                  <PdfOverlay viewKey={folderPdfKey(state.selectedPathId as string)} />
+                )}
+              </div>
             ) : s.ownerWindowId === myWindowId ? (
               <>
                 {/* The PDF covers its own pane only. Its header sits above .pane-close, so
                     while a PDF is open the one visible x closes the PDF, not the session. */}
                 <div className="session-stage">
                   <TerminalView session={s} />
-                  <PdfOverlay sessionId={s.id} />
+                  <PdfOverlay viewKey={s.id} />
                 </div>
                 {layout !== 'single' && <PaneCloseButton sessionId={s.id} />}
               </>

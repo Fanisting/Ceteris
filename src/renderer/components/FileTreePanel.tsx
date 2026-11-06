@@ -45,8 +45,14 @@ import {
   type RenameEntryResponse,
 } from '@shared/file-tree';
 import { focusTerminalDom } from '../focus';
-import { openPdf } from '../pdf-view-store';
-import { findPathNode, getDisplayableSession, getSelectedSession, useAppState } from '../store';
+import { folderPdfKey, openPdf } from '../pdf-view-store';
+import {
+  findPathNode,
+  getDisplayableSession,
+  getSelectedSession,
+  type AppState,
+  useAppState,
+} from '../store';
 import { useContextMenuApi } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
 import { ChevronRight, Draft, ExpandMore, Folder, FolderOpen } from './material-symbols';
@@ -62,8 +68,8 @@ type DirState = { entries: FileTreeEntry[]; truncated: boolean } | { failure: Di
 
 interface FileTreeBodyProps {
   root: string;
-  /** 能显示 PDF 的 session。别的窗口持有的 session 不显示终端区域,这里是 null */
-  pdfSessionId: string | null;
+  /** Where a clicked PDF is shown, see pdfViewKey. Null when nothing can show it. */
+  pdfViewKey: string | null;
   /** 有值时是 SFTP 浏览,只读 */
   sshProfileId: string | undefined;
 }
@@ -109,7 +115,7 @@ export function FileTreePanel(): JSX.Element {
         <FileTreeBody
           key={`${sshProfileId ?? ''}|${root}`}
           root={root}
-          pdfSessionId={getDisplayableSession(state)?.id ?? null}
+          pdfViewKey={pdfViewKey(state)}
           sshProfileId={sshProfileId}
         />
       ) : (
@@ -118,6 +124,13 @@ export function FileTreePanel(): JSX.Element {
     </section>
     </>
   );
+}
+
+/** Where a clicked PDF is shown: over the terminal on screen, else over the new tab page. */
+function pdfViewKey(state: AppState): string | null {
+  const session = getDisplayableSession(state);
+  if (session) return session.id;
+  return state.selectedPathId ? folderPdfKey(state.selectedPathId) : null;
 }
 
 const HEIGHT_KEY = 'ceteris.sidebar.fileTreeHeight';
@@ -188,7 +201,7 @@ function useResizableHeight(): {
   return { height, handleProps: { onPointerDown, onDoubleClick } };
 }
 
-function FileTreeBody({ root, pdfSessionId, sshProfileId }: FileTreeBodyProps): JSX.Element {
+function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyProps): JSX.Element {
   const expansionKey = `${sshProfileId ?? ''}|${root}`;
   const { t } = useTranslation();
   const toast = useToast();
@@ -386,8 +399,8 @@ function FileTreeBody({ root, pdfSessionId, sshProfileId }: FileTreeBodyProps): 
       return;
     }
     setSelected(entry.path);
-    if (!entry.isDirectory && isPdfName(entry.name) && pdfSessionId) {
-      void openPdf(pdfSessionId, {
+    if (!entry.isDirectory && isPdfName(entry.name) && pdfKey) {
+      void openPdf(pdfKey, {
         name: entry.name,
         path: entry.path,
         ...(sshProfileId ? { sshProfileId } : {}),

@@ -1,7 +1,7 @@
 /**
  * @file src/renderer/components/FileTreePanel.tsx
  * @purpose 侧栏底部的文件树面板,显示当前选中 session 所在目录。本地目录支持重命名,
- *   SSH session 通过 SFTP 只读浏览。点击 PDF 在终端区域打开。
+ *   SSH session 通过 SFTP 只读浏览。点击 PDF、图片或 markdown 在终端区域打开。
  *
  * @关键设计:
  * - 根目录变化时靠 key 重新挂载 FileTreeBody,旧目录的异步结果随卸载丢弃。
@@ -32,7 +32,7 @@ import { COMMAND_CHANNELS } from '@shared/protocol';
 import {
   classifyRowClick,
   flattenVisibleRows,
-  isPdfName,
+  fileViewKind,
   remapPath,
   resolveFileTreeRoot,
   type DirFailure,
@@ -399,7 +399,7 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
       return;
     }
     setSelected(entry.path);
-    if (!entry.isDirectory && isPdfName(entry.name) && pdfKey) {
+    if (!entry.isDirectory && fileViewKind(entry.name) && pdfKey) {
       void openPdf(pdfKey, {
         name: entry.name,
         path: entry.path,

@@ -364,13 +364,13 @@ function bootstrap(): void {
       // 生产 (file://) 不需要。
       const cspProd =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-        "font-src 'self' data:; img-src 'self' data:; connect-src 'self'; frame-src blob:";
+        "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; frame-src blob:";
       const cspDev =
         "default-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; " +
         "script-src 'self' 'unsafe-eval' 'unsafe-inline' http://127.0.0.1:*; " +
         "style-src 'self' 'unsafe-inline' http://127.0.0.1:*; " +
         "font-src 'self' data: http://127.0.0.1:*; " +
-        "img-src 'self' data: http://127.0.0.1:*; " +
+        "img-src 'self' data: blob: http://127.0.0.1:*; " +
         "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; frame-src blob:";
       electronSession.defaultSession.webRequest.onHeadersReceived(
         (details, callback) => {

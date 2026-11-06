@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/components/PdfOverlay.tsx
- * @purpose 盖在 session 的终端区域上显示 PDF,关闭后露出原来的终端。
+ * @purpose 盖在 session 的终端区域上显示 PDF、图片或 markdown,关闭后露出原来的终端。
  *   A folder with no terminal shows it over the new tab page in the same way.
  *
  * @关键设计:
@@ -9,6 +9,8 @@
  * - 用 iframe 加载 blob URL,由 Chromium 内置的 PDF 查看器渲染,不增加依赖。
  *   需要 webPreferences.plugins (window-manager.ts) 和 CSP 的 frame-src blob:
  *   与查看器页面豁免 (index.ts),缺任何一项都是空白页。
+ * - markdown-it runs with html off, so a file's raw HTML shows as text and cannot run in the
+ *   app. Links open in the browser: following one inside the window would replace the app.
  * - 焦点由 focusTerminalDom 统一处理:有 PDF 时它把焦点给关闭按钮,而不是下面的终端。
  *
  * @对应文档章节: 软件定义书.md 14.6
@@ -16,11 +18,39 @@
  * @不要在这里做的事:
  * - 不要提供编辑或批注 (内置文件编辑器在 13.2 永远不做列表里)
  */
-import { useEffect } from 'react';
+import { useEffect, useMemo, type MouseEvent } from 'react';
+import MarkdownIt from 'markdown-it';
+import { fileViewKind } from '@shared/file-tree';
+import { COMMAND_CHANNELS } from '@shared/protocol';
 import { focusTerminalDom } from '../focus';
 import { closePdf, markPdfShown, usePdfView } from '../pdf-view-store';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
+
+const markdown = new MarkdownIt({ html: false, linkify: true });
+
+function MarkdownView({ text }: { text: string }): JSX.Element {
+  const html = useMemo(() => markdown.render(text), [text]);
+
+  const openLink = (e: MouseEvent<HTMLElement>): void => {
+    const link = (e.target as Element).closest('a');
+    if (!link) return;
+    e.preventDefault();
+    if (!/^https?:/i.test(link.href)) return;
+    window.api
+      .invoke(COMMAND_CHANNELS.SYSTEM_OPEN_EXTERNAL, { url: link.href })
+      .catch((err) => console.error('[PdfOverlay] open link failed', err));
+  };
+
+  return (
+    <div
+      className="file-view-markdown"
+      onClick={openLink}
+      // Safe because raw HTML is off and markdown-it refuses javascript: links.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null {
   const { t, tx } = useTranslation();
@@ -34,7 +64,7 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
   }, [generation, viewKey]);
 
   if (!view) return null;
-  const label = tx('关闭 PDF', 'Close PDF');
+  const label = tx('关闭', 'Close');
 
   return (
     <section className="pdf-overlay" aria-label={view.source.name}>
@@ -54,7 +84,15 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
         </button>
       </header>
       {view.status === 'ready' ? (
-        <iframe className="pdf-overlay-frame" src={view.url} title={view.source.name} />
+        view.text !== null ? (
+          <MarkdownView text={view.text} />
+        ) : fileViewKind(view.source.name) === 'image' ? (
+          <div className="file-view-image">
+            <img src={view.url ?? ''} alt={view.source.name} />
+          </div>
+        ) : (
+          <iframe className="pdf-overlay-frame" src={view.url ?? ''} title={view.source.name} />
+        )
       ) : (
         <p className="pdf-overlay-status">
           {view.status === 'loading'

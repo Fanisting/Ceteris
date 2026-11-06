@@ -1,12 +1,14 @@
 /**
  * @file src/main/pdf-reader.ts
- * @purpose 分块读取 PDF 文件给 renderer,本地文件走 fs,远端文件走 SFTP。
+ * @purpose 分块读取 PDF、图片和 markdown 给 renderer,本地文件走 fs,远端文件走 SFTP。
  *
  * @关键设计:
  * - 分块是为了 Ceteris Link:单帧上限 8 MiB,命令超时 30 秒,所以每块 1 MiB,
  *   1 Mbit/s 的线路也来得及。本地窗口走同一条路,只有一套逻辑。
  * - 这条命令能读磁盘,所以只读普通文件,限定扩展名,每次都检查 %PDF- 文件头,
  *   不能用非零偏移绕过,也不能当任意文件读取用。
+ * - Pictures and markdown are limited by extension only. They have no fixed header worth
+ *   checking, and the renderer shows them as an image or as text with raw HTML turned off.
  * - 远端不落临时文件:SFTP 能按偏移读,用完即弃,不用管清理。
  *
  * @对应文档章节: 软件定义书.md 14.6
@@ -16,7 +18,7 @@
  */
 import { promises as fs } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { isPdfName, PDF_MAX_BYTES, type ReadPdfResponse } from '@shared/file-tree';
+import { fileViewKind, PDF_MAX_BYTES, type ReadPdfResponse } from '@shared/file-tree';
 import { logger } from './logger';
 import { failureFrom, type SftpPool } from './sftp-client';
 
@@ -40,11 +42,18 @@ function failureOf(err: unknown): ReadPdfResponse {
 /**
  * 本地和远端共用的检查与打包。
  *
- * @param head 文件开头的字节,每次都校验
+ * @param path 决定是否按 PDF 校验文件头
+ * @param head 文件开头的字节,PDF 每次都校验
  */
-function toResponse(chunk: Buffer, head: Buffer, size: number, offset: number): ReadPdfResponse {
+function toResponse(
+  path: string,
+  chunk: Buffer,
+  head: Buffer,
+  size: number,
+  offset: number,
+): ReadPdfResponse {
   if (size > PDF_MAX_BYTES) return { ok: false, reason: 'too-large' };
-  if (!head.subarray(0, HEADER_WINDOW_BYTES).includes('%PDF-')) {
+  if (fileViewKind(path) === 'pdf' && !head.subarray(0, HEADER_WINDOW_BYTES).includes('%PDF-')) {
     return { ok: false, reason: 'not-pdf' };
   }
   const end = offset + chunk.length;
@@ -65,7 +74,7 @@ function toResponse(chunk: Buffer, head: Buffer, size: number, offset: number): 
  * @returns nextOffset 为 null 表示读完了
  */
 export async function readPdfChunk(path: string, offset: number): Promise<ReadPdfResponse> {
-  if (!isAbsolute(path) || !isPdfName(path) || !isValidOffset(offset)) {
+  if (!isAbsolute(path) || !fileViewKind(path) || !isValidOffset(offset)) {
     return { ok: false, reason: 'not-found' };
   }
   let handle;
@@ -79,7 +88,7 @@ export async function readPdfChunk(path: string, offset: number): Promise<ReadPd
     await handle.read(head, 0, head.length, 0);
     const buffer = Buffer.alloc(Math.min(PDF_CHUNK_BYTES, Math.max(0, size - offset)));
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
-    return toResponse(buffer.subarray(0, bytesRead), head, size, offset);
+    return toResponse(path, buffer.subarray(0, bytesRead), head, size, offset);
   } catch (err) {
     logger.warn('Pdf', `readPdfChunk failed: path="${path}" offset=${offset}`, err);
     return failureOf(err);
@@ -101,7 +110,7 @@ export async function readRemotePdfChunk(
   path: string,
   offset: number,
 ): Promise<ReadPdfResponse> {
-  if (!isPdfName(path) || !isValidOffset(offset)) return { ok: false, reason: 'not-found' };
+  if (!fileViewKind(path) || !isValidOffset(offset)) return { ok: false, reason: 'not-found' };
   try {
     const { chunk, size } = await pool.readChunk(profileId, path, offset, PDF_CHUNK_BYTES, {
       fresh: offset === 0,
@@ -110,7 +119,7 @@ export async function readRemotePdfChunk(
     if (size > PDF_MAX_BYTES) return { ok: false, reason: 'too-large' };
     const head =
       offset === 0 ? chunk : (await pool.readChunk(profileId, path, 0, HEADER_WINDOW_BYTES)).chunk;
-    return toResponse(chunk, head, size, offset);
+    return toResponse(path, chunk, head, size, offset);
   } catch (err) {
     return { ok: false, reason: failureFrom(err, `read pdf "${path}"`) };
   }

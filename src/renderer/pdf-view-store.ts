@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/pdf-view-store.ts
- * @purpose 记录每个 session 正在显示哪个 PDF,并把文件分块读进 blob URL。
+ * @purpose 记录每个 session 正在显示哪个 PDF、图片或 markdown,并把文件分块读进内存。
  *
  * @关键设计:
  * - A view belongs to a session, or to a folder while that folder has no terminal to
@@ -16,11 +16,13 @@
  * @对应文档章节: 软件定义书.md 14.6
  *
  * @不要在这里做的事:
- * - 不要解析 PDF 内容,显示交给 Chromium 内置的 PDF 查看器
+ * - 不要解析文件内容,PdfOverlay 负责显示
  */
 import { useSyncExternalStore } from 'react';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import {
+  fileViewKind,
+  fileViewMime,
   PDF_MAX_BYTES,
   type ReadPdfFailure,
   type ReadPdfPayload,
@@ -35,7 +37,8 @@ export interface PdfSource {
 
 export type PdfView = { source: PdfSource; generation: number } & (
   | { status: 'loading' }
-  | { status: 'ready'; url: string }
+  /** Markdown keeps its text. Everything else is shown through a blob URL. */
+  | { status: 'ready'; url: string | null; text: string | null }
   | { status: 'error'; reason: ReadPdfFailure }
 );
 
@@ -56,7 +59,7 @@ let nextGeneration = 1;
 
 function publish(viewKey: string, view: PdfView | null): void {
   const previous = views.get(viewKey);
-  if (previous?.status === 'ready') URL.revokeObjectURL(previous.url);
+  if (previous?.status === 'ready' && previous.url) URL.revokeObjectURL(previous.url);
   if (view) {
     views.set(viewKey, view);
   } else {
@@ -150,8 +153,14 @@ export async function openPdf(viewKey: string, source: PdfSource): Promise<void>
   try {
     const chunks = await readAllChunks(source, isStale);
     if (!chunks) return;
-    const url = URL.createObjectURL(new Blob(chunks, { type: 'application/pdf' }));
-    publish(viewKey, { ...base, status: 'ready', url });
+    const blob = new Blob(chunks, { type: fileViewMime(source.name) });
+    if (fileViewKind(source.name) === 'markdown') {
+      const text = await blob.text();
+      if (isStale()) return;
+      publish(viewKey, { ...base, status: 'ready', url: null, text });
+    } else {
+      publish(viewKey, { ...base, status: 'ready', url: URL.createObjectURL(blob), text: null });
+    }
     evictOldViews(viewKey);
   } catch (err) {
     if (isStale()) return;

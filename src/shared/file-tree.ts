@@ -81,9 +81,33 @@ export interface RenameEntryPayload {
 
 const entryCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-/** 文件树里点击后用 PDF 查看器打开的文件。 */
-export function isPdfName(name: string): boolean {
-  return /\.pdf$/i.test(name);
+export type FileViewKind = 'pdf' | 'image' | 'markdown';
+
+const VIEW_MIME_TYPES: Record<string, { kind: FileViewKind; mime: string }> = {
+  pdf: { kind: 'pdf', mime: 'application/pdf' },
+  md: { kind: 'markdown', mime: 'text/markdown' },
+  markdown: { kind: 'markdown', mime: 'text/markdown' },
+  png: { kind: 'image', mime: 'image/png' },
+  jpg: { kind: 'image', mime: 'image/jpeg' },
+  jpeg: { kind: 'image', mime: 'image/jpeg' },
+  gif: { kind: 'image', mime: 'image/gif' },
+  webp: { kind: 'image', mime: 'image/webp' },
+  bmp: { kind: 'image', mime: 'image/bmp' },
+  svg: { kind: 'image', mime: 'image/svg+xml' },
+};
+
+function viewEntry(name: string): { kind: FileViewKind; mime: string } | null {
+  const ext = /\.([a-z]+)$/i.exec(name)?.[1]?.toLowerCase();
+  return (ext && VIEW_MIME_TYPES[ext]) || null;
+}
+
+/** How the file tree shows a clicked file. Null means clicking only selects it. */
+export function fileViewKind(name: string): FileViewKind | null {
+  return viewEntry(name)?.kind ?? null;
+}
+
+export function fileViewMime(name: string): string {
+  return viewEntry(name)?.mime ?? 'application/octet-stream';
 }
 
 /** 文件夹在前,同类按自然顺序排 (file2 排在 file10 之前)。不修改入参。 */

@@ -7,8 +7,10 @@
  *   npm run build:beta     portable exe in release/beta, version <package>-beta.<commits>
  *
  * Each channel has its own output folder so a build for one never touches files the
- * other is running from. The beta version comes from the commit count, so every beta is
- * newer than the last without editing package.json.
+ * other is running from. Stable builds only the installer: a portable stable looks like
+ * the same app, but it has its own data folder and an installed update never reaches it.
+ * The beta version comes from the commit count, so every beta is newer than the last
+ * without editing package.json.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -46,5 +48,6 @@ function run(args) {
 }
 
 run(['electron-vite', 'build']);
-run(['electron-builder', '--win', '--x64', '--publish', 'never', ...builderArgs]);
+const target = channel === 'stable' ? 'nsis' : 'portable';
+run(['electron-builder', '--win', target, '--x64', '--publish', 'never', ...builderArgs]);
 console.log(`\nBuilt ${channel} in release/${channel}`);

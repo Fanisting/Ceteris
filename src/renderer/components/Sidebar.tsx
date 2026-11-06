@@ -39,7 +39,7 @@ import {
   Folder,
 } from './material-symbols';
 import { FileTreePanel } from './FileTreePanel';
-import { TagEditor } from './TagEditor';
+import { TagDot, TagEditor, TagSettings } from './TagEditor';
 import { RemoteFolderPicker } from './RemoteFolderPicker';
 import { focusTerminalDom } from '../focus';
 import {
@@ -139,6 +139,7 @@ export function Sidebar(): JSX.Element {
   const [remotePickerOpen, setRemotePickerOpen] = useState(false);
   const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [managedTag, setManagedTag] = useState<string | null>(null);
   // Chosen from the title bar badge, which is the only switcher.
   const segment = state.sidebarSegment;
   useEffect(() => saveSidebarSegment(segment), [segment]);
@@ -415,25 +416,48 @@ export function Sidebar(): JSX.Element {
         <span className="sidebar-drop-hint-label">{t('sidebar.dropHint')}</span>
       </div>
       <div className="sidebar-bookmarks-dropzone" data-segment={effectiveSegment}>
-        <FolderList folders={visibleFolders} onAdd={() => void handleAddBookmark()} />
+        <FolderList
+          folders={visibleFolders}
+          activeTags={activeTags}
+          onToggleTag={toggleTag}
+          onManageTag={setManagedTag}
+          onAdd={() => void handleAddBookmark()}
+        />
       </div>
       {allTags.length > 0 && (
         <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
           {allTags.map(({ name, count }) => {
             const active = activeTags.includes(name);
             return (
-              <button
+              <div
                 key={name}
-                type="button"
-                className={`tag-chip${active ? ' active' : ''}`}
-                aria-pressed={active}
-                disabled={!active && !reachableTags.has(name)}
-                title={name}
-                onClick={() => toggleTag(name)}
+                className={`tag-chip tag-filter-chip${active ? ' active' : ''}`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setManagedTag(name);
+                }}
               >
-                {name}
-                <span className="tag-chip-count">{count}</span>
-              </button>
+                <button
+                  type="button"
+                  className="tag-dot-button"
+                  title={tx('颜色、重命名、删除', 'Colour, rename, delete')}
+                  aria-label={tx(`管理标签 ${name}`, `Manage tag ${name}`)}
+                  onClick={() => setManagedTag(name)}
+                >
+                  <TagDot tag={name} />
+                </button>
+                <button
+                  type="button"
+                  className="tag-filter-label"
+                  aria-pressed={active}
+                  disabled={!active && !reachableTags.has(name)}
+                  title={name}
+                  onClick={() => toggleTag(name)}
+                >
+                  {name}
+                  <span className="tag-chip-count">{count}</span>
+                </button>
+              </div>
             );
           })}
           {activeTags.length > 0 && (
@@ -443,6 +467,7 @@ export function Sidebar(): JSX.Element {
           )}
         </div>
       )}
+      {managedTag && <TagSettings tag={managedTag} onClose={() => setManagedTag(null)} />}
       {fileTreeOpen && <FileTreePanel />}
       {remotePickerOpen && (
         <RemoteFolderPicker
@@ -505,13 +530,24 @@ export function Sidebar(): JSX.Element {
   );
 }
 
+/** What a folder row needs to drive the tag filter through its dots. */
+interface TagDotActions {
+  activeTags: string[];
+  onToggleTag: (tag: string) => void;
+  onManageTag: (tag: string) => void;
+}
+
+/** Most dots a row shows, so a heavily tagged folder keeps room for its name. */
+const MAX_ROW_DOTS = 5;
+
 function FolderList({
   folders,
   onAdd,
+  ...dotActions
 }: {
   folders: PathNode[];
   onAdd: () => void;
-}): JSX.Element {
+} & TagDotActions): JSX.Element {
   const { t } = useTranslation();
   // BETA-014:末级文件夹同名时自动补父目录区分;手动命名的不参与。
   const displayNames = useMemo(() => disambiguatePathNames(folders), [folders]);
@@ -544,6 +580,7 @@ function FolderList({
               <PathItem
                 key={p.id}
                 node={p}
+                {...dotActions}
                 {...(override !== undefined ? { displayNameOverride: override } : {})}
               />
             );
@@ -554,13 +591,54 @@ function FolderList({
   );
 }
 
+/** A folder's tags as dots. Click one to filter by it, right click to manage it. */
+function RowTagDots({
+  tags,
+  activeTags,
+  onToggleTag,
+  onManageTag,
+}: { tags: string[] } & TagDotActions): JSX.Element {
+  const shown = tags.slice(0, MAX_ROW_DOTS);
+  return (
+    <span className="path-tag-dots">
+      {shown.map((tag) => (
+        <button
+          key={tag}
+          type="button"
+          className={`tag-dot-button${activeTags.includes(tag) ? ' active' : ''}`}
+          title={tag}
+          aria-label={tag}
+          aria-pressed={activeTags.includes(tag)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleTag(tag);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onManageTag(tag);
+          }}
+        >
+          <TagDot tag={tag} />
+        </button>
+      ))}
+      {tags.length > shown.length && (
+        <span className="path-tag-more" title={tags.slice(MAX_ROW_DOTS).join(', ')}>
+          +{tags.length - shown.length}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function PathItem({
   node,
   displayNameOverride,
+  ...dotActions
 }: {
   node: PathNode;
   displayNameOverride?: string;
-}): JSX.Element {
+} & TagDotActions): JSX.Element {
   const state = useAppState();
   const dispatch = useAppDispatch();
   const ctxMenu = useContextMenuApi();
@@ -829,6 +907,7 @@ function PathItem({
         ) : (
           <span className="path-name">{displayName}</span>
         )}
+        {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
         {activeCount > 0 && !renaming && (
           <span className="path-session-count" title={`${activeCount} 个终端`}>
             {activeCount}

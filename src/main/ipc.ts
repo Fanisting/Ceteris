@@ -110,7 +110,10 @@ import {
   type ReleaseSessionPayload,
   type RemoveBookmarkPayload,
   type RenameBookmarkPayload,
+  type DeleteTagPayload,
+  type RenameTagPayload,
   type SetBookmarkTagsPayload,
+  type SetTagColorPayload,
   type ReorderBookmarksPayload,
   type ResizeSessionPayload,
   type ResizeSessionResponse,
@@ -1012,6 +1015,27 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         return { path: null };
       }
       return { path: result.filePaths[0]! };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.BOOKMARK_SET_TAG_COLOR,
+    (_e, envelope: CommandEnvelope<SetTagColorPayload>): void => {
+      pathManager.setTagColor(envelope.payload.tag, envelope.payload.color);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.BOOKMARK_RENAME_TAG,
+    (_e, envelope: CommandEnvelope<RenameTagPayload>): void => {
+      pathManager.renameTag(envelope.payload.tag, envelope.payload.newName);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.BOOKMARK_DELETE_TAG,
+    (_e, envelope: CommandEnvelope<DeleteTagPayload>): void => {
+      pathManager.deleteTag(envelope.payload.tag);
     },
   );
 
@@ -1946,6 +1970,7 @@ async function applyArchiveInMemory(
     deps.pathManager.replaceAll({
       bookmarks: archive.bookmarks.paths,
       recent: archive.recent.paths,
+      tagColors: archive.bookmarks.tagColors,
     });
   } catch (err) {
     throw new Error(`paths: ${err instanceof Error ? err.message : String(err)}`);

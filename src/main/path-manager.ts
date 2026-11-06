@@ -35,7 +35,12 @@ import type {
   RecentEntry,
   RecentFile,
 } from '@shared/types';
-import { normalizeTags } from '@shared/path-tags';
+import {
+  isTagColorId,
+  normalizeTags,
+  sanitizeTagColors,
+  type TagColors,
+} from '@shared/path-tags';
 import { normalizeRemotePath } from '@shared/remote-path';
 import type { JsonStore } from './persistence';
 import { logger } from './logger';
@@ -158,6 +163,9 @@ export class PathManager extends EventEmitter {
    */
   private bookmarks: Bookmark[] = [];
 
+  /** Colours the user picked, stored beside the list in bookmarks.json. */
+  private tagColors: TagColors = {};
+
   /**
    * BETA-043:启动期扫描发现的"不可访问"路径集合(normalized)。
    * getTree() 用于把对应 PathNode 标 invalid。bootstrap 启动末尾填一次,
@@ -187,6 +195,7 @@ export class PathManager extends EventEmitter {
     // validateBookmarksArray "整体拒绝" 不同 —— 启动期不能因为一条坏数据
     // 让用户进不来 Ceteris。
     this.bookmarks = bk.value.paths.flatMap(migrateBookmarkOnLoad);
+    this.tagColors = sanitizeTagColors(bk.value.tagColors);
     const legacyRecent = rc.value.paths.flatMap(migrateRecentOnLoad);
     if (rc.value.paths.length > 0) {
       this.absorbRecent(legacyRecent);
@@ -274,6 +283,57 @@ export class PathManager extends EventEmitter {
     const cleaned = normalizeTags(tags);
     if (cleaned.length > 0) bookmark.tags = cleaned;
     else delete bookmark.tags;
+    this.persistBookmarks();
+    this.emitChange();
+  }
+
+  /**
+   * Picks a tag's colour.
+   *
+   * @throws PathManagerError InvalidName the colour is not in the palette
+   */
+  setTagColor(tag: string, color: unknown): void {
+    if (!isTagColorId(color)) {
+      throw new PathManagerError('InvalidName', `tag color "${String(color)}" 不在调色板内`);
+    }
+    this.tagColors[tag] = color;
+    this.persistBookmarks();
+    this.emitChange();
+  }
+
+  /**
+   * Renames a tag on every folder. Naming it after another tag merges the two, keeping that
+   * tag's spelling and colour, so a typo can be folded into the tag it meant.
+   *
+   * @throws PathManagerError InvalidName the new name is blank
+   */
+  renameTag(tag: string, newName: string): void {
+    const [typed] = normalizeTags([newName]);
+    if (!typed) throw new PathManagerError('InvalidName', '标签名不能为空');
+    const existing = this.bookmarks
+      .flatMap((b) => b.tags ?? [])
+      .find((name) => name !== tag && name.toLowerCase() === typed.toLowerCase());
+    const target = existing ?? typed;
+    for (const bookmark of this.bookmarks) {
+      if (bookmark.tags?.includes(tag)) {
+        bookmark.tags = normalizeTags(bookmark.tags.map((name) => (name === tag ? target : name)));
+      }
+    }
+    const color = this.tagColors[tag];
+    delete this.tagColors[tag];
+    if (color && !this.tagColors[target]) this.tagColors[target] = color;
+    this.persistBookmarks();
+    this.emitChange();
+  }
+
+  /** Removes a tag from every folder and forgets its colour. */
+  deleteTag(tag: string): void {
+    for (const bookmark of this.bookmarks) {
+      const left = bookmark.tags?.filter((name) => name !== tag) ?? [];
+      if (left.length > 0) bookmark.tags = left;
+      else delete bookmark.tags;
+    }
+    delete this.tagColors[tag];
     this.persistBookmarks();
     this.emitChange();
   }
@@ -449,7 +509,7 @@ export class PathManager extends EventEmitter {
         });
       });
 
-    return { bookmarks, temporary };
+    return { bookmarks, temporary, tagColors: { ...this.tagColors } };
   }
 
   /**
@@ -527,7 +587,11 @@ export class PathManager extends EventEmitter {
   }
 
   private persistBookmarks(): void {
-    this.bookmarksStore.set({ version: 1, paths: this.bookmarks.slice() });
+    this.bookmarksStore.set({
+      version: 1,
+      paths: this.bookmarks.slice(),
+      ...(Object.keys(this.tagColors).length > 0 ? { tagColors: { ...this.tagColors } } : {}),
+    });
   }
 
   private clearRecentFile(): void {
@@ -557,12 +621,13 @@ export class PathManager extends EventEmitter {
    * @param input.recent 旧归档里的最近列表,并入文件夹列表
    * @throws PathManagerError('InvalidName') 任一 entry 形状不合规
    */
-  replaceAll(input: { bookmarks: unknown; recent: unknown }): void {
+  replaceAll(input: { bookmarks: unknown; recent: unknown; tagColors?: unknown }): void {
     // 入参视为外部不可信(导入归档可能跨版本 / kind 缺失 / sshProfileId 缺失);
     // validateBookmarksArray / validateRecentArray 做严格 narrow + path normalize。
     const bookmarks = validateBookmarksArray(input.bookmarks);
     const recent = validateRecentArray(input.recent);
     this.bookmarks = bookmarks;
+    this.tagColors = sanitizeTagColors(input.tagColors);
     this.absorbRecent(recent);
     this.persistBookmarks();
     this.clearRecentFile();

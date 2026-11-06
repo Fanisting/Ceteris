@@ -102,7 +102,7 @@ describe('PathManager — 初始化', () => {
   it('空 store 时 tree 为空', async () => {
     const { mgr } = makeManager();
     await mgr.initialize();
-    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [] });
+    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [], tagColors: {} });
   });
 
   it('从持久化恢复 bookmarks', async () => {
@@ -265,7 +265,7 @@ describe('PathManager — addBookmark / removeBookmark', () => {
     await mgr.initialize();
     mgr.addBookmark({ path: TEST_PATH_A });
     mgr.removeBookmark(TEST_PATH_A);
-    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [] });
+    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [], tagColors: {} });
   });
 
   it('removeBookmark 时若有 session → 终端关闭前仍显示,之后消失', async () => {
@@ -277,7 +277,7 @@ describe('PathManager — addBookmark / removeBookmark', () => {
     expect(mgr.getTree().temporary.map((n) => n.path)).toEqual([TEST_PATH_A]);
 
     mgr.detachSession('s1');
-    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [] });
+    expect(mgr.getTree()).toEqual({ bookmarks: [], temporary: [], tagColors: {} });
   });
 
   it('removeBookmark 不存在 throw BookmarkNotFound', async () => {
@@ -443,6 +443,86 @@ describe('PathManager — 标签', () => {
     const { mgr } = makeManager();
     await mgr.initialize();
     expect(() => mgr.setTags(TEST_PATH_A, ['paper'])).toThrow(PathManagerError);
+  });
+
+  it('setTagColor 保存到 bookmarks.json 并在重启后恢复', async () => {
+    const { mgr, bookmarksStore, recentStore } = makeManager();
+    await mgr.initialize();
+    mgr.setTagColor('paper', 'blue');
+    expect(mgr.getTree().tagColors).toEqual({ paper: 'blue' });
+
+    const next = new PathManager(
+      bookmarksStore as unknown as JsonStore<BookmarksFile>,
+      recentStore as unknown as JsonStore<RecentFile>,
+    );
+    await next.initialize();
+    expect(next.getTree().tagColors).toEqual({ paper: 'blue' });
+  });
+
+  it('setTagColor 拒绝调色板外的颜色', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    expect(() => mgr.setTagColor('paper', 'chartreuse')).toThrow(PathManagerError);
+  });
+
+  it('renameTag 改所有文件夹,颜色跟着走', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    mgr.addBookmark({ path: TEST_PATH_A });
+    mgr.addBookmark({ path: TEST_PATH_B });
+    mgr.setTags(TEST_PATH_A, ['papr', 'teaching']);
+    mgr.setTags(TEST_PATH_B, ['papr']);
+    mgr.setTagColor('papr', 'blue');
+    mgr.renameTag('papr', 'paper');
+
+    const tree = mgr.getTree();
+    expect(tree.bookmarks.map((n) => n.tags)).toEqual([['paper', 'teaching'], ['paper']]);
+    expect(tree.tagColors).toEqual({ paper: 'blue' });
+  });
+
+  it('renameTag 改成已有标签时合并,保留已有的拼写和颜色', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    mgr.addBookmark({ path: TEST_PATH_A });
+    mgr.setTags(TEST_PATH_A, ['papr', 'Paper']);
+    mgr.setTagColor('papr', 'red');
+    mgr.setTagColor('Paper', 'blue');
+    mgr.renameTag('papr', 'paper');
+
+    const tree = mgr.getTree();
+    expect(tree.bookmarks[0]?.tags).toEqual(['Paper']);
+    expect(tree.tagColors).toEqual({ Paper: 'blue' });
+  });
+
+  it('renameTag 只改大小写时生效', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    mgr.addBookmark({ path: TEST_PATH_A });
+    mgr.setTags(TEST_PATH_A, ['paper']);
+    mgr.renameTag('paper', 'Paper');
+    expect(mgr.getTree().bookmarks[0]?.tags).toEqual(['Paper']);
+  });
+
+  it('renameTag 空名 throw InvalidName', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    expect(() => mgr.renameTag('paper', '   ')).toThrow(PathManagerError);
+  });
+
+  it('deleteTag 从所有文件夹移除并忘记颜色', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    mgr.addBookmark({ path: TEST_PATH_A });
+    mgr.addBookmark({ path: TEST_PATH_B });
+    mgr.setTags(TEST_PATH_A, ['paper', 'teaching']);
+    mgr.setTags(TEST_PATH_B, ['paper']);
+    mgr.setTagColor('paper', 'blue');
+    mgr.deleteTag('paper');
+
+    const tree = mgr.getTree();
+    expect(tree.bookmarks[0]?.tags).toEqual(['teaching']);
+    expect(tree.bookmarks[1]).not.toHaveProperty('tags');
+    expect(tree.tagColors).toEqual({});
   });
 
   it('标签随重启和导入保留', async () => {

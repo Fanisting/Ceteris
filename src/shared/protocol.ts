@@ -12,6 +12,7 @@
  *
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
+import type { TagColors } from './path-tags';
 import type {
   LinkClientStatus,
   LinkConnectionState,
@@ -92,6 +93,9 @@ export const COMMAND_CHANNELS = {
   BOOKMARK_REORDER: 'cmd:bookmark:reorder',
   BOOKMARK_SET_DEFAULT_TEMPLATE: 'cmd:bookmark:set-default-template',
   BOOKMARK_SET_TAGS: 'cmd:bookmark:set-tags',
+  BOOKMARK_SET_TAG_COLOR: 'cmd:bookmark:set-tag-color',
+  BOOKMARK_RENAME_TAG: 'cmd:bookmark:rename-tag',
+  BOOKMARK_DELETE_TAG: 'cmd:bookmark:delete-tag',
   BOOKMARK_PICK_FOLDER: 'cmd:bookmark:pick-folder',
 
   // SSH profile / remote path 域
@@ -521,6 +525,20 @@ export interface SetBookmarkTagsPayload {
   tags: string[];
 }
 
+export interface SetTagColorPayload {
+  tag: string;
+  color: string;
+}
+
+export interface RenameTagPayload {
+  tag: string;
+  newName: string;
+}
+
+export interface DeleteTagPayload {
+  tag: string;
+}
+
 export interface RenameBookmarkPayload {
   pathId: string;
   newDisplayName: string;
@@ -754,7 +772,7 @@ export interface SettingsArchiveV1 {
   exportedAt: number;
   exportedFrom: string;
   settings: Settings;
-  bookmarks: { paths: Bookmark[] };
+  bookmarks: { paths: Bookmark[]; tagColors?: TagColors };
   /**
    * v2.1:archive 内 recent 容纳 SSH 项,kind / sshProfileId 可选,导入时由
    * PathManager.validateRecentArray 严格校验(ssh kind 必须带 sshProfileId)。

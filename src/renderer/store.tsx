@@ -115,6 +115,7 @@ export interface AppState {
 const EMPTY_TREE: PathTree = {
   bookmarks: [],
   temporary: [],
+  tagColors: {},
 };
 
 // ──────────────────────────────────────────────────────────────────

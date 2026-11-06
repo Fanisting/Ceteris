@@ -12,6 +12,7 @@
  * @对应文档章节: 软件定义书.md 第 8 章 (状态机)、第 11 章 (数据模型)
  */
 import type { QuickLaunchItem } from './quick-launch';
+import type { TagColors } from './path-tags';
 
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
@@ -266,6 +267,8 @@ export type PathNode = LocalPathNode | RemotePathNode;
 export interface PathTree {
   bookmarks: PathNode[];
   temporary: PathNode[];
+  /** Colours picked for tags. A tag not listed here takes one from its name. */
+  tagColors: TagColors;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -533,6 +536,7 @@ export interface Settings {
 export interface BookmarksFile {
   version: 1;
   paths: PersistedBookmark[];
+  tagColors?: TagColors;
 }
 
 /**

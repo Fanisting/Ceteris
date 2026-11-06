@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_TAG_LENGTH,
   MAX_TAGS_PER_FOLDER,
+  TAG_COLORS,
   countTags,
   matchesTags,
   normalizeTags,
+  sanitizeTagColors,
+  tagColorHex,
 } from './path-tags';
 
 describe('normalizeTags', () => {
@@ -48,5 +51,23 @@ describe('matchesTags', () => {
     expect(matchesTags(['paper', 'teaching'], ['paper', 'teaching'])).toBe(true);
     expect(matchesTags(['paper'], ['paper', 'teaching'])).toBe(false);
     expect(matchesTags(undefined, ['paper'])).toBe(false);
+  });
+});
+
+describe('tag colours', () => {
+  const hexes: string[] = TAG_COLORS.map((c) => c.hex);
+
+  it('uses the picked colour', () => {
+    expect(tagColorHex('paper', { paper: 'blue' })).toBe('#4f6ef7');
+  });
+
+  it('gives an unpicked tag the same palette colour every time', () => {
+    expect(hexes).toContain(tagColorHex('paper', {}));
+    expect(tagColorHex('paper', {})).toBe(tagColorHex('paper', {}));
+  });
+
+  it('drops anything that is not a palette colour', () => {
+    expect(sanitizeTagColors({ a: 'blue', b: 'chartreuse', c: 3 })).toEqual({ a: 'blue' });
+    expect(sanitizeTagColors('blue')).toEqual({});
   });
 });

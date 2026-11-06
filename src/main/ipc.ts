@@ -41,6 +41,7 @@ import {
   type AddBookmarkPayload,
   type AddBookmarkResponse,
   type AddRemoteBookmarkPayload,
+  type SetPaneSessionsPayload,
   type ViewStateResponse,
   type ViewSwitchPayload,
   type AddSshProfilePayload,
@@ -622,6 +623,13 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         envelope.payload.sessionId,
       );
       return { scrollback: sb.data, lastSeq: sb.lastSeq };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_PANE_SESSIONS,
+    (_e, envelope: CommandEnvelope<SetPaneSessionsPayload>): void => {
+      sessionManager.setPaneSessions(envelope.windowId, envelope.payload.sessionIds);
     },
   );
 

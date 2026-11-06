@@ -60,6 +60,7 @@ export const COMMAND_CHANNELS = {
   SESSION_CREATE: 'cmd:session:create',
   SESSION_CLOSE: 'cmd:session:close',
   SESSION_CLAIM: 'cmd:session:claim',
+  SESSION_SET_PANE_SESSIONS: 'cmd:session:set-pane-sessions',
   SESSION_RELEASE: 'cmd:session:release',
   SESSION_FOCUS_OWNER: 'cmd:session:focus-owner',
   SESSION_SEND_INPUT: 'cmd:session:send-input',
@@ -383,6 +384,11 @@ export interface CloseSessionPayload {
 
 export interface ClaimSessionPayload {
   sessionId: string;
+}
+
+/** The sessions on screen in this window's split panes. Empty for a single terminal. */
+export interface SetPaneSessionsPayload {
+  sessionIds: string[];
 }
 
 export interface ClaimSessionResponse {

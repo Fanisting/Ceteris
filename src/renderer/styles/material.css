@@ -1310,3 +1310,134 @@ select.settings-input option {
   filter: brightness(1.15);
 }
 
+/* ── Split panes ───────────────────────────────────────────── */
+
+.pane-grid {
+  flex: 1 1 0;
+  display: grid;
+  gap: 4px;
+  min-height: 0;
+  min-width: 0;
+  padding: 4px;
+}
+
+.pane-grid-single {
+  grid-template: 'p0' minmax(0, 1fr) / minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.pane-grid-rows {
+  grid-template: 'p0' minmax(0, 1fr) 'p1' minmax(0, 1fr) / minmax(0, 1fr);
+}
+
+.pane-grid-cols {
+  grid-template: 'p0 p1' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pane-grid-main-left {
+  grid-template: 'p0 p1' minmax(0, 1fr) 'p0 p2' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pane-grid-main-right {
+  grid-template: 'p0 p2' minmax(0, 1fr) 'p1 p2' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pane-grid-grid {
+  grid-template: 'p0 p1' minmax(0, 1fr) 'p2 p3' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.pane-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-radius: var(--md-shape-sm, 8px);
+  outline: 1px solid var(--md-outline-variant, transparent);
+  outline-offset: -1px;
+}
+
+.pane-slot.focused {
+  outline-color: var(--md-primary, #f0f);
+}
+
+.pane-grid-single .pane-slot,
+.pane-grid-single .pane-slot.focused {
+  border-radius: 0;
+  outline: none;
+}
+
+.pane-grid:not(.pane-grid-single) .pane-slot {
+  position: relative;
+}
+
+/* Sits left of the terminal scrollbar. Hidden until the pane is in use, so it does not
+   cover the top right corner of every terminal in the grid. */
+.pane-close {
+  position: absolute;
+  top: 6px;
+  right: 16px;
+  z-index: 101;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-muted, #f0f);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pane-slot.focused > .pane-close,
+.pane-slot:hover > .pane-close,
+.pane-close:focus-visible {
+  opacity: 1;
+}
+
+.pane-close:hover {
+  background-color: var(--color-danger, #f0f);
+  color: var(--color-bg-primary, #f0f);
+}
+
+.pane-layout-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 30px;
+  padding: 0 8px;
+}
+
+.pane-layout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-shape-sm, 8px);
+  background: none;
+  color: var(--md-on-surface-variant, #f0f);
+  cursor: pointer;
+}
+
+.pane-layout-btn svg {
+  display: block;
+}
+
+.pane-layout-btn:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.pane-layout-btn.active {
+  background-color: var(--md-secondary-container, transparent);
+  color: var(--md-on-secondary-container, #f0f);
+}
+

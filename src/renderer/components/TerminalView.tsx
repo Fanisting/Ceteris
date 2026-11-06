@@ -639,6 +639,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const searchRef = useRef<SearchAddon | null>(null);
 
   const appState = useAppState();
+  const selectedAtMountRef = useRef(appState.selectedSessionId === session.id);
   const dispatch = useAppDispatch();
   const { t, tx } = useTranslation();
   const simpleMode = appState.simpleMode;
@@ -1343,7 +1344,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // 在 open() 后才存在,所以 focus 必须在 open() 之后调。
     // 不走 focusTerminal helper:searchVisibleRef 在 mount 时尚未与上层
     // hook 绑定,直接 term.focus() 即可,且 mount 时不可能 search 是开的。
-    term.focus();
+    // With split panes, only the selected pane may take the keyboard.
+    if (selectedAtMountRef.current) term.focus();
 
     const cols = term.cols;
     const rows = term.rows;

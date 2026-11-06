@@ -51,9 +51,11 @@ export function focusTerminalDom(): void {
     if (document.querySelector('.app-modal-backdrop')) return;
     // 设置视图打开时跳过(用户在编辑设置)
     if (document.querySelector('.settings-view')) return;
-    const ta = document.querySelector<HTMLTextAreaElement>(
-      '.xterm-helper-textarea',
-    );
+    // With split panes the first terminal in the DOM may not be the selected one.
+    const ta =
+      document.querySelector<HTMLTextAreaElement>(
+        '.pane-slot.focused .xterm-helper-textarea',
+      ) ?? document.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea');
     ta?.focus();
   });
 }

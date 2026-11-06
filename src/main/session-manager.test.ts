@@ -1826,6 +1826,56 @@ describe('SessionManager — owner 切换', () => {
   });
 });
 
+describe('SessionManager: split panes', () => {
+  async function makeTwo() {
+    const made = makeManager();
+    const create = () =>
+      made.mgr.createSession({
+        pathId: '/p',
+        templateId: 'shell',
+        ownerWindowId: '',
+        cols: 80,
+        rows: 24,
+      });
+    return { mgr: made.mgr, a: await create(), b: await create(), c: await create() };
+  }
+
+  it('claiming keeps sessions shown in other panes', async () => {
+    const { mgr, a, b } = await makeTwo();
+    mgr.claimOwner(a.id, 'w1');
+    mgr.setPaneSessions('w1', [a.id, b.id]);
+    mgr.claimOwner(b.id, 'w1');
+    expect(mgr.list().filter((s) => s.ownerWindowId === 'w1').map((s) => s.id).sort()).toEqual(
+      [a.id, b.id].sort(),
+    );
+  });
+
+  it('claiming still releases sessions that are not in a pane', async () => {
+    const { mgr, a, b, c } = await makeTwo();
+    mgr.claimOwner(a.id, 'w1');
+    mgr.setPaneSessions('w1', [b.id, c.id]);
+    mgr.claimOwner(c.id, 'w1');
+    expect(mgr.list().find((s) => s.id === a.id)?.ownerWindowId).toBeNull();
+  });
+
+  it('with no panes a window holds one session, as before', async () => {
+    const { mgr, a, b } = await makeTwo();
+    mgr.claimOwner(a.id, 'w1');
+    mgr.setPaneSessions('w1', [a.id, b.id]);
+    mgr.setPaneSessions('w1', []);
+    mgr.claimOwner(b.id, 'w1');
+    expect(mgr.list().find((s) => s.id === a.id)?.ownerWindowId).toBeNull();
+  });
+
+  it('panes belong to one window', async () => {
+    const { mgr, a, b } = await makeTwo();
+    mgr.claimOwner(a.id, 'w1');
+    mgr.setPaneSessions('w2', [a.id, b.id]);
+    mgr.claimOwner(b.id, 'w1');
+    expect(mgr.list().find((s) => s.id === a.id)?.ownerWindowId).toBeNull();
+  });
+});
+
 describe('SessionManager — 跨机器交接', () => {
   async function makeOwned(ownerWindowId: string) {
     const made = makeManager();

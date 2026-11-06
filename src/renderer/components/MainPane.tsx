@@ -36,12 +36,15 @@ import { formatPathDisplayPath } from '@shared/path-display';
 import type { SessionInfo, Template } from '@shared/types';
 import {
   findMyOwnedSessionId,
+  getEffectivePaneLayout,
+  getPaneSlots,
   findPathNode,
   getDisplayableSession,
   getSessionsInSelectedPath,
   useAppDispatch,
   useAppState,
 } from '../store';
+import { PaneLayoutBar } from './PaneLayoutBar';
 import { TerminalView } from './TerminalView';
 import { focusTerminalDom } from '../focus';
 import { Icon, type IconName } from './icons';
@@ -119,6 +122,40 @@ export function MainPane(): JSX.Element {
   const dispatch = useAppDispatch();
   const sessions = getSessionsInSelectedPath(state);
   const displayable = getDisplayableSession(state);
+  const layout = getEffectivePaneLayout(state);
+  const slots = getPaneSlots(state);
+  const myWindowId = state.myWindowId;
+
+  // Panes hold their sessions: the main process must not release one when another pane
+  // claims, and a pane cannot receive output or input until its session is ours.
+  const paneIds = layout === 'single' ? [] : slots.flatMap((s) => (s ? [s.id] : []));
+  const paneKey = paneIds.join(',');
+  const orphanKey =
+    layout === 'single'
+      ? ''
+      : slots.flatMap((s) => (s && s.ownerWindowId === null ? [s.id] : [])).join(',');
+  const failedClaims = useRef(new Set<string>());
+
+  useEffect(() => {
+    window.api
+      .invoke(COMMAND_CHANNELS.SESSION_SET_PANE_SESSIONS, {
+        sessionIds: paneKey ? paneKey.split(',') : [],
+      })
+      .catch((err) => console.error('[MainPane] set-pane-sessions failed', err));
+  }, [paneKey]);
+
+  useEffect(() => {
+    if (!orphanKey) return;
+    for (const sessionId of orphanKey.split(',')) {
+      if (failedClaims.current.has(sessionId)) continue;
+      dispatch({ type: 'sessions/owner-changed', sessionId, ownerWindowId: myWindowId });
+      window.api.invoke(COMMAND_CHANNELS.SESSION_CLAIM, { sessionId }).catch((err) => {
+        console.error('[MainPane] pane claim failed', err);
+        failedClaims.current.add(sessionId);
+        dispatch({ type: 'sessions/owner-changed', sessionId, ownerWindowId: null });
+      });
+    }
+  }, [orphanKey, myWindowId, dispatch]);
 
   const containerRef = useRef<HTMLElement | null>(null);
   const fontSize = state.settings.appearance?.terminalFontSize ?? 13;
@@ -188,16 +225,57 @@ export function MainPane(): JSX.Element {
           showBlankTab={!displayable}
         />
       )}
-      {displayable ? (
-        <TerminalView
-          // 用 sessionId 作 key,确保切换时彻底重建 xterm 实例
-          key={displayable.id}
-          session={displayable}
-        />
-      ) : (
-        <EmptyPathState pathId={state.selectedPathId} />
-      )}
+      {/* One tree for every layout, one terminal included, keyed by session: a session
+          changes pane through grid-area, so no layout change rebuilds its terminal. */}
+      <div className={`pane-grid pane-grid-${layout}`}>
+        {(layout === 'single' ? [displayable] : slots).map((s, i) => (
+          <div
+            key={s?.id ?? `empty-${i}`}
+            className={`pane-slot${s && s.id === state.selectedSessionId ? ' focused' : ''}`}
+            style={{ gridArea: `p${i}` }}
+            onMouseDownCapture={(e) => {
+              // Pressing a pane's x must not move focus to a pane that is about to close.
+              if ((e.target as Element).closest('.pane-close')) return;
+              if (s && s.id !== state.selectedSessionId) {
+                dispatch({ type: 'view/select-session', sessionId: s.id });
+              }
+            }}
+          >
+            {!s ? (
+              <EmptyPathState pathId={state.selectedPathId as string} />
+            ) : s.ownerWindowId === myWindowId ? (
+              <>
+                <TerminalView session={s} />
+                {layout !== 'single' && <PaneCloseButton sessionId={s.id} />}
+              </>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {!state.simpleMode && <PaneLayoutBar />}
     </main>
+  );
+}
+
+/** The x on a split pane. Closes the session exactly as the x on its tab does. */
+function PaneCloseButton({ sessionId }: { sessionId: string }): JSX.Element {
+  const { tx } = useTranslation();
+  const label = tx('关闭终端', 'Close terminal');
+  return (
+    <button
+      type="button"
+      className="pane-close"
+      title={label}
+      aria-label={label}
+      onClick={() => {
+        window.api
+          .invoke(COMMAND_CHANNELS.SESSION_CLOSE, { sessionId })
+          .catch((err) => console.error('[Pane] close failed', err));
+        focusTerminalDom();
+      }}
+    >
+      <Icon name="close" size={14} />
+    </button>
   );
 }
 

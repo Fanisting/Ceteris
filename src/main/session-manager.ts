@@ -969,15 +969,30 @@ export class SessionManager extends EventEmitter {
     this.claimOwner(sessionId, windowId);
   }
 
+  /**
+   * Window id → sessions on screen in its split panes. Claiming a session normally
+   * releases the window's others, which would blank every other pane.
+   */
+  private readonly paneSessions = new Map<string, Set<string>>();
+
+  /** Empty list means one terminal, and claiming behaves as it always has. */
+  setPaneSessions(windowId: string, sessionIds: string[]): void {
+    if (sessionIds.length === 0) this.paneSessions.delete(windowId);
+    else this.paneSessions.set(windowId, new Set(sessionIds));
+  }
+
   private releaseAllOwnedBy(
     windowId: string,
     options?: { exceptSessionId?: string },
   ): void {
     const except = options?.exceptSessionId;
+    // No exception means the window is going away, so panes are not protected then.
+    const panes = except !== undefined ? this.paneSessions.get(windowId) : undefined;
     for (const managed of this.sessions.values()) {
       if (
         managed.info.ownerWindowId === windowId &&
-        managed.info.id !== except
+        managed.info.id !== except &&
+        !panes?.has(managed.info.id)
       ) {
         managed.info.ownerWindowId = null;
         this.emit('sessionOwnerChanged', {
@@ -1018,6 +1033,7 @@ export class SessionManager extends EventEmitter {
    * **不杀 PTY** (软件定义书 9.3:关闭窗口完全不影响 session)。
    */
   handleWindowClosed(windowId: string): void {
+    this.paneSessions.delete(windowId);
     this.releaseAllOwnedBy(windowId);
   }
 

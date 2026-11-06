@@ -16,6 +16,7 @@
  *
  * @对应文档章节: 软件定义书.md 9.2.2、9.3;ipc-protocol.md 第 4 (handshake)
  */
+import { computePaneSlots, type PaneLayoutId } from '@shared/pane-layout';
 import {
   createContext,
   useContext,
@@ -77,6 +78,8 @@ export interface AppState {
   // ── 本窗口私有 view state ────────────────────────────
   selectedPathId: string | null;
   selectedSessionId: string | null;
+  /** Split layout of this window. In memory only, like the selection. */
+  paneLayout: PaneLayoutId;
   expandedPathIds: Set<string>;
   /** 是否在设置视图 (CP-2 暂不实现设置 UI,字段保留供 CP-4) */
   inSettingsView: boolean;
@@ -129,6 +132,7 @@ export type AppAction =
   | { type: 'templates/update'; templates: Template[]; defaultTemplateId: string }
   | { type: 'view/select-path'; pathId: string | null }
   | { type: 'view/select-session'; sessionId: string | null }
+  | { type: 'view/set-pane-layout'; layout: PaneLayoutId }
   | { type: 'view/toggle-path-expand'; pathId: string }
   | { type: 'view/toggle-simple-mode' }
   | { type: 'view/set-simple-mode'; value: boolean }
@@ -334,6 +338,9 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'view/select-session':
       return { ...state, selectedSessionId: action.sessionId };
 
+    case 'view/set-pane-layout':
+      return { ...state, paneLayout: action.layout };
+
     case 'view/toggle-path-expand': {
       const expanded = new Set(state.expandedPathIds);
       if (expanded.has(action.pathId)) expanded.delete(action.pathId);
@@ -433,6 +440,7 @@ export function makeDefaultState(myWindowId: string, myWindowNumber: number): Ap
     myWindowNumber,
     selectedPathId: null,
     selectedSessionId: null,
+    paneLayout: 'single',
     expandedPathIds: new Set(),
     inSettingsView: false,
     lastTerminalDims: { cols: 120, rows: 30 },
@@ -665,6 +673,28 @@ export function getSessionsInSelectedPath(state: AppState): SessionInfo[] {
   return result;
 }
 
+/** Focus mode is one terminal by definition, whatever layout is set. */
+export function getEffectivePaneLayout(state: AppState): PaneLayoutId {
+  return state.simpleMode ? 'single' : state.paneLayout;
+}
+
+/**
+ * The session in each pane; null is an empty pane.
+ *
+ * Panes span folders: this window's terminals come first, in creation order so nothing
+ * shuffles when a new one opens, then unclaimed sessions of the selected folder.
+ */
+export function getPaneSlots(state: AppState): Array<SessionInfo | null> {
+  const mine = [...state.sessions.values()].filter((s) => s.ownerWindowId === state.myWindowId);
+  const free = getSessionsInSelectedPath(state).filter((s) => s.ownerWindowId === null);
+  return computePaneSlots(
+    getEffectivePaneLayout(state),
+    [...mine, ...free],
+    state.selectedSessionId,
+    state.myWindowId,
+  );
+}
+
 /**
  * 帮助函数:从当前 state 推导出当前选中 session 的完整 info。
  */
@@ -691,8 +721,12 @@ export function getDisplayableSession(state: AppState): SessionInfo | null {
  * 没有则返回 null。乐观接管时用于"先释放旧的"和"失败回滚"。
  */
 export function findMyOwnedSessionId(state: AppState): string | null {
+  // Sessions in split panes stay held, so they are not the one a claim gives up.
+  const inPanes = new Set(
+    getEffectivePaneLayout(state) === 'single' ? [] : getPaneSlots(state).map((s) => s?.id),
+  );
   for (const s of state.sessions.values()) {
-    if (s.ownerWindowId === state.myWindowId) return s.id;
+    if (s.ownerWindowId === state.myWindowId && !inPanes.has(s.id)) return s.id;
   }
   return null;
 }

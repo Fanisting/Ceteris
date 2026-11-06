@@ -35,7 +35,7 @@ if (!exe) {
 
 const env = { ...process.env };
 for (const name of Object.keys(env)) {
-  if (/^(TERM_PROGRAM|CETERIS_|PORTABLE_EXECUTABLE_|ELECTRON_)/.test(name)) delete env[name];
+  if (/^(TERM_PROGRAM|CETERIS_|PORTABLE_EXECUTABLE_|ELECTRON_|CLAUDE)/.test(name)) delete env[name];
 }
 
 spawn(exe, [], { detached: true, stdio: 'ignore', env }).unref();

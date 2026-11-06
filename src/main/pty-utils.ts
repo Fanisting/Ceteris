@@ -19,6 +19,27 @@
  * @param sourceEnv 源环境变量 (通常是 process.env)
  * @param skipKeys 要排除的 key 集合
  */
+/**
+ * What a running Claude Code session puts in its children's environment. When Ceteris is
+ * started from such a session these reach every terminal, and a Claude Code opened there
+ * then treats itself as that session's child and stops saving its transcript. One is a
+ * token for the parent session, so it should not spread either. User settings such as
+ * CLAUDE_CODE_USE_BEDROCK are not listed, so they still reach the terminal.
+ */
+export const AGENT_SESSION_ENV = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_JOB_DIR',
+  'CLAUDE_PID',
+  'CLAUDE_PLUGIN_DATA',
+];
+
 export function buildSpawnEnv(
   sourceEnv: NodeJS.ProcessEnv,
   skipKeys: Iterable<string> = [],

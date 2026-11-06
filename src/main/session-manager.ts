@@ -71,7 +71,12 @@ type SerializeAddon = InstanceType<typeof SerializeAddon>;
 import { Osc1337Parser } from './osc1337-parser';
 import { pathRefFromId } from './path-manager';
 import { getPlatformAdapter, type PlatformAdapter, type ShellInfo } from './platform';
-import { buildSpawnEnv, injectTerminalHintEnv, validateDimensions } from './pty-utils';
+import {
+  AGENT_SESSION_ENV,
+  buildSpawnEnv,
+  injectTerminalHintEnv,
+  validateDimensions,
+} from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
 import { CHANNELS } from '@shared/channel';
@@ -84,6 +89,7 @@ const SPAWN_ENV_SKIP = [
   'PORTABLE_EXECUTABLE_DIR',
   'PORTABLE_EXECUTABLE_FILE',
   'PORTABLE_EXECUTABLE_APP_FILENAME',
+  ...AGENT_SESSION_ENV,
 ];
 
 /**

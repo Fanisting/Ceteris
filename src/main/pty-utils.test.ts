@@ -5,7 +5,7 @@
  * @对应文档章节: AGENTS.md 5.6 (测试要"会出错"),覆盖错误输入与边界。
  */
 import { describe, expect, it } from 'vitest';
-import { buildSpawnEnv, injectTerminalHintEnv, validateDimensions } from './pty-utils';
+import { AGENT_SESSION_ENV, buildSpawnEnv, injectTerminalHintEnv, validateDimensions } from './pty-utils';
 
 describe('validateDimensions', () => {
   it('合法值原样返回', () => {
@@ -44,6 +44,14 @@ describe('validateDimensions', () => {
 });
 
 describe('buildSpawnEnv', () => {
+  it('drops a parent Claude Code session but keeps user settings', () => {
+    const env = buildSpawnEnv(
+      { CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_USE_BEDROCK: '1' },
+      AGENT_SESSION_ENV,
+    );
+    expect(env).toEqual({ CLAUDE_CODE_USE_BEDROCK: '1' });
+  });
+
   it('过滤掉 undefined 值,只保留 string', () => {
     const env = buildSpawnEnv({
       PATH: '/usr/bin',

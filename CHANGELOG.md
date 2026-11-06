@@ -65,6 +65,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 修复
 
+- 从 Claude Code 里启动 Ceteris 时,终端不再继承那个会话的环境变量。此前在这些终端里运行 Claude Code 会提示不保存对话记录。
+
 - **Windows 上 SSH 终端连不上。** ControlMaster 默认开启,而 Windows 版 OpenSSH 不支持,所有 SSH 会话都以 `getsockname failed: Not a socket` 退出。现在 Windows 上不再传这组参数。
 
 - 6 套旧主题的填充按钮文字对比度提到 4.5:1 以上(Light Pink、Tokyo Night Day、Fairyfloss、Rose Pine Dawn、Cutie、Ubuntu),强调色作文字时也按主题调深。Tokyo Night Day 的强调色文字约 4.15:1,受该主题正文色本身限制。

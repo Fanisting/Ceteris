@@ -20,6 +20,7 @@
  * - 不要缓存 status(它由 evt:link:status-changed 推动刷新)
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useModal } from './Modal';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -48,10 +49,30 @@ const EMPTY_STATUS: LinkStatusResponse = {
   clients: [],
 };
 
+const TUTORIAL_KEY = 'marina.link.tutorial-seen';
+
+/** Per-viewer convenience: if storage is unavailable the worst case is seeing it again. */
+function tutorialSeen(): boolean {
+  try {
+    return localStorage.getItem(TUTORIAL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markTutorialSeen(): void {
+  try {
+    localStorage.setItem(TUTORIAL_KEY, '1');
+  } catch {
+    /* it just shows again next time */
+  }
+}
+
 export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const toast = useToast();
+  const modal = useModal();
   const link = state.settings?.link;
 
   const [status, setStatus] = useState<LinkStatusResponse>(EMPTY_STATUS);
@@ -109,6 +130,22 @@ export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
    */
   const handleToggleHost = useCallback(
     async (enabled: boolean) => {
+      if (enabled && !tutorialSeen()) {
+        const go = await modal.confirm({
+          title: tx('三步连上另一台电脑', 'Connect another PC in 3 steps'),
+          message: tx(
+            '1. 两台电脑都安装 Tailscale(tailscale.com/download),并登录同一账号。\n' +
+              '2. 在这台电脑开启远程访问,然后复制访问令牌。\n' +
+              '3. 在另一台电脑添加这台电脑的 100.x.y.z 地址,并粘贴令牌。',
+            '1. Install Tailscale on both PCs (tailscale.com/download) and log in to the same account.\n' +
+              '2. Turn on remote access here, then copy the access token.\n' +
+              '3. On the other PC, add this PC\'s 100.x.y.z address and paste the token.',
+          ),
+          confirmLabel: tx('开始', 'Start'),
+        });
+        if (!go) return;
+        markTutorialSeen();
+      }
       if (enabled && !link?.hostToken) {
         try {
           const { token } = await window.api.invoke<undefined, LinkRegenerateTokenResponse>(
@@ -132,7 +169,7 @@ export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
       }
       await update({ link: { hostEnabled: enabled } });
     },
-    [link?.hostToken, update, setError, toast, tx],
+    [link?.hostToken, update, setError, toast, tx, modal],
   );
 
   const handleRegenerateToken = useCallback(async () => {

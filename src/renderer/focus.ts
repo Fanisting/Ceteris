@@ -32,6 +32,15 @@
  */
 
 /**
+ * A file beside the terminal leaves it visible, so it can take the keyboard. A file covering
+ * it cannot, or keys would reach a shell the user does not see.
+ */
+export function fileViewCoversTerminal(scope: ParentNode): boolean {
+  const view = scope.querySelector('.pdf-overlay');
+  return view !== null && !view.closest('.session-stage-beside');
+}
+
+/**
  * 把焦点归还给 xterm 的 helper-textarea。
  *
  * - 搜索栏可见时跳过(让用户保持搜索 input 焦点)
@@ -42,6 +51,8 @@
  */
 export function focusTerminalDom(): void {
   requestAnimationFrame(() => {
+    // Someone typing in the text editor must not have their keys moved into the shell.
+    if (document.activeElement?.closest('.text-view-editor')) return;
     // 搜索栏存在且 input 在 viewport 内 → 用户正在搜索,不抢焦点
     const searchInput = document.querySelector<HTMLInputElement>(
       '.terminal-search-input',
@@ -57,7 +68,7 @@ export function focusTerminalDom(): void {
     const scope = document.querySelector('.pane-slot.focused') ?? document;
     // PDF 盖着终端时,焦点留在终端上,敲键会进看不见的 shell
     const pdfClose = scope.querySelector<HTMLButtonElement>('.pdf-overlay-close');
-    if (pdfClose) {
+    if (pdfClose && fileViewCoversTerminal(scope)) {
       pdfClose.focus();
       // The frame's text selection stays in the terminal's textarea after focus moves, and
       // committed text follows the selection. Without this it reaches the hidden shell.

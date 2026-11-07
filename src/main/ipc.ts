@@ -169,8 +169,11 @@ import type {
   ReadPdfResponse,
   RenameEntryPayload,
   RenameEntryResponse,
+  WriteTextPayload,
+  WriteTextResponse,
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
+import { writeTextFile } from './text-writer';
 import { isAppPageUrl } from './ipc-sender';
 import { readPdfChunk, readRemotePdfChunk } from './pdf-reader';
 import type { SftpPool } from './sftp-client';
@@ -1297,10 +1300,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.FS_READ_PDF,
     async (_e, envelope: CommandEnvelope<ReadPdfPayload>): Promise<ReadPdfResponse> => {
-      const { path, sshProfileId, offset } = envelope.payload;
-      if (!sshProfileId) return readPdfChunk(path, offset);
+      const { path, sshProfileId, offset, length } = envelope.payload;
+      if (!sshProfileId) return readPdfChunk(path, offset, length);
       return deps.sftpPool
-        ? readRemotePdfChunk(deps.sftpPool, sshProfileId, path, offset)
+        ? readRemotePdfChunk(deps.sftpPool, sshProfileId, path, offset, length)
         : { ok: false, reason: 'no-client' };
     },
   );
@@ -1309,6 +1312,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.FS_RENAME,
     (_e, envelope: CommandEnvelope<RenameEntryPayload>): Promise<RenameEntryResponse> =>
       renameEntry(envelope.payload.path, envelope.payload.newName),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_WRITE_TEXT,
+    (_e, envelope: CommandEnvelope<WriteTextPayload>): Promise<WriteTextResponse> =>
+      writeTextFile(envelope.payload),
   );
 
   handleCommand(

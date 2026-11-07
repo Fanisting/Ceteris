@@ -86,7 +86,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { focusTerminalDom } from '../focus';
+import { fileViewCoversTerminal, focusTerminalDom } from '../focus';
 import { WebglAddon } from '@xterm/addon-webgl';
 import {
   AutoAwesome,
@@ -1801,10 +1801,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     if (!hostRevealed) return;
     if (searchVisibleRef.current) return; // 搜索栏在,焦点留搜索 input
     requestAnimationFrame(() => {
-      // Only the selected pane may take the keyboard, and a PDF over this pane must keep
-      // it out of the shell underneath, where keys would go unseen.
+      // Only the selected pane may take the keyboard, and a file covering this pane must
+      // keep it out of the shell underneath, where keys would go unseen.
       const pane = containerRef.current?.closest('.pane-slot');
-      if (!pane?.classList.contains('focused') || pane.querySelector('.pdf-overlay')) {
+      if (!pane?.classList.contains('focused') || fileViewCoversTerminal(pane)) {
         focusTerminalDom();
         return;
       }

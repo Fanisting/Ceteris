@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/pdf-view-store.ts
- * @purpose 记录每个 session 正在显示哪个 PDF、图片或 markdown,并把文件分块读进内存。
+ * @purpose 记录每个 session 正在显示哪个 PDF、图片、markdown 或文本,并把文件分块读进内存。
  *
  * @关键设计:
  * - A view belongs to a session, or to a folder while that folder has no terminal to
@@ -12,6 +12,8 @@
  * - generation 让旧的加载作废:加载途中关闭或换文件,晚到的数据块直接丢弃。
  * - 不信任响应:Link 对端可能出错,偏移必须紧接上一块,大小不能变,最后要刚好读满。
  * - 最多留 MAX_READY_VIEWS 份:每份可能有 256 MiB。淘汰最久没显示的那份。
+ * - Text is not loaded here: TextFileView reads what it needs, as a large file must never be
+ *   read whole. Its unsaved edits live in text-drafts.ts, so closing a view cannot lose them.
  *
  * @对应文档章节: 软件定义书.md 14.6
  *
@@ -67,6 +69,31 @@ function publish(viewKey: string, view: PdfView | null): void {
     lastShown.delete(viewKey);
   }
   for (const listener of listeners) listener();
+}
+
+export type TextRange =
+  | { ok: true; bytes: Uint8Array; size: number; mtimeMs: number | null }
+  | { ok: false; reason: ReadPdfFailure };
+
+/** Reads part of a text file. Does not trust the reply, as with the chunks below. */
+export async function readTextRange(
+  source: PdfSource,
+  offset: number,
+  length: number,
+): Promise<TextRange> {
+  const payload: ReadPdfPayload = {
+    path: source.path,
+    offset,
+    length,
+    ...(source.sshProfileId ? { sshProfileId: source.sshProfileId } : {}),
+  };
+  const res = await window.api
+    .invoke<ReadPdfPayload, ReadPdfResponse>(COMMAND_CHANNELS.FS_READ_PDF, payload)
+    .catch((): ReadPdfResponse => ({ ok: false, reason: 'unknown' }));
+  if (!res.ok) return res;
+  const bytes = decodeBase64(res.base64);
+  if (bytes.length > length) return { ok: false, reason: 'unknown' };
+  return { ok: true, bytes, size: res.size, mtimeMs: res.mtimeMs ?? null };
 }
 
 function decodeBase64(base64: string): Uint8Array<ArrayBuffer> {
@@ -150,6 +177,12 @@ export async function openPdf(viewKey: string, source: PdfSource): Promise<void>
   publish(viewKey, { ...base, status: 'loading' });
   const isStale = (): boolean => views.get(viewKey)?.generation !== generation;
 
+  if (fileViewKind(source.name) === 'text') {
+    publish(viewKey, { ...base, status: 'ready', url: null, text: null });
+    evictOldViews(viewKey);
+    return;
+  }
+
   try {
     const chunks = await readAllChunks(source, isStale);
     if (!chunks) return;
@@ -172,6 +205,25 @@ export async function openPdf(viewKey: string, source: PdfSource): Promise<void>
 /** 关闭 PDF,露出下面的内容。 */
 export function closePdf(viewKey: string): void {
   if (views.has(viewKey)) publish(viewKey, null);
+}
+
+/**
+ * Hands a folder's open file to the terminal just opened there, so it stays on screen beside
+ * that terminal. A file still loading closes instead: its load only knows the old key.
+ */
+export function movePdfView(fromKey: string, toKey: string): void {
+  const view = views.get(fromKey);
+  if (!view) return;
+  if (view.status !== 'ready' || views.has(toKey)) {
+    publish(fromKey, null);
+    return;
+  }
+  // Not through publish: that would revoke the blob URL the view is still showing.
+  views.delete(fromKey);
+  views.set(toKey, view);
+  lastShown.set(toKey, lastShown.get(fromKey) ?? 0);
+  lastShown.delete(fromKey);
+  for (const listener of listeners) listener();
 }
 
 /**

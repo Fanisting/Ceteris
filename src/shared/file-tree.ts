@@ -67,12 +67,30 @@ export interface ReadPdfPayload {
   sshProfileId?: string;
   /** 字节偏移,从 0 开始,之后用上一次返回的 nextOffset */
   offset: number;
+  /** Bytes wanted, up to one chunk. A large text file reads only the page on screen. */
+  length?: number;
 }
 
 export type ReadPdfResponse =
-  /** base64 是这一块的内容;nextOffset 为 null 表示读完了 */
-  | { ok: true; base64: string; size: number; nextOffset: number | null }
+  /**
+   * base64 是这一块的内容;nextOffset 为 null 表示读完了。
+   * mtimeMs is absent for SFTP files, which are read-only.
+   */
+  | { ok: true; base64: string; size: number; nextOffset: number | null; mtimeMs?: number }
   | { ok: false; reason: ReadPdfFailure };
+
+export interface WriteTextPayload {
+  path: string;
+  base64: string;
+  /** The state the edit began from. Null means overwrite whatever is there. */
+  expected: { mtimeMs: number; size: number } | null;
+}
+
+export type WriteTextFailure = FileTreeFailure | 'changed' | 'too-large';
+
+export type WriteTextResponse =
+  | { ok: true; mtimeMs: number; size: number }
+  | { ok: false; reason: WriteTextFailure };
 
 export interface RenameEntryPayload {
   path: string;
@@ -81,12 +99,14 @@ export interface RenameEntryPayload {
 
 const entryCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-export type FileViewKind = 'pdf' | 'image' | 'markdown';
+export type FileViewKind = 'pdf' | 'image' | 'markdown' | 'text';
 
 const VIEW_MIME_TYPES: Record<string, { kind: FileViewKind; mime: string }> = {
   pdf: { kind: 'pdf', mime: 'application/pdf' },
   md: { kind: 'markdown', mime: 'text/markdown' },
   markdown: { kind: 'markdown', mime: 'text/markdown' },
+  txt: { kind: 'text', mime: 'text/plain' },
+  json: { kind: 'text', mime: 'application/json' },
   png: { kind: 'image', mime: 'image/png' },
   jpg: { kind: 'image', mime: 'image/jpeg' },
   jpeg: { kind: 'image', mime: 'image/jpeg' },

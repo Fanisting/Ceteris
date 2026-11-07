@@ -87,6 +87,7 @@ describe('必须转发到 Host 的命令', () => {
     COMMAND_CHANNELS.FS_LIST_DIR,
     COMMAND_CHANNELS.FS_RENAME,
     COMMAND_CHANNELS.FS_READ_PDF,
+    COMMAND_CHANNELS.FS_WRITE_TEXT,
   ];
 
   it.each(mustForward)('%s 会被转发', (channel) => {

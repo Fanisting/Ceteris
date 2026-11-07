@@ -104,6 +104,32 @@ describe('readPdfChunk', () => {
   });
 });
 
+describe('text files', () => {
+  it('ignores the 256 MiB limit and reads only what was asked', async () => {
+    const path = join(dir, 'huge.txt');
+    const file = await fs.open(path, 'w');
+    await file.truncate(PDF_MAX_BYTES + 1024 * 1024);
+    await file.close();
+    const res = await readPdfChunk(path, PDF_MAX_BYTES, 4096);
+    expect(res).toMatchObject({ ok: true, size: PDF_MAX_BYTES + 1024 * 1024 });
+    expect(res.ok && Buffer.from(res.base64, 'base64').length).toBe(4096);
+  });
+
+  it('reports the modified time a save must quote', async () => {
+    const path = join(dir, 'a.json');
+    await fs.writeFile(path, '{}');
+    const { mtimeMs } = await fs.stat(path);
+    expect(await readPdfChunk(path, 0)).toMatchObject({ ok: true, mtimeMs });
+  });
+
+  it('never reads more than one chunk, whatever length is asked for', async () => {
+    const path = join(dir, 'a.txt');
+    await fs.writeFile(path, Buffer.alloc(PDF_CHUNK_BYTES + 10));
+    const res = await readPdfChunk(path, 0, PDF_CHUNK_BYTES * 4);
+    expect(res.ok && Buffer.from(res.base64, 'base64').length).toBe(PDF_CHUNK_BYTES);
+  });
+});
+
 describe('readRemotePdfChunk', () => {
   const pdf = Buffer.concat([Buffer.from('%PDF-1.4'), Buffer.alloc(92)]);
 
@@ -167,6 +193,20 @@ describe('readRemotePdfChunk', () => {
       ok: false,
       reason: 'not-pdf',
     });
+  });
+
+  it('text pages have no size limit, no header read and no modified time', async () => {
+    const chunk = Buffer.from('page');
+    const readChunk = vi.fn().mockResolvedValue({ chunk, size: PDF_MAX_BYTES * 2 });
+    const res = await readRemotePdfChunk({ readChunk }, 'p', '/r/huge.json', 4096, 1024);
+    expect(res).toEqual({
+      ok: true,
+      base64: chunk.toString('base64'),
+      size: PDF_MAX_BYTES * 2,
+      nextOffset: 4100,
+    });
+    expect(readChunk).toHaveBeenCalledTimes(1);
+    expect(readChunk).toHaveBeenCalledWith('p', '/r/huge.json', 4096, 1024, { fresh: false });
   });
 
   it('超过上限时拒绝', async () => {

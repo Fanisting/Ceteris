@@ -149,6 +149,8 @@ export const COMMAND_CHANNELS = {
   FS_RENAME: 'cmd:fs:rename',
   /** 分块读取 PDF。本地文件或 SFTP 文件,Link 下数据从 Host 分块传回 */
   FS_READ_PDF: 'cmd:fs:read-pdf',
+  /** Saves an edited .txt or .json. Under Link it runs on the host, so the host's file changes */
+  FS_WRITE_TEXT: 'cmd:fs:write-text',
 
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */

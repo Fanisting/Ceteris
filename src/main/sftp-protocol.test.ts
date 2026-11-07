@@ -81,12 +81,23 @@ describe('SftpReader', () => {
       str('value'),
     ]);
     const reader = new SftpReader(Buffer.concat([attrs, u32(99)]));
-    expect(reader.attrs()).toEqual({ size: 1234, permissions: 0o100644 });
+    // atime=1 mtime=2:mtime 换算成毫秒,atime 丢弃
+    expect(reader.attrs()).toEqual({ size: 1234, permissions: 0o100644, mtimeMs: 2000 });
     expect(reader.u32()).toBe(99);
   });
 
   it('缺字段时返回 null', () => {
-    expect(new SftpReader(u32(0)).attrs()).toEqual({ size: null, permissions: null });
+    expect(new SftpReader(u32(0)).attrs()).toEqual({
+      size: null,
+      permissions: null,
+      mtimeMs: null,
+    });
+  });
+
+  it('只有 ACMODTIME 时也能对上后面的字段', () => {
+    const reader = new SftpReader(Buffer.concat([u32(0x8), u32(7), u32(1_700_000_000), u32(5)]));
+    expect(reader.attrs()).toEqual({ size: null, permissions: null, mtimeMs: 1_700_000_000_000 });
+    expect(reader.u32()).toBe(5);
   });
 
   it('截断的包抛错,不返回半截数据', () => {
@@ -95,7 +106,7 @@ describe('SftpReader', () => {
 });
 
 describe('类型判断', () => {
-  const attrs = (permissions: number | null) => ({ size: null, permissions });
+  const attrs = (permissions: number | null) => ({ size: null, permissions, mtimeMs: null });
 
   it('按权限位判断', () => {
     expect(entryTypeOf(attrs(0o040755), '')).toBe('dir');

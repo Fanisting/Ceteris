@@ -135,6 +135,17 @@ To experience what makes Ceteris different:
 
 That's it. That's the product.
 
+## Preview PDFs that live on a server
+
+Writing a LaTeX paper (or anything that produces a PDF) on a remote machine? Ceteris can show the PDF next to your terminal and keep it up to date.
+
+1. Add the server as an SSH profile (Settings → Remote). Pick the same key you use for `ssh`.
+2. Turn on the file tree and open a folder on the server.
+3. If the server asks for a password, a Duo code or a host-key confirmation, Ceteris shows a dialog. Answer it once.
+4. Click a `.pdf`. Whenever the file changes on the server, the preview refreshes by itself and stays on the same page and zoom.
+
+Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown files refresh the same way, and so do local files.
+
 ## Core Features
 
 ### V1 (Current — alpha)

@@ -33,8 +33,20 @@ export interface FileTreeEntry {
 
 export type FileTreeFailure = 'invalid-name' | 'exists' | 'not-found' | 'denied' | 'unknown';
 
-/** SFTP 连接层面的失败原因。显示文案在 fileTree.error.<reason>。 */
-export type SftpFailure = 'no-client' | 'auth' | 'host-key' | 'connect' | 'no-sftp';
+/**
+ * SFTP 连接层面的失败原因。显示文案在 fileTree.error.<reason>。
+ *
+ * login-required:服务器要用户回答登录提示(密码 / Duo 验证码 / 主机密钥确认),
+ * 而这次连接是后台轮询发起的,不能弹窗,所以在发出任何凭据之前就断开了。
+ * 用户点"重试"或点击文件后,连接会以交互方式重建并弹出提示。
+ */
+export type SftpFailure =
+  | 'no-client'
+  | 'auth'
+  | 'host-key'
+  | 'connect'
+  | 'no-sftp'
+  | 'login-required';
 
 /** 列目录可能的失败:本地的文件错误,或者 SFTP 连接错误。 */
 export type DirFailure = FileTreeFailure | SftpFailure;
@@ -55,6 +67,12 @@ export interface ListDirPayload {
   sshProfileId?: string;
   /** 用户主动操作时为 true:跳过 SFTP 失败缓存立即重连。轮询不要设置 */
   fresh?: boolean;
+  /**
+   * 为 true 时允许 SFTP 连接在登录时向用户弹出提示(密码 / Duo / 主机密钥)。
+   * 只有用户能看到结果的操作才设置:挂载文件树、点重试、打开选择框。
+   * 定时轮询不要设置,否则服务器的一个提示会在用户没操作时凭空弹窗。
+   */
+  interactive?: boolean;
 }
 
 export type ReadPdfFailure = DirFailure | 'not-pdf' | 'too-large';
@@ -67,12 +85,44 @@ export interface ReadPdfPayload {
   sshProfileId?: string;
   /** 字节偏移,从 0 开始,之后用上一次返回的 nextOffset */
   offset: number;
+  /**
+   * 用户刚点击了文件:跳过 SFTP 失败缓存,并允许登录提示弹窗。
+   * 自动刷新重读文件时不要设置,它必须保持安静。
+   */
+  fresh?: boolean;
 }
 
 export type ReadPdfResponse =
-  /** base64 是这一块的内容;nextOffset 为 null 表示读完了 */
-  | { ok: true; base64: string; size: number; nextOffset: number | null }
+  /**
+   * base64 是这一块的内容;nextOffset 为 null 表示读完了。
+   * mtimeMs 是读取时文件的修改时间,自动刷新拿它和 size 做基线;服务器不给时为 null。
+   */
+  | { ok: true; base64: string; size: number; nextOffset: number | null; mtimeMs: number | null }
   | { ok: false; reason: ReadPdfFailure };
+
+export interface StatFilePayload {
+  path: string;
+  sshProfileId?: string;
+}
+
+/** 自动刷新用来判断文件是否变化的两个量。 */
+export interface FileStat {
+  size: number;
+  /** 服务器省略 ACMODTIME 时为 null,这时只看 size */
+  mtimeMs: number | null;
+}
+
+/**
+ * 查询可查看文件的大小和修改时间。永远是安静请求:不弹登录提示,不跳过失败缓存。
+ * 限制与 read-pdf 相同:绝对路径、可查看的扩展名、普通文件。
+ */
+export type StatFileResponse = ({ ok: true } & FileStat) | { ok: false; reason: ReadPdfFailure };
+
+/** 两次 stat 是否表示同一份内容。 */
+export function sameFileStat(a: FileStat | null, b: FileStat | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.size === b.size && a.mtimeMs === b.mtimeMs;
+}
 
 export interface RenameEntryPayload {
   path: string;

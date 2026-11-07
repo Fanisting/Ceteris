@@ -87,6 +87,9 @@ describe('必须转发到 Host 的命令', () => {
     COMMAND_CHANNELS.FS_LIST_DIR,
     COMMAND_CHANNELS.FS_RENAME,
     COMMAND_CHANNELS.FS_READ_PDF,
+    COMMAND_CHANNELS.FS_STAT_FILE,
+    // SFTP 连接在 Host 上,登录提示的答案也要回到 Host
+    COMMAND_CHANNELS.SSH_ASKPASS_ANSWER,
   ];
 
   it.each(mustForward)('%s 会被转发', (channel) => {

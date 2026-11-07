@@ -8,6 +8,10 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
+- **PDF 跟着文件变。** 在文件面板打开的 PDF(本地或 SSH 服务器上的)在文件重新生成后自动刷新,页码、位置和缩放保持不变,适合改一行编译一次的 LaTeX 工作流。图片和 markdown 同样自动刷新。查看器换成 pdf.js,标题栏新增放大 / 缩小 / 适应宽度按钮,也可以 Ctrl+滚轮缩放。刷新失败时标题栏显示“无法刷新”,点一下重试。
+
+- **SSH 文件树支持需要输入的登录。** 服务器要密码、Duo 二次验证码或主机密钥确认时,Ceteris 弹出对话框让你回答,文件树和 PDF 随后正常打开。只有你主动操作(切到那台服务器、点重试、点击文件)时才会弹;后台轮询遇到提示会安静地停下并显示“需要登录”。回答过提示的连接不会因空闲断开,免得再收一次 Duo 推送。
+
 - **支持 macOS。** 新增 macOS 适配层和 GitHub Actions 构建。关闭窗口后留在 Dock,登录 shell 的 PATH 对终端生效,没有签名时首次打开需要右键选择“打开”。
 
 - **安装程序使用 Material 配色。** 增加欢迎页,侧栏和页眉换成 Ceteris 签名与主题色。
@@ -95,6 +99,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 安全
 
+- **SSH_ASKPASS 不再经过 .cmd。** 原来保存的密码通过一个 .cmd 助手交给 ssh,而 Windows 让 cmd.exe 解释 .cmd,服务器发来的提示文本会出现在它的命令行上,`&calc` 这样的提示就能在本机执行命令(CVE-2024-24576 的形态)。现在 ssh 运行一个由 Windows 自带的 C# 编译器现编的小程序,提示经命名管道交回 Ceteris,密码只走管道,不进命令行也不进环境变量。
+
 - **认证与加密合一,预共享令牌从不上线路。** 令牌作为 IKM 的一部分参与 HKDF 派生会话密钥(`shared ‖ token`),因此"能解开对方的第一个加密帧"本身就是认证通过的充分证明,不需要再传一个口令去比对。被动窃听者拿不到任何可离线爆破的材料。每条连接使用一对全新的临时 X25519 密钥(前向保密),双方公钥进 HKDF 的 info 串做 transcript binding(抗降级),逐帧 AES-256-GCM 且 nonce 由接收方自己维护的计数器构成(重放 / 乱序 / 丢帧一律表现为认证失败并断开)。攻击路径逐条有测试覆盖,见 `src/main/link/link-crypto.test.ts`。
 
 - **Host 强制重写转发命令的 windowId。** 客户端传来的 windowId 一律被替换为该连接的虚拟窗口 id。若原样信任,一个恶意客户端可以冒充 Host 上的任意窗口去 claim / release 它正在用的 session。同理 `preferredWindowId`(重连时复用身份用)只在该 id 当前既不是真实窗口也不是已注册虚拟窗口时才被接受。
@@ -105,7 +111,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 技术栈
 
-- 零新增依赖。传输层只用 node 内置 `net` + `crypto`,未引入 `ws` / `socket.io`(AGENTS.md 1.2 边界 2)。
+- 新增 `pdfjs-dist`(Mozilla pdf.js,Apache-2.0)渲染 PDF,用 legacy 构建适配 Electron 31 的 Chromium 126。移除 `plugins: true` 和 Chromium PDF 扩展的 CSP 豁免。
+- Link 传输层零新增依赖,只用 node 内置 `net` + `crypto`,未引入 `ws` / `socket.io`(AGENTS.md 1.2 边界 2)。
 
 ## [0.2.3] — 2026-06-05
 

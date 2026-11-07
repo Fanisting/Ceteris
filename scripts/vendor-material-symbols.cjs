@@ -97,6 +97,11 @@ const SYMBOLS = [
   ['Folder', 'folder', 'default'],
   ['FolderOpen', 'folder_open', 'default'],
   ['Draft', 'draft', 'default'],
+  // PDF 查看器工具栏
+  ['ZoomIn', 'zoom_in', 'default'],
+  ['ZoomOut', 'zoom_out', 'default'],
+  ['FitWidth', 'fit_width', 'default'],
+  ['Sync', 'sync', 'default'],
 ];
 
 /** 只接受 SVG path 指令用到的字符,挡住任何混进 d 属性的非路径内容。 */

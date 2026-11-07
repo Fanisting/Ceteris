@@ -218,11 +218,88 @@
   color: var(--color-bg-primary, #f0f);
 }
 
-.pdf-overlay-frame {
+/* pdf.js 要求滚动容器是绝对定位的,所以多包一层 relative 的 body */
+.pdf-overlay-body {
   flex: 1 1 0;
+  position: relative;
   min-height: 0;
-  width: 100%;
+}
+
+.pdf-overlay-viewer {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background-color: var(--color-bg-secondary, #f0f);
+}
+
+/* pdf.js 自带的页间距偏大,这里按桌面密度收一点 */
+.pdf-overlay-viewer .pdfViewer .page {
+  margin: 8px auto;
   border: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 30%);
+}
+
+.pdf-overlay-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pdf-overlay-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+  cursor: pointer;
+}
+
+.pdf-overlay-tool:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.pdf-overlay-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pdf-overlay-badge-error {
+  color: var(--color-warning, #f0f);
+  cursor: pointer;
+}
+
+.pdf-overlay-badge-error:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+}
+
+.pdf-overlay-badge-spin {
+  animation: pdf-overlay-spin 1s linear infinite;
+}
+
+@keyframes pdf-overlay-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .file-view-image {

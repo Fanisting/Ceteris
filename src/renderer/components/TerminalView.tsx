@@ -21,7 +21,7 @@
  *   3. write scrollback → 把 pending 中 seq > lastSeq 的写入 → 切 listener
  *      为"直接写"模式
  *   4. **视口锚定 + host 整体隐藏 (SCROLL-1 两轮)**:
- *      4a. **fence 锚最终底** — 在第 3 步末尾用 `term.write('', cb)` 作
+ *      4a. **fence 锚最终底** — 在第 3 步末尾用 `term.write(REPLAY_FENCE, cb)` 作
  *         fence,cb 内调 `term.scrollToBottom()`。**绝不能**在 `.then` 体里
  *         直接调 scrollToBottom — `term.write()` 是异步排队(d.ts:1216:
  *         "callback that fires when the data was processed by the parser"),
@@ -625,6 +625,14 @@ interface TerminalViewProps {
    */
   session: SessionInfo;
 }
+
+/**
+ * An empty write whose callback marks the end of a replay. It must be bytes, not an empty string.
+ * A resize flushes xterm's queue with `while (chunk = queue.shift())` and then clears the
+ * callbacks. An empty string is falsy, so that loop stops on it and the callback is lost: the
+ * terminal host then stays hidden for good, because reveal only happens in this callback.
+ */
+const REPLAY_FENCE = new Uint8Array(0);
 
 /**
  * 把焦点归还给 xterm 的 helper-textarea。
@@ -1529,7 +1537,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         // disposed 兜底:fence / RAF 都是异步,期间用户可能已切走 / 关窗,
         // 组件已 dispose,跳过避免 throw / setState on unmounted。
         // 详见 docs/issues/scroll-1-session-switch-progressive-refresh.md。
-        term.write('', () => {
+        term.write(REPLAY_FENCE, () => {
           if (disposed) return;
           term.scrollToBottom();
           requestAnimationFrame(() => {
@@ -1548,7 +1556,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         // + host reveal,保持 viewport 与 visibility 行为一致。即便走到
         // catch(get-scrollback rejected),也必须 reveal host,否则终端
         // 永远是隐藏的,用户看不到任何输出。
-        term.write('', () => {
+        term.write(REPLAY_FENCE, () => {
           if (disposed) return;
           term.scrollToBottom();
           requestAnimationFrame(() => {

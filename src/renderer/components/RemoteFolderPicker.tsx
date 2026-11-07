@@ -57,6 +57,8 @@ export function RemoteFolderPicker({
         path,
         sshProfileId,
         fresh,
+        // 选择框是用户打开的,登录提示可以弹出来
+        interactive: true,
       })
       .catch((): ListDirResponse => ({ ok: false, reason: 'unknown' }))
       .then((res) => {

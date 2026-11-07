@@ -16,6 +16,7 @@
  *   不许在 windows.ts 之外的地方写 process.platform === 'win32' 判断。
  */
 import type { MenuItemConstructorOptions } from 'electron';
+import type { AskpassHelper } from './askpass';
 import type { WindowStyle } from '@shared/types';
 import { WindowsAdapter } from './windows';
 import { LinuxAdapter } from './linux';
@@ -88,12 +89,13 @@ export interface PlatformAdapter {
    * 命令不存在 / 报错由 shell 自然吐到 PTY 字节流 (不弹对话框)。
    */
   /**
-   * Writes a helper that hands ssh the password in ASKPASS_PASSWORD_ENV, for SSH_ASKPASS.
-   * Optional: without it SFTP falls back to sshpass.
+   * 给后台 SFTP 连接的 ssh 一个 SSH_ASKPASS 助手,它把登录提示经命名管道交回 Ceteris
+   * (见 askpass-server.ts)。可选:没有它、或返回 null 时保存的密码退回 sshpass,
+   * 其它提示直接失败。
    *
-   * @returns the helper's path
+   * @param dataDir app.getPath('userData'),平台可以把助手放在这里
    */
-  prepareSshAskpass?(): string;
+  prepareSshAskpass?(dataDir: string): AskpassHelper | null;
 
   buildShellLaunchParams(
     shell: ShellInfo,

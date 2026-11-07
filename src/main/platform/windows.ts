@@ -19,17 +19,16 @@
  * @对应文档章节: 软件定义书.md 5.1.8、12.2、ADR-003、ADR-008
  */
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
-import { WINDOWS_ASKPASS_HELPER } from './askpass';
+import type { AskpassHelper } from './askpass';
+import { ASKPASS_HELPER_SOURCE, buildCscArgs } from './askpass-helper-source';
 import type { DefaultBookmarkSeed, PlatformAdapter, ShellInfo } from './index';
-import {
-  expandWindowsEnvPlaceholders,
-  normalizeWindowsSpawnEnv,
-} from './windows-env';
+import { expandWindowsEnvPlaceholders, normalizeWindowsSpawnEnv } from './windows-env';
 
 const execFileAsync = promisify(execFile);
 
@@ -78,7 +77,10 @@ export function setExplorerLabel(label: string): void {
 function explorerKeys(): ReadonlyArray<{ hive: string; argToken: string }> {
   return [
     { hive: `HKCU\\Software\\Classes\\Directory\\shell\\${explorerLabel}`, argToken: '%1' },
-    { hive: `HKCU\\Software\\Classes\\Directory\\Background\\shell\\${explorerLabel}`, argToken: '%V' },
+    {
+      hive: `HKCU\\Software\\Classes\\Directory\\Background\\shell\\${explorerLabel}`,
+      argToken: '%V',
+    },
   ];
 }
 
@@ -111,14 +113,8 @@ interface WslShellIdParts {
 
 function getShellCandidates(): ShellCandidate[] {
   const env = process.env;
-  const programFiles = uniqueStrings([
-    'C:\\Program Files',
-    env['ProgramFiles'],
-  ]);
-  const programFilesX86 = uniqueStrings([
-    'C:\\Program Files (x86)',
-    env['ProgramFiles(x86)'],
-  ]);
+  const programFiles = uniqueStrings(['C:\\Program Files', env['ProgramFiles']]);
+  const programFilesX86 = uniqueStrings(['C:\\Program Files (x86)', env['ProgramFiles(x86)']]);
   const systemRoot = env['SystemRoot'] ?? env['windir'] ?? 'C:\\Windows';
   return [
     {
@@ -179,13 +175,66 @@ export function __getShellCandidatesForTest(): Array<{
   }));
 }
 
+/** 同一份源码编译失败后不在本次运行里反复尝试,每次 SFTP 连接都起 csc 既慢又吵。 */
+let askpassBuildFailed: string | null = null;
+
 export class WindowsAdapter implements PlatformAdapter {
-  /** The file holds no secret. It is left alone when current, as a running ssh may be using it. */
-  prepareSshAskpass(): string {
-    const helper = join(tmpdir(), 'ceteris-ssh-askpass.cmd');
-    const current = existsSync(helper) ? readFileSync(helper, 'utf8') : '';
-    if (current !== WINDOWS_ASKPASS_HELPER) writeFileSync(helper, WINDOWS_ASKPASS_HELPER);
-    return helper;
+  /**
+   * 给 ssh 一个 SSH_ASKPASS 助手:一个用 Windows 自带的 csc.exe 编出来的 5 KB exe,
+   * 放在数据目录的 askpass/ 下,按源码哈希命名,源码变了就重编。为什么非得是编出来的 exe,
+   * 见 askpass-helper-source.ts 文件头(.cmd 会被 cmd.exe 解释,Ceteris.exe 自己会往
+   * stdout 多写一个换行)。
+   *
+   * @param dataDir app.getPath('userData'),助手放在这里
+   * @returns 助手;没有 csc.exe 或编译失败时为 null,SFTP 退回 BatchMode
+   *
+   * @常见问题排查:
+   * - 日志 "csc.exe not found" → 这台机器没有 .NET Framework 4.x(Windows 10/11 默认有)
+   * - 日志 "compile failed" → 看 stderr 里 csc 的报错;删掉 askpass/ 目录可强制重编
+   */
+  prepareSshAskpass(dataDir: string): AskpassHelper | null {
+    const hash = createHash('sha256').update(ASKPASS_HELPER_SOURCE).digest('hex').slice(0, 12);
+    const dir = join(dataDir, 'askpass');
+    const exe = join(dir, `ceteris-askpass-${hash}.exe`);
+    if (existsSync(exe)) return { command: exe, env: {} };
+    if (askpassBuildFailed === hash) return null;
+    const systemRoot = process.env['SystemRoot'] || 'C:\\Windows';
+    const csc = ['Framework64', 'Framework']
+      .map((arch) => join(systemRoot, 'Microsoft.NET', arch, 'v4.0.30319', 'csc.exe'))
+      .find((candidate) => existsSync(candidate));
+    if (!csc) {
+      askpassBuildFailed = hash;
+      logger.error(
+        'Askpass',
+        'csc.exe not found under %SystemRoot%\\Microsoft.NET; SSH login prompts are disabled. ' +
+          'Possible causes: (1) .NET Framework 4.x is turned off in Windows features, ' +
+          '(2) SystemRoot is not set. SFTP falls back to BatchMode (no prompts).',
+      );
+      return null;
+    }
+    try {
+      mkdirSync(dir, { recursive: true });
+      const source = join(dir, `ceteris-askpass-${hash}.cs`);
+      writeFileSync(source, ASKPASS_HELPER_SOURCE);
+      execFileSync(csc, buildCscArgs(source, exe), {
+        windowsHide: true,
+        timeout: 60_000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      if (!existsSync(exe)) throw new Error('csc exited 0 but produced no exe');
+      logger.info('Askpass', `compiled helper ${exe}`);
+      return { command: exe, env: {} };
+    } catch (err) {
+      askpassBuildFailed = hash;
+      logger.error(
+        'Askpass',
+        `compile failed for ${exe}; SSH login prompts are disabled. ` +
+          'Possible causes: (1) antivirus blocked csc.exe or the output, ' +
+          '(2) the data directory is read-only. Delete the askpass/ folder to retry.',
+        err,
+      );
+      return null;
+    }
   }
 
   /** 软件定义书 12.2 (v1.6) — Windows 走托盘心智 */
@@ -343,9 +392,7 @@ export class WindowsAdapter implements PlatformAdapter {
         };
         if (commandToRun) {
           // /K 让 cmd 跑完命令后保持开启;命令直接用引号包
-          const quoted = [commandToRun.command, ...commandToRun.args]
-            .map(quoteCmd)
-            .join(' ');
+          const quoted = [commandToRun.command, ...commandToRun.args].map(quoteCmd).join(' ');
           return { args: ['/K', quoted], env };
         }
         return { args: [], env };
@@ -367,9 +414,7 @@ export class WindowsAdapter implements PlatformAdapter {
           // 由用户默认交互 shell 加载 rc 文件后再执行模板命令。
           const distroArgs = wsl.distro ? ['-d', wsl.distro] : [];
           if (commandToRun) {
-            const cmdLine = [commandToRun.command, ...commandToRun.args]
-              .map(quoteBash)
-              .join(' ');
+            const cmdLine = [commandToRun.command, ...commandToRun.args].map(quoteBash).join(' ');
             return {
               args: [...distroArgs, '--exec', 'sh', '-lc', buildWslInteractiveCommand(cmdLine)],
               env: {},
@@ -381,17 +426,9 @@ export class WindowsAdapter implements PlatformAdapter {
           };
         }
         if (commandToRun) {
-          const cmdLine = [commandToRun.command, ...commandToRun.args]
-            .map(quoteBash)
-            .join(' ');
+          const cmdLine = [commandToRun.command, ...commandToRun.args].map(quoteBash).join(' ');
           return {
-            args: [
-              '--rcfile',
-              hookFilePath,
-              '-i',
-              '-c',
-              `${cmdLine}; exec bash -i`,
-            ],
+            args: ['--rcfile', hookFilePath, '-i', '-c', `${cmdLine}; exec bash -i`],
             env: {},
           };
         }
@@ -432,36 +469,14 @@ export class WindowsAdapter implements PlatformAdapter {
 
     for (const { hive, argToken } of explorerKeys()) {
       // 菜单文案写到根 key 的默认值
-      await runReg([
-        'add',
-        hive,
-        '/ve',
-        '/d',
-        `在 ${explorerLabel} 终端中打开`,
-        '/f',
-      ]);
+      await runReg(['add', hive, '/ve', '/d', `在 ${explorerLabel} 终端中打开`, '/f']);
       // Icon 值 — Explorer 经典菜单条目左侧图标
-      await runReg([
-        'add',
-        hive,
-        '/v',
-        'Icon',
-        '/d',
-        iconValue,
-        '/f',
-      ]);
+      await runReg(['add', hive, '/v', 'Icon', '/d', iconValue, '/f']);
       // command 子 key 的默认值 = `"<exe>" --open-here "<%1|%V>"`
       // 注意:reg.exe 接受的 /d 值字符串里的双引号会原样存入注册表,
       // execFile 数组参数让 Node 在调用 CreateProcess 时给整段加外层引号。
       const commandValue = `"${appExePath}" --open-here "${argToken}"`;
-      await runReg([
-        'add',
-        `${hive}\\command`,
-        '/ve',
-        '/d',
-        commandValue,
-        '/f',
-      ]);
+      await runReg(['add', `${hive}\\command`, '/ve', '/d', commandValue, '/f']);
     }
   }
 
@@ -510,24 +525,9 @@ export class WindowsAdapter implements PlatformAdapter {
       }
       if (!exists) continue;
       const commandValue = `"${appExePath}" --open-here "${argToken}"`;
-      await runReg([
-        'add',
-        `${hive}\\command`,
-        '/ve',
-        '/d',
-        commandValue,
-        '/f',
-      ]);
+      await runReg(['add', `${hive}\\command`, '/ve', '/d', commandValue, '/f']);
       // ICN-3 backfill:老用户(register 时还没写 Icon)启动期补上。
-      await runReg([
-        'add',
-        hive,
-        '/v',
-        'Icon',
-        '/d',
-        iconValue,
-        '/f',
-      ]);
+      await runReg(['add', hive, '/v', 'Icon', '/d', iconValue, '/f']);
     }
   }
 
@@ -591,7 +591,12 @@ export class WindowsAdapter implements PlatformAdapter {
     if (name) {
       // Electron looks up its default name, so it cannot see an entry written under another.
       try {
-        await runReg(['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', name]);
+        await runReg([
+          'query',
+          'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+          '/v',
+          name,
+        ]);
         return true;
       } catch {
         return false;
@@ -645,17 +650,10 @@ export class WindowsAdapter implements PlatformAdapter {
       // BETA-ENV-1:展开 %SystemRoot% 等占位符 — 用 process.env 做查找源,
       // 这是当前进程实际可见的 env(已含 Windows 自动展开的 SystemRoot 等)。
       // 即便这一步遗漏,session-manager 还会过 normalizeSpawnEnv 第二道防线。
-      const expanded = expandWindowsEnvPlaceholders(
-        merged,
-        process.env as Record<string, string>,
-      );
+      const expanded = expandWindowsEnvPlaceholders(merged, process.env as Record<string, string>);
       return expanded;
     } catch (e) {
-      logger.warn(
-        'WindowsAdapter',
-        'getRefreshedPath fatal, fallback to process.env.PATH',
-        e,
-      );
+      logger.warn('WindowsAdapter', 'getRefreshedPath fatal, fallback to process.env.PATH', e);
       return fallback;
     }
   }
@@ -737,10 +735,7 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
   return result;
 }
 
-function getEnvCaseInsensitive(
-  env: Record<string, string>,
-  name: string,
-): string | undefined {
+function getEnvCaseInsensitive(env: Record<string, string>, name: string): string | undefined {
   const wanted = name.toLowerCase();
   for (const [key, value] of Object.entries(env)) {
     if (key.toLowerCase() === wanted && value) return value;
@@ -831,12 +826,9 @@ function decodePossiblyUtf16Le(input: Buffer): string {
  * @param options.allowNotFound true 时把 reg.exe exit code 1(key 不存在)
  *   视为成功 — unregister 时反复调用不该抛错
  */
-let runRegImpl: (args: string[]) => Promise<{ stderr: string; code: number }> =
-  defaultRunReg;
+let runRegImpl: (args: string[]) => Promise<{ stderr: string; code: number }> = defaultRunReg;
 
-async function defaultRunReg(
-  args: string[],
-): Promise<{ stderr: string; code: number }> {
+async function defaultRunReg(args: string[]): Promise<{ stderr: string; code: number }> {
   try {
     const { stderr } = await execFileAsync('reg', args, {
       windowsHide: true,
@@ -853,10 +845,7 @@ async function defaultRunReg(
   }
 }
 
-async function runReg(
-  args: string[],
-  options: { allowNotFound?: boolean } = {},
-): Promise<void> {
+async function runReg(args: string[], options: { allowNotFound?: boolean } = {}): Promise<void> {
   const { stderr, code } = await runRegImpl(args);
   if (code === 0) return;
   // reg.exe delete 不存在的 key:code=1 + stderr 含 "找不到" / "cannot find"
@@ -920,9 +909,7 @@ export function __setReadRegistryPathImplForTest(
  * 仅供测试用:注入 WSL 发行版枚举实现。
  * 传 null 恢复真实 `wsl.exe -l -q` 调用。
  */
-export function __setListWslDistrosImplForTest(
-  impl: (() => Promise<string[]>) | null,
-): void {
+export function __setListWslDistrosImplForTest(impl: (() => Promise<string[]>) | null): void {
   listWslDistrosImpl = impl ?? defaultListWslDistros;
 }
 

@@ -8,6 +8,8 @@
  *   展开状态按根目录记在模块级 Map 里,切回同一 session 时不用重新展开。
  * - 刷新用 3 秒轮询加窗口聚焦,只读已展开的目录,不用 fs.watch。fs.watch 在
  *   WSL UNC 路径上不可靠,而且要管理跨窗口的监听生命周期,轮询简单得多。
+ * - SFTP 登录提示只在用户能看到结果的请求上允许(interactive):首次挂载、点重试、
+ *   点击文件。定时轮询永远安静,服务器的提示不会在用户没操作时凭空弹出。
  * - 慢速双击在 classifyRowClick 判定后还要等 RENAME_DELAY_MS 才进入编辑,期间
  *   再来一次点击说明用户其实在快速双击,取消重命名。
  * - 只用鼠标触发重命名,不加 F2:应用内功能键在 13.2 永远不做列表里。
@@ -93,35 +95,35 @@ export function FileTreePanel(): JSX.Element {
 
   return (
     <>
-    <div
-      className="file-tree-resize"
-      role="separator"
-      aria-orientation="horizontal"
-      title={t('fileTree.resize')}
-      {...handleProps}
-    />
-    <section
-      className="file-tree-panel"
-      aria-label={t('fileTree.title')}
-      style={height === null ? undefined : { flexBasis: height }}
-    >
-      <div className="file-tree-header" title={root ?? undefined}>
-        <Folder size={14} />
-        <span className="file-tree-header-label">
-          {root ? folderLabel(root) : t('fileTree.title')}
-        </span>
-      </div>
-      {root ? (
-        <FileTreeBody
-          key={`${sshProfileId ?? ''}|${root}`}
-          root={root}
-          pdfViewKey={pdfViewKey(state)}
-          sshProfileId={sshProfileId}
-        />
-      ) : (
-        <p className="file-tree-hint">{t('fileTree.empty.noSession')}</p>
-      )}
-    </section>
+      <div
+        className="file-tree-resize"
+        role="separator"
+        aria-orientation="horizontal"
+        title={t('fileTree.resize')}
+        {...handleProps}
+      />
+      <section
+        className="file-tree-panel"
+        aria-label={t('fileTree.title')}
+        style={height === null ? undefined : { flexBasis: height }}
+      >
+        <div className="file-tree-header" title={root ?? undefined}>
+          <Folder size={14} />
+          <span className="file-tree-header-label">
+            {root ? folderLabel(root) : t('fileTree.title')}
+          </span>
+        </div>
+        {root ? (
+          <FileTreeBody
+            key={`${sshProfileId ?? ''}|${root}`}
+            root={root}
+            pdfViewKey={pdfViewKey(state)}
+            sshProfileId={sshProfileId}
+          />
+        ) : (
+          <p className="file-tree-hint">{t('fileTree.empty.noSession')}</p>
+        )}
+      </section>
     </>
   );
 }
@@ -235,14 +237,17 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
   );
 
   const loadDir = useCallback(
-    async (dir: string, fresh = false): Promise<void> => {
+    async (
+      dir: string,
+      options: { fresh?: boolean; interactive?: boolean } = {},
+    ): Promise<void> => {
       const seq = (loadSeqRef.current.get(dir) ?? 0) + 1;
       loadSeqRef.current.set(dir, seq);
       let res: ListDirResponse;
       try {
         res = await window.api.invoke<ListDirPayload, ListDirResponse>(
           COMMAND_CHANNELS.FS_LIST_DIR,
-          { path: dir, ...(sshProfileId ? { sshProfileId, fresh } : {}) },
+          { path: dir, ...(sshProfileId ? { sshProfileId, ...options } : {}) },
         );
       } catch {
         // Link 断线时 invoke 会 reject,当作普通失败显示,不打断轮询
@@ -266,15 +271,18 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
     [root, sshProfileId, setExpanded],
   );
 
-  const refreshAll = useCallback(async (): Promise<void> => {
-    if (refreshingRef.current || document.visibilityState !== 'visible') return;
-    refreshingRef.current = true;
-    try {
-      for (const dir of [root, ...expandedRef.current]) await loadDir(dir);
-    } finally {
-      refreshingRef.current = false;
-    }
-  }, [root, loadDir]);
+  const refreshAll = useCallback(
+    async (options: { interactive?: boolean } = {}): Promise<void> => {
+      if (refreshingRef.current || document.visibilityState !== 'visible') return;
+      refreshingRef.current = true;
+      try {
+        for (const dir of [root, ...expandedRef.current]) await loadDir(dir, options);
+      } finally {
+        refreshingRef.current = false;
+      }
+    },
+    [root, loadDir],
+  );
 
   const clearRenameTimer = (): void => {
     if (renameTimerRef.current !== null) window.clearTimeout(renameTimerRef.current);
@@ -284,8 +292,9 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
   useEffect(() => {
     mountedRef.current = true;
     // 挂载时不传 fresh:切 tab 或 cd 都会重新挂载,自动重试等于反复登录。
-    // 失败后显示缓存的原因,由重试按钮决定何时再登录
-    void refreshAll();
+    // 失败后显示缓存的原因,由重试按钮决定何时再登录。
+    // 但挂载是用户切过来的结果,允许弹登录提示;定时轮询和聚焦刷新则保持安静
+    void refreshAll({ interactive: true });
     const interval = window.setInterval(
       () => void refreshAll(),
       sshProfileId ? REMOTE_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
@@ -445,7 +454,7 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
         <button
           type="button"
           className="file-tree-retry"
-          onClick={() => void loadDir(root, true)}
+          onClick={() => void loadDir(root, { fresh: true, interactive: true })}
         >
           {t('fileTree.retry')}
         </button>

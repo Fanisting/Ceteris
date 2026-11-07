@@ -30,13 +30,17 @@ import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
-import { broadcastLinkStatus, decryptStoredPassword, installIpcLayer } from './ipc';
+import {
+  broadcastLinkStatus,
+  decryptStoredPassword,
+  installIpcLayer,
+  sendEventToWindowId,
+} from './ipc';
 import { LinkManager } from './link/link-manager';
 import { getPlatformAdapter } from './platform';
 import { SftpPool } from './sftp-client';
-
-/** Chromium 内置 PDF 查看器扩展的固定 origin,id 由 Chromium 写死。 */
-const PDF_VIEWER_ORIGIN = 'chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/';
+import { AskpassServer } from './askpass-server';
+import { PromptBroker } from './askpass-prompts';
 import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
@@ -78,10 +82,7 @@ export function getIsQuitting(): boolean {
  */
 async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
   const tree = pathManager.getTree();
-  const allPaths = [
-    ...tree.bookmarks,
-    ...tree.temporary,
-  ];
+  const allPaths = [...tree.bookmarks, ...tree.temporary];
   const invalid: string[] = [];
   for (const node of allPaths) {
     if (node.kind === 'ssh') continue;
@@ -203,14 +204,23 @@ function bootstrap(): void {
   const windowStyle = getPlatformAdapter().defaultWindowStyle;
   const settingsManager = new SettingsManager(settingsStore, {
     ...DEFAULT_SETTINGS,
-    ...(windowStyle
-      ? { appearance: { ...DEFAULT_SETTINGS.appearance, windowStyle } }
-      : {}),
+    ...(windowStyle ? { appearance: { ...DEFAULT_SETTINGS.appearance, windowStyle } } : {}),
     link: { ...DEFAULT_SETTINGS.link, hostPort: channel.linkPort },
   });
   const pathManager = new PathManager(bookmarksStore, recentStore);
   const sshProfileManager = new SshProfileManager(sshProfilesStore);
   const knownHostsManager = new KnownHostsManager(knownHostsStore);
+  // 后台 SFTP 的 ssh 需要用户回答(密码 / Duo / 主机密钥)时,提示经这条管道回到 main,
+  // 再由 PromptBroker 送到发起请求的窗口弹 modal。见 askpass-server.ts。
+  // 监听是异步的,但第一条 SFTP 请求要等用户点击,到那时管道早就就绪了。
+  // 没有管道就退回 BatchMode / sshpass,文件树照常工作,只是不能回答登录提示。
+  const askpassServer = new AskpassServer();
+  askpassServer.start().catch((err: unknown) => {
+    logger.error('main', 'askpass server failed to start; SFTP login prompts disabled', err);
+  });
+  const promptBroker = new PromptBroker({
+    send: (windowId, channel, payload) => sendEventToWindowId(windowId, channel, payload),
+  });
   const sftpPool = new SftpPool({
     getProfile: (profileId) => {
       const profile = sshProfileManager.getInternal(profileId);
@@ -219,7 +229,11 @@ function bootstrap(): void {
       return { ...rest, ...(passwordEncrypted ? decryptStoredPassword(passwordEncrypted) : {}) };
     },
     resolveExecutable: (name, env) => getPlatformAdapter().resolveExecutable(name, env),
-    prepareAskpass: () => getPlatformAdapter().prepareSshAskpass?.() ?? null,
+    askpass: {
+      helper: () => getPlatformAdapter().prepareSshAskpass?.(dataDir) ?? null,
+      server: askpassServer,
+      promptUser: (request) => promptBroker.ask(request),
+    },
   });
   const templatesManager = new TemplatesManager(templatesStore);
   const sessionManager = new SessionManager(
@@ -380,38 +394,33 @@ function bootstrap(): void {
       // CSP via headers (兜底 + 消除 Electron unsafe-eval / 缺失 CSP 警告)。
       // dev 模式 Vite 的 React Refresh 用 new Function/eval,需要 'unsafe-eval';
       // 生产 (file://) 不需要。
+      // worker-src:pdf.js 在 Web Worker 里解析 PDF,worker 脚本打包在应用里,
+      // dev 时 Vite 用 blob: 包一层。img-src blob: 给图片查看。
       const cspProd =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-        "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; frame-src blob:";
+        "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; " +
+        "worker-src 'self' blob:";
       const cspDev =
         "default-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; " +
         "script-src 'self' 'unsafe-eval' 'unsafe-inline' http://127.0.0.1:*; " +
         "style-src 'self' 'unsafe-inline' http://127.0.0.1:*; " +
         "font-src 'self' data: http://127.0.0.1:*; " +
         "img-src 'self' data: blob: http://127.0.0.1:*; " +
-        "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; frame-src blob:";
-      electronSession.defaultSession.webRequest.onHeadersReceived(
-        (details, callback) => {
-          // Chromium PDF 查看器是个内置扩展页,套上应用的 CSP 后整页空白。
-          if (details.url.startsWith(PDF_VIEWER_ORIGIN)) {
-            callback(details.responseHeaders ? { responseHeaders: details.responseHeaders } : {});
-            return;
-          }
-          callback({
-            responseHeaders: {
-              ...details.responseHeaders,
-              'Content-Security-Policy': [isDev ? cspDev : cspProd],
-            },
-          });
-        },
-      );
+        "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; " +
+        "worker-src 'self' blob: http://127.0.0.1:*";
+      electronSession.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            'Content-Security-Policy': [isDev ? cspDev : cspProd],
+          },
+        });
+      });
 
       // 加载持久化数据,故意串行 (settings 决定后续行为,先加载)
       const settingsSrc = await settingsManager.initialize();
       logger.info('main', `settings loaded from: ${settingsSrc}`);
-      logger.setLevel(
-        settingsManager.get().advanced.logLevel === 'DEBUG' ? 'debug' : 'info',
-      );
+      logger.setLevel(settingsManager.get().advanced.logLevel === 'DEBUG' ? 'debug' : 'info');
       const { bookmarksSource } = await pathManager.initialize();
       await nextPromptUsage.initialize();
       logger.info('main', `bookmarks loaded from: ${bookmarksSource}`);
@@ -468,6 +477,7 @@ function bootstrap(): void {
         aiClient,
         linkManager,
         sftpPool,
+        promptBroker,
       });
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
@@ -522,9 +532,7 @@ function bootstrap(): void {
         if (
           e.changedKeys.some(
             (k) =>
-              k === 'link.hostEnabled' ||
-              k === 'link.hostBindAddress' ||
-              k === 'link.hostPort',
+              k === 'link.hostEnabled' || k === 'link.hostBindAddress' || k === 'link.hostPort',
           )
         ) {
           void linkManager.applyHostSettings();
@@ -560,9 +568,7 @@ function bootstrap(): void {
       if (platformAdapter instanceof WindowsAdapter) {
         platformAdapter
           .cleanupLegacyExplorerIntegration()
-          .catch((err) =>
-            logger.warn('main', 'cleanupLegacyExplorerIntegration failed', err),
-          );
+          .catch((err) => logger.warn('main', 'cleanupLegacyExplorerIntegration failed', err));
       }
 
       // 启动期同步:如果 HKCU 经典菜单已存在但 exe 路径变了(用户卸载重装、
@@ -572,9 +578,7 @@ function bootstrap(): void {
       if (platformAdapter instanceof WindowsAdapter && getBuildType() !== 'dev') {
         platformAdapter
           .syncFileManagerIntegrationIfPresent(getLaunchExePath())
-          .catch((err) =>
-            logger.warn('main', 'syncFileManagerIntegrationIfPresent failed', err),
-          );
+          .catch((err) => logger.warn('main', 'syncFileManagerIntegrationIfPresent failed', err));
       }
 
       // BETA-003b · ADR-013:三平台共享 close 拦截 — 只对 lifecycleModel
@@ -593,9 +597,7 @@ function bootstrap(): void {
             .filter((w) => w.electronWindowId !== win.webContents.id);
           if (others.length > 0) return false;
           // 检查 alive session 数
-          const aliveCount = sessionManager
-            .list()
-            .filter((s) => s.state !== 'exited').length;
+          const aliveCount = sessionManager.list().filter((s) => s.state !== 'exited').length;
           if (aliveCount === 0) return false; // 全 exited,静默关
           // 拦截 + 通知 renderer 弹 modal
           win.webContents.send('evt:ui:show-last-session-confirm', {
@@ -638,11 +640,7 @@ function bootstrap(): void {
       // 就是用户右键的那个目录。我们检测这个信号,当 cwd 不是 / 也不是 home 时
       // 自动把它作为 startupOpenHere。GUI 应用菜单启动时 cwd 通常是 / 或 home,
       // 走默认空窗逻辑。
-      if (
-        process.platform === 'linux' &&
-        startupOpenHere === null &&
-        !startupSimpleMode
-      ) {
+      if (process.platform === 'linux' && startupOpenHere === null && !startupSimpleMode) {
         try {
           const cwd = process.cwd();
           const home = app.getPath('home');
@@ -677,12 +675,8 @@ function bootstrap(): void {
           if (targetWindow) {
             targetWindow.webContents.once('did-finish-load', () => {
               if (targetWindow.isDestroyed()) return;
-              void createSessionInWindow(
-                { sessionManager, templatesManager },
-                win.id,
-                path,
-              ).catch((err) =>
-                logger.error('main', 'cold-start open-here createSession failed', err),
+              void createSessionInWindow({ sessionManager, templatesManager }, win.id, path).catch(
+                (err) => logger.error('main', 'cold-start open-here createSession failed', err),
               );
             });
           }
@@ -701,6 +695,7 @@ function bootstrap(): void {
     logger.info('main', 'will-quit: shutting down session manager + flushing stores');
     sessionManager.shutdown();
     sftpPool.shutdown();
+    void askpassServer.stop();
     // 先关 Link:停止监听并断开所有连接,让对端立刻知道我们要走了,
     // 而不是等它们的心跳超时(最长 50 秒)才发现。
     if (linkManagerRef) {
@@ -721,10 +716,7 @@ function bootstrap(): void {
         templatesManager.flush(),
         logger.flush(),
       ]);
-      await Promise.race([
-        flushAll,
-        new Promise<void>((resolve) => setTimeout(resolve, 1000)),
-      ]);
+      await Promise.race([flushAll, new Promise<void>((resolve) => setTimeout(resolve, 1000))]);
     } catch (err) {
       logger.warn('main', 'flush during quit failed', err);
     }
@@ -749,10 +741,7 @@ function sanitizeOpenHerePath(raw: string): string {
   }
   try {
     if (!existsSync(p) || !statSync(p).isDirectory()) {
-      logger.warn(
-        'main',
-        `open-here path "${p}" 不存在或不是目录,退回 home`,
-      );
+      logger.warn('main', `open-here path "${p}" 不存在或不是目录,退回 home`);
       return app.getPath('home');
     }
   } catch (err) {
@@ -798,11 +787,7 @@ async function openPathInTerminal(
         .list()
         .find((w) => w.electronWindowId === recent.webContents.id)?.id;
       if (windowId) {
-        await createSessionInWindow(
-          { sessionManager, templatesManager },
-          windowId,
-          pathArg,
-        );
+        await createSessionInWindow({ sessionManager, templatesManager }, windowId, pathArg);
         return;
       }
     }
@@ -816,12 +801,8 @@ async function openPathInTerminal(
   if (!target) return;
   target.webContents.once('did-finish-load', () => {
     if (target.isDestroyed()) return;
-    void createSessionInWindow(
-      { sessionManager, templatesManager },
-      info.id,
-      pathArg,
-    ).catch((err) =>
-      logger.error('main', 'openPathInTerminal createSession failed', err),
+    void createSessionInWindow({ sessionManager, templatesManager }, info.id, pathArg).catch(
+      (err) => logger.error('main', 'openPathInTerminal createSession failed', err),
     );
   });
 }

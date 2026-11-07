@@ -57,6 +57,8 @@ export interface PromptOptions {
   placeholder?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** password 不回显,给 SSH 登录提示用。默认 text */
+  inputType?: 'text' | 'password';
 }
 
 export interface ModalApi {
@@ -64,6 +66,11 @@ export interface ModalApi {
   confirm(opts: ConfirmOptions): Promise<boolean>;
   /** 返回输入字符串,取消返回 null(同 window.prompt 语义) */
   prompt(opts: PromptOptions): Promise<string | null>;
+  /**
+   * 从外部收起当前 modal,按取消处理(confirm → false,prompt → null)。
+   * 给"提问方已经不需要答案"的场景用,比如 ssh 连接在用户回答前就断了。
+   */
+  dismiss(): void;
 }
 
 const Ctx = createContext<ModalApi | null>(null);
@@ -96,6 +103,9 @@ type ModalState = ConfirmState | PromptState;
 
 export function ModalProvider({ children }: { children: ReactNode }): JSX.Element {
   const [modal, setModal] = useState<ModalState | null>(null);
+  // dismiss 由 useMemo 里的稳定 api 调用,拿不到最新的 modal state,所以走 ref
+  const modalRef = useRef<ModalState | null>(null);
+  modalRef.current = modal;
   const previousActiveElementRef = useRef<Element | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [promptValue, setPromptValue] = useState('');
@@ -126,9 +136,7 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
         prev.focus();
       } else {
         // prev 已 unmount(如 xterm 重挂),fallback 到 .xterm-helper-textarea
-        const ta = document.querySelector<HTMLTextAreaElement>(
-          '.xterm-helper-textarea',
-        );
+        const ta = document.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea');
         ta?.focus();
       }
     });
@@ -144,8 +152,15 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
         new Promise<string | null>((resolve) => {
           openModal({ kind: 'prompt', ...opts, resolve });
         }),
+      dismiss: () => {
+        const current = modalRef.current;
+        if (!current) return;
+        if (current.kind === 'confirm') current.resolve(false);
+        else current.resolve(null);
+        closeModal();
+      },
     }),
-    [openModal],
+    [openModal, closeModal],
   );
 
   // KBD-1:接入 UiOverlayStack — modal 在 mount 时 push,unmount 时 pop。
@@ -252,8 +267,7 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
           <div
             ref={panelRef}
             className={
-              'app-modal-panel' +
-              (modal.kind === 'confirm' && modal.danger ? ' danger' : '')
+              'app-modal-panel' + (modal.kind === 'confirm' && modal.danger ? ' danger' : '')
             }
             role="dialog"
             aria-modal="true"
@@ -263,18 +277,14 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
             {modal.kind === 'confirm' && (
               <>
                 <div className="app-modal-message">{modal.message}</div>
-                {modal.preview && (
-                  <pre className="app-modal-preview">{modal.preview}</pre>
-                )}
+                {modal.preview && <pre className="app-modal-preview">{modal.preview}</pre>}
               </>
             )}
             {modal.kind === 'prompt' && (
               <>
-                {modal.message && (
-                  <div className="app-modal-message">{modal.message}</div>
-                )}
+                {modal.message && <div className="app-modal-message">{modal.message}</div>}
                 <input
-                  type="text"
+                  type={modal.inputType ?? 'text'}
                   className="app-modal-input"
                   value={promptValue}
                   placeholder={modal.placeholder ?? ''}
@@ -292,14 +302,10 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
               </>
             )}
             <div className="app-modal-actions">
-              <button
-                type="button"
-                className="app-modal-button"
-                onClick={handleCancel}
-              >
+              <button type="button" className="app-modal-button" onClick={handleCancel}>
                 {modal.kind === 'confirm'
-                  ? modal.cancelLabel ?? '取消'
-                  : modal.cancelLabel ?? '取消'}
+                  ? (modal.cancelLabel ?? '取消')
+                  : (modal.cancelLabel ?? '取消')}
               </button>
               <button
                 type="button"
@@ -310,8 +316,8 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
                 onClick={handleConfirm}
               >
                 {modal.kind === 'confirm'
-                  ? modal.confirmLabel ?? '确定'
-                  : modal.confirmLabel ?? '确定'}
+                  ? (modal.confirmLabel ?? '确定')
+                  : (modal.confirmLabel ?? '确定')}
               </button>
             </div>
           </div>

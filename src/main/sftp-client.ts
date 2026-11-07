@@ -12,26 +12,35 @@
  *   (fresh) 或改 profile。网络失败隔一段时间重试。
  * - 服务器不可信:长度、数量、文件名都按恶意输入处理,读超限的数据直接失败,
  *   stderr 只留末尾。
- * - BatchMode=yes:后台进程没有地方输入密码,必须立刻失败而不是挂住。
- *   保存了密码时才关掉。
- * - A saved password goes through SSH_ASKPASS where the platform offers it. On Windows
- *   sshpass runs ssh on a console, which corrupts the binary SFTP stream: the login succeeds
- *   and the connection then drops. Askpass leaves ssh on plain pipes.
+ * - 登录提示走 askpass 中继(有 AskpassServer 和平台助手时):ssh 以 BatchMode=no 启动,
+ *   要密码、Duo 验证码或主机密钥确认时 exec 助手,助手经命名管道把提示交回这里。
+ *   askpass-policy 决定:保存的密码自动填一次;用户操作发起的连接弹窗问用户;后台轮询
+ *   发起的连接直接断开并记为 login-required,等用户点重试。这样后台进程永远不会凭空弹窗,
+ *   也不会因为反复失败登录被服务器封掉。
+ * - 没有中继的平台保持原样:BatchMode=yes 立刻失败而不是挂住,保存了密码时用 sshpass。
+ *   Windows 上 sshpass 会把 ssh 放到控制台上,破坏二进制的 SFTP 流,所以 Windows 必须走中继。
+ *   Windows 的助手是 csc.exe 现编的小 exe,见 platform/askpass-helper-source.ts。
+ * - 需要过用户提示才连上的连接不做空闲关闭:每次重连都是一次 Duo 推送。
  *
- * @对应文档章节: 软件定义书.md 14.6
+ * @对应文档章节: 软件定义书.md 14.6、14.9
  *
  * @不要在这里做的事:
  * - 不要提供写入、删除、改名 (远端文件树是只读的,OPEN 只用 FXF_READ)
+ * - 不要在轮询路径上传 interactive:true,那会让服务器的提示在用户没操作时弹出来
  *
  * @常见问题排查:
- * - 文件树显示认证失败 → 这个 profile 能否免密登录?密码登录需要 askpass 或 sshpass
- * - 显示主机密钥失败 → 先在终端连一次,接受并保存主机密钥
+ * - 文件树显示"需要登录" → 后台连接遇到了提示,点重试会以交互方式重连并弹窗
+ * - 文件树显示认证失败 → 密码错了,或者服务器拒绝了这种登录方式
+ * - 显示主机密钥失败 → 先在终端连一次,接受并保存主机密钥(有中继时会直接弹 yes/no)
  * - 日志有 bad packet length → 远端 .bashrc 往 stdout 打印了内容,破坏了 SFTP 流
  * - 显示连接失败但终端能连 → 看 main.log 里 [Sftp] 那行 ssh 的 stderr
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { ASKPASS_PASSWORD_ENV } from './platform/askpass';
 import { createHash } from 'node:crypto';
+import { ASKPASS_PIPE_ENV, ASKPASS_TOKEN_ENV, type AskpassHelper } from './platform/askpass';
+import { classifyPrompt, decideAnswer } from './askpass-policy';
+import type { AskpassServer } from './askpass-server';
+import type { PromptRequest } from './askpass-prompts';
 import {
   FILE_TREE_MAX_ENTRIES,
   sortEntries,
@@ -61,6 +70,8 @@ import {
 } from './sftp-protocol';
 
 const CONNECT_TIMEOUT_MS = 20_000;
+/** 用户回答一条提示之后给 ssh 的时间:Duo 推送要等手机,服务器那边还可能再问一轮。 */
+const AUTH_CONTINUE_TIMEOUT_MS = 120_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const IDLE_CLOSE_MS = 5 * 60_000;
 const NETWORK_FAILURE_CACHE_MS = 30_000;
@@ -83,6 +94,8 @@ const READ_PARALLEL = 16;
 
 export interface SftpProfile {
   id: string;
+  /** 显示给用户的名字,弹登录提示时当标题。ssh_config 条目可能没有 */
+  name?: string;
   host: string;
   port: number;
   username: string;
@@ -119,8 +132,13 @@ export function failureFrom(err: unknown, operation: string): SftpFailure | Sftp
   return 'unknown';
 }
 
-/** 组装 ssh 参数。连接选项与 buildSshLaunchParams 保持一致。 */
-export function buildSftpArgs(profile: SftpProfile, hasPassword: boolean): string[] {
+/**
+ * 组装 ssh 参数。连接选项与 buildSshLaunchParams 保持一致。
+ *
+ * @param allowPrompts true 表示有人能回答 ssh 的提示(askpass 中继或 sshpass),关掉 BatchMode
+ */
+export function buildSftpArgs(profile: SftpProfile, allowPrompts: boolean): string[] {
+  const hasPassword = profile.authType === 'password' && Boolean(profile.password);
   const args = [
     '-T',
     '-s',
@@ -131,9 +149,10 @@ export function buildSftpArgs(profile: SftpProfile, hasPassword: boolean): strin
     '-o',
     'ServerAliveInterval=30',
     '-o',
-    `BatchMode=${hasPassword ? 'no' : 'yes'}`,
+    `BatchMode=${allowPrompts ? 'no' : 'yes'}`,
     // A wrong saved password must count as one failure, not three against the account.
-    ...(hasPassword ? ['-o', 'NumberOfPasswordPrompts=1'] : []),
+    // 没有保存密码时保留默认的 3 次,用户敲错 Duo 验证码还有机会再来。
+    ...(allowPrompts && hasPassword ? ['-o', 'NumberOfPasswordPrompts=1'] : []),
   ];
   if (profile.authType === 'keyFile' && profile.keyFilePath) {
     args.push('-i', profile.keyFilePath);
@@ -203,15 +222,35 @@ export class SftpConnection {
     return this.closedByUs;
   }
 
+  /** ssh 到目前为止的 stderr 末尾。登录提示的说明文字(比如 Duo 的菜单)在这里。 */
+  get stderrText(): string {
+    return this.stderr;
+  }
+
   /** 完成 INIT / VERSION 握手。 */
   handshake(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.fail(new SftpError('connect', `no reply in ${CONNECT_TIMEOUT_MS}ms`));
-      }, CONNECT_TIMEOUT_MS);
-      this.handshakeWaiter = { resolve, reject, timer };
+      this.handshakeWaiter = { resolve, reject, timer: this.handshakeTimer(CONNECT_TIMEOUT_MS) };
       this.proc.stdin.write(encodePacket(FXP.INIT, [u32(SFTP_VERSION)]));
     });
+  }
+
+  /** 正在等用户回答提示:握手计时暂停,否则 Duo 还没推到手机上连接就超时了。 */
+  suspendHandshakeTimer(): void {
+    if (this.handshakeWaiter) clearTimeout(this.handshakeWaiter.timer);
+  }
+
+  /** 提示已回答,重新计时。 */
+  resumeHandshakeTimer(ms: number): void {
+    if (!this.handshakeWaiter || this.handshaken) return;
+    clearTimeout(this.handshakeWaiter.timer);
+    this.handshakeWaiter.timer = this.handshakeTimer(ms);
+  }
+
+  private handshakeTimer(ms: number): ReturnType<typeof setTimeout> {
+    return setTimeout(() => {
+      this.fail(new SftpError('connect', `no reply in ${ms}ms`));
+    }, ms);
   }
 
   /** 解析路径,. 得到登录目录。 */
@@ -386,7 +425,8 @@ export class SftpConnection {
     return classifyConnectFailure(this.stderr);
   }
 
-  private fail(err: SftpError): void {
+  /** 按连接失败结束。登录提示不能回答时 SftpPool 也会调它,在发出凭据前断开。 */
+  fail(err: SftpError): void {
     if (this.closedReason) return;
     this.closedReason = err;
     if (this.handshakeWaiter) {
@@ -429,12 +469,31 @@ function expectType(actual: number, expected: number, reader: SftpReader): void 
   throw new Error(`[Sftp] unexpected reply type ${actual}, wanted ${expected}`);
 }
 
+/** askpass 中继需要的三样东西。没有它时密码登录退回 sshpass。 */
+export interface SftpAskpassDeps {
+  /** 平台的助手程序,没有则 null */
+  helper: () => AskpassHelper | null;
+  /** 已 start 的服务器。pipePath 为 null 时不用中继 */
+  server: Pick<AskpassServer, 'pipePath' | 'register' | 'unregister'>;
+  /** 把提示送到窗口并等答案 */
+  promptUser: (request: PromptRequest) => Promise<string | null>;
+}
+
+/** 调用方对一次请求的说明。 */
+export interface SftpRequestOptions {
+  /** 用户主动操作:跳过失败缓存立即重连 */
+  fresh?: boolean | undefined;
+  /** 用户能看到结果:允许登录时弹提示。轮询不要设置 */
+  interactive?: boolean | undefined;
+  /** 发起请求的窗口,提示弹在这里 */
+  windowId?: string | undefined;
+}
+
 export interface SftpPoolDeps {
   /** 返回带明文密码的 profile,不存在时返回 null */
   getProfile: (profileId: string) => SftpProfile | null;
   resolveExecutable: (name: string, env: Record<string, string>) => string | null;
-  /** Path of a helper for SSH_ASKPASS, or null where the platform has none. */
-  prepareAskpass?: () => string | null;
+  askpass?: SftpAskpassDeps;
   /** 测试注入点 */
   spawnProcess?: (
     file: string,
@@ -450,6 +509,18 @@ interface PoolEntry {
   /** 握手完成后得到登录目录。失败时 reject */
   home: Promise<string>;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  /** 允许弹提示。用户操作发起的请求会把它升级成 true */
+  interactive: boolean;
+  /** 最近一个交互请求来自哪个窗口 */
+  windowId: string | null;
+  /** 保存的密码已经自动填过一次 */
+  passwordUsed: boolean;
+  /** 登录过程中问过用户。这种连接不做空闲关闭 */
+  prompted: boolean;
+  /** askpass 中继的令牌,连接结束时注销 */
+  askpassToken: string | null;
+  /** 连接结束时中止还在等用户的提示 */
+  abort: AbortController;
 }
 
 function defaultSpawn(
@@ -496,10 +567,13 @@ export class SftpPool {
    * @param fresh true 表示用户主动操作,跳过失败缓存立即重连
    * @returns 与本地文件树相同的结构,path 是展开 ~ 后的目录
    */
-  async list(profileId: string, dir: string, fresh = false): Promise<ListDirResponse> {
+  async list(
+    profileId: string,
+    dir: string,
+    options: SftpRequestOptions = {},
+  ): Promise<ListDirResponse> {
     try {
-      if (fresh) this.failures.delete(profileId);
-      const { connection, home } = await this.acquire(profileId);
+      const { connection, home } = await this.acquire(profileId, options);
       const target = expandHome(dir, home);
       const rows = await connection.readDirectory(target);
       const linkedDirs = await this.resolveLinks(connection, target, rows);
@@ -523,9 +597,8 @@ export class SftpPool {
   /**
    * 读远端文件的一段。
    *
-   * @param options.fresh 用户主动操作,跳过失败缓存
    * @param options.maxSize 文件超过这个大小时不读内容,chunk 为空
-   * @returns 读到的字节和文件总大小
+   * @returns 读到的字节、文件总大小和修改时间
    * @throws SftpError 连接失败
    * @throws SftpPathError 文件不存在或没有权限
    */
@@ -534,19 +607,36 @@ export class SftpPool {
     path: string,
     offset: number,
     length: number,
-    options: { fresh?: boolean; maxSize?: number } = {},
-  ): Promise<{ chunk: Buffer; size: number }> {
-    if (options.fresh) this.failures.delete(profileId);
-    const { connection, home } = await this.acquire(profileId);
+    options: SftpRequestOptions & { maxSize?: number } = {},
+  ): Promise<{ chunk: Buffer; size: number; mtimeMs: number | null }> {
+    const { connection, home } = await this.acquire(profileId, options);
     const target = expandHome(path, home);
     const attrs = await connection.stat(target);
-    const { size } = attrs;
+    const { size, mtimeMs } = attrs;
     if (size === null) throw new SftpPathError('unknown');
     if (!isRegularFileAttrs(attrs)) throw new SftpPathError('not-found');
     if (offset >= size || (options.maxSize !== undefined && size > options.maxSize)) {
-      return { chunk: Buffer.alloc(0), size };
+      return { chunk: Buffer.alloc(0), size, mtimeMs };
     }
-    return { chunk: await connection.readRange(target, offset, length), size };
+    return { chunk: await connection.readRange(target, offset, length), size, mtimeMs };
+  }
+
+  /**
+   * 查普通文件的大小和修改时间,PDF 自动刷新用。
+   *
+   * @throws SftpError 连接失败
+   * @throws SftpPathError 不存在、不是普通文件或没有权限
+   */
+  async stat(
+    profileId: string,
+    path: string,
+    options: SftpRequestOptions = {},
+  ): Promise<{ size: number; mtimeMs: number | null }> {
+    const { connection, home } = await this.acquire(profileId, options);
+    const attrs = await connection.stat(expandHome(path, home));
+    if (attrs.size === null) throw new SftpPathError('unknown');
+    if (!isRegularFileAttrs(attrs)) throw new SftpPathError('not-found');
+    return { size: attrs.size, mtimeMs: attrs.mtimeMs };
   }
 
   /** 关闭所有连接。应用退出时调用。 */
@@ -575,8 +665,17 @@ export class SftpPool {
     return new Set(results.filter((name): name is string => name !== null));
   }
 
-  /** 取现有连接,没有就新建。同一 profile 不会并行建两条连接。 */
-  private async acquire(profileId: string): Promise<{ connection: SftpConnection; home: string }> {
+  /**
+   * 取现有连接,没有就新建。同一 profile 不会并行建两条连接。
+   *
+   * 用户操作(interactive)会把一条还在握手的后台连接升级成允许弹窗,提示到达时按
+   * 升级后的状态处理。
+   */
+  private async acquire(
+    profileId: string,
+    options: SftpRequestOptions,
+  ): Promise<{ connection: SftpConnection; home: string }> {
+    if (options.fresh) this.failures.delete(profileId);
     const profile = this.deps.getProfile(profileId);
     if (!profile) throw new SftpError('connect', `profile not found: ${profileId}`);
     const fingerprint = fingerprintOf(profile);
@@ -587,6 +686,10 @@ export class SftpPool {
       entry = undefined;
     }
     entry ??= this.connect(profileId, profile, fingerprint);
+    if (options.interactive) {
+      entry.interactive = true;
+      if (options.windowId) entry.windowId = options.windowId;
+    }
     const home = await entry.home;
     this.touch(entry, profileId);
     return { connection: entry.connection, home };
@@ -605,16 +708,40 @@ export class SftpPool {
       throw this.remember(profileId, fingerprint, new SftpError('no-client', 'ssh not on PATH'));
     }
     const password = profile.authType === 'password' ? profile.password : undefined;
-    const askpass = password ? (this.deps.prepareAskpass?.() ?? null) : null;
-    const sshpass = password && !askpass ? this.deps.resolveExecutable('sshpass', env) : null;
-    const args = buildSftpArgs(profile, askpass !== null || sshpass !== null);
-    if (askpass) {
-      env['SSH_ASKPASS'] = askpass;
+    const relay = this.askpassRelay();
+    // 没有中继的平台退回 sshpass,只有保存了密码才有意义
+    const sshpass = password && !relay ? this.deps.resolveExecutable('sshpass', env) : null;
+    const args = buildSftpArgs(profile, relay !== null || sshpass !== null);
+    // connection 和 home 在下面马上赋值;先建 entry 是因为提示处理函数要引用它
+    const entry = {
+      fingerprint,
+      idleTimer: null,
+      interactive: false,
+      windowId: null,
+      passwordUsed: false,
+      prompted: false,
+      askpassToken: null,
+      abort: new AbortController(),
+    } as PoolEntry;
+    // 用户环境里可能有 Git 自带的 SSH_ASKPASS 之类,不能让它接到我们的提示
+    delete env['SSH_ASKPASS'];
+    delete env['SSH_ASKPASS_REQUIRE'];
+    if (relay) {
+      entry.askpassToken = relay.server.register((prompt, hint) =>
+        this.handlePrompt(profileId, entry, profile, prompt, hint),
+      );
+      Object.assign(env, relay.helper.env);
+      env['SSH_ASKPASS'] = relay.helper.command;
       env['SSH_ASKPASS_REQUIRE'] = 'force';
-      env[ASKPASS_PASSWORD_ENV] = password as string;
+      env[ASKPASS_PIPE_ENV] = relay.pipePath;
+      env[ASKPASS_TOKEN_ENV] = entry.askpassToken;
     }
     if (sshpass) env['SSHPASS'] = password as string;
-    logger.info('Sftp', `connect: ${profile.username}@${profile.host}:${profile.port}`);
+    logger.info(
+      'Sftp',
+      `connect: ${profile.username}@${profile.host}:${profile.port} ` +
+        `auth=${relay ? 'askpass-relay' : sshpass ? 'sshpass' : 'batch'}`,
+    );
     const proc = sshpass
       ? this.spawnProcess(sshpass, ['-e', ssh, ...args], env)
       : this.spawnProcess(ssh, args, env);
@@ -626,6 +753,7 @@ export class SftpPool {
       },
       sshpass !== null,
     );
+    entry.connection = connection;
     const home = connection.handshake().then(() => connection.realpath('.'));
     home.catch((err: unknown) => {
       const error = err instanceof SftpError ? err : new SftpError('connect', String(err));
@@ -636,14 +764,86 @@ export class SftpPool {
       // 坏连接会一直留在 entries 里,后续请求拿到的都是同一个 rejected promise
       if (this.entries.get(profileId)?.connection === connection) this.drop(profileId);
     });
-    const entry: PoolEntry = { fingerprint, connection, home, idleTimer: null };
+    entry.home = home;
     this.entries.set(profileId, entry);
     return entry;
   }
 
+  /** 中继可用的条件:平台有助手,服务器已在监听。 */
+  private askpassRelay(): {
+    helper: AskpassHelper;
+    pipePath: string;
+    server: SftpAskpassDeps['server'];
+  } | null {
+    const askpass = this.deps.askpass;
+    if (!askpass) return null;
+    const pipePath = askpass.server.pipePath;
+    const helper = pipePath ? askpass.helper() : null;
+    return helper && pipePath ? { helper, pipePath, server: askpass.server } : null;
+  }
+
+  /**
+   * ssh 的一条登录提示。决策规则见 askpass-policy.ts。
+   *
+   * @returns 答案;null 让助手退出 1,ssh 这次登录失败
+   */
+  private async handlePrompt(
+    profileId: string,
+    entry: PoolEntry,
+    profile: SftpProfile,
+    prompt: string,
+    hint: string | null,
+  ): Promise<string | null> {
+    const kind = classifyPrompt(prompt, hint);
+    const decision = decideAnswer(kind, {
+      savedPassword: profile.authType === 'password' ? profile.password : undefined,
+      passwordUsed: entry.passwordUsed,
+      interactive: entry.interactive,
+    });
+    logger.info('Sftp', `prompt from ${profile.host}: kind=${kind} action=${decision.action}`);
+    if (decision.action === 'answer') {
+      entry.passwordUsed = true;
+      return decision.value;
+    }
+    if (decision.action === 'deny') {
+      // 在发出任何凭据之前断开:这不算一次失败登录,但要等用户操作才会再试
+      entry.connection.fail(
+        new SftpError('login-required', `background connection got prompt "${prompt}"`),
+      );
+      return null;
+    }
+    entry.prompted = true;
+    // 已经排好的空闲关闭也要撤掉,否则还是会在 5 分钟后断开
+    if (entry.idleTimer) {
+      clearTimeout(entry.idleTimer);
+      entry.idleTimer = null;
+    }
+    entry.connection.suspendHandshakeTimer();
+    const answer = await this.deps.askpass!.promptUser({
+      windowId: entry.windowId,
+      signal: entry.abort.signal,
+      payload: {
+        profileId,
+        profileName: profile.name ?? `${profile.username}@${profile.host}`,
+        host: profile.host,
+        username: profile.username,
+        kind: decision.input,
+        prompt,
+        detail: entry.connection.stderrText.trim(),
+      },
+    });
+    if (answer === null) {
+      entry.connection.fail(new SftpError('login-required', 'user cancelled the prompt'));
+      return null;
+    }
+    entry.connection.resumeHandshakeTimer(AUTH_CONTINUE_TIMEOUT_MS);
+    return answer;
+  }
+
   private remember(profileId: string, fingerprint: string, err: SftpError): SftpError {
-    // 这三种不会自己好。no-sftp 虽然不是失败登录,但每次重试都是一次成功登录
-    const permanent = ['auth', 'host-key', 'no-sftp'].includes(err.reason);
+    // 这几种不会自己好。no-sftp 虽然不是失败登录,但每次重试都是一次成功登录;
+    // login-required 要等用户主动操作,轮询重试只会反复断开
+    const permanent = ['auth', 'host-key', 'no-sftp', 'login-required'].includes(err.reason);
     this.failures.set(profileId, {
       reason: err.reason,
       until: permanent ? Infinity : this.now() + NETWORK_FAILURE_CACHE_MS,
@@ -655,6 +855,8 @@ export class SftpPool {
   private touch(entry: PoolEntry, profileId: string): void {
     if (this.entries.get(profileId) !== entry) return;
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    // 用户为这条连接回答过 Duo 或密码,关掉它就意味着下次再问一遍
+    if (entry.prompted) return;
     entry.idleTimer = setTimeout(() => {
       if (this.entries.get(profileId) !== entry) return;
       if (entry.connection.busy) this.touch(entry, profileId);
@@ -668,6 +870,8 @@ export class SftpPool {
     if (!entry) return;
     this.entries.delete(profileId);
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    if (entry.askpassToken) this.deps.askpass?.server.unregister(entry.askpassToken);
+    entry.abort.abort();
     entry.connection.close();
   }
 }

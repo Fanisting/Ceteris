@@ -130,6 +130,7 @@ import {
   type SetDefaultTemplateForBookmarkPayload,
   type SettingsChangedPayload,
   type SshProfilesUpdatedPayload,
+  type AskpassAnswerPayload,
   type ShowInExplorerPayload,
   type TemplateListUpdatedPayload,
   type TestSshProfilePayload,
@@ -169,16 +170,15 @@ import type {
   ReadPdfResponse,
   RenameEntryPayload,
   RenameEntryResponse,
+  StatFilePayload,
+  StatFileResponse,
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
 import { isAppPageUrl } from './ipc-sender';
-import { readPdfChunk, readRemotePdfChunk } from './pdf-reader';
+import { readPdfChunk, readRemotePdfChunk, statRemoteViewFile, statViewFile } from './pdf-reader';
 import type { SftpPool } from './sftp-client';
-import {
-  applyLocalThemeToResult,
-  splitThemeUpdate,
-  withLocalTheme,
-} from '@shared/link-theme';
+import type { PromptBroker } from './askpass-prompts';
+import { applyLocalThemeToResult, splitThemeUpdate, withLocalTheme } from '@shared/link-theme';
 import { logger } from './logger';
 import { setQuitting } from './index';
 import { generateLinkToken } from './link/link-crypto';
@@ -218,6 +218,8 @@ export interface IpcLayerDeps {
   viewSwitcher?: ViewSwitcher;
   /** SSH 路径的文件树和文件夹选择。未注入时远端请求返回 no-client */
   sftpPool?: SftpPool;
+  /** 后台 SFTP 登录提示的答案回到这里。未注入时 cmd:ssh:askpass-answer 返回 false */
+  promptBroker?: PromptBroker;
 }
 
 let installed = false;
@@ -300,7 +302,7 @@ function sendEventTo<P>(win: BrowserWindow, channel: string, payload: P): void {
  *
  * @returns 是否找到投递目标
  */
-function sendEventToWindowId<P>(windowId: string, channel: string, payload: P): boolean {
+export function sendEventToWindowId<P>(windowId: string, channel: string, payload: P): boolean {
   const wm = linkWindowManager;
   if (!wm) return false;
   return wm.deliverEvent(windowId, channel, wrapEvent(payload));
@@ -521,11 +523,7 @@ function handleCommand(
     }
     const envelope = args[0] as CommandEnvelope<unknown> | undefined;
     const windowId = envelope?.windowId;
-    if (
-      windowId &&
-      linkWindowManager?.isWindowRemote(windowId) &&
-      shouldForwardToHost(channel)
-    ) {
+    if (windowId && linkWindowManager?.isWindowRemote(windowId) && shouldForwardToHost(channel)) {
       if (!linkCommandForwarder) {
         throw new Error(
           `[ipc] ${channel}: 窗口 ${windowId} 标记为远程窗口,但没有可用的转发器。` +
@@ -636,11 +634,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       }
       const win = windowManager.getById(envelope.payload.windowId);
       if (win) {
-        sendEventTo<WindowFocusRequestedPayload>(
-          win,
-          EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED,
-          { reason: 'manual' },
-        );
+        sendEventTo<WindowFocusRequestedPayload>(win, EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED, {
+          reason: 'manual',
+        });
       }
     },
   );
@@ -648,10 +644,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // Session
   handleCommand(
     COMMAND_CHANNELS.SESSION_CREATE,
-    async (
-      _e,
-      envelope: CommandEnvelope<CreateSessionPayload>,
-    ): Promise<CreateSessionResponse> => {
+    async (_e, envelope: CommandEnvelope<CreateSessionPayload>): Promise<CreateSessionResponse> => {
       const {
         pathId,
         templateId,
@@ -662,8 +655,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         sshTmuxMode,
       } = envelope.payload;
       const oldTreeJson = JSON.stringify(pathManager.getTree());
-      const effectiveTemplateId =
-        templateId ?? templatesManager.getDefaultTemplateId();
+      const effectiveTemplateId = templateId ?? templatesManager.getDefaultTemplateId();
       const pathRef = pathId ? pathRefFromId(pathId) : null;
       const sshProfile =
         pathRef?.kind === 'ssh' && pathRef.sshProfileId
@@ -683,8 +675,8 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
             // 这样即使旧 profile 里残留 tmuxMode,首页"连接"仍稳定是纯 SSH。
             tmuxMode:
               sshTmuxMode === 'attach-or-create'
-                ? 'attach-or-create' as const
-                : 'disabled' as const,
+                ? ('attach-or-create' as const)
+                : ('disabled' as const),
             tmuxOnMissing: 'fallback-shell' as const,
             // 在 main 进程里立刻解密;session-manager 只看到明文,不持有
             // safeStorage 句柄。解密失败(profile 文件来自另一台机器 / 用户)
@@ -706,8 +698,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         ...(shellId ? { shellIdOverride: shellId } : {}),
         ...(sshProfileForLaunch ? { sshProfile: sshProfileForLaunch } : {}),
       });
-      const pathTreeChanged =
-        JSON.stringify(pathManager.getTree()) !== oldTreeJson;
+      const pathTreeChanged = JSON.stringify(pathManager.getTree()) !== oldTreeJson;
       const warning = sessionManager.lastLaunchWarning ?? undefined;
       return warning ? { session, pathTreeChanged, warning } : { session, pathTreeChanged };
     },
@@ -738,19 +729,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_CLAIM,
-    async (
-      _e,
-      envelope: CommandEnvelope<ClaimSessionPayload>,
-    ): Promise<ClaimSessionResponse> => {
+    async (_e, envelope: CommandEnvelope<ClaimSessionPayload>): Promise<ClaimSessionResponse> => {
       sessionManager.claimOwner(envelope.payload.sessionId, envelope.windowId);
       // CP-2 勘误后:scrollback ring buffer 已实现。带回历史以保协议自洽,
       // 但 renderer 通常用 cmd:session:get-scrollback 单独拉,以避免 claim
       // 动作和 history-replay 时序耦合 (TerminalView 重新挂载场景非 claim 触发)
       // CURSOR-1 后:替换路径 = getScrollbackForReplay(state-replay 架构,
       // 返回完整终端状态 ANSI 流),需 async + await。
-      const sb = await sessionManager.getScrollbackForReplay(
-        envelope.payload.sessionId,
-      );
+      const sb = await sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
       return { scrollback: sb.data, lastSeq: sb.lastSeq };
     },
   );
@@ -764,10 +750,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_GET_SCROLLBACK,
-    async (
-      _e,
-      envelope: CommandEnvelope<GetScrollbackPayload>,
-    ): Promise<GetScrollbackResponse> => {
+    async (_e, envelope: CommandEnvelope<GetScrollbackPayload>): Promise<GetScrollbackResponse> => {
       // CURSOR-1:走 state-replay 路径(SerializeAddon),不再返回裸字节。
       // 详见 SessionManager.getScrollbackForReplay 与 docs/issues/cursor-1-...
       return sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
@@ -776,10 +759,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_EXPORT_SCROLLBACK,
-    async (
-      _e,
-      envelope: CommandEnvelope<{ sessionId: string }>,
-    ): Promise<{ text: string }> => {
+    async (_e, envelope: CommandEnvelope<{ sessionId: string }>): Promise<{ text: string }> => {
       // BETA-028:工具栏"复制全部"按钮 → 返回 UTF-8 字符串。
       // CURSOR-1 后 exportScrollback 改 async(读 headless 前需 drain parser)。
       return sessionManager.exportScrollback(envelope.payload.sessionId);
@@ -788,10 +768,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_CLEAR_SCROLLBACK,
-    (
-      _e,
-      envelope: CommandEnvelope<{ sessionId: string }>,
-    ): void => {
+    (_e, envelope: CommandEnvelope<{ sessionId: string }>): void => {
       // BETA-028:工具栏"清屏"按钮配合 term.clear() 使用
       sessionManager.clearScrollback(envelope.payload.sessionId);
     },
@@ -819,10 +796,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       //   1) 当前 owner 就是调用方 → 先释放再 claim 给新窗口(经典"移到新窗口")
       //   2) session 是 orphan(无主) → 不需要释放,直接 claim 给新窗口
       // 拒绝:其他窗口正持有 — 跨窗口偷会话不在本协议允许范围。
-      if (
-        session.ownerWindowId !== null &&
-        session.ownerWindowId !== envelope.windowId
-      ) {
+      if (session.ownerWindowId !== null && session.ownerWindowId !== envelope.windowId) {
         throw makeIpcError(
           'NotOwner',
           `sessionId="${sessionId}" 由其他窗口持有(${session.ownerWindowId}),不能从此窗口移动`,
@@ -867,16 +841,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
-    (
-      _e,
-      envelope: CommandEnvelope<FocusSessionOwnerPayload>,
-    ): FocusSessionOwnerResponse => {
+    (_e, envelope: CommandEnvelope<FocusSessionOwnerPayload>): FocusSessionOwnerResponse => {
       const session = sessionManager.get(envelope.payload.sessionId);
       if (!session) {
-        throw makeIpcError(
-          'SessionNotFound',
-          `sessionId="${envelope.payload.sessionId}"`,
-        );
+        throw makeIpcError('SessionNotFound', `sessionId="${envelope.payload.sessionId}"`);
       }
       if (!session.ownerWindowId) return { transferred: false }; // 无主无可聚焦
       // 虚拟窗口代表另一台机器。任一方是虚拟窗口,都没有一个能浮到用户面前的
@@ -892,11 +860,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       if (!ok) return { transferred: false }; // owner 窗口已不存在,静默
       const ownerWin = windowManager.getById(session.ownerWindowId);
       if (ownerWin) {
-        sendEventTo<WindowFocusRequestedPayload>(
-          ownerWin,
-          EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED,
-          { reason: 'session-click', selectSessionId: session.id },
-        );
+        sendEventTo<WindowFocusRequestedPayload>(ownerWin, EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED, {
+          reason: 'session-click',
+          selectSessionId: session.id,
+        });
       }
       return { transferred: false };
     },
@@ -904,10 +871,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_SEND_INPUT,
-    (
-      _e,
-      envelope: CommandEnvelope<SendInputPayload>,
-    ): SendInputResponse => {
+    (_e, envelope: CommandEnvelope<SendInputPayload>): SendInputResponse => {
       // IPC-3:ownership 校验 — 防止 renderer 状态短暂落后于 main 时,
       // 一个已不归本窗口的 session 仍接受写入(用户视觉上"打字了但没回显",
       // 因为 sessionOutput 推给了真 owner)。
@@ -920,26 +884,16 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 拒绝的情况:
       //   - session.ownerWindowId 是其他窗口 — 真的不该写,返回 not-owner
       const sess = sessionManager.get(envelope.payload.sessionId);
-      if (
-        sess &&
-        sess.ownerWindowId !== null &&
-        sess.ownerWindowId !== envelope.windowId
-      ) {
+      if (sess && sess.ownerWindowId !== null && sess.ownerWindowId !== envelope.windowId) {
         return { accepted: false, reason: 'not-owner' };
       }
-      return sessionManager.sendInput(
-        envelope.payload.sessionId,
-        envelope.payload.data,
-      );
+      return sessionManager.sendInput(envelope.payload.sessionId, envelope.payload.data);
     },
   );
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_RESIZE,
-    (
-      _e,
-      envelope: CommandEnvelope<ResizeSessionPayload>,
-    ): ResizeSessionResponse => {
+    (_e, envelope: CommandEnvelope<ResizeSessionPayload>): ResizeSessionResponse => {
       return sessionManager.resize(
         envelope.payload.sessionId,
         envelope.payload.cols,
@@ -951,10 +905,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // Bookmark / Path
   handleCommand(
     COMMAND_CHANNELS.BOOKMARK_ADD,
-    async (
-      _e,
-      envelope: CommandEnvelope<AddBookmarkPayload>,
-    ): Promise<AddBookmarkResponse> => {
+    async (_e, envelope: CommandEnvelope<AddBookmarkPayload>): Promise<AddBookmarkResponse> => {
       // 校验路径是目录 (软件定义书 5.1.1 要求文件夹选择器/拖拽路径,
       // ipc-protocol PathNotDirectory / PathNotExist 错误码)
       await assertDirectory(envelope.payload.path);
@@ -992,23 +943,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.BOOKMARK_SET_DEFAULT_TEMPLATE,
-    (
-      _e,
-      envelope: CommandEnvelope<SetDefaultTemplateForBookmarkPayload>,
-    ): void => {
-      pathManager.setDefaultTemplate(
-        envelope.payload.pathId,
-        envelope.payload.templateId,
-      );
+    (_e, envelope: CommandEnvelope<SetDefaultTemplateForBookmarkPayload>): void => {
+      pathManager.setDefaultTemplate(envelope.payload.pathId, envelope.payload.templateId);
     },
   );
 
   handleCommand(
     COMMAND_CHANNELS.BOOKMARK_PICK_FOLDER,
-    async (
-      _e,
-      envelope: CommandEnvelope<PickFolderPayload>,
-    ): Promise<PickFolderResponse> => {
+    async (_e, envelope: CommandEnvelope<PickFolderPayload>): Promise<PickFolderResponse> => {
       const fromWindow = BrowserWindow.fromWebContents(_e.sender);
       const result = await dialog.showOpenDialog(fromWindow ?? BrowserWindow.getFocusedWindow()!, {
         title: '选择文件夹',
@@ -1098,16 +1040,11 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       envelope: CommandEnvelope<PickSshKeyFilePayload>,
     ): Promise<PickSshKeyFileResponse> => {
       const fromWindow = BrowserWindow.fromWebContents(_e.sender);
-      const result = await dialog.showOpenDialog(
-        fromWindow ?? BrowserWindow.getFocusedWindow()!,
-        {
-          title: '选择 SSH 私钥文件',
-          properties: ['openFile', 'showHiddenFiles'],
-          ...(envelope.payload.defaultPath
-            ? { defaultPath: envelope.payload.defaultPath }
-            : {}),
-        },
-      );
+      const result = await dialog.showOpenDialog(fromWindow ?? BrowserWindow.getFocusedWindow()!, {
+        title: '选择 SSH 私钥文件',
+        properties: ['openFile', 'showHiddenFiles'],
+        ...(envelope.payload.defaultPath ? { defaultPath: envelope.payload.defaultPath } : {}),
+      });
       if (result.canceled || result.filePaths.length === 0) {
         return { path: null };
       }
@@ -1153,10 +1090,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     (_e, envelope: CommandEnvelope<AddRemoteBookmarkPayload>): AddBookmarkResponse => {
       const profile = sshProfileManager?.get(envelope.payload.sshProfileId);
       if (!profile) {
-        throw makeIpcError(
-          'SshProfileNotFound',
-          `sshProfileId="${envelope.payload.sshProfileId}"`,
-        );
+        throw makeIpcError('SshProfileNotFound', `sshProfileId="${envelope.payload.sshProfileId}"`);
       }
       const bookmark = pathManager.addBookmark({
         kind: 'ssh',
@@ -1275,10 +1209,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // System
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_SHOW_IN_EXPLORER,
-    async (
-      _e,
-      envelope: CommandEnvelope<ShowInExplorerPayload>,
-    ): Promise<void> => {
+    async (_e, envelope: CommandEnvelope<ShowInExplorerPayload>): Promise<void> => {
       shell.showItemInFolder(envelope.payload.path);
     },
   );
@@ -1286,10 +1217,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.FS_LIST_DIR,
     async (_e, envelope: CommandEnvelope<ListDirPayload>): Promise<ListDirResponse> => {
-      const { path, sshProfileId, fresh } = envelope.payload;
+      const { path, sshProfileId, fresh, interactive } = envelope.payload;
       if (!sshProfileId) return listDirectory(path);
       return deps.sftpPool
-        ? deps.sftpPool.list(sshProfileId, path, fresh)
+        ? deps.sftpPool.list(sshProfileId, path, {
+            fresh,
+            interactive,
+            windowId: envelope.windowId,
+          })
         : { ok: false, reason: 'no-client' };
     },
   );
@@ -1297,11 +1232,38 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.FS_READ_PDF,
     async (_e, envelope: CommandEnvelope<ReadPdfPayload>): Promise<ReadPdfResponse> => {
-      const { path, sshProfileId, offset } = envelope.payload;
+      const { path, sshProfileId, offset, fresh } = envelope.payload;
       if (!sshProfileId) return readPdfChunk(path, offset);
+      // 用户点击 = fresh:既跳过失败缓存,也允许登录提示。自动刷新两者都不传
       return deps.sftpPool
-        ? readRemotePdfChunk(deps.sftpPool, sshProfileId, path, offset)
+        ? readRemotePdfChunk(deps.sftpPool, sshProfileId, path, offset, {
+            fresh,
+            interactive: fresh,
+            windowId: envelope.windowId,
+          })
         : { ok: false, reason: 'no-client' };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_STAT_FILE,
+    async (_e, envelope: CommandEnvelope<StatFilePayload>): Promise<StatFileResponse> => {
+      const { path, sshProfileId } = envelope.payload;
+      if (!sshProfileId) return statViewFile(path);
+      return deps.sftpPool
+        ? statRemoteViewFile(deps.sftpPool, sshProfileId, path, { windowId: envelope.windowId })
+        : { ok: false, reason: 'no-client' };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SSH_ASKPASS_ANSWER,
+    (_e, envelope: CommandEnvelope<AskpassAnswerPayload>): boolean => {
+      const { promptId, answer } = envelope.payload;
+      if (typeof promptId !== 'string' || (answer !== null && typeof answer !== 'string')) {
+        return false;
+      }
+      return deps.promptBroker?.answer(promptId, answer) ?? false;
     },
   );
 
@@ -1391,10 +1353,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // 兜底),让 renderer 的 fire-and-forget 调用永不影响主链路。
   handleCommand(
     COMMAND_CHANNELS.LOGGER_IME_DUMP,
-    (
-      _e,
-      envelope: CommandEnvelope<ImeProbeDumpPayload>,
-    ): ImeProbeDumpResponse => {
+    (_e, envelope: CommandEnvelope<ImeProbeDumpPayload>): ImeProbeDumpResponse => {
       const { meta, entries } = envelope.payload;
       logger.ime(
         'ime-probe',
@@ -1415,10 +1374,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_SET_CLASSIC,
-    async (
-      _e,
-      envelope: CommandEnvelope<{ enabled: boolean }>,
-    ) => {
+    async (_e, envelope: CommandEnvelope<{ enabled: boolean }>) => {
       const result = await setClassicIntegration(envelope.payload.enabled, getLaunchExePath());
       const status = await getExplorerIntegrationStatus();
       return { ok: result.ok, message: result.message, status };
@@ -1427,10 +1383,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.EXPLORER_INTEGRATION_SET_MODERN,
-    async (
-      _e,
-      envelope: CommandEnvelope<{ enabled: boolean }>,
-    ) => {
+    async (_e, envelope: CommandEnvelope<{ enabled: boolean }>) => {
       const result = await setModernIntegration(envelope.payload.enabled);
       const status = await getExplorerIntegrationStatus();
       return { ok: result.ok, message: result.message, status };
@@ -1446,10 +1399,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_OPEN_EXTERNAL,
-    async (
-      _e,
-      envelope: CommandEnvelope<OpenExternalPayload>,
-    ): Promise<void> => {
+    async (_e, envelope: CommandEnvelope<OpenExternalPayload>): Promise<void> => {
       const url = envelope.payload.url;
       // 安全:仅允许 http / https / mailto,拒绝 file:// 等本地协议
       if (!/^(https?|mailto):/i.test(url)) {
@@ -1465,10 +1415,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // 勘误第二轮工作记录)。Electron clipboard 模块没有权限层。
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_CLIPBOARD_READ_TEXT,
-    (
-      _e,
-      _envelope: CommandEnvelope<undefined>,
-    ): ClipboardReadTextResponse => {
+    (_e, _envelope: CommandEnvelope<undefined>): ClipboardReadTextResponse => {
       try {
         return { text: clipboard.readText() };
       } catch {
@@ -1479,10 +1426,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_CLIPBOARD_WRITE_TEXT,
-    (
-      _e,
-      envelope: CommandEnvelope<ClipboardWriteTextPayload>,
-    ): ClipboardWriteTextResponse => {
+    (_e, envelope: CommandEnvelope<ClipboardWriteTextPayload>): ClipboardWriteTextResponse => {
       try {
         clipboard.writeText(envelope.payload.text);
         return { ok: true };
@@ -1503,10 +1447,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.TEMPLATE_UPDATE,
-    (
-      _e,
-      envelope: CommandEnvelope<UpdateTemplatePayload>,
-    ): UpdateTemplateResponse => {
+    (_e, envelope: CommandEnvelope<UpdateTemplatePayload>): UpdateTemplateResponse => {
       const t = templatesManager.update(envelope.payload.id, envelope.payload.partial);
       return { template: t };
     },
@@ -1532,19 +1473,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // 文档 6.6.2 描述为 zip,未来加 archiver 包可平滑升级。
   handleCommand(
     COMMAND_CHANNELS.SETTINGS_EXPORT,
-    async (
-      _e,
-      _envelope: CommandEnvelope<undefined>,
-    ): Promise<ExportSettingsResponse> => {
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<ExportSettingsResponse> => {
       const fromWindow = BrowserWindow.fromWebContents(_e.sender);
       const owner = fromWindow ?? BrowserWindow.getFocusedWindow()!;
 
       // M1-F:先弹隐私警告 — 模板可能含 API key (env);用户三选一:
       // 取消 / 仅导出公开字段(env 清空) / 完整导出(含敏感凭据)
       const tmpls = deps.templatesManager.list();
-      const hasEnvKeys = tmpls.some(
-        (t) => t.env && Object.keys(t.env).length > 0,
-      );
+      const hasEnvKeys = tmpls.some((t) => t.env && Object.keys(t.env).length > 0);
       let includeSecrets = false;
       if (hasEnvKeys) {
         const askRes = await dialog.showMessageBox(owner, {
@@ -1565,11 +1501,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         includeSecrets = true;
       }
 
-      const suffix = hasEnvKeys
-        ? includeSecrets
-          ? '-with-secrets'
-          : '-public'
-        : '';
+      const suffix = hasEnvKeys ? (includeSecrets ? '-with-secrets' : '-public') : '';
       const result = await dialog.showSaveDialog(owner, {
         title: '导出 Ceteris 配置',
         defaultPath: `ceteris-config-${formatDateForFilename(new Date())}${suffix}.json`,
@@ -1639,25 +1571,22 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  handleCommand(
-    COMMAND_CHANNELS.DATA_PICK_BUNDLE,
-    async (e): Promise<DataBundleSummary | null> => {
-      const picked = await dialog.showOpenDialog(parentWindow(e), {
-        title: '选择 Ceteris 导出文件夹',
-        properties: ['openDirectory'],
-      });
-      const dir = picked.filePaths[0];
-      if (picked.canceled || !dir) return null;
-      const manifest = await readManifest(dir);
-      return {
-        dir,
-        hostname: manifest.hostname,
-        createdAt: manifest.createdAt,
-        tabs: manifest.tabs,
-        ...manifest.agents,
-      };
-    },
-  );
+  handleCommand(COMMAND_CHANNELS.DATA_PICK_BUNDLE, async (e): Promise<DataBundleSummary | null> => {
+    const picked = await dialog.showOpenDialog(parentWindow(e), {
+      title: '选择 Ceteris 导出文件夹',
+      properties: ['openDirectory'],
+    });
+    const dir = picked.filePaths[0];
+    if (picked.canceled || !dir) return null;
+    const manifest = await readManifest(dir);
+    return {
+      dir,
+      hostname: manifest.hostname,
+      createdAt: manifest.createdAt,
+      tabs: manifest.tabs,
+      ...manifest.agents,
+    };
+  });
 
   handleCommand(
     COMMAND_CHANNELS.DATA_IMPORT_BUNDLE,
@@ -1675,19 +1604,13 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SETTINGS_IMPORT,
-    async (
-      _e,
-      _envelope: CommandEnvelope<undefined>,
-    ): Promise<ImportSettingsResponse> => {
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<ImportSettingsResponse> => {
       const fromWindow = BrowserWindow.fromWebContents(_e.sender);
-      const result = await dialog.showOpenDialog(
-        fromWindow ?? BrowserWindow.getFocusedWindow()!,
-        {
-          title: '导入 Ceteris 配置',
-          properties: ['openFile'],
-          filters: [{ name: 'Ceteris Archive (JSON)', extensions: ['json'] }],
-        },
-      );
+      const result = await dialog.showOpenDialog(fromWindow ?? BrowserWindow.getFocusedWindow()!, {
+        title: '导入 Ceteris 配置',
+        properties: ['openFile'],
+        filters: [{ name: 'Ceteris Archive (JSON)', extensions: ['json'] }],
+      });
       if (result.canceled || result.filePaths.length === 0) {
         return { status: 'cancelled' };
       }
@@ -1738,31 +1661,25 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // 因此即使在远程窗口里调用也不会被转发出去。
   // ────────────────────────────────────────────────────────────────
 
-  handleCommand(
-    COMMAND_CHANNELS.LINK_GET_STATUS,
-    (): LinkStatusResponse => {
-      const lm = deps.linkManager;
-      if (!lm) {
-        return {
-          host: { listening: false, boundAddress: '', port: 0, lastError: '', clients: [] },
-          clients: [],
-        };
-      }
-      return { host: lm.getHostStatus(), clients: lm.getClientStatuses() };
-    },
-  );
+  handleCommand(COMMAND_CHANNELS.LINK_GET_STATUS, (): LinkStatusResponse => {
+    const lm = deps.linkManager;
+    if (!lm) {
+      return {
+        host: { listening: false, boundAddress: '', port: 0, lastError: '', clients: [] },
+        clients: [],
+      };
+    }
+    return { host: lm.getHostStatus(), clients: lm.getClientStatuses() };
+  });
 
-  handleCommand(
-    COMMAND_CHANNELS.LINK_REGENERATE_TOKEN,
-    (): LinkRegenerateTokenResponse => {
-      const token = generateLinkToken();
-      // 立即写进 settings。旧 token 从这一刻起失效:已建立的连接因为用的是
-      // 早先派生的会话密钥,不会立刻掉线,但它们重连时会被拒 —— 这正是
-      // "重新生成令牌"应有的语义(踢掉未来的访问,不粗暴打断当前会话)。
-      settingsManager.update({ link: { hostToken: token } });
-      return { token };
-    },
-  );
+  handleCommand(COMMAND_CHANNELS.LINK_REGENERATE_TOKEN, (): LinkRegenerateTokenResponse => {
+    const token = generateLinkToken();
+    // 立即写进 settings。旧 token 从这一刻起失效:已建立的连接因为用的是
+    // 早先派生的会话密钥,不会立刻掉线,但它们重连时会被拒 —— 这正是
+    // "重新生成令牌"应有的语义(踢掉未来的访问,不粗暴打断当前会话)。
+    settingsManager.update({ link: { hostToken: token } });
+    return { token };
+  });
 
   handleCommand(
     COMMAND_CHANNELS.LINK_CONNECT,
@@ -1947,10 +1864,7 @@ function validateArchive(input: unknown): asserts input is SettingsArchiveV1 {
  * - 不依赖 app.relaunch 在 dev 模式工作
  * - settings.appearance.theme 等"即改即生效"路径自然走通
  */
-async function applyArchiveInMemory(
-  deps: IpcLayerDeps,
-  archive: SettingsArchiveV1,
-): Promise<void> {
+async function applyArchiveInMemory(deps: IpcLayerDeps, archive: SettingsArchiveV1): Promise<void> {
   // M1-L:事务化 — 先 dry-run validate(都走各 Manager 的 validate),全部通过
   // 才正式 commit。否则中途 settings 已替换但 templates 失败,会出现一边新
   // 一边旧的"半应用"状态。
@@ -2041,25 +1955,19 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
   });
 
   sshProfileManager?.on('sshProfilesUpdated', (e: SshProfilesUpdatedPayload) => {
-    broadcastEvent<SshProfilesUpdatedPayload>(
-      EVENT_CHANNELS.SSH_PROFILES_UPDATED,
-      e,
-    );
+    broadcastEvent<SshProfilesUpdatedPayload>(EVENT_CHANNELS.SSH_PROFILES_UPDATED, e);
   });
 
   // 设置变化 → 广播 evt:settings:changed
-  settingsManager.on(
-    'settingsChanged',
-    (e: { settings: Settings; changedKeys: string[] }) => {
-      broadcastEvent<SettingsChangedPayload>(EVENT_CHANNELS.SETTINGS_CHANGED, {
-        settings: e.settings,
-        changedKeys: e.changedKeys,
-      });
-      if (e.changedKeys.includes('appearance.theme')) {
-        void syncThemeToRemoteWindows(e.settings.appearance.theme);
-      }
-    },
-  );
+  settingsManager.on('settingsChanged', (e: { settings: Settings; changedKeys: string[] }) => {
+    broadcastEvent<SettingsChangedPayload>(EVENT_CHANNELS.SETTINGS_CHANGED, {
+      settings: e.settings,
+      changedKeys: e.changedKeys,
+    });
+    if (e.changedKeys.includes('appearance.theme')) {
+      void syncThemeToRemoteWindows(e.settings.appearance.theme);
+    }
+  });
 
   // Session 事件
   sessionManager.on('sessionCreated', (session) => {
@@ -2074,10 +1982,7 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
   // CP-3: state-changed 涵盖 active/idle 转移、currentCwd 更新、exited 状态。
   // SessionExitedPayload 仍单独发,因为它带 exitCode 等额外信息。
   sessionManager.on('sessionStateChanged', (e: SessionStateChangedPayload) => {
-    broadcastEvent<SessionStateChangedPayload>(
-      EVENT_CHANNELS.SESSION_STATE_CHANGED,
-      e,
-    );
+    broadcastEvent<SessionStateChangedPayload>(EVENT_CHANNELS.SESSION_STATE_CHANGED, e);
     // active/idle 转移可能影响 trayManager 的图标 (V1.1),广播 app state
     broadcastAppState(deps);
   });
@@ -2090,10 +1995,7 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
   templatesManager.on(
     'templatesUpdated',
     (e: { templates: Template[]; defaultTemplateId: string }) => {
-      broadcastEvent<TemplateListUpdatedPayload>(
-        EVENT_CHANNELS.TEMPLATES_UPDATED,
-        e,
-      );
+      broadcastEvent<TemplateListUpdatedPayload>(EVENT_CHANNELS.TEMPLATES_UPDATED, e);
     },
   );
 
@@ -2171,11 +2073,7 @@ interface IpcError extends Error {
   details?: Record<string, unknown>;
 }
 
-function makeIpcError(
-  code: string,
-  message: string,
-  details?: Record<string, unknown>,
-): IpcError {
+function makeIpcError(code: string, message: string, details?: Record<string, unknown>): IpcError {
   const err = new Error(`[ipc] ${code}: ${message}`) as IpcError;
   err.code = code;
   if (details) err.details = details;

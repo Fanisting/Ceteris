@@ -302,6 +302,7 @@ Ceteris stands on the shoulders of:
 - [React](https://react.dev/) — UI framework
 - [Material Symbols](https://fonts.google.com/icons): UI icons (Apache 2.0)
 - [Rose Pine](https://rosepinetheme.com/) — color palette inspiration
+- [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3): the Legado MD3 themes use its Material 3 colour schemes
 - [LXGW WenKai (霞鹜文楷)](https://github.com/lxgw/LxgwWenKai) — UI font
 
 And inspiration from:

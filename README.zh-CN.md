@@ -300,6 +300,7 @@ Ceteris 站在这些项目的肩膀上:
 - [React](https://react.dev/) — UI 框架
 - [Material Symbols](https://fonts.google.com/icons):UI 图标(Apache 2.0)
 - [Rose Pine](https://rosepinetheme.com/) — 配色灵感
+- [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3):Legado MD3 系列主题使用它的 Material 3 配色方案
 - [霞鹜文楷 (LXGW WenKai)](https://github.com/lxgw/LxgwWenKai) — UI 中文字体
 
 灵感来源:

@@ -254,6 +254,9 @@ css.push(`/*
  * @purpose Legado MD3 主题系列:配色取自 HapeLee/legado-with-MD3(阅读 3.0 的 Material 3 重制版)
  *   app/src/main/java/io/legado/app/ui/theme/colorScheme/*ColorScheme.kt,11 套配色各有浅色和深色。
  *
+ * @致谢:Legado MD3 主题使用 legado-with-MD3 的配色方案,https://github.com/HapeLee/legado-with-MD3
+ *   (GPL-3.0,Legado 的分支)。这里只取色值,README 的致谢一节也有记载。
+ *
  * @关键设计:
  * - 由生成脚本从 Kotlin 源文件写出,色值不手调。MD3 角色到 Ceteris token 的对应关系按 Legado
  *   自己给组件上色的方式(ThemeColorSchemeOverride.kt、ThemeComponents.kt、ui/widget/components):
@@ -305,6 +308,9 @@ const ts = [];
 ts.push(`/**
  * @file src/shared/legado-themes.ts
  * @purpose Legado MD3 主题系列的清单、MD3 原始色板和终端配色。
+ *
+ * @致谢:Legado MD3 主题使用 legado-with-MD3 的配色方案,https://github.com/HapeLee/legado-with-MD3
+ *   (GPL-3.0,Legado 的分支)。这里只取色值,README 的致谢一节也有记载。
  *
  * @关键设计:
  * - 色板逐字取自 HapeLee/legado-with-MD3 的 ui/theme/colorScheme/*ColorScheme.kt(lightScheme /

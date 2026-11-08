@@ -2,6 +2,9 @@
  * @file src/shared/legado-themes.ts
  * @purpose Legado MD3 主题系列的清单、MD3 原始色板和终端配色。
  *
+ * @致谢:Legado MD3 主题使用 legado-with-MD3 的配色方案,https://github.com/HapeLee/legado-with-MD3
+ *   (GPL-3.0,Legado 的分支)。这里只取色值,README 的致谢一节也有记载。
+ *
  * @关键设计:
  * - 色板逐字取自 HapeLee/legado-with-MD3 的 ui/theme/colorScheme/*ColorScheme.kt(lightScheme /
  *   darkScheme),名字取自它的 themes_item 数组(英文 + 简体中文)。

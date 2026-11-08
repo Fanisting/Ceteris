@@ -4,7 +4,7 @@
  *   filter chip 选具体变体。
  *
  * @关键设计:
- * - 珠光(7 款)和 Beamer(6 款)在菜单里各占一行;选中系列后,下方出现该系列的变体 chip。
+ * - 珠光(7 款)、Beamer(6 款)和 Legado MD3(22 款)在菜单里各占一行;选中系列后,下方出现该系列的变体 chip。
  *   单个主题直接在菜单里选。
  * - 菜单里的名字一律英文,包括明暗标记,不随界面语言切换。
  * - 色块是一个带 data-theme 属性的 span,直接读该主题自己的 CSS 变量,所以永远与主题
@@ -29,6 +29,7 @@ import {
   type TemplateValues,
 } from '@shared/custom-themes';
 import { COMMAND_CHANNELS } from '@shared/protocol';
+import { LEGADO_THEMES } from '@shared/legado-themes';
 import { Check, ExpandMore } from './material-symbols';
 import { useTranslation } from './LanguageProvider';
 import { useCustomThemes } from '../custom-themes';
@@ -91,6 +92,12 @@ const BEAMER: ThemeFamily = {
   options: BEAMER_THEMES.map((t) => ({ id: t.id, label: t.label, dark: t.tone === '深色' })),
 };
 
+const LEGADO: ThemeFamily = {
+  key: 'legado-md3',
+  label: 'Legado MD3',
+  options: LEGADO_THEMES.map((t) => ({ id: t.id, label: t.label, dark: t.dark })),
+};
+
 /** 用户主题系列;没有主题文件时不出现在菜单里。 */
 function customFamily(themes: CustomTheme[]): ThemeFamily {
   return {
@@ -101,7 +108,8 @@ function customFamily(themes: CustomTheme[]): ThemeFamily {
 }
 
 function buildEntries(custom: ThemeFamily): MenuEntry[] {
-  const families = custom.options.length > 0 ? [PEARL, BEAMER, custom] : [PEARL, BEAMER];
+  const families =
+    custom.options.length > 0 ? [PEARL, BEAMER, LEGADO, custom] : [PEARL, BEAMER, LEGADO];
   return [
     ...SINGLE_THEMES.map((option): MenuEntry => ({ kind: 'theme', option })),
     ...families.map((family): MenuEntry => ({ kind: 'family', family })),

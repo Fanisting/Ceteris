@@ -16,6 +16,7 @@ import type { TagColors } from './path-tags';
 
 import type { BeamerThemeId } from './beamer-themes';
 import type { CustomThemeId } from './custom-themes';
+import type { LegadoThemeId } from './legado-themes';
 
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
@@ -144,7 +145,9 @@ export type BuiltinThemeId =
   // 梅子,配色见 src/renderer/styles/meizi-theme.css
   | 'meizi'
   // 取自 LaTeX Beamer 模板配色,清单见 beamer-themes.ts
-  | BeamerThemeId;
+  | BeamerThemeId
+  // 取自 legado-with-MD3 的 MD3 配色,清单见 legado-themes.ts
+  | LegadoThemeId;
 
 /**
  * 窗口外观风格 (M1-A 引入,Milestone 1)。

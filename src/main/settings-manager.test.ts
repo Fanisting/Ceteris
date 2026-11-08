@@ -17,6 +17,7 @@ import {
   stripUnknownLegacyFields,
 } from './settings-manager';
 import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
+import { LEGADO_THEME_IDS } from '@shared/legado-themes';
 import type { Settings } from '@shared/types';
 import type { JsonStore } from './persistence';
 
@@ -58,12 +59,10 @@ describe('deepMerge', () => {
   });
 
   it('嵌套对象递归合并', () => {
-    expect(
-      deepMerge(
-        { x: { p: 1, q: 2 }, y: 'untouched' },
-        { x: { p: 99 } },
-      ),
-    ).toEqual({ x: { p: 99, q: 2 }, y: 'untouched' });
+    expect(deepMerge({ x: { p: 1, q: 2 }, y: 'untouched' }, { x: { p: 99 } })).toEqual({
+      x: { p: 99, q: 2 },
+      y: 'untouched',
+    });
   });
 
   it('数组整体替换不合并', () => {
@@ -104,11 +103,7 @@ describe('diffKeys', () => {
   });
 
   it('多层 + 多个 diff', () => {
-    const result = diffKeys(
-      '',
-      { a: { p: 1 }, b: 2, c: 3 },
-      { a: { p: 99 }, b: 2, c: 999 },
-    );
+    const result = diffKeys('', { a: { p: 1 }, b: 2, c: 3 }, { a: { p: 99 }, b: 2, c: 999 });
     expect(result.sort()).toEqual(['a.p', 'c'].sort());
   });
 
@@ -184,9 +179,7 @@ describe('validateSettings', () => {
 
   it('systemIntegration.explorerOpenIn 非法 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
-    (
-      bad.systemIntegration as { explorerOpenIn: string }
-    ).explorerOpenIn = 'detached';
+    (bad.systemIntegration as { explorerOpenIn: string }).explorerOpenIn = 'detached';
     expect(() => validateSettings(bad)).toThrowError(/explorerOpenIn/);
   });
 });
@@ -264,9 +257,9 @@ describe('SettingsManager — update', () => {
     const { mgr, store } = makeManager();
     await mgr.initialize();
 
-    expect(() =>
-      mgr.update({ appearance: { theme: 'nonexistent' as never } }),
-    ).toThrowError(/InvalidSettings/);
+    expect(() => mgr.update({ appearance: { theme: 'nonexistent' as never } })).toThrowError(
+      /InvalidSettings/,
+    );
     // 仍是原值
     expect(mgr.get().appearance.theme).toBe('light-pink');
     // 没写盘
@@ -284,6 +277,8 @@ describe('SettingsManager — update', () => {
     'ubuntu',
     'windows-terminal',
     ...BEAMER_THEME_IDS,
+    // 一个就够证明 Legado 系列登记进了 VALID_THEMES
+    LEGADO_THEME_IDS[0],
   ] as const)('合法主题 %s 通过校验', async (theme) => {
     const { mgr } = makeManager();
     await mgr.initialize();

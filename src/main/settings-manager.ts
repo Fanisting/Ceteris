@@ -21,6 +21,7 @@
 import { EventEmitter } from 'node:events';
 import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import { isCustomThemeId } from '@shared/custom-themes';
+import { LEGADO_THEME_IDS } from '@shared/legado-themes';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
@@ -167,6 +168,7 @@ const VALID_THEMES: BuiltinThemeId[] = [
   // 梅子
   'meizi',
   ...BEAMER_THEME_IDS,
+  ...LEGADO_THEME_IDS,
 ];
 
 /**

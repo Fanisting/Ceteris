@@ -1600,11 +1600,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.AGENT_UPGRADE,
     async (_e, envelope: CommandEnvelope<UpgradeAgentPayload>): Promise<CreateSessionResponse> => {
       const { templateId, pathId, cols, rows } = envelope.payload;
-      // 升级命令只从固定表取,renderer 传不进任意命令
-      const spec = findAgentSpec(templateId);
-      if (!spec) throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
+      // 升级命令由 main 按安装位置推出,renderer 传不进任意命令
+      if (!findAgentSpec(templateId)) {
+        throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
+      }
       if (pathRefFromId(pathId).kind === 'ssh') {
         throw makeIpcError('InvalidPayload', `agent upgrade runs on local paths only, got pathId="${pathId}"`);
+      }
+      const plan = await getAgentChecker().upgradeFor(templateId);
+      if (!plan) {
+        throw makeIpcError(
+          'UpgradeUnknown',
+          `cannot tell how templateId="${templateId}" was installed. ` +
+            `Possible causes: (1) it is not on PATH, (2) it was installed by a method Ceteris does not recognise. ` +
+            `Update it the way it was installed.`,
+        );
       }
       const name = templatesManager.resolve(templateId).name;
       const oldTreeJson = JSON.stringify(pathManager.getTree());
@@ -1615,7 +1625,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         cols,
         rows,
         // 升级成功后终端自动关闭;失败时留着显示报错
-        commandOverride: { name: `${name} update`, ...spec.upgrade, closeOnSuccess: true },
+        commandOverride: {
+          name: `${name} update`,
+          command: plan.command,
+          args: plan.args,
+          closeOnSuccess: true,
+        },
       });
       getAgentChecker().invalidate(templateId);
       // 升级结束再清一次缓存:升级期间打开的新建页可能缓存了旧版本号。

@@ -3,9 +3,20 @@ import {
   AgentVersionChecker,
   agentStatus,
   compareVersions,
+  findAgentSpec,
+  formatUpgradeCommand,
   parseVersion,
+  planUpgrade,
   readRegistryVersion,
+  type FileProbe,
 } from './agent-versions';
+
+const noFiles: FileProbe = { exists: () => false, readText: () => null };
+
+function plan(templateId: string, exe: string, real = exe, probe: FileProbe = noFiles): string | null {
+  const p = planUpgrade(findAgentSpec(templateId)!, exe, real, probe);
+  return p ? `${p.method}: ${formatUpgradeCommand(p)}` : null;
+}
 
 describe('agent-versions', () => {
   it('reads the version out of each CLI style of --version output', () => {
@@ -34,24 +45,75 @@ describe('agent-versions', () => {
     expect(readRegistryVersion('npm', null)).toBeNull();
   });
 
-  it('caches results and re-runs --version for an agent after invalidate', async () => {
+  it('updates with the package manager whose folder the running copy lives in', () => {
+    // Homebrew: symlink in bin resolves into Cellar or Caskroom
+    expect(plan('gemini-cli', '/opt/homebrew/bin/gemini', '/opt/homebrew/Cellar/gemini-cli/0.9.0/bin/gemini'))
+      .toBe('brew: brew upgrade gemini-cli');
+    expect(plan('codex', '/opt/homebrew/bin/codex', '/opt/homebrew/Caskroom/codex/0.46.0/codex'))
+      .toBe('brew: brew upgrade --cask codex');
+    // winget: Links\codex.exe resolves into Packages\<Id>_<Source>_<hash>
+    expect(plan('codex', 'C:\\WinGet\\Links\\codex.exe',
+      'C:\\Users\\u\\AppData\\Local\\Microsoft\\WinGet\\Packages\\OpenAI.Codex_Microsoft.Winget.Source_8wekyb3d8bbwe\\codex.exe'))
+      .toBe('winget: winget upgrade --id OpenAI.Codex --exact');
+    // scoop: the shim is not a link; the .shim file beside it names the app
+    const shimProbe: FileProbe = {
+      exists: () => false,
+      readText: (p) => (p.endsWith('codex.shim') ? 'path = "C:\\Users\\u\\scoop\\apps\\codex\\current\\codex.exe"' : null),
+    };
+    expect(plan('codex', 'C:\\Users\\u\\scoop\\shims\\codex.exe', undefined, shimProbe))
+      .toBe('scoop: scoop update codex');
+    // Python tools
+    expect(plan('aider', '/home/u/.local/bin/aider', '/home/u/.local/share/pipx/venvs/aider-chat/bin/aider'))
+      .toBe('pipx: pipx upgrade aider-chat');
+    expect(plan('aider', '/home/u/.local/bin/aider', '/home/u/.local/share/uv/tools/aider-chat/bin/aider'))
+      .toBe('uv: uv tool upgrade aider-chat');
+    // JS package managers
+    expect(plan('gemini-cli', 'C:\\Users\\u\\.bun\\bin\\gemini.exe'))
+      .toBe('bun: bun add -g @google/gemini-cli@latest');
+    expect(plan('codex', 'C:\\Users\\u\\AppData\\Local\\pnpm\\codex.cmd'))
+      .toBe('pnpm: pnpm add -g @openai/codex@latest');
+  });
+
+  it('recognises npm on both Windows and POSIX prefix layouts', () => {
+    const winExe = 'C:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd';
+    const winProbe: FileProbe = {
+      exists: (p) => p === 'C:/Users/u/AppData/Roaming/npm/node_modules/@openai/codex/package.json',
+      readText: () => null,
+    };
+    expect(plan('codex', winExe, winExe, winProbe)).toBe('npm: npm install -g @openai/codex@latest');
+    expect(plan('codex', '/usr/local/bin/codex', '/usr/local/lib/node_modules/@openai/codex/bin/codex.js'))
+      .toBe('npm: npm install -g @openai/codex@latest');
+  });
+
+  it('falls back to the agent\'s own update command, and offers nothing when there is none', () => {
+    expect(plan('claude-code', 'C:\\Users\\u\\.local\\bin\\claude.exe')).toBe('self: claude update');
+    expect(plan('codex', 'C:\\tools\\codex.exe')).toBeNull();
+  });
+
+  it('checks the first copy on PATH, reports the others, and re-checks after invalidate', async () => {
     const runVersion = vi.fn(async () => '1.0.0');
     const checker = new AgentVersionChecker({
-      resolveExecutable: (cmd) => (cmd === 'claude' ? '/bin/claude' : null),
+      findOnPath: (cmd) => (cmd === 'gemini' ? ['C:\\u\\.bun\\bin\\gemini.exe', 'C:\\u\\npm\\gemini.cmd'] : []),
+      realPath: (p) => p,
+      probe: noFiles,
       runVersion,
       fetchJson: async () => ({ version: '1.1.0' }),
     });
     const first = await checker.list();
-    expect(first.find((a) => a.templateId === 'claude-code')).toMatchObject({
+    expect(first.find((a) => a.templateId === 'gemini-cli')).toMatchObject({
       status: 'outdated',
       installed: '1.0.0',
       latest: '1.1.0',
-      upgradeCommand: 'claude update',
+      installMethod: 'bun',
+      upgradeCommand: 'bun add -g @google/gemini-cli@latest',
+      path: 'C:\\u\\.bun\\bin\\gemini.exe',
+      otherCopies: ['C:\\u\\npm\\gemini.cmd'],
     });
     expect(first.find((a) => a.templateId === 'codex')?.status).toBe('missing');
+    expect(await checker.upgradeFor('codex')).toBeNull();
     await checker.list();
     expect(runVersion).toHaveBeenCalledTimes(1);
-    checker.invalidate('claude-code');
+    checker.invalidate('gemini-cli');
     await checker.list();
     expect(runVersion).toHaveBeenCalledTimes(2);
   });

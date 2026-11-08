@@ -670,21 +670,47 @@ function AgentVersionDot({
 }): JSX.Element {
   const { tx } = useTranslation();
   const cmd = info.upgradeCommand ?? '';
-  const runLine = tx(`点击运行:${cmd}`, `Click to run: ${cmd}`);
-  let title: string;
+  const lines: string[] = [];
   switch (info.status) {
     case 'current':
-      title = tx(`${info.installed ?? ''} 已是最新`, `${info.installed ?? ''} is up to date`);
+      lines.push(tx(`${info.installed ?? ''} 已是最新`, `${info.installed ?? ''} is up to date`));
       break;
     case 'outdated':
-      title = `${tx('有新版本', 'Update available')}: ${info.installed} → ${info.latest}\n${runLine}`;
+      lines.push(`${tx('有新版本', 'Update available')}: ${info.installed} → ${info.latest}`);
       break;
     case 'installed':
-      title = `${tx('已安装', 'Installed')} ${info.installed ?? ''}\n${tx('查不到最新版本', 'Latest version unknown')}\n${runLine}`;
+      lines.push(
+        `${tx('已安装', 'Installed')} ${info.installed ?? ''}`,
+        tx('查不到最新版本', 'Latest version unknown'),
+      );
       break;
     default:
-      title = tx('PATH 上没找到这个命令', 'Not found on PATH');
+      lines.push(tx('PATH 上没找到这个命令', 'Not found on PATH'));
   }
+  if (info.path) {
+    const method = info.installMethod && info.installMethod !== 'self' ? info.installMethod : null;
+    lines.push(method ? tx(`用 ${method} 安装:${info.path}`, `Installed with ${method}: ${info.path}`) : info.path);
+  }
+  for (const other of info.otherCopies ?? []) {
+    lines.push(tx(`PATH 上另有一份 (不会运行):${other}`, `Another copy on PATH (not used): ${other}`));
+  }
+  if (info.status === 'outdated' || info.status === 'installed') {
+    if (cmd) {
+      lines.push(tx(`点击运行:${cmd}`, `Click to run: ${cmd}`));
+      // 系统包管理器的版本常比 npm / PyPI 晚几天,升级后点可能仍是黄色
+      if (info.status === 'outdated' && ['brew', 'winget', 'scoop'].includes(info.installMethod ?? '')) {
+        lines.push(
+          tx(
+            `${info.installMethod} 可能还没收录 ${info.latest}`,
+            `${info.installMethod} may not have ${info.latest} yet`,
+          ),
+        );
+      }
+    } else {
+      lines.push(tx('认不出安装方式,请用安装时的方式升级', "Can't tell how it was installed; update it the way you installed it"));
+    }
+  }
+  const title = lines.join('\n');
   const clickable =
     (info.status === 'outdated' || info.status === 'installed') && !!cmd && !!onUpgrade;
   if (!clickable) {

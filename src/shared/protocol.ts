@@ -859,9 +859,26 @@ export interface AgentVersionInfo {
   status: AgentVersionStatus;
   installed?: string;
   latest?: string;
-  /** 升级命令的可读形式,例如 "claude update",用于 tooltip */
+  /** 升级命令的可读形式,例如 "bun add -g @google/gemini-cli@latest";缺省表示认不出安装方式,不给升级按钮 */
   upgradeCommand?: string;
+  /** 从安装位置推出的安装方式;'self' 表示认不出,用 agent 自带的升级命令 */
+  installMethod?: AgentInstallMethod;
+  /** PATH 上真正会运行的那份 */
+  path?: string;
+  /** PATH 上其余几份 (不会运行),用于提示重复安装 */
+  otherCopies?: string[];
 }
+
+export type AgentInstallMethod =
+  | 'npm'
+  | 'pnpm'
+  | 'bun'
+  | 'brew'
+  | 'winget'
+  | 'scoop'
+  | 'pipx'
+  | 'uv'
+  | 'self';
 
 export interface ListAgentVersionsPayload {
   /** true 时跳过缓存重新检查 */

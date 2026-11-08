@@ -209,7 +209,7 @@
   background-color: var(--color-accent-special, #f0f);
 }
 
-/* 用户主题(ADR-022):菜单下方的文件操作,MD3 text button */
+/* 用户主题(ADR-026):菜单下方的文件操作,MD3 text button */
 .theme-custom-actions {
   display: flex;
   flex-wrap: wrap;

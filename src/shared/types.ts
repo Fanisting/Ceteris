@@ -87,7 +87,7 @@ export type AppLifecycleState =
 export type PostExitAction = 'close_session' | 'keep_shell' | 'hold';
 
 /**
- * 主题 ID (软件定义书 5.1.9):内置主题,或用户主题文件 `custom:<slug>`(ADR-022)。
+ * 主题 ID (软件定义书 5.1.9):内置主题,或用户主题文件 `custom:<slug>`(ADR-026)。
  */
 export type ThemeId = BuiltinThemeId | CustomThemeId;
 

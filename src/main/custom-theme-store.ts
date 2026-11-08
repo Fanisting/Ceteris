@@ -2,7 +2,7 @@
  * @file src/main/custom-theme-store.ts
  * @purpose Reads the user's theme files from <data folder>/themes, watches the folder so an
  *   edit shows up in every window as soon as the file is saved, and creates new theme files
- *   from the standard template (ADR-022).
+ *   from the standard template (ADR-026).
  *
  * @关键设计:
  * - The folder and its _template.css are created on first use, so a user who opens the
@@ -14,7 +14,7 @@
  * - Themes are local to this machine. Under Ceteris Link the commands are local only,
  *   and the theme of a remote window already follows this machine (link-theme.ts).
  *
- * @对应文档章节: 软件定义书.md 5.1.9 (ADR-022)
+ * @对应文档章节: 软件定义书.md 5.1.9 (ADR-026)
  *
  * @不要在这里做的事:
  * - No parsing rules here; they belong to @shared/custom-themes so the tests cover them.

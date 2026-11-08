@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/custom-themes.ts
- * @purpose Keeps this window's copy of the user theme list (ADR-022): loads it once, follows
+ * @purpose Keeps this window's copy of the user theme list (ADR-026): loads it once, follows
  *   evt:theme:custom-updated, and injects every theme's scoped CSS into one <style> element.
  *
  * @关键设计:

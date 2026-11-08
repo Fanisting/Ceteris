@@ -275,7 +275,7 @@ function bootstrap(): void {
   );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
 
-  // ADR-022:用户主题文件夹,文件保存后立刻推给所有窗口
+  // ADR-026:用户主题文件夹,文件保存后立刻推给所有窗口
   const customThemes = new CustomThemeStore(join(dataDir, 'themes'), broadcastCustomThemes);
 
   // ADR-018:GitHub Releases 更新检查。只提示 + 给本机系统对应的直链,不下载不安装。

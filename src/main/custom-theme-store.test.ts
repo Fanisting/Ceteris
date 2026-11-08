@@ -1,6 +1,6 @@
 /**
  * @file custom-theme-store.test.ts
- * @purpose The themes folder (ADR-022): template on first use, unique names on create,
+ * @purpose The themes folder (ADR-026): template on first use, unique names on create,
  *   and _ files left out of the list. Uses a temp folder, never the real data folder.
  */
 import { afterEach, describe, expect, it } from 'vitest';

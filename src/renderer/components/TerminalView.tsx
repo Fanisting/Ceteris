@@ -790,7 +790,7 @@ const XTERM_THEMES: Record<BuiltinThemeId, ITheme> = {
 export function getXtermTheme(themeId: ThemeId | undefined): ITheme {
   const id = themeId ? resolveThemeId(themeId) : undefined;
   if (id && isCustomThemeId(id)) {
-    // 用户主题(ADR-022):配色由 @shared/custom-themes 从主题文件解析好;浅色补 256 色表
+    // 用户主题(ADR-026):配色由 @shared/custom-themes 从主题文件解析好;浅色补 256 色表
     const custom = getCustomThemes().find((t) => t.id === id);
     if (custom) {
       return custom.dark ? custom.terminal : { ...custom.terminal, extendedAnsi: LIGHT_EXTENDED_ANSI };

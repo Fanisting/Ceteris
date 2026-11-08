@@ -18,7 +18,7 @@
  * - Lives in shared, not main or renderer, so settings validation, the main process store and
  *   the renderer all agree on ids, and vitest can cover it.
  *
- * @对应文档章节: 软件定义书.md 5.1.9 (ADR-022)
+ * @对应文档章节: 软件定义书.md 5.1.9 (ADR-026)
  *
  * @不要在这里做的事:
  * - No file system access. Reading and watching the folder is src/main/custom-theme-store.ts.

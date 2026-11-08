@@ -232,7 +232,7 @@ export interface IpcLayerDeps {
    * 返回 idle,cmd:update:check-now 抛 UpdateCheckUnavailable。
    */
   updateChecker?: UpdateChecker;
-  /** 用户主题文件夹(ADR-022)。可选:单测不带它,此时列表为空,其余主题命令抛错 */
+  /** 用户主题文件夹(ADR-026)。可选:单测不带它,此时列表为空,其余主题命令抛错 */
   customThemes?: CustomThemeStore;
 }
 
@@ -367,7 +367,7 @@ export function broadcastUpdateStatus(status: UpdateStatus): void {
 }
 
 /**
- * 把新的用户主题列表推给本机所有窗口(ADR-022)。
+ * 把新的用户主题列表推给本机所有窗口(ADR-026)。
  *
  * 不走 broadcastEvent:那条会跳过远程窗口(它们的数据来自 Host),而主题跟随本机,
  * 远程窗口也要用本机的主题文件。也不发给虚拟窗口,对端用它自己的主题。
@@ -1478,7 +1478,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  // ADR-022:用户主题文件。打开文件用系统默认程序;.css 没有关联程序时
+  // ADR-026:用户主题文件。打开文件用系统默认程序;.css 没有关联程序时
   // shell.openPath 返回错误文本,此时退而在资源管理器里选中该文件。
   const requireThemes = (): CustomThemeStore => {
     if (!deps.customThemes) {

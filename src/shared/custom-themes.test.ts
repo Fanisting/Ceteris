@@ -1,6 +1,6 @@
 /**
  * @file custom-themes.test.ts
- * @purpose User theme files (ADR-022): file name to id, parsing, fallbacks and the template.
+ * @purpose User theme files (ADR-026): file name to id, parsing, fallbacks and the template.
  */
 import { describe, expect, it } from 'vitest';
 import {

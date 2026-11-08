@@ -43,6 +43,6 @@ if (!rootEl) {
   );
 }
 
-// 用户主题(ADR-022):在首次渲染前开始拉取,样式元素追加在上面所有样式表之后
+// 用户主题(ADR-026):在首次渲染前开始拉取,样式元素追加在上面所有样式表之后
 initCustomThemes();
 createRoot(rootEl).render(<App />);

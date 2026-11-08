@@ -152,7 +152,7 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
   const state = useAppState();
   const dispatch = useAppDispatch();
 
-  // 用户主题文件被删或改名时回退到默认主题 (ADR-022);订阅列表让文件变化时重算
+  // 用户主题文件被删或改名时回退到默认主题 (ADR-026);订阅列表让文件变化时重算
   useCustomThemes();
   const currentTheme = resolveThemeId(state.settings.appearance?.theme ?? 'light-pink');
   const windowStyle = state.settings.appearance?.windowStyle ?? 'windows';

@@ -130,6 +130,12 @@ export const COMMAND_CHANNELS = {
   TEMPLATE_DELETE: 'cmd:template:delete',
   TEMPLATE_SET_DEFAULT: 'cmd:template:set-default',
 
+  // Agent CLI 版本 (新建页的状态点)
+  /** 查本机各 agent CLI 的已装版本和最新版本 */
+  AGENT_LIST_VERSIONS: 'cmd:agent:list-versions',
+  /** 在新终端里跑某个 agent 的升级命令 */
+  AGENT_UPGRADE: 'cmd:agent:upgrade',
+
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
   SYSTEM_OPEN_DATA_DIR: 'cmd:system:open-data-dir',
@@ -835,6 +841,43 @@ export interface ShellListItem {
 
 export interface ListShellsResponse {
   shells: ShellListItem[];
+}
+
+/**
+ * 新建页 agent 按钮上的状态点。
+ *
+ * - missing:PATH 上找不到该命令
+ * - current:已装版本不低于 registry 最新版
+ * - outdated:registry 有更新版本
+ * - installed:已装,但查不到最新版 (离线 / 无 registry / 版本号解析失败)
+ */
+export type AgentVersionStatus = 'missing' | 'current' | 'outdated' | 'installed';
+
+export interface AgentVersionInfo {
+  /** 对应的内置模板 id (claude-code / codex / ...) */
+  templateId: string;
+  status: AgentVersionStatus;
+  installed?: string;
+  latest?: string;
+  /** 升级命令的可读形式,例如 "claude update",用于 tooltip */
+  upgradeCommand?: string;
+}
+
+export interface ListAgentVersionsPayload {
+  /** true 时跳过缓存重新检查 */
+  force?: boolean;
+}
+
+export interface ListAgentVersionsResponse {
+  agents: AgentVersionInfo[];
+}
+
+export interface UpgradeAgentPayload {
+  templateId: string;
+  /** 升级终端开在哪个本地路径下 */
+  pathId: string;
+  cols: number;
+  rows: number;
 }
 
 export interface GetAutoStartResponse {

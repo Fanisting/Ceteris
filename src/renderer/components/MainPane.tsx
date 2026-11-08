@@ -29,8 +29,11 @@ import {
 } from 'react';
 import {
   COMMAND_CHANNELS,
+  type AgentVersionInfo,
   type CreateSessionResponse,
+  type ListAgentVersionsResponse,
   type ListShellsResponse,
+  type UpgradeAgentPayload,
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
@@ -426,6 +429,51 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
     };
   }, [isSshPath]);
 
+  // Agent 状态点只对本机路径有意义:SSH / WSL 里的 agent 是另一套安装。
+  const showAgentDots = !isSshPath && !isWslPath;
+  const [agentVersions, setAgentVersions] = useState<Map<string, AgentVersionInfo>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    if (!showAgentDots) return;
+    let cancelled = false;
+    window.api
+      .invoke<unknown, ListAgentVersionsResponse>(COMMAND_CHANNELS.AGENT_LIST_VERSIONS, {})
+      .then((res) => {
+        if (!cancelled) setAgentVersions(new Map(res.agents.map((a) => [a.templateId, a])));
+      })
+      .catch((err) => {
+        // 查不到就不显示点,按钮照常可用
+        console.warn('[EmptyPathState] list-agent-versions failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAgentDots]);
+
+  const handleUpgrade = async (templateId: string): Promise<void> => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const dims = state.lastTerminalDims;
+      const res = await window.api.invoke<UpgradeAgentPayload, CreateSessionResponse>(
+        COMMAND_CHANNELS.AGENT_UPGRADE,
+        { templateId, pathId, cols: dims.cols, rows: dims.rows },
+      );
+      dispatch({ type: 'view/select-session', sessionId: res.session.id });
+      focusTerminalDom();
+    } catch (err) {
+      console.error('[MainPane] agent upgrade failed', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.push({
+        kind: 'error',
+        message: tx(`启动升级失败:${msg}`, `Failed to start the update: ${msg}`),
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleCreate = async (
     templateId: string,
     shellId?: string,
@@ -466,8 +514,22 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   };
 
   const templates = state.templates.filter((t) => !t.hidden);
+  const shellTemplates = templates.filter((t) => SHELL_TEMPLATE_IDS.has(t.id));
+  const agentTemplates = templates.filter((t) => !SHELL_TEMPLATE_IDS.has(t.id));
   const visibleShells = shells ? filterShellsForWslPath(shells, wslDistroName) : null;
   const wslShellId = isWslPath ? visibleShells?.[0]?.id : undefined;
+  // WSL 路径要等 WSL shell 检测出来,模板才有地方跑
+  const canLaunchTemplates = isSshPath || !isWslPath || !!wslShellId;
+  const renderTemplate = (t: Template): JSX.Element => (
+    <TemplateLaunchButton
+      key={t.id}
+      template={t}
+      creating={creating}
+      onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
+      version={showAgentDots ? agentVersions.get(t.id) : undefined}
+      onUpgrade={() => void handleUpgrade(t.id)}
+    />
+  );
 
   return (
     <>
@@ -507,15 +569,17 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
                 </span>
                 <span className="template-label">tmux</span>
               </button>
+              {shellTemplates.map(renderTemplate)}
             </div>
           </div>
         )}
 
-        {!isSshPath && visibleShells && visibleShells.length > 0 && (
+        {!isSshPath &&
+          ((visibleShells?.length ?? 0) > 0 || (canLaunchTemplates && shellTemplates.length > 0)) && (
           <div className="empty-section">
-            <div className="empty-section-title">{tx('检测到的 Shell', 'Detected shells')}</div>
+            <div className="empty-section-title">Shell</div>
             <div className="empty-button-grid">
-              {visibleShells.map((s) => (
+              {(visibleShells ?? []).map((s) => (
                 <button
                   key={s.id}
                   type="button"
@@ -530,41 +594,45 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
                   <span className="template-label">{s.displayName}</span>
                 </button>
               ))}
+              {canLaunchTemplates && shellTemplates.map(renderTemplate)}
             </div>
           </div>
         )}
 
-        <div className="empty-section">
-          <div className="empty-section-title">{tx('启动模板', 'Launch templates')}</div>
-          <div className="empty-button-grid">
-            {(isSshPath || !isWslPath || wslShellId) && templates.map((t) => (
-              <TemplateLaunchButton
-                key={t.id}
-                template={t}
-                creating={creating}
-                onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
-              />
-            ))}
+        {agentTemplates.length > 0 && (
+          <div className="empty-section">
+            <div className="empty-section-title">Agents</div>
+            <div className="empty-button-grid">
+              {canLaunchTemplates && agentTemplates.map(renderTemplate)}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   );
 }
 
+/** 内置的纯 shell 模板归到 Shell 区;其余模板 (含自定义) 归到 Agents 区。 */
+const SHELL_TEMPLATE_IDS = new Set(['shell', 'admin-shell']);
+
 function TemplateLaunchButton({
   template,
   creating,
   onLaunch,
+  version,
+  onUpgrade,
 }: {
   template: Template;
   creating: boolean;
   onLaunch: () => void;
+  /** 有值时在卡片右侧显示状态点 */
+  version?: AgentVersionInfo | undefined;
+  onUpgrade?: () => void;
 }): JSX.Element {
-  return (
+  const button = (
     <button
       type="button"
-      className="template-button"
+      className={`template-button${version ? ' has-dot' : ''}`}
       onClick={onLaunch}
       disabled={creating}
       title={template.command ? `${template.name} — 启动命令: ${template.command}` : template.name}
@@ -574,6 +642,63 @@ function TemplateLaunchButton({
       </span>
       <span className="template-label">{template.name}</span>
     </button>
+  );
+  if (!version) return button;
+  return (
+    <div className="template-button-wrap">
+      {button}
+      <AgentVersionDot info={version} disabled={creating} onUpgrade={onUpgrade} />
+    </div>
+  );
+}
+
+/**
+ * Agent 卡片右侧的状态点:
+ * - 绿:已是最新
+ * - 黄:有新版本,点它在新终端里跑升级命令
+ * - 灰:已装,但查不到最新版 (离线 / 无 registry);点它同样跑升级命令
+ * - 空心:PATH 上没找到
+ */
+function AgentVersionDot({
+  info,
+  disabled,
+  onUpgrade,
+}: {
+  info: AgentVersionInfo;
+  disabled: boolean;
+  onUpgrade?: (() => void) | undefined;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const cmd = info.upgradeCommand ?? '';
+  const runLine = tx(`点击运行:${cmd}`, `Click to run: ${cmd}`);
+  let title: string;
+  switch (info.status) {
+    case 'current':
+      title = tx(`${info.installed ?? ''} 已是最新`, `${info.installed ?? ''} is up to date`);
+      break;
+    case 'outdated':
+      title = `${tx('有新版本', 'Update available')}: ${info.installed} → ${info.latest}\n${runLine}`;
+      break;
+    case 'installed':
+      title = `${tx('已安装', 'Installed')} ${info.installed ?? ''}\n${tx('查不到最新版本', 'Latest version unknown')}\n${runLine}`;
+      break;
+    default:
+      title = tx('PATH 上没找到这个命令', 'Not found on PATH');
+  }
+  const clickable =
+    (info.status === 'outdated' || info.status === 'installed') && !!cmd && !!onUpgrade;
+  if (!clickable) {
+    return <span className={`agent-dot ${info.status}`} title={title} aria-label={title} />;
+  }
+  return (
+    <button
+      type="button"
+      className={`agent-dot ${info.status}`}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onUpgrade}
+    />
   );
 }
 

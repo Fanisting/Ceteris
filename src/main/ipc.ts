@@ -29,6 +29,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
 import { getAppLabel, getBuildType, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
+import { createAgentVersionChecker, findAgentSpec, type AgentVersionChecker } from './agent-versions';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -91,6 +92,9 @@ import {
   type ImportSettingsResponse,
   type KnownHostsRefreshResponse,
   type ListShellsResponse,
+  type ListAgentVersionsPayload,
+  type ListAgentVersionsResponse,
+  type UpgradeAgentPayload,
   type ListSshProfilesResponse,
   type SshAgentStatusResponse,
   type SshConfigListResponse,
@@ -1576,6 +1580,47 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   const parentWindow = (e: IpcMainInvokeEvent): BrowserWindow =>
     (BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow())!;
+
+  // 新建页 agent 状态点。checker 懒创建,第一次打开新建页时才跑 --version / 联网。
+  let agentChecker: AgentVersionChecker | null = null;
+  const getAgentChecker = (): AgentVersionChecker =>
+    (agentChecker ??= createAgentVersionChecker(getPlatformAdapter()));
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
+    async (
+      _e,
+      envelope: CommandEnvelope<ListAgentVersionsPayload | undefined>,
+    ): Promise<ListAgentVersionsResponse> => {
+      return { agents: await getAgentChecker().list(envelope.payload?.force === true) };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_UPGRADE,
+    async (_e, envelope: CommandEnvelope<UpgradeAgentPayload>): Promise<CreateSessionResponse> => {
+      const { templateId, pathId, cols, rows } = envelope.payload;
+      // 升级命令只从固定表取,renderer 传不进任意命令
+      const spec = findAgentSpec(templateId);
+      if (!spec) throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
+      if (pathRefFromId(pathId).kind === 'ssh') {
+        throw makeIpcError('InvalidPayload', `agent upgrade runs on local paths only, got pathId="${pathId}"`);
+      }
+      const name = templatesManager.resolve(templateId).name;
+      const oldTreeJson = JSON.stringify(pathManager.getTree());
+      const session = await sessionManager.createSession({
+        pathId,
+        templateId: 'shell',
+        ownerWindowId: envelope.windowId,
+        cols,
+        rows,
+        commandOverride: { name: `${name} update`, ...spec.upgrade },
+      });
+      getAgentChecker().invalidate(templateId);
+      logger.info('ipc', `agent upgrade started: template=${templateId} session=${session.id}`);
+      return { session, pathTreeChanged: JSON.stringify(pathManager.getTree()) !== oldTreeJson };
+    },
+  );
 
   handleCommand(
     COMMAND_CHANNELS.DATA_MEASURE_AGENTS,

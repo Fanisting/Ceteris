@@ -435,6 +435,12 @@ export interface CreateSessionInput {
    * 命中失败 (id 不存在) 时回退到 pickShell 默认逻辑。
    */
   shellIdOverride?: string;
+  /**
+   * 用一条一次性命令代替模板的 command/args (shell 与 hook 仍按 templateId)。
+   * 新建页的 agent 升级点用它在可见终端里跑 `claude update` 之类的命令。
+   * 命令跑完留在 shell 里 (keep_shell),用户能看到升级输出。
+   */
+  commandOverride?: { name: string; command: string; args: string[] };
 }
 
 export class SessionManagerError extends Error {
@@ -566,7 +572,17 @@ export class SessionManager extends EventEmitter {
    */
   async createSession(input: CreateSessionInput): Promise<SessionInfo> {
     this.lastLaunchWarning = null;
-    const template = this.templatesManager.resolve(input.templateId);
+    const resolved = this.templatesManager.resolve(input.templateId);
+    const template = input.commandOverride
+      ? {
+          ...resolved,
+          name: input.commandOverride.name,
+          command: input.commandOverride.command,
+          args: input.commandOverride.args,
+          env: {},
+          postExitAction: 'keep_shell' as const,
+        }
+      : resolved;
     const dims = validateDimensions(input.cols, input.rows);
     const shells = await this.getShells();
     if (shells.length === 0) {

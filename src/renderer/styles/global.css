@@ -1493,6 +1493,73 @@ html[data-maximized='true'] .app-root.with-shell {
   white-space: nowrap;
 }
 
+/* Agent 状态点:叠在卡片右侧,点本身是独立按钮,不触发卡片的启动 */
+.template-button-wrap {
+  position: relative;
+  display: flex;
+}
+
+.template-button-wrap > .template-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.template-button.has-dot {
+  padding-right: 34px;
+}
+
+.agent-dot {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-dot::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.agent-dot.current::after {
+  background-color: var(--color-success, #f0f);
+}
+
+.agent-dot.outdated::after {
+  background-color: var(--color-warning, #f0f);
+}
+
+.agent-dot.installed::after {
+  background-color: var(--color-text-muted, #f0f);
+}
+
+.agent-dot.missing::after {
+  border: 1.5px solid var(--color-text-muted, #f0f);
+}
+
+button.agent-dot {
+  cursor: pointer;
+}
+
+button.agent-dot:hover:not(:disabled) {
+  background-color: var(--color-bg-active, #f0f);
+}
+
+button.agent-dot:hover:not(:disabled)::after {
+  transform: scale(1.25);
+}
+
 /* ── Tab bar ── */
 
 .tab-bar {

@@ -96,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   extensions: {
     claudeMathImages: false,
     terminalMath: false,
+    tabControl: false,
   },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
@@ -515,6 +516,12 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `advanced.terminalRenderer="${s.advanced.terminalRenderer}" 必须是 auto / webgl / dom`,
+    );
+  }
+  if (typeof s.extensions.tabControl !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.tabControl=${String(s.extensions.tabControl)} 必须是 true 或 false`,
     );
   }
   if (typeof s.extensions.claudeMathImages !== 'boolean') {

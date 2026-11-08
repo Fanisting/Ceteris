@@ -16,6 +16,7 @@ import { Sidebar } from './components/Sidebar';
 import { MainPane } from './components/MainPane';
 import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
+import { CoordinatorGuide } from './components/CoordinatorGuide';
 import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
 import { ToastProvider } from './components/Toast';
@@ -271,6 +272,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               <WindowChrome windowStyle={windowStyle} appLabel={appLabel} isDev={isDev} />
               {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
               <LinkConnectionBanner />
+              {/* ADR-024:协调者引导,没看过时启动或第一次勾协调者时出现;专注模式不显示 */}
+              {!state.simpleMode && <CoordinatorGuide />}
               {state.inSettingsView ? (
                 <SettingsView />
               ) : state.simpleMode ? (

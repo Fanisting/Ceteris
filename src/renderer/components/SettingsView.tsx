@@ -91,6 +91,7 @@ import type {
 } from '@shared/protocol';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
+import { useTypeIntoNewTerminal } from './type-into-terminal';
 import { useTranslation } from './LanguageProvider';
 import { ThemePicker } from './ThemePicker';
 import { NextPromptCostChart, formatUsd } from './NextPromptCostChart';
@@ -2923,12 +2924,11 @@ function ExtensionsPanel({
 }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
-  const dispatch = useAppDispatch();
-  const toast = useToast();
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
   const tabControl = state.settings.extensions?.tabControl ?? false;
   const terminalMath = state.settings.extensions?.terminalMath ?? false;
-  const [preparing, setPreparing] = useState(false);
+  const typer = useTypeIntoNewTerminal();
+  const preparing = typer.preparing;
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
   const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
 
@@ -2940,49 +2940,10 @@ function ExtensionsPanel({
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
   }, [enabled, tabControl, marketplaceDir, setError]);
 
-  /**
-   * 开一个新终端,把一行命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
-   * 这一下就是同意。shell 与 SessionManager.pickShell 同规则(默认 shell,
-   * 否则检测到的第一个),这样 buildLine 才知道怎么加引号、用 `;` 还是 `&&`。
-   */
+  /** 开一个新终端,把命令敲进去但不按 Enter (见 type-into-terminal.ts) */
   const typeIntoNewTerminal = async (buildLine: (shellId: string) => string): Promise<void> => {
     setError(null);
-    setPreparing(true);
-    try {
-      const { shells } = await window.api.invoke<unknown, ListShellsResponse>(
-        COMMAND_CHANNELS.SETTINGS_LIST_SHELLS,
-        {},
-      );
-      const preferred = state.settings.shell?.defaultShellId ?? '';
-      const shell = shells.find((s) => s.id === preferred) ?? shells[0];
-      if (!shell) throw new Error(tx('没有检测到可用的 shell', 'No shell was detected'));
-      const dims = state.lastTerminalDims;
-      const created = await window.api.invoke<unknown, CreateSessionResponse>(
-        COMMAND_CHANNELS.SESSION_CREATE,
-        { templateId: 'shell', shellId: shell.id, cols: dims.cols, rows: dims.rows },
-      );
-      // SendInputPayload.data 是 base64 (UTF-8 字节),与 TerminalView 的输入同一条路。
-      const utf8 = new TextEncoder().encode(buildLine(shell.id));
-      await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
-        sessionId: created.session.id,
-        data: btoa(String.fromCharCode(...utf8)),
-      });
-      dispatch({ type: 'view/exit-settings' });
-      dispatch({ type: 'view/select-path', pathId: created.session.pathId });
-      dispatch({ type: 'view/select-session', sessionId: created.session.id });
-      toast.push({
-        kind: 'success',
-        message: tx(
-          '命令已经输入到新终端,检查后按 Enter 执行。',
-          'The command is typed into a new terminal. Check it, then press Enter to run it.',
-        ),
-        durationMs: 8000,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPreparing(false);
-    }
+    await typer.run(buildLine, setError);
   };
 
   const handlePrepareInstall = (): void => {

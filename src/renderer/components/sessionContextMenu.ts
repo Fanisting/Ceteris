@@ -6,6 +6,7 @@
  */
 import { tx } from '@shared/i18n';
 import { COMMAND_CHANNELS } from '@shared/protocol';
+import { COORDINATOR_GUIDE_EVENT } from '@shared/tab-control';
 import type { PathTree, SessionInfo } from '@shared/types';
 import { findPathNode } from '../store';
 import type { ContextMenuItem } from './ContextMenu';
@@ -52,12 +53,18 @@ export function buildSessionContextMenu(
       ),
       checked: session.coordinator === true,
       onSelect: () => {
+        const turningOn = session.coordinator !== true;
         invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, {
           sessionId: session.id,
-          coordinator: session.coordinator !== true,
-        }).catch((err: unknown) =>
-          toastError(`设置协调者失败:${err instanceof Error ? err.message : String(err)}`),
-        );
+          coordinator: turningOn,
+        })
+          // ADR-024:第一次勾上时打开协调者引导 (CoordinatorGuide 自己判断看没看过)
+          .then(() => {
+            if (turningOn) window.dispatchEvent(new Event(COORDINATOR_GUIDE_EVENT));
+          })
+          .catch((err: unknown) =>
+            toastError(`设置协调者失败:${err instanceof Error ? err.message : String(err)}`),
+          );
       },
     },
     {

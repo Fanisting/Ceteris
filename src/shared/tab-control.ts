@@ -161,3 +161,33 @@ export function tabControlInstallLine(shellId: string, dir: string): string {
   const separator = shellId === 'cmd' ? ' && ' : '; ';
   return `${latexMathMarketplaceCommand(dir, shellId)}${separator}${TAB_CONTROL_INSTALL_COMMAND}`;
 }
+
+/** The plugin's id in Claude Code's plugin registry: `<plugin>@<marketplace>`. */
+export const TAB_CONTROL_PLUGIN_ID = 'ceteris-tabs@ceteris';
+
+/**
+ * Whether Claude Code's plugin registry (`~/.claude/plugins/installed_plugins.json`) lists a
+ * plugin. Version 2 of that file maps each id to an array of installs, one per scope; version 1
+ * mapped it to a single object. Anything unreadable counts as not installed, so the coordinator
+ * guide keeps showing the install step instead of claiming a plugin that is not there.
+ */
+export function isClaudePluginInstalled(registry: unknown, pluginId: string): boolean {
+  if (typeof registry !== 'object' || registry === null) return false;
+  const plugins = (registry as { plugins?: unknown }).plugins;
+  if (typeof plugins !== 'object' || plugins === null) return false;
+  const entry = (plugins as Record<string, unknown>)[pluginId];
+  if (Array.isArray(entry)) return entry.length > 0;
+  return typeof entry === 'object' && entry !== null;
+}
+
+/** Reply of `cmd:extensions:tab-control-status`, read by the coordinator guide. */
+export interface TabControlStatus {
+  /** Claude Code lists ceteris-tabs@ceteris as installed in at least one scope. */
+  pluginInstalled: boolean;
+}
+
+/**
+ * Window event the tab menu fires when the user ticks Coordinator, so the coordinator guide
+ * (CoordinatorGuide.tsx) can open the first time without the menu knowing about it.
+ */
+export const COORDINATOR_GUIDE_EVENT = 'ceteris:coordinator-ticked';

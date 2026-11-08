@@ -1,0 +1,25 @@
+/*
+ * ADR-021: the row of coordinator tabs above the folder's tabs. Coordinators come from every
+ * folder, so each tab names its folder in front of the session name.
+ */
+
+.coordinator-bar {
+  background-color: var(--md-surface-container, #f0f);
+}
+
+.coordinator-bar .tab {
+  max-width: 240px;
+  flex-basis: 240px;
+}
+
+.tab-folder {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--md-on-surface-variant, #f0f);
+  font-weight: 400;
+  opacity: 0.8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

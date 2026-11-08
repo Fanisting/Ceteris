@@ -613,6 +613,13 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
+  // ADR-021:coordinator 来自所有文件夹,按创建顺序排在上面一行,不会因为新开
+  // 终端而挪位置;下面一行只剩本文件夹的其余标签,同一个 session 不出现两次。
+  const coordinators = [...state.sessions.values()]
+    .filter((s) => s.coordinator)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const folderTabs = sessions.filter((s) => !s.coordinator);
+
   // CP-3 勘误 #5:**彻底**移除"灰显抽到最右边"的分组逻辑。
   // 直接按 path.sessionIds 顺序渲染所有 tab — 不分组、不重排。
   // 灰显 / orphan / mine 的视觉差由 Tab 自己根据 ownerWindowId 决定 variant,
@@ -622,10 +629,10 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   // 用户当前持有/查看其他 session 时点击即切换到 EmptyPathState,这与 Chrome
   // 的 new-tab 行为一致(不在被点之前消耗资源);自动选中只在已无 displayable
   // 时才发生(showBlankTab=true)。
-  return (
+  const tabBar = (
     <div className="tab-bar">
       <div className="tab-list">
-        {sessions.map((s) => (
+        {folderTabs.map((s) => (
           <Tab
             key={s.id}
             session={s}
@@ -653,15 +660,48 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
       )}
     </div>
   );
+  if (coordinators.length === 0) return tabBar;
+  return (
+    <>
+      <div
+        className="tab-bar coordinator-bar"
+        role="group"
+        aria-label={tx('协调者', 'Coordinators')}
+      >
+        <div className="tab-list">
+          {coordinators.map((s) => {
+            const node = findPathNode(state.pathTree, s.pathId);
+            return (
+              <Tab
+                key={s.id}
+                session={s}
+                myWindowId={state.myWindowId}
+                selected={s.id === selectedSessionId}
+                folderLabel={node ? node.displayName ?? lastPathSegment(node.path) : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+      {tabBar}
+    </>
+  );
+}
+
+/** The last segment of a path, or the path itself when it has none, such as a root. */
+function lastPathSegment(path: string): string {
+  return path.match(/[^/\\]+$/)?.[0] ?? path;
 }
 
 interface TabProps {
   session: SessionInfo;
   myWindowId: string;
   selected: boolean;
+  /** ADR-021:coordinator 行里的标签显示所属文件夹,同名的 agent 才分得清 */
+  folderLabel?: string | undefined;
 }
 
-function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
+function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -721,6 +761,15 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     });
   };
 
+  // ADR-021:coordinator 标签可能属于别的文件夹,选中它时侧栏和下面一行跟着切到
+  // 那个文件夹。select-path 会先自动选一个本窗口的 session,紧接着的
+  // select-session 再改成被点的这个。
+  const selectOwnFolder = (): void => {
+    if (session.pathId !== state.selectedPathId) {
+      dispatch({ type: 'view/select-path', pathId: session.pathId });
+    }
+  };
+
   const handleClick = (e: MouseEvent<HTMLButtonElement>): void => {
     e.preventDefault();
     if (variant === 'other') {
@@ -733,6 +782,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
         )
         .then((res) => {
           if (!res.transferred) return;
+          selectOwnFolder();
           dispatch({ type: 'view/select-session', sessionId: session.id });
           focusTerminalDom();
         })
@@ -744,6 +794,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
       // claim 失败 (race: SessionAlreadyOwned/NotFound,几乎不会发生)
       // 时再 dispatch 回滚到之前持有状态。
       const prevOwnedId = findMyOwnedSessionId(state);
+      selectOwnFolder();
       if (prevOwnedId && prevOwnedId !== session.id) {
         dispatch({
           type: 'sessions/owner-changed',
@@ -785,6 +836,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     }
     // 本窗口持有 (mine):仅切换 view (新模型下其实 myTabs 至多 1 个,
     // 多数场景这就是当前 selected — no-op,但保留分支以防 race)
+    selectOwnFolder();
     dispatch({ type: 'view/select-session', sessionId: session.id });
     // FOC-2:Tab click 后 button 默认接管 :focus,把焦点送回 xterm,
     // 让用户敲键立即生效。orphan 接管分支已在前文 dispatch 后落到
@@ -813,6 +865,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
   } else {
     tooltipParts.push(session.displayName);
   }
+  if (folderLabel) tooltipParts.push(session.originalCwd);
   if (cwdDrifted) {
     tooltipParts.push(tx(`当前目录 → ${session.currentCwd}`, `Current dir → ${session.currentCwd}`));
     tooltipParts.push(tx(`(原: ${session.originalCwd})`, `(orig: ${session.originalCwd})`));
@@ -854,6 +907,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
         pace={session.agentPace ?? null}
       />
       {(blocked || unseen) && <span className="tab-agent-dot" aria-hidden="true" />}
+      {folderLabel && <span className="tab-folder">{folderLabel}</span>}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (
         <span className="tab-cwd-drift" aria-label={tx('当前目录已变', 'Current directory changed')}>

@@ -4,6 +4,7 @@
  *   两边的菜单"内容"必须一致(用户明确要求),只有"重命名"的触发 UX 不同
  *   (Tab 走 Modal.prompt,Sidebar 走行内编辑),通过传入 onRename 回调解耦。
  */
+import { tx } from '@shared/i18n';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import type { PathTree, SessionInfo } from '@shared/types';
 import { findPathNode } from '../store';
@@ -40,6 +41,24 @@ export function buildSessionContextMenu(
       disabled: isOther,
       ...(isOther ? { hint: '其他窗口持有,无法重命名' } : {}),
       onSelect: onRename,
+    },
+    {
+      // ADR-021:勾选后标签移到标签栏上方的 coordinator 行。任何窗口都能改,
+      // 它只决定标签放在哪一行,不动所有权。
+      label: tx('协调者', 'Coordinator'),
+      hint: tx(
+        '标签放到上方单独一行,在任何文件夹都看得到',
+        'Puts the tab in a row above, seen from every folder',
+      ),
+      checked: session.coordinator === true,
+      onSelect: () => {
+        invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, {
+          sessionId: session.id,
+          coordinator: session.coordinator !== true,
+        }).catch((err: unknown) =>
+          toastError(`设置协调者失败:${err instanceof Error ? err.message : String(err)}`),
+        );
+      },
     },
     {
       label: '复制初始路径',

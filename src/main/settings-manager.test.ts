@@ -266,6 +266,28 @@ describe('SettingsManager — update', () => {
     expect(store.setHistory).toHaveLength(0);
   });
 
+  it('Legado 实时主题的种子色、风格、对比度只收合法值 (ADR-030)', async () => {
+    const { mgr } = makeManager();
+    await mgr.initialize();
+    const bad = [
+      { legadoSeedColor: 'blue' },
+      { legadoSeedColor: '#12345' },
+      { legadoPaletteStyle: 'pastel' as never },
+      { legadoContrast: 'max' as never },
+    ];
+    const accepted = bad.filter((patch) => {
+      try {
+        mgr.update({ appearance: patch });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    expect(accepted).toEqual([]);
+    mgr.update({ appearance: { legadoSeedColor: '#AbCdEf', legadoContrast: 'high' } });
+    expect(mgr.get().appearance.legadoContrast).toBe('high');
+  });
+
   it.each([
     'ceteris-dark',
     'ceteris-light',

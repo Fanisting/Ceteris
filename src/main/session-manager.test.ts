@@ -182,6 +182,9 @@ function makeStubSettingsManager(
       hideTopTabBar: false,
       celebrations: true,
       pebble: false,
+      legadoSeedColor: '#3b608f',
+      legadoPaletteStyle: 'tonalSpot',
+      legadoContrast: 'standard',
     },
     ai: {
       provider: null,
@@ -276,6 +279,12 @@ function makeFakeAdapter(opts: FakeAdapterOpts = {}): PlatformAdapter {
     normalizeSpawnEnv(env: Record<string, string>) {
       // 测试默认 no-op,绕开 BETA-ENV-1 Windows 规整逻辑。
       return env;
+    },
+    async getAccentColor() {
+      return null;
+    },
+    async onAccentColorChanged() {
+      return () => {};
     },
     getDefaultBookmarkSeeds() {
       return [];

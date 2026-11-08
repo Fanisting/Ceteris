@@ -28,6 +28,13 @@ import {
 import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import { isCustomThemeId } from '@shared/custom-themes';
 import { LEGADO_THEME_IDS } from '@shared/legado-themes';
+import {
+  isHexColor,
+  LEGADO_CONTRAST_LEVELS,
+  LEGADO_DEFAULT_SEED,
+  LEGADO_DYNAMIC_THEME_IDS,
+  LEGADO_PALETTE_STYLES,
+} from '@shared/legado-dynamic-ids';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
@@ -66,6 +73,10 @@ export const DEFAULT_SETTINGS: Settings = {
     // ADR-027:小庆祝默认开,小石子一直可见所以默认关。
     celebrations: true,
     pebble: false,
+    // ADR-030:Legado MD3 实时主题的输入,只在选了 Custom / Windows 强调色主题时用到
+    legadoSeedColor: LEGADO_DEFAULT_SEED,
+    legadoPaletteStyle: 'tonalSpot',
+    legadoContrast: 'standard',
   },
   shell: {
     defaultShellId: '',
@@ -177,6 +188,7 @@ const VALID_THEMES: BuiltinThemeId[] = [
   'meizi',
   ...BEAMER_THEME_IDS,
   ...LEGADO_THEME_IDS,
+  ...LEGADO_DYNAMIC_THEME_IDS,
 ];
 
 /**
@@ -567,6 +579,24 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `appearance.windowStyle="${s.appearance.windowStyle}" 必须是 windows 或 macos`,
+    );
+  }
+  if (!isHexColor(s.appearance.legadoSeedColor)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `appearance.legadoSeedColor="${String(s.appearance.legadoSeedColor)}" 必须是 #rrggbb 形式的颜色`,
+    );
+  }
+  if (!(LEGADO_PALETTE_STYLES as readonly string[]).includes(s.appearance.legadoPaletteStyle)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `appearance.legadoPaletteStyle="${s.appearance.legadoPaletteStyle}" 必须是 ${LEGADO_PALETTE_STYLES.join(' / ')} 之一`,
+    );
+  }
+  if (!Object.keys(LEGADO_CONTRAST_LEVELS).includes(s.appearance.legadoContrast)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `appearance.legadoContrast="${s.appearance.legadoContrast}" 必须是 standard / medium / high`,
     );
   }
   checkRange('appearance.terminalFontSize', s.appearance.terminalFontSize, 8, 24);

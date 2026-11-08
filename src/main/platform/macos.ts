@@ -147,6 +147,15 @@ export class MacOSAdapter implements PlatformAdapter {
     return env;
   }
 
+  /** ADR-030 的强调色主题只在 Windows 上测过;这里不读系统颜色,主题回退到默认种子色。 */
+  async getAccentColor(): Promise<string | null> {
+    return null;
+  }
+
+  async onAccentColorChanged(): Promise<() => void> {
+    return () => {};
+  }
+
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {
     const home = homedir();
     return [

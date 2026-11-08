@@ -68,8 +68,8 @@ export function QuickLaunchTip({ anchorRef, layoutKey }: Props): JSX.Element | n
       <p className="quick-launch-tip-title">{tx('右键 + 号,一步启动 agent', 'Right click + to start an agent')}</p>
       <p className="quick-launch-tip-body">
         {tx(
-          '会在这里展开一圈小圆,点一下就在当前文件夹打开 Claude Code、Codex 等。圆里放哪些,在 设置 → 行为 里改。',
-          'A fan of circles opens here. Click one to open Claude Code, Codex and others in this folder. Pick which ones appear in Settings → Behavior.',
+          '会在 + 号右边展开一个扇形的小圆,点一下就在当前文件夹打开 Claude Code、Codex 等。圆里放哪些,在 设置 → 行为 里改。',
+          'A fan of circles opens to the right of the +. Click one to open Claude Code, Codex and others in this folder. Pick which ones appear in Settings → Behavior.',
         )}
       </p>
       <button type="button" className="quick-launch-tip-ok" onClick={markQuickLaunchTipSeen}>

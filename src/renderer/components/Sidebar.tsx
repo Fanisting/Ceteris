@@ -646,15 +646,6 @@ const MAX_ROW_DOTS = 5;
 /** Most session dots a pebble shows before it writes +N; few, so pebbles stay small. */
 const MAX_BLOCK_SESSION_DOTS = 5;
 
-/** How many pebble outlines folder-blocks.css defines (.pebble-shape-0 to -3). */
-const PEBBLE_SHAPES = 4;
-
-/** A stable outline for a folder's pebble, so it keeps its shape across renders and restarts. */
-function pebbleShape(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-  return Math.abs(h) % PEBBLE_SHAPES;
-}
 
 /**
  * A session's dot colour (ADR-021): warning while an agent waits at an approval prompt, the
@@ -1146,16 +1137,16 @@ function PathItem({
     // 每个 session 一个小圆点,颜色与 session 行一致;太多时画前几个再写 +N
     const shownDots = sessions.slice(0, MAX_BLOCK_SESSION_DOTS);
     // A pebble is as wide as its name and they wrap like words, so nothing lines up in
-    // columns. The outline is one of a few shapes picked from the id, stable across renders.
-    // The pebble holding the session on screen, or the selected folder when none of its
-    // sessions is chosen, gets a ring along that outline. Pebbles never take a fill colour.
+    // columns. Every pebble is the same symmetric capsule. The pebble holding the session on
+    // screen, or the selected folder when none of its sessions is chosen, gets a ring along
+    // its outline. Pebbles never take a selection fill colour.
     const holdsChosenSession =
       state.selectedSessionId !== null && node.sessionIds.includes(state.selectedSessionId);
     return (
       <li
-        className={`path-block pebble-shape-${pebbleShape(node.id)}${
-          holdsChosenSession || selected ? ' chosen' : ''
-        }${node.invalid ? ' invalid' : ''}`}
+        className={`path-block${holdsChosenSession || selected ? ' chosen' : ''}${
+          node.invalid ? ' invalid' : ''
+        }`}
       >
         {tagEditor}
         <div

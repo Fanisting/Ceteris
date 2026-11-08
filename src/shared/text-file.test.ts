@@ -39,6 +39,7 @@ describe('decodeTextFile and encodeTextFile', () => {
   it.each([
     ['GBK', new Uint8Array([0xd6, 0xd0, 0xce, 0xc4]), '中文'],
     ['UTF-16', new Uint8Array([0xff, 0xfe, 0x61, 0x00]), 'a'],
+    ['UTF-16 big endian', new Uint8Array([0xfe, 0xff, 0x00, 0x61]), 'a'],
   ])('shows %s but refuses to edit it, as saving would change the encoding', (_n, bytes, text) => {
     const decoded = decodeTextFile(bytes);
     expect(decoded.text).toBe(text);
@@ -75,6 +76,14 @@ describe('decodeTextPage', () => {
     expect(decodeTextPage(utf8('a😀').subarray(0, 4), 0, 5, 'utf-8')).toBe('a');
   });
 
+  it('keeps a complete 4 byte character at the end of the page', () => {
+    expect(decodeTextPage(utf8('a😀b').subarray(0, 5), 0, 6, 'utf-8')).toBe('a😀');
+  });
+
+  it('drops all three trailing bytes of a 4 byte character cut by the start of the page', () => {
+    expect(decodeTextPage(utf8('😀b').subarray(1), 1, 5, 'utf-8')).toBe('b');
+  });
+
   it('does not trim the end of the file', () => {
     expect(decodeTextPage(utf8('a').subarray(0, 1), 0, 1, 'utf-8')).toBe('a');
   });
@@ -85,6 +94,11 @@ describe('pageOffset', () => {
     expect(pageOffset(TEXT_PAGE_BYTES + 5, TEXT_PAGE_BYTES * 3)).toBe(TEXT_PAGE_BYTES);
     expect(pageOffset(TEXT_PAGE_BYTES * 9, TEXT_PAGE_BYTES * 3)).toBe(TEXT_PAGE_BYTES * 2);
     expect(pageOffset(-1, TEXT_PAGE_BYTES * 3)).toBe(0);
+  });
+
+  it('gives a file of whole pages no empty page after its end', () => {
+    expect(pageOffset(TEXT_PAGE_BYTES * 2, TEXT_PAGE_BYTES * 2)).toBe(TEXT_PAGE_BYTES);
+    expect(pageOffset(0, 0)).toBe(0);
   });
 });
 

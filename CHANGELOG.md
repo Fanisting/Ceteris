@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.4.1] (2026-11-08)
+
+### 修复
+
+- PowerShell 标签页里的个人配置($PROFILE)只加载一次。pwsh 在执行 `-Command` 前已经加载过它,Ceteris 的 shell hook 又加载了一遍,配置里的欢迎横幅因此出现两次。
+
+### 变更
+
+- **安装体积从 367 MB 降到 250 MB,Windows 安装器从 105 MB 降到 80 MB。** 只给界面用的包(`pdfjs-dist`、`katex`、`markdown-it`、界面的 xterm 包等)挪到 `devDependencies`:Vite 已把它们打进 `out/renderer`,不必再复制一份进 `app.asar`。其中 `pdfjs-dist` 顺带的 38 MB `@napi-rs/canvas` 只在 Node 里画 PDF 时才用。Chromium 语言包只留 en-US、zh-CN、zh-TW;Windows 包去掉 node-pty 给 Mac、Linux 和 ARM 的文件。
+
 ## [0.4.0] — 2026-11-08
 
 ### 新增
@@ -70,7 +80,6 @@
 - 新增 `@material/material-color-utilities`(Google,Apache-2.0),从种子色或 Windows 强调色生成 Legado 实时配色。
 - 新增 `katex`(MIT)和 `@xterm/addon-image`(MIT),在终端里把 Claude Code 和 Codex 输出的公式显示成图片。
 - 移除 `@anthropic-ai/sdk` 和 `openai`,下一句提示改为直接请求兼容 OpenAI 的接口。
-- **安装体积从 367 MB 降到 250 MB,Windows 安装器从 105 MB 降到 80 MB。** 只给界面用的包(`pdfjs-dist`、`katex`、`markdown-it`、界面的 xterm 包等)挪到 `devDependencies`:Vite 已把它们打进 `out/renderer`,不必再复制一份进 `app.asar`。其中 `pdfjs-dist` 顺带的 38 MB `@napi-rs/canvas` 只在 Node 里画 PDF 时才用。Chromium 语言包只留 en-US、zh-CN、zh-TW;Windows 包去掉 node-pty 给 Mac、Linux 和 ARM 的文件。
 
 ## [0.3.0] — 2026-11-06
 

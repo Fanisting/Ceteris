@@ -109,19 +109,19 @@ Ceteris 给你:
 
 ### 安装
 
-从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.0)下载适合你系统的文件:
+从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.1)下载适合你系统的文件:
 
 | 系统 | 下载 |
 |---|---|
-| Windows 10/11(x64) | [Ceteris-Setup-0.4.0-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-Setup-0.4.0-x64.exe) |
-| macOS,Apple 芯片 | [Ceteris-0.4.0-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-arm64.dmg) |
-| macOS,Intel 芯片 | [Ceteris-0.4.0-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-x64.dmg) |
-| Linux(x64),任意发行版 | [Ceteris-0.4.0-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-x86_64.AppImage) |
-| Ubuntu 或 Debian(x64) | [Ceteris-0.4.0-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-amd64.deb) |
+| Windows 10/11(x64) | [Ceteris-Setup-0.4.1-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-Setup-0.4.1-x64.exe) |
+| macOS,Apple 芯片 | [Ceteris-0.4.1-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-arm64.dmg) |
+| macOS,Intel 芯片 | [Ceteris-0.4.1-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x64.dmg) |
+| Linux(x64),任意发行版 | [Ceteris-0.4.1-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x86_64.AppImage) |
+| Ubuntu 或 Debian(x64) | [Ceteris-0.4.1-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-amd64.deb) |
 
 - **Windows**:运行安装程序,然后从开始菜单或桌面启动。安装程序还没有代码签名,SmartScreen 可能拦截:点**更多信息**,再点**仍要运行**。
 - **macOS**:打开 `.dmg`,把 Ceteris 拖进"应用程序"。应用还没有签名,第一次打开时请右键点它,选**打开**。
-- **Linux**:运行 `chmod +x Ceteris-0.4.0-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.0-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
+- **Linux**:运行 `chmod +x Ceteris-0.4.1-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.1-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
 
 Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 issue](https://github.com/Fanisting/ceteris/issues)。
 

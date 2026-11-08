@@ -111,19 +111,19 @@ Ceteris gives you:
 
 ### Install
 
-Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.0):
+Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.1):
 
 | System | Download |
 |---|---|
-| Windows 10/11 (x64) | [Ceteris-Setup-0.4.0-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-Setup-0.4.0-x64.exe) |
-| macOS, Apple Silicon | [Ceteris-0.4.0-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-arm64.dmg) |
-| macOS, Intel | [Ceteris-0.4.0-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-x64.dmg) |
-| Linux (x64), any distribution | [Ceteris-0.4.0-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-x86_64.AppImage) |
-| Ubuntu or Debian (x64) | [Ceteris-0.4.0-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.0/Ceteris-0.4.0-amd64.deb) |
+| Windows 10/11 (x64) | [Ceteris-Setup-0.4.1-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-Setup-0.4.1-x64.exe) |
+| macOS, Apple Silicon | [Ceteris-0.4.1-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-arm64.dmg) |
+| macOS, Intel | [Ceteris-0.4.1-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x64.dmg) |
+| Linux (x64), any distribution | [Ceteris-0.4.1-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x86_64.AppImage) |
+| Ubuntu or Debian (x64) | [Ceteris-0.4.1-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-amd64.deb) |
 
 - **Windows**: run the installer, then launch Ceteris from the Start Menu or your desktop. The installer is not code signed yet, so SmartScreen may warn: choose **More info**, then **Run anyway**.
 - **macOS**: open the `.dmg` and drag Ceteris into Applications. The app is not signed yet, so the first time, right-click it and choose **Open**.
-- **Linux**: run `chmod +x Ceteris-0.4.0-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.0-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
+- **Linux**: run `chmod +x Ceteris-0.4.1-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.1-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
 
 Windows gets the most testing. The macOS and Linux builds are newer, so please [open an issue](https://github.com/Fanisting/ceteris/issues) if something breaks.
 

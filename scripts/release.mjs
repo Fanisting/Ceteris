@@ -360,6 +360,7 @@ if (opts.bump !== 'none') {
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
     ok(`已写 package.json.version = ${releaseVersion}`);
     warn(`记得在 CHANGELOG.md 顶部加 [${releaseVersion}] — ${new Date().toISOString().slice(0, 10)} 章节`);
+    warn('记得更新 README.md 与 README.zh-CN.md:新功能、支持的平台、各平台下载的文件名');
   } else {
     info('[dry-run] 不写 package.json');
   }
@@ -507,10 +508,13 @@ console.log();
 console.log(`${C.bold}下一步:${C.reset}`);
 if (opts.bump !== 'none' && !opts.dryRun) {
   console.log(`  1. 在 CHANGELOG.md 顶部加 [${releaseVersion}] 章节`);
-  console.log(`  2. git add package.json CHANGELOG.md && git commit -m "chore(release): bump ${releaseVersion}"`);
-  console.log(`  3. git tag v${releaseVersion}`);
-  console.log(`  4. git push && git push --tags`);
-  console.log(`  5. 在 GitHub Releases 上传 release/${releaseVersion}/ 下的安装器(+ 把 RELEASE_NOTES.md 贴上)`);
+  console.log(`  2. 更新 README.md 与 README.zh-CN.md:新功能、支持的平台、各平台下载的文件名`);
+  console.log(
+    `  3. git add package.json CHANGELOG.md README.md README.zh-CN.md && git commit -m "chore(release): bump ${releaseVersion}"`,
+  );
+  console.log(`  4. git tag v${releaseVersion}`);
+  console.log(`  5. git push && git push --tags`);
+  console.log(`  6. 在 GitHub Releases 上传 release/${releaseVersion}/ 下的安装器(+ 把 RELEASE_NOTES.md 贴上)`);
 } else {
   console.log(`  1. 校验通过的 release/${releaseVersion}/ 已可发布`);
   console.log(`  2. SmartScreen 警告:Windows 安装器未签名,SmartScreen 会拦,KI-002 跟踪`);

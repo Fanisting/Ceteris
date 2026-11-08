@@ -94,6 +94,7 @@ import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
 import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
+import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
   | 'appearance'
@@ -2999,6 +3000,7 @@ function ExtensionsPanel({
   const dispatch = useAppDispatch();
   const toast = useToast();
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
+  const terminalMath = state.settings.extensions?.terminalMath ?? false;
   const [preparing, setPreparing] = useState(false);
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
   const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
@@ -3012,13 +3014,11 @@ function ExtensionsPanel({
   }, [enabled, marketplaceDir, setError]);
 
   /**
-   * 开一个新终端,把安装命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
+   * 开一个新终端,把一行命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
    * 这一下就是同意。shell 与 SessionManager.pickShell 同规则(默认 shell,
-   * 否则检测到的第一个),这样才知道两条命令之间用 `;` 还是 `&&`。
+   * 否则检测到的第一个),这样 buildLine 才知道怎么加引号、用 `;` 还是 `&&`。
    */
-  const handlePrepareInstall = async (): Promise<void> => {
-    const dir = marketplaceDir;
-    if (!dir) return;
+  const typeIntoNewTerminal = async (buildLine: (shellId: string) => string): Promise<void> => {
     setError(null);
     setPreparing(true);
     try {
@@ -3035,7 +3035,7 @@ function ExtensionsPanel({
         { templateId: 'shell', shellId: shell.id, cols: dims.cols, rows: dims.rows },
       );
       // SendInputPayload.data 是 base64 (UTF-8 字节),与 TerminalView 的输入同一条路。
-      const utf8 = new TextEncoder().encode(latexMathInstallLine(shell.id, dir));
+      const utf8 = new TextEncoder().encode(buildLine(shell.id));
       await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
         sessionId: created.session.id,
         data: btoa(String.fromCharCode(...utf8)),
@@ -3046,8 +3046,8 @@ function ExtensionsPanel({
       toast.push({
         kind: 'success',
         message: tx(
-          '安装命令已经输入到新终端,检查后按 Enter 执行。',
-          'The install command is typed into a new terminal. Check it, then press Enter to run it.',
+          '命令已经输入到新终端,检查后按 Enter 执行。',
+          'The command is typed into a new terminal. Check it, then press Enter to run it.',
         ),
         durationMs: 8000,
       });
@@ -3056,6 +3056,11 @@ function ExtensionsPanel({
     } finally {
       setPreparing(false);
     }
+  };
+
+  const handlePrepareInstall = (): void => {
+    const dir = marketplaceDir;
+    if (dir) void typeIntoNewTerminal((shellId) => latexMathInstallLine(shellId, dir));
   };
 
   return (
@@ -3097,13 +3102,60 @@ function ExtensionsPanel({
               type="button"
               className="settings-button"
               disabled={preparing || !marketplaceDir}
-              onClick={() => void handlePrepareInstall()}
+              onClick={handlePrepareInstall}
               title={tx(
                 '打开一个新终端并输入这两条命令,不会自动执行',
                 'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
               )}
             >
               {tx('在新终端里输入命令', 'Type them in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
+
+      <SettingRow
+        label={tx('Codex 公式渲染', 'Codex formula rendering')}
+        hint={tx(
+          'Codex 没有插件接口,会把公式转成 Unicode 文字。打开后,Ceteris 把终端里以文本出现的 $$…$$、\\(…\\) 和 \\[…\\] 用 KaTeX 画在原处(任何程序的输出都算)。立即对已打开的终端生效。',
+          'Codex has no plugin interface and turns formulas into Unicode text. When on, Ceteris draws the $$…$$, \\(…\\) and \\[…\\] it finds as text in a terminal with KaTeX, in place (in any program’s output). Applies to open terminals right away.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={terminalMath}
+            onChange={(e) =>
+              void updateSettings({ extensions: { terminalMath: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {terminalMath && (
+        <SettingRow
+          label={tx('告诉 Codex 怎么写公式', 'Tell Codex how to write formulas')}
+          hint={tx(
+            'Codex 只在行内代码里保留 LaTeX 原文。把下面这条指示加进 ~/.codex/AGENTS.md(Codex 的全局指示,只加一次),之后新开的 Codex 会话就会这样写公式。',
+            'Codex keeps LaTeX as written only inside inline code. Add this instruction to ~/.codex/AGENTS.md (Codex’s global instructions; added once), and new Codex sessions will write formulas this way.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block settings-code-wrap">
+              <code>{CODEX_MATH_INSTRUCTION}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing}
+              onClick={() => void typeIntoNewTerminal(codexMathInstructionCommand)}
+              title={tx(
+                '打开一个新终端并输入添加这条指示的命令,不会自动执行',
+                'Opens a new terminal with the command that adds this instruction; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type it in a new terminal')}
             </button>
           </div>
         </SettingRow>

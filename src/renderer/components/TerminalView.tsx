@@ -118,6 +118,7 @@ import {
 import { isDeviceAttributesResponse } from '@shared/terminal-input-filter';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
 import { activateInlineImages, reportTerminalLook } from '../inline-images';
+import { activateTerminalMath } from '../terminal-math-overlay';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
 import { detectAgent } from '@shared/next-prompt';
@@ -689,6 +690,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     appState.settings.advanced?.terminalRenderer ?? 'auto';
   // 公式图片扩展 (ADR-019),运行时开关,不重建 xterm
   const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
+  // Codex 公式渲染 (ADR-021),运行时开关,不重建 xterm
+  const terminalMath = appState.settings.extensions?.terminalMath ?? false;
 
   // 把"创建期"读到的初始值用 useMemo 锁定 (terminal 创建后只用 mutator 调整),
   // 否则每次 settings 引用变化都会重建 xterm 实例。
@@ -1800,6 +1803,14 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     if (!term || !claudeMathImages) return;
     return reportTerminalLook(term, getXtermTheme(themeId));
   }, [claudeMathImages, session.id, terminalRenderer, themeId, fontSize, fontFamily, lineHeight]);
+
+  // Codex 公式渲染 (ADR-021):把终端里以文本出现的 LaTeX 用 KaTeX 画在原处。主题或字号
+  // 变了就整体重来,新覆盖层用新颜色。
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !terminalMath) return;
+    return activateTerminalMath(term, getXtermTheme(themeId), fontSize);
+  }, [terminalMath, session.id, terminalRenderer, themeId, fontSize]);
 
   // 主题运行时切换
   useEffect(() => {

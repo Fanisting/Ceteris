@@ -12,7 +12,7 @@
  *
  *   主进程已 `frame: false`,这里要负责:
  *   - 提供 -webkit-app-region: drag 拖动区
- *   - 显示应用标题 + 视图切换按钮(版本号在 设置 → 关于)
+ *   - 显示应用标题 + 视图切换按钮(版本号在 设置 → 关于);点应用名有个小彩蛋,见 TitlebarAppName
  *   - 监听 evt:window:max-state-changed 切按钮图标 / app-root 圆角
  *
  * @对应文档章节: 软件定义书 6.7 (窗口视觉),M1 待办 P0-1
@@ -26,6 +26,7 @@ import {
 } from '@shared/protocol';
 import type { WindowStyle } from '@shared/types';
 import { ViewSwitchButton } from './ViewSwitchButton';
+import { TitlebarAppName } from './TitlebarAppName';
 import { Close, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
 import { focusTerminalDom } from '../focus';
 import { useAppState } from '../store';
@@ -89,7 +90,11 @@ export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
   // 双击标题栏拖动区切最大化(原生 frame 默认行为,自绘后需要自己接)
   const handleDragRegionDblClick = (e: ReactMouseEvent<HTMLDivElement>): void => {
     // 只在拖动区本身触发,不要被按钮冒泡进来
-    if ((e.target as HTMLElement).closest('.titlebar-btn,.titlebar-traffic,.titlebar-view-switch')) {
+    if (
+      (e.target as HTMLElement).closest(
+        '.titlebar-btn,.titlebar-traffic,.titlebar-view-switch,.titlebar-app-name',
+      )
+    ) {
       return;
     }
     callToggleMax();
@@ -111,12 +116,9 @@ export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
 
   // Windows 风格(默认):标题在左,控制按钮在右
   return (
-    <div
-      className="app-titlebar app-titlebar-windows"
-      onDoubleClick={handleDragRegionDblClick}
-    >
+    <div className="app-titlebar app-titlebar-windows" onDoubleClick={handleDragRegionDblClick}>
       <div className="titlebar-title titlebar-drag">
-        <span className="titlebar-app-name">{appLabel}</span>
+        <TitlebarAppName label={appLabel} />
         <ViewSwitchButton />
       </div>
       <div className="titlebar-spacer titlebar-drag" />
@@ -233,7 +235,7 @@ function MacosTitlebar({
       </div>
       <div className="titlebar-spacer titlebar-drag" />
       <div className="titlebar-title titlebar-drag">
-        <span className="titlebar-app-name">{appLabel}</span>
+        <TitlebarAppName label={appLabel} />
         <ViewSwitchButton />
       </div>
       <div className="titlebar-spacer titlebar-drag" />

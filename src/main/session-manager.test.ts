@@ -1094,6 +1094,23 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(idleChange).toBeDefined();
   });
 
+  it('reads agentPhase from the screen and clears it on exit (ADR-021)', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const fp = FakePty.instances[0]!;
+    fp.emitData('│ Do you want to proceed?\r\n│ ❯ 1. Yes\r\n│   2. No\r\n');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mgr.get(info.id)?.agentPhase).toBe('blocked');
+    fp.emitExit(0);
+    expect(mgr.get(info.id)?.agentPhase).toBeNull();
+  });
+
   it('resize 后 quiet 窗口内 ConPTY 重绘字节不触发 markActive (CP-3 勘误 #3 v2)', async () => {
     const settings = makeStubSettingsManager({ activeIdleThresholdSeconds: 1 });
     const { mgr } = makeManager({ settings, resizeQuietMs: 500 });

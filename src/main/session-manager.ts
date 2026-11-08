@@ -20,6 +20,9 @@
  * - **cwd 兜底**:启动后 5 秒未收到 OSC 1337 → 启动 5 秒间隔的进程查询
  *   (PlatformAdapter.getProcessCwd);收到第一条 OSC 后立即关掉所有 cwd
  *   timer,永不再启
+ * - **agentPhase** (ADR-021):每段输出后 300ms 内从 headless 屏幕尾部读一次
+ *   agent 在做什么 (working / blocked / done,见 agent-phase.ts),进入 idle
+ *   时再读一次。与 active / idle 并列,不替代它
  * - 启动模板:从 TemplatesManager 拉,空 command → 纯 shell;有 command →
  *   通过 PlatformAdapter.buildShellLaunchParams 让 hook 之后再 exec command
  * - spawn 函数可注入 (PtySpawnFn) 便于测试;PlatformAdapter 也可注入
@@ -47,7 +50,7 @@ import type {
   SessionOutputPayload,
   SessionStateChangedPayload,
 } from '@shared/protocol';
-import type { SessionInfo, Template, Settings } from '@shared/types';
+import type { AgentWork, SessionInfo, Template, Settings } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import type { TemplatesManager } from './templates-manager';
@@ -80,6 +83,14 @@ import {
 } from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import {
+  AGENT_PHASE_SCREEN_ROWS,
+  classifyWork,
+  detectAgentPhase,
+  readWorkSignals,
+  updateTokenRate,
+  type TokenRate,
+} from '@shared/agent-phase';
 import { CHANNELS } from '@shared/channel';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
@@ -214,6 +225,13 @@ function classifyInput(text: string): KeyKind {
 const INPUT_QUIET_MS = 200;
 
 /**
+ * ADR-021:agentPhase 的读屏节流。一段输出后最多等这么久再读屏,连续输出时
+ * 每这么久最多读一次。足够短,批准提示出现后 tab 很快变色;又足够长,
+ * headless write 是异步 parse 的,等一会儿读到的屏幕才包含刚到的字节。
+ */
+const AGENT_PHASE_CHECK_MS = 300;
+
+/**
  * spawn 工厂,与 node-pty 的 spawn 兼容。测试中用 mock 替换。
  */
 export type PtySpawnFn = (
@@ -326,6 +344,10 @@ interface ManagedSession {
   parser: Osc1337Parser;
   /** active → idle 转移计时器 */
   idleTimer: NodeJS.Timeout | null;
+  /** ADR-021:下一次读屏算 agentPhase 的计时器;null = 没有排队的读屏 */
+  phaseTimer: NodeJS.Timeout | null;
+  /** ADR-021:spinner 上 token 计数的平滑速率,决定波浪快慢;不在 working 时为 null */
+  tokenRate: TokenRate | null;
   /** 启动后等 OSC 1337 的宽限计时器;到点未收到则启动 cwd 轮询 */
   cwdGraceTimer: NodeJS.Timeout | null;
   /** cwd 兜底轮询计时器 */
@@ -788,6 +810,8 @@ export class SessionManager extends EventEmitter {
       scrollbackLastSeq: -1,
       parser: new Osc1337Parser(),
       idleTimer: null,
+      phaseTimer: null,
+      tokenRate: null,
       cwdGraceTimer: null,
       cwdPollTimer: null,
       oscReceived: false,
@@ -1378,6 +1402,9 @@ export class SessionManager extends EventEmitter {
       // 复核时 buffer 可能比 PTY 实际状态滞后几 ms,可接受 — 复核本来
       // 就在 thresholdSec 静默后触发,几 ms 误差无关紧要。
       managed.headlessTerm?.write(parsed.passthrough);
+      // ADR-021:在 quiet 窗口判断之前排队读屏。在批准菜单里按方向键产生的
+      // 重绘字节落在 input quiet 内,不点亮 active,但屏幕仍要重读。
+      this.schedulePhaseCheck(managed);
 
       // 状态机:有输出 → active,重置 idle 计时器。
       // 跳过 markActive 的三种 quiet 窗口(scrollback / sessionOutput 仍正常,
@@ -1518,11 +1545,19 @@ export class SessionManager extends EventEmitter {
     this.clearTimers(managed);
     managed.pty = null;
 
+    // ADR-021:退出的进程里没有 agent 在做事,不能留着 blocked 让 tab 一直闪
+    managed.info.agentPhase = null;
+    managed.info.agentWork = null;
+    managed.info.agentPace = null;
+    managed.tokenRate = null;
     this.emitStateChanged(managed, {
       state: managed.info.state,
       exitCode: managed.info.exitCode,
       exitedAt: managed.info.exitedAt,
       pid: -1,
+      agentPhase: null,
+      agentWork: null,
+      agentPace: null,
     });
     void oldState; // 留给将来加日志用
   }
@@ -1633,24 +1668,78 @@ export class SessionManager extends EventEmitter {
               if (managed.info.state === 'active') this.scheduleIdleCheck(managed);
               return;
             }
-            if (managed.info.state === 'active') {
-              managed.info.state = 'idle';
-              this.emitStateChanged(managed, { state: 'idle' });
-            }
+            if (managed.info.state === 'active') this.becomeIdle(managed);
           })
           .catch((err) => {
             logger.warn('SessionManager', 'BETA-006 LLM recheck failed, fallback', err);
-            if (managed.info.state === 'active') {
-              managed.info.state = 'idle';
-              this.emitStateChanged(managed, { state: 'idle' });
-            }
+            if (managed.info.state === 'active') this.becomeIdle(managed);
           });
         return;
       }
       // 默认路径:直接转 idle
-      managed.info.state = 'idle';
-      this.emitStateChanged(managed, { state: 'idle' });
+      this.becomeIdle(managed);
     }, ms);
+  }
+
+  /**
+   * active → idle,并在同一条事件里带上重新读屏得到的 agentPhase:输出停下
+   * 正是 agent 跑完一轮或停在批准提示的时刻 (ADR-021)。
+   */
+  private becomeIdle(managed: ManagedSession): void {
+    managed.info.state = 'idle';
+    this.emitStateChanged(managed, { state: 'idle', ...this.readAgentActivity(managed) });
+  }
+
+  /**
+   * ADR-021:排一次读屏。已有排队的读屏时不重排,所以连续输出每
+   * AGENT_PHASE_CHECK_MS 最多读一次,最后一段输出后也总会再读一次。
+   */
+  private schedulePhaseCheck(managed: ManagedSession): void {
+    if (managed.phaseTimer) return;
+    managed.phaseTimer = setTimeout(() => {
+      managed.phaseTimer = null;
+      this.updateAgentPhase(managed);
+    }, AGENT_PHASE_CHECK_MS);
+  }
+
+  /** Reads the screen and broadcasts the agent fields that changed. */
+  private updateAgentPhase(managed: ManagedSession): void {
+    if (!this.sessions.has(managed.info.id) || managed.info.state === 'exited') return;
+    const changes = this.readAgentActivity(managed);
+    if (Object.keys(changes).length > 0) this.emitStateChanged(managed, changes);
+  }
+
+  /**
+   * Reads phase, work kind and pace from the screen, stores them on the session and
+   * returns only the fields that changed. Work and pace are null outside 'working'.
+   */
+  private readAgentActivity(
+    managed: ManagedSession,
+  ): Partial<Pick<SessionInfo, 'agentPhase' | 'agentWork' | 'agentPace'>> {
+    const screen = this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS);
+    const phase = detectAgentPhase(managed.info.templateId, screen, managed.info.state);
+    let work: AgentWork | null = null;
+    let pace: number | null = null;
+    if (phase === 'working') {
+      const signals = readWorkSignals(screen);
+      managed.tokenRate = updateTokenRate(managed.tokenRate, signals.tokens, Date.now());
+      ({ work, pace } = classifyWork(signals, managed.tokenRate));
+    } else {
+      managed.tokenRate = null;
+    }
+    const changes: Partial<Pick<SessionInfo, 'agentPhase' | 'agentWork' | 'agentPace'>> = {};
+    if (phase !== (managed.info.agentPhase ?? null)) {
+      changes.agentPhase = managed.info.agentPhase = phase;
+      logger.info('SessionManager', `agentPhase sid=${managed.info.id} → ${phase ?? 'none'}`);
+    }
+    if (work !== (managed.info.agentWork ?? null)) {
+      changes.agentWork = managed.info.agentWork = work;
+      logger.debug('SessionManager', `agentWork sid=${managed.info.id} → ${work ?? 'none'}`);
+    }
+    if (pace !== (managed.info.agentPace ?? null)) {
+      changes.agentPace = managed.info.agentPace = pace;
+    }
+    return changes;
   }
 
   /**
@@ -1792,6 +1881,10 @@ export class SessionManager extends EventEmitter {
     if (managed.idleTimer) {
       clearTimeout(managed.idleTimer);
       managed.idleTimer = null;
+    }
+    if (managed.phaseTimer) {
+      clearTimeout(managed.phaseTimer);
+      managed.phaseTimer = null;
     }
     if (managed.cwdGraceTimer) {
       clearTimeout(managed.cwdGraceTimer);

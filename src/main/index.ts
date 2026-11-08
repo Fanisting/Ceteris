@@ -18,7 +18,7 @@
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
 import { app, Menu, net, session as electronSession } from 'electron';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
 import { TrayManager } from './tray';
@@ -46,7 +46,7 @@ import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, getChannel, getLaunchExePath, isBetaBuild } from './build-type';
-import { devDebugPort } from './dev-debug-port';
+import { devDebugPort, parseDevToolsActivePort } from './dev-debug-port';
 import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
 import { LATEST_RELEASE_URL, UpdateChecker, detectInstallTarget } from './update-checker';
@@ -110,6 +110,7 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
  * Dev builds open a Chrome DevTools Protocol port on 127.0.0.1 so tools can drive the window
  * (dev-debug-port.ts). Must run before app ready: Chromium reads the switch at startup.
  * A bad CETERIS_DEV_DEBUG_PORT is logged and no port is opened, rather than stopping dev.
+ * Once the app is ready, logDevDebugPort reports which port Chromium really opened.
  */
 function openDevDebugPort(): void {
   try {
@@ -119,10 +120,37 @@ function openDevDebugPort(): void {
       return;
     }
     app.commandLine.appendSwitch('remote-debugging-port', String(port));
-    logger.info('main', 'dev debugging port open on 127.0.0.1', { port });
+    const startedAt = Date.now();
+    void app.whenReady().then(() => logDevDebugPort(port, startedAt));
   } catch (err) {
     logger.error('main', 'dev debugging port not opened', err);
   }
+}
+
+/**
+ * Logs the port from <userData>/DevToolsActivePort, which Chromium writes once the port is
+ * open. A file older than this launch is left over from an earlier run, which means the port
+ * did not open: usually a fixed CETERIS_DEV_DEBUG_PORT that another dev copy already holds.
+ */
+function logDevDebugPort(requested: number, startedAt: number, attempt = 0): void {
+  const file = join(app.getPath('userData'), 'DevToolsActivePort');
+  const fresh = existsSync(file) && statSync(file).mtimeMs >= startedAt - 2000;
+  const port = fresh ? parseDevToolsActivePort(readFileSync(file, 'utf8')) : null;
+  if (port !== null) {
+    logger.info('main', 'dev debugging port open on 127.0.0.1', { port, file });
+    return;
+  }
+  if (attempt < 20) {
+    setTimeout(() => logDevDebugPort(requested, startedAt, attempt + 1), 250);
+    return;
+  }
+  logger.warn('main', 'dev debugging port did not open', {
+    requested,
+    hint:
+      requested === 0
+        ? 'Chromium wrote no DevToolsActivePort file'
+        : `port ${requested} is probably held by another dev copy; unset CETERIS_DEV_DEBUG_PORT to get any free port`,
+  });
 }
 
 function bootstrap(): void {

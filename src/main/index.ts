@@ -18,7 +18,7 @@
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
 import { app, Menu, net, safeStorage, session as electronSession } from 'electron';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
 import { TrayManager } from './tray';
@@ -239,6 +239,10 @@ function bootstrap(): void {
   // Chromium 在该子目录里独立初始化缓存,旧目录的占用对它不再可见。
   // 必须在 app.whenReady 之前调,否则 session 已用旧 path 初始化了。
   app.setPath('sessionData', join(dataDir, 'session-data'));
+  // Chromium writes DevToolsActivePort into sessionData as soon as the dev debugging port
+  // opens, before anything else has created the folder. On a fresh data folder that write
+  // failed, so the dev port was open but could not be found (logDevDebugPort).
+  mkdirSync(join(dataDir, 'session-data'), { recursive: true });
 
   // M1-D:绑定日志目录 (fire-and-forget,在此之前的 logger 调用先缓存到内存)
   void logger.setLogDir(join(dataDir, 'logs'));

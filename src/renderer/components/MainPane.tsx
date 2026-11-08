@@ -69,6 +69,7 @@ import {
   type DetectedShell,
 } from './launch-options';
 import { QuickLaunchOverlay } from './QuickLaunchOverlay';
+import { markQuickLaunchTipSeen, QuickLaunchTip } from './QuickLaunchTip';
 import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
@@ -594,9 +595,14 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   const dispatch = useAppDispatch();
 
   const [quickLaunchAnchor, setQuickLaunchAnchor] = useState<Point | null>(null);
+  const blankTabRef = useRef<HTMLButtonElement>(null);
+  // settings 还没从 main 拿到时 behavior 可能是 undefined:那时不弹,免得闪一下。
+  const showQuickLaunchTip = state.settings.behavior?.quickLaunchTipSeen === false;
 
   const handleBlankTabContextMenu = (e: MouseEvent<HTMLButtonElement>): void => {
     e.preventDefault();
+    // 用户已经会用了,首次引导就没必要再留着。
+    if (showQuickLaunchTip) markQuickLaunchTipSeen();
     const icon = e.currentTarget.querySelector('.tab-blank-icon') ?? e.currentTarget;
     const rect = icon.getBoundingClientRect();
     setQuickLaunchAnchor({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
@@ -633,16 +639,23 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           />
         ))}
         <button
+          ref={blankTabRef}
           type="button"
           className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
           onClick={handleClickBlankTab}
           onContextMenu={handleBlankTabContextMenu}
-          title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
+          title={tx(
+            '新建终端:选择 Shell 或模板。右键快速启动 agent',
+            'New terminal: pick a shell or template. Right click to start an agent quickly',
+          )}
           aria-label={tx('新建终端', 'New terminal')}
         >
           <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={18} /></span>
         </button>
       </div>
+      {showQuickLaunchTip && !quickLaunchAnchor && (
+        <QuickLaunchTip anchorRef={blankTabRef} layoutKey={sessions.map((s) => s.id).join(',')} />
+      )}
       {quickLaunchAnchor && state.selectedPathId && (
         <QuickLaunchOverlay
           pathId={state.selectedPathId}

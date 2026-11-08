@@ -198,6 +198,7 @@ function makeStubSettingsManager(
       selectOnCopy: true,
       terminalRightClick: 'menu',
       quickLaunch: [],
+      quickLaunchTipSeen: true,
       bracketedPaste: true,
       autoCheckUpdates: true,
     },

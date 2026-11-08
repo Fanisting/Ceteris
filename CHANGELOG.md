@@ -8,6 +8,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
+- **首次使用引导:右键 + 号快速启动 agent。** 第一次打开文件夹时,标签栏的 + 号下方弹出一个小气泡,说明右键 + 号会展开一圈小圆,点一下就在当前文件夹启动 Claude Code、Codex 等。点“知道了”或右键过一次 + 号后不再出现,所有窗口同步。+ 号的悬停提示也加上了这一句。
+
 - **开发版的重新加载按钮和调试端口。** `npm run dev` 的标题栏正中有一个 Reload 按钮,并在 127.0.0.1:9222 打开 DevTools 调试端口,方便用工具驱动开发窗口;`CETERIS_DEV_DEBUG_PORT` 可以换端口或设为 off。稳定版和测试版都没有这两样。
 
 - **检查更新。** 启动后和每 6 小时查一次 GitHub Releases。有新版本时,侧栏设置按钮上出现一个小圆点,设置 → 关于 里出现“下载”按钮,直接下载适合你系统的安装包(Windows Setup 或 Portable、macOS Apple 芯片或 Intel、Linux AppImage、deb 或 rpm);Windows 托盘菜单顶部也有下载入口。不会自动下载或安装,不弹窗。可在 设置 → 关于 关掉自动检查,或随时点“立即检查”。Beta 和开发版不自动检查。

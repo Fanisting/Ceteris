@@ -66,6 +66,8 @@ export const DEFAULT_SETTINGS: Settings = {
     selectOnCopy: true,
     terminalRightClick: 'menu',
     quickLaunch: [...DEFAULT_QUICK_LAUNCH_ITEMS],
+    // 首次使用引导:老用户升级后字段缺失,deep merge 补 false,也会看到一次。
+    quickLaunchTipSeen: false,
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,

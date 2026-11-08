@@ -96,3 +96,78 @@
   color: var(--color-text-secondary, #f0f);
   font-size: 11px;
 }
+
+/*
+ * 首次使用引导气泡,挂在 + 号正下方。z-index 低于快捷启动背板 (9000),
+ * 扇形打开时气泡本来就会隐藏,这里只是保险。
+ */
+.quick-launch-tip {
+  position: fixed;
+  z-index: 8000;
+  width: 260px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: 12px;
+  background-color: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface, #f0f);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
+  animation: quick-launch-tip-in 180ms var(--md-easing-standard, ease) both;
+  -webkit-app-region: no-drag;
+}
+
+.quick-launch-tip::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: var(--arrow-x, 28px);
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid var(--md-outline-variant, #f0f);
+  border-left: 1px solid var(--md-outline-variant, #f0f);
+  background-color: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.quick-launch-tip-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quick-launch-tip-body {
+  margin: 0 0 8px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.quick-launch-tip-ok {
+  display: block;
+  margin-left: auto;
+  padding: 4px 14px;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background-color: var(--md-primary, #f0f);
+  color: var(--md-on-primary, #f0f);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quick-launch-tip-ok:hover,
+.quick-launch-tip-ok:focus-visible {
+  filter: brightness(1.08);
+  outline: none;
+}
+
+@keyframes quick-launch-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-launch-tip {
+    animation: none;
+  }
+}

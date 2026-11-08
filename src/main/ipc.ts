@@ -207,6 +207,7 @@ import {
 import { detectAgent } from '@shared/next-prompt';
 import { suggestNextPrompt } from './next-prompt-client';
 import type { ViewSwitcher } from './view-switcher';
+import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
 
 export interface IpcLayerDeps {
   /** Optional like aiClient, so tests need not build it. */
@@ -799,6 +800,27 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // BETA-028:工具栏"清屏"按钮配合 term.clear() 使用
       sessionManager.clearScrollback(envelope.payload.sessionId);
     },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_REPORT_TERMINAL_LOOK,
+    (_e, envelope: CommandEnvelope<unknown>): void => {
+      // 公式图片扩展 (ADR-019):不合法的报告直接丢掉,不进子进程环境变量。
+      const look = parseTerminalLook(envelope.payload);
+      if (look) sessionManager.setTerminalLook(look);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR,
+    (): { dir: string } => ({
+      // 公式图片扩展 (ADR-019):安装版在 resources/extensions,dev 在仓库的 extensions/
+      dir: bundledMarketplaceDir({
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+      }),
+    }),
   );
 
   handleCommand(

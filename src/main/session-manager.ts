@@ -72,6 +72,8 @@ import xtermSerialize from '@xterm/addon-serialize';
 const { SerializeAddon } = xtermSerialize;
 type SerializeAddon = InstanceType<typeof SerializeAddon>;
 import { Osc1337Parser } from './osc1337-parser';
+import { PlaceholderFilter } from './placeholder-filter';
+import { TerminalLookFile, mathImagesEnv, type TerminalLook } from './claude-math-images';
 import { pathRefFromId } from './path-manager';
 import { windowsRemotePath } from '@shared/remote-path';
 import { getPlatformAdapter, type PlatformAdapter, type ShellInfo } from './platform';
@@ -245,6 +247,8 @@ export type PtySpawnFn = (
     env: Record<string, string>;
     /** 强制走 ConPTY (Win10 1809+ 默认 true,显式开避免 winpty fallback 闪窗) */
     useConpty?: boolean;
+    /** 用 node-pty 自带的 conpty.dll + OpenConsole.exe,而不是系统 conhost */
+    useConptyDll?: boolean;
   },
 ) => IPty;
 
@@ -344,6 +348,8 @@ interface ManagedSession {
   scrollbackLastSeq: number;
   /** OSC 1337 解析器 (每 session 一份,持有未完结 stash) */
   parser: Osc1337Parser;
+  /** 公式图片扩展打开时:把 Claude Code 图片占位格变成空格 (每 session 一份,跨 chunk 记状态);关时 null */
+  placeholderFilter: PlaceholderFilter | null;
   /** active → idle 转移计时器 */
   idleTimer: NodeJS.Timeout | null;
   /** ADR-021:下一次读屏算 agentPhase 的计时器;null = 没有排队的读屏 */
@@ -530,6 +536,8 @@ export interface SessionManagerOptions {
   appVersion?: string;
   /** tmux -L name on remote hosts, so builds cannot attach to each other's sessions. */
   tmuxSocket?: string;
+  /** 公式图片扩展 (ADR-019):terminal-look.json 的路径,通常在数据目录 extensions/ 下 */
+  terminalLookFile?: string;
 }
 
 export class SessionManager extends EventEmitter {
@@ -550,6 +558,25 @@ export class SessionManager extends EventEmitter {
    * ipc 层在 createSession resolve 后立即读取并清空,传给 renderer 弹 toast。
    */
   lastLaunchWarning: string | null = null;
+
+  /**
+   * 公式图片扩展 (ADR-019):renderer 报告的终端颜色与格子宽高比写在这个文件里,
+   * 扩展打开时新 session 拿到它的路径 (LATEX_MATH_LOOK_FILE),插件每次画图现读。
+   * undefined = 未配置 (测试场景)。
+   */
+  private readonly terminalLookFile: TerminalLookFile | undefined;
+
+  /** 记下 renderer 量到的终端外观;已在跑的 Claude Code 下次画图就用上。 */
+  setTerminalLook(look: TerminalLook): void {
+    this.terminalLookFile?.update(look).catch((err: unknown) => {
+      logger.warn(
+        'SessionManager',
+        `could not write terminal look file ${this.terminalLookFile?.path}: ` +
+          `${err instanceof Error ? err.message : String(err)}. Formula images keep the plugin's ` +
+          'own colour guess. Check that the data folder is writable.',
+      );
+    });
+  }
 
   /**
    * 缓存 detectShells 结果。首次 createSession 时填充,后续复用。
@@ -583,6 +610,9 @@ export class SessionManager extends EventEmitter {
     this.emitBatchMs = options.emitBatchMs ?? EMIT_BATCH_MS;
     this.appVersion = options.appVersion ?? '';
     this.tmuxSocket = options.tmuxSocket;
+    this.terminalLookFile = options.terminalLookFile
+      ? new TerminalLookFile(options.terminalLookFile)
+      : undefined;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -728,6 +758,12 @@ export class SessionManager extends EventEmitter {
       programName: 'Ceteris',
       appVersion: this.appVersion,
     });
+    // 公式图片扩展 (ADR-019):spawn 时读一次,之后这个 session 一直按这个值走。
+    const mathImages = this.settingsManager.get().extensions?.claudeMathImages === true;
+    if (mathImages) {
+      const gitBash = shells.find((s) => s.id === 'git-bash')?.executablePath;
+      Object.assign(env, mathImagesEnv(this.terminalLookFile?.path, gitBash));
+    }
     Object.assign(env, launchParams.env);
     Object.assign(env, template.env);
     // BETA-ENV-1:Windows 上必做的最后一道防御 —— 补齐 canonical SystemRoot
@@ -792,6 +828,11 @@ export class SessionManager extends EventEmitter {
         // 下 node-pty fallback 到 winpty(winpty 会闪 conhost 窗口,
         // 用户报告 "新建 shell 时有一闪而过的新建窗口")。
         useConpty: true,
+        // 公式图片扩展 (ADR-019):系统 conhost 自己抢答 DA1 (CSI c),比终端对
+        // XTVERSION 的回复先到;Claude Code 把 DA1 当"回复已到齐",认定终端不画图。
+        // node-pty 自带的 ConPTY 1.23 把 DA1 交给终端答,顺序就对了。
+        // 只在扩展打开时用;非 Windows 平台 node-pty 忽略这个选项。
+        useConptyDll: mathImages,
       });
     } catch (err) {
       throw new SessionManagerError(
@@ -833,6 +874,7 @@ export class SessionManager extends EventEmitter {
       disposables,
       scrollbackLastSeq: -1,
       parser: new Osc1337Parser(),
+      placeholderFilter: mathImages ? new PlaceholderFilter() : null,
       idleTimer: null,
       phaseTimer: null,
       tokenRate: null,
@@ -1393,6 +1435,11 @@ export class SessionManager extends EventEmitter {
     if (!this.sessions.has(managed.info.id) || !managed.pty) return;
     const bytes = Buffer.from(data, 'utf8');
     const parsed = managed.parser.parse(bytes);
+    // Claude Code 内联图片底下的占位格 (U+2800 + 组合符) 变空格,见 placeholder-filter.ts。
+    // 放在 emit / headless 之前,live 输出与 scrollback 回放看到的是同一份字节。
+    if (managed.placeholderFilter) {
+      parsed.passthrough = managed.placeholderFilter.filter(parsed.passthrough);
+    }
 
     // 处理 OSC 事件
     for (const ev of parsed.events) {

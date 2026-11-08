@@ -1,12 +1,12 @@
 /**
  * @file src/renderer/components/QuickLaunchTip.tsx
- * @purpose 首次使用引导:在标签栏末尾的虚线标签 (GhostTab) 下方弹一个小气泡,告诉用户
+ * @purpose 首次使用引导:在标签栏末尾的快捷启动图标 (GhostTab) 下方弹一个小气泡,告诉用户
  *   点里面的图标能一步启动 agent。用户点"知道了"或真的用它启动过一次后,永久不再出现。
  *
  * @关键设计:
  * - "看过"存在 settings.behavior.quickLaunchTipSeen,所以所有窗口同时消失,
  *   重启后也不会再弹。不用 localStorage:那是每个窗口 / 每个 dev 数据目录各一份。
- * - 位置跟着虚线标签走 (data-guide="ghost-tab";快捷启动列表为空时没有它,就对准
+ * - 位置跟着快捷启动图标走 (data-guide="ghost-tab";快捷启动列表为空时没有它,就对准
  *   data-guide="new-tab" 的 + 号):它随标签数量左右移动,所以每次渲染和窗口缩放时重新量。
  * - 气泡不挡操作:只有气泡本身吃点击,其余区域照常可点。
  *
@@ -22,11 +22,11 @@ import { COMMAND_CHANNELS } from '@shared/protocol';
 import { useTranslation } from './LanguageProvider';
 
 interface Props {
-  /** 用来在标签增减后重新量虚线标签的位置 */
+  /** 用来在标签增减后重新量快捷启动图标的位置 */
   layoutKey: string;
 }
 
-/** 气泡对准的元素:虚线标签,没有时退回 + 号 */
+/** 气泡对准的元素:快捷启动图标,没有时退回 + 号 */
 function tipAnchor(): Element | null {
   return (
     document.querySelector('[data-guide="ghost-tab"]') ??
@@ -80,8 +80,8 @@ export function QuickLaunchTip({ layoutKey }: Props): JSX.Element | null {
     >
       <p className="quick-launch-tip-title">
         {tx(
-          '点虚线标签里的图标,一步启动 agent',
-          'Click an icon in the dashed tab to start an agent',
+          '点标签栏末尾的图标,一步启动 agent',
+          'Click an icon at the end of the tab strip to start an agent',
         )}
       </p>
       <p className="quick-launch-tip-body">

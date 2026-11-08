@@ -2099,7 +2099,7 @@ interface TabControlRequest {
 
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。
 
-**协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件。
+**协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件,`detail.sessionId` 是被勾选的标签。导览靠 DOM 属性找目标:`data-guide="ghost-tab"`、`data-quick-key`、`data-guide="new-tab"`、`data-session-id`、`data-guide="coordinator"`、`data-guide="coordinator-bar"`。
 
 ---
 

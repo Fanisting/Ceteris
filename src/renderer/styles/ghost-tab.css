@@ -1,0 +1,67 @@
+/*
+ * @file ghost-tab.css
+ * @purpose 标签栏末尾的幽灵标签(GhostTab.tsx):虚线框、agent 图标按钮,以及框内的 + 按钮。
+ *
+ * @关键设计:
+ * - 虚线框表示"还不是标签,点了才是";高度和圆角与 + 按钮一致,不撑高标签栏。
+ * - flex: 0 0 auto,标签多时先压缩真正的标签,框和里面的按钮保持原尺寸。
+ * - 图标按钮悬停时上浮 1px 并加 MD3 状态层,和 + 按钮的反馈一致。
+ *
+ * @对应文档章节:软件定义书.md 2 (鼠标优先)
+ */
+
+.tab-ghost {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: center;
+  gap: 2px;
+  height: 36px;
+  margin-left: 4px;
+  padding: 0 1px 0 4px;
+  border: 1px dashed var(--md-outline, #f0f);
+  border-radius: var(--md-shape-full, 999px);
+}
+
+.tab-ghost .tab.tab-blank {
+  margin-left: 0;
+}
+
+.tab-ghost-item {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--md-on-surface-variant, #f0f);
+  cursor: pointer;
+  transition:
+    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    transform var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.tab-ghost-item:hover {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
+  transform: translateY(-1px);
+}
+
+.tab-ghost-item:active {
+  transform: none;
+}
+
+.tab-ghost-item:focus-visible {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-ghost-item,
+  .tab-ghost-item:hover {
+    transform: none;
+    transition: none;
+  }
+}

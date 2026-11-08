@@ -188,6 +188,6 @@ export interface TabControlStatus {
 
 /**
  * Window event the tab menu fires when the user ticks Coordinator, so the coordinator guide
- * (CoordinatorGuide.tsx) can open the first time without the menu knowing about it.
+ * (CoordinatorTour.tsx) can open or move on without the menu knowing about it.
  */
 export const COORDINATOR_GUIDE_EVENT = 'ceteris:coordinator-ticked';

@@ -35,6 +35,7 @@ import './styles/file-tree.css';
 // Rendered .md files use the OnePage reading look (MIT, credited in README)
 import './styles/markdown-onepage.css';
 import './styles/path-tags.css';
+import './styles/folder-blocks.css';
 import './styles/quick-launch.css';
 import './styles/theme-picker.css';
 import './styles/coordinator-bar.css';

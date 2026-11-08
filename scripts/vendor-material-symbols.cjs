@@ -77,6 +77,10 @@ const SYMBOLS = [
   ['Schedule', 'schedule', 'default'],
   ['History', 'history', 'default'],
   ['Dns', 'dns', 'default'],
+  // 文件夹列表 / 块视图切换
+  ['GridView', 'grid_view', 'default'],
+  ['ViewList', 'view_list', 'default'],
+  ['ArrowBack', 'arrow_back', 'default'],
 
   // 终端右键
   ['ContentCopy', 'content_copy', 'default'],

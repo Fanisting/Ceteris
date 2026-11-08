@@ -12,6 +12,10 @@
  * - 拖 Explorer 文件夹到 .sidebar-bookmarks-dropzone (CP-2 完成标志):
  *   先校验 file:// path 是否存在且是目录,然后调 cmd:bookmark:add
  * - The list shows local folders or SSH folders, chosen from the title bar badge.
+ * - Folders show as rows or as blocks, switched from the Folders header. Rows fold open in
+ *   place. Blocks are a grid; a click opens that folder's sessions with a back button, so
+ *   the grid stays compact however many sessions a folder has. Both layouts are PathItem,
+ *   so the context menu, rename, tags and the terminal button behave the same.
  * - 设置入口固定在底部 (CP-2 占位,CP-4 接入完整设置)
  *
  * @对应文档章节: 软件定义书.md 6.2 (左侧栏)、7.3 (拖拽规格)
@@ -30,12 +34,15 @@ import { PATH_DRAG_TYPE } from './path-drag';
 import { PICK_REMOTE_FOLDER_EVENT } from './ViewSwitchButton';
 import {
   AccountTree,
+  ArrowBack,
   CheckBold,
   ChevronRight,
   CloseBold,
   Terminal,
   Warning,
   Folder,
+  GridView,
+  ViewList,
 } from './material-symbols';
 import { FileTreePanel } from './FileTreePanel';
 import { TagDot, TagEditor, TagSettings } from './TagEditor';
@@ -106,6 +113,21 @@ function readFileTreeOpenFromStorage(): boolean {
     return window.localStorage?.getItem(FILE_TREE_OPEN_LS_KEY) === 'true';
   } catch {
     return false;
+  }
+}
+
+/**
+ * Rows or blocks, remembered per machine in localStorage like the file tree toggle. It is a
+ * viewing preference, not a setting, so other open windows keep their own layout.
+ */
+type FolderLayout = 'list' | 'blocks';
+const FOLDER_LAYOUT_LS_KEY = 'ceteris.sidebar.folderLayout';
+
+function readFolderLayoutFromStorage(): FolderLayout {
+  try {
+    return window.localStorage?.getItem(FOLDER_LAYOUT_LS_KEY) === 'blocks' ? 'blocks' : 'list';
+  } catch {
+    return 'list';
   }
 }
 
@@ -620,6 +642,27 @@ interface TagDotActions {
 /** Most dots a row shows, so a heavily tagged folder keeps room for its name. */
 const MAX_ROW_DOTS = 5;
 
+/** Most session dots a block shows before it writes +N. */
+const MAX_BLOCK_SESSION_DOTS = 8;
+
+/**
+ * A session's dot colour (ADR-021): warning while an agent waits at an approval prompt, the
+ * primary colour when it finished unseen, otherwise the active / idle / exited colour.
+ * Shared by the session rows and the dots on a folder block so the two never disagree.
+ */
+function sessionDotColor(session: SessionInfo, unseen: boolean): string {
+  if (session.agentPhase === 'blocked') return 'var(--color-warning, #f0f)';
+  if (unseen) return 'var(--md-primary, #f0f)';
+  return STATE_DOT_COLOR[session.state];
+}
+
+/** The breathing animation class that goes with sessionDotColor, with a leading space. */
+function sessionDotClass(session: SessionInfo, unseen: boolean): string {
+  if (session.agentPhase === 'blocked') return ' agent-blocked';
+  if (unseen) return ' agent-unseen';
+  return '';
+}
+
 function FolderList({
   folders,
   statusFilter,
@@ -630,10 +673,44 @@ function FolderList({
   statusFilter: SessionStatusFilter | null;
   onAdd: () => void;
 } & TagDotActions): JSX.Element {
-  const { t } = useTranslation();
+  const { t, tx } = useTranslation();
+  const selectedPathId = useAppState().selectedPathId;
   // BETA-014:末级文件夹同名时自动补父目录区分;手动命名的不参与。
   const displayNames = useMemo(() => disambiguatePathNames(folders), [folders]);
   const empty = folders.length === 0;
+  const nameOverride = (p: PathNode): { displayNameOverride?: string } => {
+    const override = p.kind === 'ssh' ? undefined : displayNames.get(p.id);
+    return override !== undefined ? { displayNameOverride: override } : {};
+  };
+
+  const [layout, setLayout] = useState<FolderLayout>(() => readFolderLayoutFromStorage());
+  // Blocks layout: the folder whose sessions are shown in place of the grid.
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  const toggleLayout = (): void => {
+    const next: FolderLayout = layout === 'list' ? 'blocks' : 'list';
+    setLayout(next);
+    setOpenFolderId(null);
+    try {
+      window.localStorage?.setItem(FOLDER_LAYOUT_LS_KEY, next);
+    } catch {
+      // localStorage 不可用时只影响下次启动的默认布局
+    }
+  };
+  // Follow the selection while a folder is open: picking a tab of another folder from the
+  // tab bar should not leave the sidebar showing sessions the user is no longer looking at.
+  useEffect(() => {
+    if (selectedPathId !== null) {
+      setOpenFolderId((open) => (open === null ? null : selectedPathId));
+    }
+  }, [selectedPathId]);
+  // A folder removed from the list, or hidden by a filter, falls back to the grid.
+  const openFolder =
+    layout === 'blocks' && openFolderId !== null
+      ? folders.find((p) => p.id === openFolderId)
+      : undefined;
+  const layoutLabel =
+    layout === 'list' ? tx('以块显示', 'Show as blocks') : tx('以列表显示', 'Show as list');
+
   return (
     <section className={`sidebar-category${empty ? ' empty' : ''}`}>
       <header className="sidebar-category-header">
@@ -648,26 +725,60 @@ function FolderList({
         <button
           type="button"
           className="sidebar-category-action"
+          onClick={toggleLayout}
+          title={layoutLabel}
+          aria-label={layoutLabel}
+          data-testid="folder-layout-toggle"
+        >
+          {layout === 'list' ? <GridView size={14} /> : <ViewList size={14} />}
+        </button>
+        <button
+          type="button"
+          className="sidebar-category-action"
           onClick={onAdd}
           title={t('sidebar.addBookmark.title')}
         >
           <Icon name="plus" size={12} />
         </button>
       </header>
-      {!empty && (
+      {!empty && layout === 'list' && (
         <ul className="sidebar-paths">
-          {folders.map((p) => {
-            const override = p.kind === 'ssh' ? undefined : displayNames.get(p.id);
-            return (
-              <PathItem
-                key={p.id}
-                node={p}
-                statusFilter={statusFilter}
-                {...dotActions}
-                {...(override !== undefined ? { displayNameOverride: override } : {})}
-              />
-            );
-          })}
+          {folders.map((p) => (
+            <PathItem
+              key={p.id}
+              node={p}
+              statusFilter={statusFilter}
+              layout="row"
+              {...dotActions}
+              {...nameOverride(p)}
+            />
+          ))}
+        </ul>
+      )}
+      {!empty && layout === 'blocks' && openFolder && (
+        <PathItem
+          key={openFolder.id}
+          node={openFolder}
+          statusFilter={statusFilter}
+          layout="open"
+          onBack={() => setOpenFolderId(null)}
+          {...dotActions}
+          {...nameOverride(openFolder)}
+        />
+      )}
+      {!empty && layout === 'blocks' && !openFolder && (
+        <ul className="sidebar-blocks">
+          {folders.map((p) => (
+            <PathItem
+              key={p.id}
+              node={p}
+              statusFilter={statusFilter}
+              layout="block"
+              onOpen={() => setOpenFolderId(p.id)}
+              {...dotActions}
+              {...nameOverride(p)}
+            />
+          ))}
         </ul>
       )}
     </section>
@@ -714,16 +825,30 @@ function RowTagDots({
   );
 }
 
+/**
+ * One folder, in one of three layouts that share the menu, rename, tags and terminal button:
+ * - 'row': the list layout; a click selects, a second click folds the sessions in or out.
+ * - 'block': a card in the blocks grid; a click selects the folder and calls onOpen.
+ * - 'open': the blocks layout with this folder opened, a back row over its sessions.
+ */
 function PathItem({
   node,
   displayNameOverride,
   statusFilter,
+  layout,
+  onOpen,
+  onBack,
   ...dotActions
 }: {
   node: PathNode;
   displayNameOverride?: string;
   /** ADR-023:设了就只列这类 session,并且总是展开,一眼看到全部 */
   statusFilter: SessionStatusFilter | null;
+  layout: 'row' | 'block' | 'open';
+  /** 'block' only: show this folder's sessions in place of the grid. */
+  onOpen?: () => void;
+  /** 'open' only: go back to the grid. */
+  onBack?: () => void;
 } & TagDotActions): JSX.Element {
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -829,7 +954,7 @@ function PathItem({
   const copyToClipboard = useCopyToClipboard();
 
   // M1-C:右键菜单 — 按分类组装条目
-  const handleContextMenu = (e: MouseEvent<HTMLDivElement>): void => {
+  const handleContextMenu = (e: MouseEvent<HTMLElement>): void => {
     e.preventDefault();
     e.stopPropagation();
     const items: ContextMenuItem[] = [];
@@ -938,25 +1063,181 @@ function PathItem({
     });
   };
 
+  const tagEditor = tagging && (
+    <TagEditor
+      pathId={node.id}
+      title={tx(`${displayName} 的标签`, `Tags for ${displayName}`)}
+      onClose={() => setTagging(false)}
+    />
+  );
+  const renameInput = (
+    <input
+      ref={renameInputRef}
+      type="text"
+      className="path-name-rename-input"
+      value={renameText}
+      onChange={(e) => setRenameText(e.target.value)}
+      onBlur={commitRename}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitRename();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setRenaming(false);
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+  const openTerminalButton = (
+    <button
+      type="button"
+      className="path-open-terminal"
+      title={`在终端中打开 ${node.path}`}
+      aria-label={`在终端中打开 ${node.path}`}
+      onClick={(e) => void handleOpenTerminal(e)}
+    >
+      <Terminal size={14} />
+    </button>
+  );
+  const pathTitle = `${node.invalid ? `${node.path}\n⚠️ 路径不可访问` : node.path}${node.tags ? `\n${node.tags.join(', ')}` : ''}`;
+  const onDragStart = (e: DragEvent<HTMLDivElement>): void => {
+    e.dataTransfer.setData(PATH_DRAG_TYPE, node.id);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+  const sessionList = sessions.length > 0 && (
+    <ul className="session-list">
+      {sessions.map((s) => (
+        <SessionItem
+          key={s.id}
+          session={s}
+          myWindowId={state.myWindowId}
+          selected={state.selectedSessionId === s.id}
+          unseen={state.unseenDoneSessionIds.has(s.id)}
+          celebrate={
+            !!state.settings.appearance?.hideTopTabBar &&
+            (state.settings.appearance?.celebrations ?? true)
+          }
+          themeId={state.settings.appearance?.theme}
+        />
+      ))}
+    </ul>
+  );
+
+  if (layout === 'block') {
+    const openBlock = (): void => {
+      if (renaming) return;
+      dispatch({ type: 'view/select-path', pathId: node.id });
+      onOpen?.();
+    };
+    // 每个 session 一个小圆点,颜色与 session 行一致;太多时画前几个再写 +N
+    const shownDots = sessions.slice(0, MAX_BLOCK_SESSION_DOTS);
+    return (
+      <li className={`path-block${selected ? ' selected' : ''}${node.invalid ? ' invalid' : ''}`}>
+        {tagEditor}
+        <div
+          className="path-block-card"
+          role="button"
+          tabIndex={0}
+          draggable={!renaming}
+          onDragStart={onDragStart}
+          onClick={openBlock}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openBlock();
+            }
+          }}
+          onContextMenu={handleContextMenu}
+          title={pathTitle}
+        >
+          <div className="path-block-head">
+            {node.invalid ? (
+              <Warning size={14} className="path-block-icon path-invalid-icon" />
+            ) : (
+              <Folder size={14} className="path-block-icon" />
+            )}
+            {renaming ? renameInput : <span className="path-block-name">{displayName}</span>}
+          </div>
+          <div className="path-block-foot">
+            <span
+              className="path-block-sessions"
+              aria-label={tx(`${sessions.length} 个终端`, `${sessions.length} terminals`)}
+            >
+              {shownDots.map((s) => {
+                const unseen = state.unseenDoneSessionIds.has(s.id);
+                return (
+                  <span
+                    key={s.id}
+                    className={`path-block-dot${sessionDotClass(s, unseen)}`}
+                    style={{ backgroundColor: sessionDotColor(s, unseen) }}
+                    title={s.displayName}
+                  />
+                );
+              })}
+              {sessions.length > shownDots.length && (
+                <span className="path-block-more">+{sessions.length - shownDots.length}</span>
+              )}
+            </span>
+            {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
+            {!renaming && openTerminalButton}
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  if (layout === 'open') {
+    return (
+      <div className={`path-open-folder${node.invalid ? ' invalid' : ''}`}>
+        {tagEditor}
+        <div
+          className="path-open-folder-head"
+          draggable={!renaming}
+          onDragStart={onDragStart}
+          onContextMenu={handleContextMenu}
+          title={pathTitle}
+        >
+          <button
+            type="button"
+            className="path-open-folder-back"
+            onClick={onBack}
+            title={tx('返回所有文件夹', 'Back to all folders')}
+            aria-label={tx('返回所有文件夹', 'Back to all folders')}
+          >
+            <ArrowBack size={16} />
+          </button>
+          {node.invalid && <Warning size={14} className="path-invalid-icon" />}
+          {renaming ? renameInput : <span className="path-name">{displayName}</span>}
+          {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
+          {!renaming && openTerminalButton}
+        </div>
+        {sessionList || (
+          <p className="sidebar-empty path-open-folder-empty">
+            {statusFilter === null
+              ? tx(
+                  '还没有终端。点右边的终端按钮新开一个。',
+                  'No terminals yet. Use the terminal button to open one.',
+                )
+              : tx('没有符合筛选的终端。', 'No terminals match the filter.')}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <li className={`path-item${selected ? ' selected' : ''}${node.invalid ? ' invalid' : ''}`}>
-      {tagging && (
-        <TagEditor
-          pathId={node.id}
-          title={tx(`${displayName} 的标签`, `Tags for ${displayName}`)}
-          onClose={() => setTagging(false)}
-        />
-      )}
+      {tagEditor}
       <div
         className="path-item-row"
         draggable={!renaming}
-        onDragStart={(e) => {
-          e.dataTransfer.setData(PATH_DRAG_TYPE, node.id);
-          e.dataTransfer.effectAllowed = 'copy';
-        }}
+        onDragStart={onDragStart}
         onClick={handleRowClick}
         onContextMenu={handleContextMenu}
-        title={`${node.invalid ? `${node.path}\n⚠️ 路径不可访问` : node.path}${node.tags ? `\n${node.tags.join(', ')}` : ''}`}
+        title={pathTitle}
       >
         {/*
           F2(beta 勘误2):左侧固定 12px 槽位,按优先级选一个内容渲染 —
@@ -979,64 +1260,16 @@ function PathItem({
             <ChevronRight size={16} />
           </span>
         )}
-        {renaming ? (
-          <input
-            ref={renameInputRef}
-            type="text"
-            className="path-name-rename-input"
-            value={renameText}
-            onChange={(e) => setRenameText(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitRename();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                setRenaming(false);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="path-name">{displayName}</span>
-        )}
+        {renaming ? renameInput : <span className="path-name">{displayName}</span>}
         {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
         {activeCount > 0 && !renaming && (
           <span className="path-session-count" title={`${activeCount} 个终端`}>
             {activeCount}
           </span>
         )}
-        {!renaming && (
-          <button
-            type="button"
-            className="path-open-terminal"
-            title={`在终端中打开 ${node.path}`}
-            aria-label={`在终端中打开 ${node.path}`}
-            onClick={(e) => void handleOpenTerminal(e)}
-          >
-            <Terminal size={14} />
-          </button>
-        )}
+        {!renaming && openTerminalButton}
       </div>
-      {expanded && sessions.length > 0 && (
-        <ul className="session-list">
-          {sessions.map((s) => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              myWindowId={state.myWindowId}
-              selected={state.selectedSessionId === s.id}
-              unseen={state.unseenDoneSessionIds.has(s.id)}
-              celebrate={
-                !!state.settings.appearance?.hideTopTabBar &&
-                (state.settings.appearance?.celebrations ?? true)
-              }
-              themeId={state.settings.appearance?.theme}
-            />
-          ))}
-        </ul>
-      )}
+      {expanded && sessionList}
     </li>
   );
 }
@@ -1226,22 +1459,8 @@ function SessionItemImpl({
     >
       <span
         ref={stateDotRef}
-        className={
-          'session-state-dot' +
-          (session.agentPhase === 'blocked'
-            ? ' agent-blocked'
-            : unseen
-              ? ' agent-unseen'
-              : '')
-        }
-        style={{
-          backgroundColor:
-            session.agentPhase === 'blocked'
-              ? 'var(--color-warning, #f0f)'
-              : unseen
-                ? 'var(--md-primary, #f0f)'
-                : STATE_DOT_COLOR[session.state],
-        }}
+        className={'session-state-dot' + sessionDotClass(session, unseen)}
+        style={{ backgroundColor: sessionDotColor(session, unseen) }}
         aria-label={`状态: ${session.agentPhase ?? session.state}`}
       >
         {session.state === 'exited' && session.exitCode === 0 && (

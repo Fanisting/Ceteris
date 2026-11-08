@@ -152,6 +152,9 @@ export const COMMAND_CHANNELS = {
   /** 回答一条 evt:ssh:askpass-prompt。answer 为 null 表示用户取消 */
   SSH_ASKPASS_ANSWER: 'cmd:ssh:askpass-answer',
 
+  /** Saves an edited .txt or .json. Under Link it runs on the host, so the host's file changes */
+  FS_WRITE_TEXT: 'cmd:fs:write-text',
+
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */
   EXPLORER_INTEGRATION_GET_STATUS: 'cmd:explorer-integration:get-status',

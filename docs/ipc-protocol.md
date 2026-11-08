@@ -8,7 +8,7 @@
 
 文档版本:1.4 · 最后更新:2026-11-07
 
-> **v1.4 变更**(PDF 实时预览 + SFTP 交互式登录,软件定义书 ADR-016):
+> **v1.4 变更**(PDF 实时预览 + SFTP 交互式登录,软件定义书 ADR-017):
 > - 新增 `cmd:fs:stat-file`(PDF 自动刷新轮询文件大小和修改时间,安静请求)
 > - `cmd:fs:list-dir` payload 加 `interactive`,`cmd:fs:read-pdf` payload 加 `fresh`、response 加 `mtimeMs`;`DirFailure` 多一个 `'login-required'`
 > - 新增 `cmd:ssh:askpass-answer` 与事件 `evt:ssh:askpass-prompt` / `evt:ssh:askpass-closed`(后台 SFTP 连接的 ssh 登录提示由窗口回答)
@@ -1102,9 +1102,10 @@ type RenameEntryResponse =
 #### `cmd:fs:read-pdf`
 ```typescript
 interface ReadPdfPayload {
-  path: string;                 // 本地或远端绝对路径,扩展名必须是可查看的(pdf / 图片 / md)
+  path: string;                 // 本地或远端绝对路径,扩展名必须是可显示的文件类型
   sshProfileId?: string;        // 有值时通过 SFTP 读
   offset: number;               // 字节偏移,从 0 开始,之后用上次的 nextOffset
+  length?: number;              // 想读的字节数,最多一块,默认一块(文本翻页用)
   fresh?: boolean;              // (v1.4) 用户刚点击了文件:跳过 SFTP 失败缓存并允许登录提示。自动刷新不要设置
 }
 type ReadPdfResponse =
@@ -1114,7 +1115,23 @@ type ReadPdfResponse =
 
 **Errors**:无。常规失败走 `reason`。不可查看的扩展名或非普通文件返回 `not-found`,PDF 文件头不是 `%PDF-` 返回 `not-pdf`,超过 256 MiB 返回 `too-large`
 
-**Notes**:每块 1 MiB,放得进 Link 的 8 MiB 帧,慢速线路也不会超过 30 秒的命令超时
+**Notes**:每块 1 MiB,放得进 Link 的 8 MiB 帧,慢速线路也不会超过 30 秒的命令超时。txt 和 json 没有 256 MiB 上限,大文件一次只读一页
+
+#### `cmd:fs:write-text`
+```typescript
+interface WriteTextPayload {
+  path: string;                 // 已存在的 .txt 或 .json 绝对路径,不支持 SFTP
+  base64: string;               // 完整新内容,最多 4 MiB
+  expected: { mtimeMs: number; size: number } | null;  // 开始编辑时的状态,null 表示强制覆盖
+}
+type WriteTextResponse =
+  | { ok: true; mtimeMs: number; size: number }  // 下一次保存要带上的状态
+  | { ok: false; reason: FileTreeFailure | 'changed' | 'too-large' };
+```
+
+**Errors**:无。常规失败走 `reason`。`changed` 表示文件在编辑期间被其他程序改过
+
+**Notes**:写临时文件再 rename,失败时原文件不变。Link 下在 Host 上执行
 
 #### `cmd:fs:stat-file` (v1.4)
 ```typescript

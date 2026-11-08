@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/pdf-view-store.ts
- * @purpose 记录每个 session 正在显示哪个 PDF、图片或 markdown,把文件分块读进内存,
+ * @purpose 记录每个 session 正在显示哪个 PDF、图片、markdown 或文本,把文件分块读进内存,
  *   并在文件变化时自动重读。
  *
  * @关键设计:
@@ -20,6 +20,8 @@
  *   直接用新内容替换,revision 加一,查看器据此换文档并保持页码。重读失败(读到一半、
  *   不是 PDF、暂时不存在)保留旧内容,显示一个可点的"无法刷新",等 stat 再变再试。
  *   轮询和自动重读都不传 fresh:它们不能触发 SFTP 登录提示,也不能跳过失败缓存。
+ * - Text is not loaded here: TextFileView reads what it needs, as a large file must never be
+ *   read whole. Its unsaved edits live in text-drafts.ts, so closing a view cannot lose them.
  *
  * @对应文档章节: 软件定义书.md 14.6
  *
@@ -105,6 +107,31 @@ function publish(viewKey: string, view: PdfView | null): void {
 
 function viewUrl(view: PdfView | null): string | null {
   return view?.status === 'ready' ? view.url : null;
+}
+
+export type TextRange =
+  | { ok: true; bytes: Uint8Array; size: number; mtimeMs: number | null }
+  | { ok: false; reason: ReadPdfFailure };
+
+/** Reads part of a text file. Does not trust the reply, as with the chunks below. */
+export async function readTextRange(
+  source: PdfSource,
+  offset: number,
+  length: number,
+): Promise<TextRange> {
+  const payload: ReadPdfPayload = {
+    path: source.path,
+    offset,
+    length,
+    ...(source.sshProfileId ? { sshProfileId: source.sshProfileId } : {}),
+  };
+  const res = await window.api
+    .invoke<ReadPdfPayload, ReadPdfResponse>(COMMAND_CHANNELS.FS_READ_PDF, payload)
+    .catch((): ReadPdfResponse => ({ ok: false, reason: 'unknown' }));
+  if (!res.ok) return res;
+  const bytes = decodeBase64(res.base64);
+  if (bytes.length > length) return { ok: false, reason: 'unknown' };
+  return { ok: true, bytes, size: res.size, mtimeMs: res.mtimeMs ?? null };
 }
 
 function decodeBase64(base64: string): Uint8Array<ArrayBuffer> {
@@ -219,6 +246,24 @@ export async function openPdf(viewKey: string, source: PdfSource): Promise<void>
   publish(viewKey, { ...base, status: 'loading' });
   const isStale = (): boolean => views.get(viewKey)?.generation !== generation;
 
+  if (fileViewKind(source.name) === 'text') {
+    // 文本不在这里读:TextFileView 自己分页读,并用 mtime 守住保存。fileStat 只是占位,
+    // watchPdf 和 refreshPdf 对文本都不工作,所以刷新状态永远为空。
+    publish(viewKey, {
+      ...base,
+      status: 'ready',
+      url: null,
+      text: null,
+      blob: null,
+      revision: 1,
+      fileStat: { size: 0, mtimeMs: null },
+      refreshError: null,
+      refreshing: false,
+    });
+    evictOldViews(viewKey);
+    return;
+  }
+
   try {
     const result = await readAllChunks(source, isStale, true);
     if (!result) return;
@@ -247,6 +292,25 @@ export async function openPdf(viewKey: string, source: PdfSource): Promise<void>
 /** 关闭 PDF,露出下面的内容。 */
 export function closePdf(viewKey: string): void {
   if (views.has(viewKey)) publish(viewKey, null);
+}
+
+/**
+ * Hands a folder's open file to the terminal just opened there, so it stays on screen beside
+ * that terminal. A file still loading closes instead: its load only knows the old key.
+ */
+export function movePdfView(fromKey: string, toKey: string): void {
+  const view = views.get(fromKey);
+  if (!view) return;
+  if (view.status !== 'ready' || views.has(toKey)) {
+    publish(fromKey, null);
+    return;
+  }
+  // Not through publish: that would revoke the blob URL the view is still showing.
+  views.delete(fromKey);
+  views.set(toKey, view);
+  lastShown.set(toKey, lastShown.get(fromKey) ?? 0);
+  lastShown.delete(fromKey);
+  for (const listener of listeners) listener();
 }
 
 /**
@@ -293,6 +357,7 @@ function readyView(viewKey: string): (PdfView & ReadyPdfView) | null {
 export async function refreshPdf(viewKey: string, options: { fresh: boolean }): Promise<void> {
   const view = readyView(viewKey);
   if (!view || view.refreshing) return;
+  if (fileViewKind(view.source.name) === 'text') return;
   const { generation, source } = view;
   const isStale = (): boolean => views.get(viewKey)?.generation !== generation;
   publish(viewKey, { ...view, refreshing: true });
@@ -375,6 +440,9 @@ async function tick(viewKey: string): Promise<void> {
  * 同一个 view 可能同时显示在两个窗格里,按计数管理。
  */
 export function watchPdf(viewKey: string): () => void {
+  // 文本由 TextFileView 自己读,整份重读对几 GB 的文件行不通
+  const source = views.get(viewKey)?.source;
+  if (source && fileViewKind(source.name) === 'text') return () => {};
   let watcher = watchers.get(viewKey);
   if (!watcher) {
     const remote = Boolean(views.get(viewKey)?.source.sshProfileId);

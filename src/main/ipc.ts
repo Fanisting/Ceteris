@@ -172,8 +172,11 @@ import type {
   RenameEntryResponse,
   StatFilePayload,
   StatFileResponse,
+  WriteTextPayload,
+  WriteTextResponse,
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
+import { writeTextFile } from './text-writer';
 import { isAppPageUrl } from './ipc-sender';
 import { readPdfChunk, readRemotePdfChunk, statRemoteViewFile, statViewFile } from './pdf-reader';
 import type { SftpPool } from './sftp-client';
@@ -1232,14 +1235,15 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.FS_READ_PDF,
     async (_e, envelope: CommandEnvelope<ReadPdfPayload>): Promise<ReadPdfResponse> => {
-      const { path, sshProfileId, offset, fresh } = envelope.payload;
-      if (!sshProfileId) return readPdfChunk(path, offset);
-      // 用户点击 = fresh:既跳过失败缓存,也允许登录提示。自动刷新两者都不传
+      const { path, sshProfileId, offset, fresh, length } = envelope.payload;
+      if (!sshProfileId) return readPdfChunk(path, offset, length);
+      // 用户点击 = fresh:既跳过失败缓存,也允许登录提示。自动刷新和文本翻页两者都不传
       return deps.sftpPool
         ? readRemotePdfChunk(deps.sftpPool, sshProfileId, path, offset, {
             fresh,
             interactive: fresh,
             windowId: envelope.windowId,
+            ...(length === undefined ? {} : { length }),
           })
         : { ok: false, reason: 'no-client' };
     },
@@ -1271,6 +1275,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.FS_RENAME,
     (_e, envelope: CommandEnvelope<RenameEntryPayload>): Promise<RenameEntryResponse> =>
       renameEntry(envelope.payload.path, envelope.payload.newName),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_WRITE_TEXT,
+    (_e, envelope: CommandEnvelope<WriteTextPayload>): Promise<WriteTextResponse> =>
+      writeTextFile(envelope.payload),
   );
 
   handleCommand(

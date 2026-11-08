@@ -81,6 +81,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 修复
 
+- 文件面板在多数主题里和侧栏同色,看不出边界。现在它比周围略亮(深色主题)或略暗(浅色主题),加一圈细描边,17 套主题都分得清;面板里的滚动条换成 Material 风格的细胶囊。
+
 - 通过 SSH 连接 Windows 主机时不再报“文件名、目录名或卷标语法不正确”。盘符路径改用 Windows 命令进入文件夹,并启动 PowerShell。
 
 - 修复 Windows 上用保存的密码时文件浏览提示“无法通过 SFTP 连接”。现在通过 SSH 自带的 askpass 传密码,文件浏览不再需要 sshpass。

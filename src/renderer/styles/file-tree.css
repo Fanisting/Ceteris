@@ -75,8 +75,17 @@
   flex-direction: column;
   margin: 0 8px 4px;
   overflow: hidden;
+  border: 1px solid var(--md-outline-variant, transparent);
   border-radius: var(--md-shape-md, 12px);
-  background-color: var(--md-surface-container-high, #f0f);
+  /* A tonal step, not a fixed colour. Themes without a full Material palette derive
+   * surface-container and surface-container-high from the same token, so the panel used to
+   * vanish into the shell behind it. Mixing toward the text colour lightens dark themes and
+   * darkens light ones, so the panel stands apart in every theme. */
+  background-color: color-mix(
+    in srgb,
+    var(--md-on-surface, #f0f) 6%,
+    var(--md-surface-container-high, #f0f)
+  );
 }
 
 .file-tree-header {
@@ -105,6 +114,40 @@
   min-height: 0;
   overflow: auto;
   padding: 0 4px 6px;
+}
+
+/* Material scrollbar: a slim pill on a clear track. The transparent border plus
+ * background-clip insets the thumb from the panel edge. Quiet at rest, clearer while the
+ * panel is hovered, wider on the bar itself, primary while dragged. */
+.file-tree-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.file-tree-list::-webkit-scrollbar-track,
+.file-tree-list::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+.file-tree-list::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--md-shape-full, 999px);
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--md-on-surface-variant, #f0f) 28%, transparent);
+}
+
+.file-tree-panel:hover .file-tree-list::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--md-on-surface-variant, #f0f) 48%, transparent);
+}
+
+.file-tree-list::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: color-mix(in srgb, var(--md-on-surface-variant, #f0f) 64%, transparent);
+}
+
+.file-tree-list::-webkit-scrollbar-thumb:active {
+  border-width: 2px;
+  background-color: var(--md-primary, #f0f);
 }
 
 .file-tree-row {

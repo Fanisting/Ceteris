@@ -3,8 +3,8 @@
 **状态**:**已根治(2026-05-17)** — 改用 state-replay 架构(@xterm/headless + SerializeAddon),裸字节 scrollback 与启发式 workaround 全部删除
 **优先级**:P1(完成)
 **首次报告**:2026-05-17
-**关联工单**:`docs/beta反馈工单库-20260515.md` BETA-019(随本工单一起结案)
-**根因证实**:复现脚本 `scripts/repro-cursor-1.mjs` + DevTools REPLAY-DIAG 输出 `bufferType:'normal'` + `scrollbackKB:2047`,验证 `?1049h` 被 2MB 裁切丢失假设
+**关联工单**:`docs/archive/beta反馈工单库-20260515.md` BETA-019(随本工单一起结案)
+**根因证实**:复现脚本 `scripts/repro-cursor-1.mjs`(2026-11 已删,见 git 历史) + DevTools REPLAY-DIAG 输出 `bufferType:'normal'` + `scrollbackKB:2047`,验证 `?1049h` 被 2MB 裁切丢失假设
 **实施分支**:`fix/cursor-1-state-replay` —— 4 个 commit(repro 脚本 → 切数据源 → 删 workaround → 删裸字节存储)
 **polyfill 追踪**:`docs/issues/xterm-serialize-mode-polyfill.md`(0.14.0 stable 不覆盖 `?25l` 与 DECSTBM,本地补两条,等 0.15.0 stable 删)
 
@@ -108,7 +108,7 @@
 
 **`managed.scrollback: Buffer` 2MB 裸字节 ring 从头部 `\n` 边界裁切,不识别 DEC 模式 setter**。Claude Code / Codex / vim 启动只发一次 `?1049h`(进 alt-buffer)+ `?25l`(隐光标),之后无限刷帧。scrollback 涨过 2MB,裁切把开头那几个字节丢掉。renderer 重挂时 xterm 收到不含 `?1049h`/`?25l` 的字节流 → 留在 normal buffer + cursorBlink 保持 true。
 
-诊断脚本 `scripts/repro-cursor-1.mjs` + DevTools `[REPLAY-DIAG]` 日志直接证实:`bufferType:'normal'` + `scrollbackKB:2047`(顶住 2MB cap)+ `cursorBlink:true`,与假设字节级吻合。
+诊断脚本 `scripts/repro-cursor-1.mjs`(2026-11 已删,见 git 历史) + DevTools `[REPLAY-DIAG]` 日志直接证实:`bufferType:'normal'` + `scrollbackKB:2047`(顶住 2MB cap)+ `cursorBlink:true`,与假设字节级吻合。
 
 ### 修法
 

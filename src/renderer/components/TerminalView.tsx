@@ -117,6 +117,7 @@ import {
 } from '@shared/ime-probe-ring';
 import { isDeviceAttributesResponse } from '@shared/terminal-input-filter';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import { activateInlineImages, reportTerminalLook } from '../inline-images';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
 import { detectAgent } from '@shared/next-prompt';
@@ -686,6 +687,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // 终端渲染器选择(mount 时决定,运行时切换需关 tab 重开)
   const terminalRenderer =
     appState.settings.advanced?.terminalRenderer ?? 'auto';
+  // 公式图片扩展 (ADR-018),运行时开关,不重建 xterm
+  const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
 
   // 把"创建期"读到的初始值用 useMemo 锁定 (terminal 创建后只用 mutator 调整),
   // 否则每次 settings 引用变化都会重建 xterm 实例。
@@ -1782,6 +1785,21 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id, terminalRenderer]);
+
+  // 公式图片扩展 (ADR-018):设置打开时给这个终端装图片 addon + XTVERSION 回复,
+  // 关掉时卸下。跟着 session / 渲染器重建,所以 deps 带上它们。
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !claudeMathImages) return;
+    return activateInlineImages(term);
+  }, [claudeMathImages, session.id, terminalRenderer]);
+
+  // 公式图片扩展:把这个终端的颜色与格子宽高比报给 main,写进之后新 session 的环境变量。
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !claudeMathImages) return;
+    return reportTerminalLook(term, getXtermTheme(themeId));
+  }, [claudeMathImages, session.id, terminalRenderer, themeId, fontSize, fontFamily, lineHeight]);
 
   // 主题运行时切换
   useEffect(() => {

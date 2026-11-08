@@ -67,6 +67,11 @@ export const COMMAND_CHANNELS = {
   SESSION_EXPORT_SCROLLBACK: 'cmd:session:export-scrollback',
   /** BETA-028:清空 main 端的 scrollback ring buffer(配合 term.clear() 使用) */
   SESSION_CLEAR_SCROLLBACK: 'cmd:session:clear-scrollback',
+  /**
+   * 公式图片扩展 (ADR-018):renderer 报告终端的前景 / 背景色与格子宽高比,
+   * main 写进之后新 session 的 LATEX_MATH_* 环境变量。payload 见 claude-math-images.ts。
+   */
+  EXTENSIONS_REPORT_TERMINAL_LOOK: 'cmd:extensions:report-terminal-look',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**

@@ -102,6 +102,7 @@ type CategoryId =
   | 'remote'
   | 'system-integration'
   | 'ai'
+  | 'extensions'
   | 'advanced'
   | 'about';
 
@@ -121,6 +122,7 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
   { id: 'system-integration', iconName: 'systemIntegration', titleKey: 'settings.category.systemIntegration' },
   { id: 'ai', iconName: 'ai', titleKey: 'settings.category.ai' },
+  { id: 'extensions', iconName: 'extensions', titleKey: 'settings.category.extensions' },
   { id: 'advanced', iconName: 'advanced', titleKey: 'settings.category.advanced' },
   { id: 'about', iconName: 'about', titleKey: 'settings.category.about' },
 ];
@@ -233,6 +235,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
       return <SystemIntegrationPanel setError={setError} />;
     case 'ai':
       return <AiPanel setError={setError} />;
+    case 'extensions':
+      return <ExtensionsPanel setError={setError} />;
     case 'advanced':
       return <AdvancedPanel setError={setError} />;
     case 'about':
@@ -2976,6 +2980,62 @@ function AiPanel({
           {tx('清零', 'Reset')}
         </button>
       </SettingRow>
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 扩展分类 (ADR-018):可选功能,默认关,只影响打开之后新建的终端
+// ──────────────────────────────────────────────────────────────────
+
+/** 安装仓库里打过补丁的 latex-math 插件的命令,用户在 shell 里跑一次。 */
+const LATEX_MATH_INSTALL =
+  'claude plugin marketplace add Fanisting/ceteris\nclaude plugin install latex-math@ceteris';
+
+function ExtensionsPanel({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const enabled = useAppState().settings.extensions?.claudeMathImages ?? false;
+
+  return (
+    <section className="settings-panel">
+      <h2 className="settings-panel-title">{tx('扩展', 'Extensions')}</h2>
+
+      <SettingRow
+        label={tx('Claude Code 公式图片', 'Claude Code formula images')}
+        hint={tx(
+          '在 Claude Code 的回复里把 LaTeX 公式排成图片。打开后:终端支持 iTerm2 内联图片并自报 iTerm2 3.5;Windows 上新终端改用自带的 ConPTY。只影响打开之后新建的终端。',
+          'Typesets the LaTeX math in Claude Code replies as images. When on, terminals accept iTerm2 inline images and identify as iTerm2 3.5, and new terminals on Windows use the bundled ConPTY. Applies to terminals opened afterwards.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) =>
+              void updateSettings({ extensions: { claudeMathImages: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {enabled && (
+        <SettingRow
+          label={tx('还需要的插件', 'Plugin you also need')}
+          hint={tx(
+            '公式由 Claude Code 的 latex-math 插件排版(需要 TeX Live、ImageMagick 和 Git Bash)。在终端里跑一次下面两条命令,然后新开一个 Claude Code。若装过原版 latex-math@claude-latex-math,请先停用它。',
+            'The latex-math Claude Code plugin typesets the formulas (it needs TeX Live, ImageMagick and Git Bash). Run these two commands once in a terminal, then start a new Claude Code session. If you installed the original latex-math@claude-latex-math, disable it first.',
+          )}
+        >
+          <pre className="settings-code-block">
+            <code>{LATEX_MATH_INSTALL}</code>
+          </pre>
+        </SettingRow>
+      )}
     </section>
   );
 }

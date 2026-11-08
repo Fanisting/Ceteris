@@ -77,6 +77,7 @@ import {
   type ClipboardWriteTextResponse,
   type CloseSessionPayload,
   type SetCoordinatorPayload,
+  type SetRolePayload,
   type CommandEnvelope,
   type CreateSessionPayload,
   type CreateSessionResponse,
@@ -223,6 +224,7 @@ import { ConnectCancelled, cancelOpenRouterConnect, connectOpenRouter } from './
 import type { SecretStore } from './secret-store';
 import type { ViewSwitcher } from './view-switcher';
 import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
+import { isSessionRoleOrNull } from '@shared/session-role';
 import {
   TAB_CONTROL_PLUGIN_ID,
   isClaudePluginInstalled,
@@ -789,6 +791,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.SESSION_SET_COORDINATOR,
     (_e, envelope: CommandEnvelope<SetCoordinatorPayload>): void => {
       sessionManager.setCoordinator(envelope.payload.sessionId, envelope.payload.coordinator);
+    },
+  );
+
+  // ADR-024:角色 (Coordinator / Fintuner),null 回到 Worker
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_ROLE,
+    (_e, envelope: CommandEnvelope<SetRolePayload>): void => {
+      const { sessionId, role } = envelope.payload;
+      if (!isSessionRoleOrNull(role)) {
+        throw new Error(
+          `[IPC] set-role: unknown role ${JSON.stringify(role)} for sessionId="${sessionId}". ` +
+            `Expected 'coordinator', 'fintuner' or null; check the tab menu or the coordinator tour.`,
+        );
+      }
+      sessionManager.setRole(sessionId, role);
     },
   );
 

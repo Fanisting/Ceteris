@@ -1617,8 +1617,42 @@ describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () =>
     mgr.setCoordinator(info.id, true);
     mgr.setCoordinator(info.id, false);
     mgr.setCoordinator('missing', true);
-    expect(changes).toEqual([{ coordinator: true }, { coordinator: false }]);
+    expect(changes).toEqual([
+      { role: 'coordinator', coordinator: true, displayName: 'Coordinator' },
+      { role: null, coordinator: false, displayName: info.displayName },
+    ]);
     expect(mgr.get(info.id)!.coordinator).toBe(false);
+  });
+
+  it('setRole names the tab after its role and gives the old name back when cleared', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    mgr.setRole(info.id, 'fintuner');
+    expect(mgr.get(info.id)).toMatchObject({
+      role: 'fintuner',
+      coordinator: true,
+      displayName: 'Fintuner',
+    });
+    // the agent's own title does not overwrite the role name
+    FakePty.instances[0]!.emitData(']0;Agent Title');
+    expect(mgr.get(info.id)!.displayName).toBe('Fintuner');
+    mgr.setRole(info.id, null);
+    expect(mgr.get(info.id)).toMatchObject({
+      role: null,
+      coordinator: false,
+      displayName: info.displayName,
+    });
+    // a name the user chose while the tab had a role stays when the role goes
+    mgr.setRole(info.id, 'coordinator');
+    mgr.renameSession(info.id, 'Lead');
+    mgr.setRole(info.id, null);
+    expect(mgr.get(info.id)!.displayName).toBe('Lead');
   });
 
   it('OSC 标题里 \\n / \\t 被替成空格,过长截到 100', async () => {

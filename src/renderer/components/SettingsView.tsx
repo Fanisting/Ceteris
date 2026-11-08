@@ -3022,9 +3022,11 @@ function ExtensionsPanel({
         COMMAND_CHANNELS.SESSION_CREATE,
         { templateId: 'shell', shellId: shell.id, cols: dims.cols, rows: dims.rows },
       );
+      // SendInputPayload.data 是 base64 (UTF-8 字节),与 TerminalView 的输入同一条路。
+      const utf8 = new TextEncoder().encode(latexMathInstallLine(shell.id));
       await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
         sessionId: created.session.id,
-        data: latexMathInstallLine(shell.id),
+        data: btoa(String.fromCharCode(...utf8)),
       });
       dispatch({ type: 'view/exit-settings' });
       dispatch({ type: 'view/select-path', pathId: created.session.pathId });

@@ -1,0 +1,300 @@
+/*! Markdown reading styles ported from the OnePage theme for Obsidian.
+ *
+ * OnePage: https://github.com/ivaneye/OnePage (version 2.3.0)
+ * Copyright (c) 2025 一页清 (ivaneye)
+ * OnePage is built on Cupertino: https://github.com/aaaaalexis/Obsidian-Cupertino
+ * Copyright (c) 2025 aaaaalexis
+ * Both are released under the MIT License:
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/**
+ * @file src/renderer/styles/markdown-onepage.css
+ * @purpose The look of rendered .md files in the file view (PdfOverlay MarkdownView).
+ *
+ * @关键设计:
+ * - Only the reading view part of OnePage is ported. Its theme.css is about 500 KB because it
+ *   also styles the whole Obsidian window; none of that applies here. Values come from
+ *   OnePage src/20-tokens.css and src/90-onepage.css, plus the Cupertino 4.1.0 base it inherits
+ *   (Windows sizes, blockquote bar, code and highlight shapes).
+ * - OnePage has two papers: warm white (light) and warm brown (dark). light-dark() picks one
+ *   from the color-scheme each Ceteris theme already sets in global.css, so a light Ceteris
+ *   theme shows the light paper and a dark one shows the dark paper. No JS involved.
+ * - Obsidian classes (.markdown-rendered) are mapped onto .file-view-markdown, the element
+ *   markdown-it output is put into.
+ *
+ * @对应文档章节: 软件定义书.md 14.6
+ *
+ * @不要在这里做的事:
+ * - Do not style anything outside .file-view-markdown. The rest of the app follows the Ceteris theme.
+ * - Layout of the pane (flex, scroll) stays in file-tree.css.
+ */
+
+.file-view-markdown {
+  /* OnePage tokens (light, dark). */
+  --op-bg: light-dark(#faf7f1, #262322);
+  --op-bg-alt: light-dark(#faf7f1, color-mix(in srgb, #262322, white 3%));
+  --op-text: light-dark(#3d3730, #cfc7bd);
+  --op-muted: light-dark(#857d70, #948d83);
+  --op-faint: light-dark(#c0b8ab, #6b665e);
+  --op-accent: light-dark(#0e6e63, #6db3a3);
+  --op-border: light-dark(#d0d0d2, #4d4d51);
+  --op-code: light-dark(#1f2328, #c9d1d9);
+  --op-h1: light-dark(#1d345c, #4f74af);
+  --op-h2: light-dark(#52377a, #8567bd);
+  --op-h3: light-dark(#0e6e63, #4e9a8a);
+  --op-h4: light-dark(#ce5567, #c0765e);
+  --op-h5: light-dark(#9c6b1e, #c99b5e);
+  --op-h6: light-dark(#8a8378, #8a8478);
+  --op-bold: light-dark(#c2410c, #e89a60);
+  --op-italic: light-dark(#4a704f, #a6ba9d);
+  --op-highlight: light-dark(rgba(224, 205, 99, 0.3), rgba(224, 205, 99, 0.3));
+
+  background-color: var(--op-bg, #f0f);
+  color: var(--op-text, #f0f);
+  font-family:
+    'Segoe UI Variable Text',
+    'Segoe UI Variable',
+    'SF Pro Text',
+    -apple-system,
+    system-ui,
+    'Microsoft YaHei UI',
+    'PingFang SC',
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.file-view-markdown ::selection {
+  background-color: color-mix(in srgb, var(--op-accent, #f0f) 30%, transparent);
+}
+
+.file-view-markdown > :first-child {
+  margin-top: 0;
+}
+
+.file-view-markdown p,
+.file-view-markdown ul,
+.file-view-markdown ol,
+.file-view-markdown pre,
+.file-view-markdown table {
+  margin: 0 0 1.25em;
+}
+
+.file-view-markdown ul,
+.file-view-markdown ol {
+  padding-left: 1.6em;
+}
+
+.file-view-markdown li + li,
+.file-view-markdown li > ul,
+.file-view-markdown li > ol {
+  margin-top: 0.175em;
+}
+
+.file-view-markdown li > ul,
+.file-view-markdown li > ol {
+  margin-bottom: 0;
+}
+
+.file-view-markdown li::marker {
+  color: var(--op-muted, #f0f);
+}
+
+/* Headings: Cupertino Windows sizes, OnePage weights, tighter spacing and its heading colors. */
+.file-view-markdown h1,
+.file-view-markdown h2,
+.file-view-markdown h3,
+.file-view-markdown h4,
+.file-view-markdown h5,
+.file-view-markdown h6 {
+  margin: 1.6em 0 0.6em;
+  line-height: 1.4;
+}
+
+.file-view-markdown h1,
+.file-view-markdown h2,
+.file-view-markdown h3,
+.file-view-markdown h4 {
+  letter-spacing: -0.01em;
+}
+
+.file-view-markdown h1 {
+  color: var(--op-h1, #f0f);
+  font-size: 1.75em;
+  font-weight: 650;
+}
+
+.file-view-markdown h2 {
+  color: var(--op-h2, #f0f);
+  font-size: 1.5em;
+  font-weight: 620;
+}
+
+.file-view-markdown h3 {
+  color: var(--op-h3, #f0f);
+  font-size: 1.25em;
+  font-weight: 580;
+}
+
+.file-view-markdown h4 {
+  color: var(--op-h4, #f0f);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.file-view-markdown h5 {
+  color: var(--op-h5, #f0f);
+  font-size: 0.9375em;
+  font-weight: 500;
+}
+
+.file-view-markdown h6 {
+  color: var(--op-h6, #f0f);
+  font-size: 0.9375em;
+  font-weight: 600;
+}
+
+.file-view-markdown strong {
+  color: var(--op-bold, #f0f);
+}
+
+.file-view-markdown em {
+  color: var(--op-italic, #f0f);
+}
+
+/* Links: accent color, thin underline only on hover (Cupertino turns the underline off). */
+.file-view-markdown a {
+  color: var(--op-accent, #f0f);
+  text-decoration: none;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--op-accent, #f0f) 45%, transparent);
+}
+
+.file-view-markdown a:hover {
+  text-decoration-line: underline;
+}
+
+/* Inline code: pill on the border tone. */
+.file-view-markdown code {
+  padding: 0.15em 0.42em;
+  border-radius: 5px;
+  background-color: var(--op-border, #f0f);
+  color: var(--op-code, #f0f);
+  font-family: 'JetBrainsMono NFM', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  font-feature-settings:
+    'calt' 1,
+    'liga' 1;
+}
+
+/* Code block: paper with a hairline border. */
+.file-view-markdown pre {
+  overflow-x: auto;
+  padding: 12px 16px;
+  border: 1px solid var(--op-border, #f0f);
+  border-radius: 6px;
+  background-color: var(--op-bg-alt, #f0f);
+  line-height: 1.55;
+}
+
+.file-view-markdown pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 0.88em;
+}
+
+/* Blockquote: Cupertino's floating bar inset from the edge, OnePage's rounded right side. */
+.file-view-markdown blockquote {
+  position: relative;
+  margin: 0 0 1.25em;
+  padding: 16px 16px 16px 34px;
+  border-radius: 0 6px 6px 0;
+  background-color: var(--op-bg-alt, #f0f);
+}
+
+.file-view-markdown blockquote::before {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 16px;
+  width: 2px;
+  border-radius: 6px;
+  background-color: var(--op-faint, #f0f);
+  content: '';
+  pointer-events: none;
+}
+
+.file-view-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.file-view-markdown blockquote > blockquote {
+  margin: 0;
+  padding: 0 0 0 18px;
+}
+
+.file-view-markdown blockquote > blockquote::before {
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+/* Tables: accent tinted header with a 2px rule, light grid on the body cells. */
+.file-view-markdown table {
+  border: none;
+  border-collapse: collapse;
+}
+
+.file-view-markdown th {
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 2px solid color-mix(in srgb, var(--op-accent, #f0f) 45%, var(--op-muted, #f0f));
+  background: transparent;
+  color: color-mix(in srgb, var(--op-accent, #f0f) 55%, var(--op-muted, #f0f));
+  font-weight: 600;
+  text-align: left;
+}
+
+.file-view-markdown td {
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--op-muted, #f0f) 15%, transparent);
+}
+
+.file-view-markdown hr {
+  margin: 2em 0;
+  border: none;
+  border-top: 1px solid var(--op-border, #f0f);
+}
+
+.file-view-markdown mark {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background-color: var(--op-highlight, #f0f);
+  color: var(--op-text, #f0f);
+  box-decoration-break: clone;
+}
+
+.file-view-markdown img {
+  max-width: 100%;
+  border-radius: 4px;
+}

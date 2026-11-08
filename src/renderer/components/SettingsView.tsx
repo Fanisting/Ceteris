@@ -636,7 +636,84 @@ function ShellPanel({
           setError={setError}
         />
       </SettingRow>
+
+      <AgentUpdateSettings setError={setError} />
     </section>
+  );
+}
+
+/**
+ * Agent CLI 更新的两个开关 + 立即检查 (内嵌在 ShellPanel,紧跟启动模板)。
+ * 调度逻辑在 main 的 agent-auto-update.ts;这里只写设置、触发一次检查。
+ */
+function AgentUpdateSettings({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const behavior = useAppState().settings.behavior;
+  const autoCheck = behavior?.autoCheckAgents ?? true;
+  const autoUpdate = behavior?.autoUpdateAgents ?? false;
+  const [checking, setChecking] = useState(false);
+
+  const checkNow = (): void => {
+    setChecking(true);
+    window.api
+      .invoke(COMMAND_CHANNELS.AGENT_CHECK_NOW, undefined)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(tx(`检查 agent 更新失败:${msg}`, `Failed to check agents for updates: ${msg}`));
+      })
+      .finally(() => setChecking(false));
+  };
+
+  return (
+    <>
+      <SettingRow
+        label={tx('自动检查 agent 更新', 'Check agents for updates')}
+        hint={tx(
+          '启动后和每 6 小时查一次 Claude Code、Codex 等是否有新版本,有就弹通知。Beta 和开发版不自动检查',
+          'Checks Claude Code, Codex and the other agents at startup and every 6 hours, and shows a notice when a new version is out. Beta and dev builds do not check automatically',
+        )}
+      >
+        <div className="settings-update-actions">
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={autoCheck}
+              onChange={(e) =>
+                void updateSettings({ behavior: { autoCheckAgents: e.target.checked } }, setError)
+              }
+            />
+            <span>{tx('启用', 'Enable')}</span>
+          </label>
+          <button type="button" className="settings-button" disabled={checking} onClick={checkNow}>
+            {tx('立即检查', 'Check now')}
+          </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('自动升级 agent', 'Update agents automatically')}
+        hint={tx(
+          '发现新版本后先弹通知,30 秒后用安装它的工具升级;可以立即升级或跳过此版本。该 agent 还开着时等它关掉再升级',
+          'When a new version is found, a notice appears first and the update runs 30 seconds later with the tool that installed the agent. You can update right away or skip that version. An agent that is still open updates after you close it',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={autoUpdate}
+            disabled={!autoCheck}
+            onChange={(e) =>
+              void updateSettings({ behavior: { autoUpdateAgents: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+    </>
   );
 }
 

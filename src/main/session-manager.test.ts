@@ -200,6 +200,8 @@ function makeStubSettingsManager(
       quickLaunch: [],
       bracketedPaste: true,
       autoCheckUpdates: true,
+      autoCheckAgents: true,
+      autoUpdateAgents: false,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {

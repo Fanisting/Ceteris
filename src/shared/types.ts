@@ -413,6 +413,16 @@ export interface Settings {
      * Ceteris never downloads or installs by itself; it shows a direct download link.
      */
     autoCheckUpdates: boolean;
+    /**
+     * 后台检查 agent CLI (Claude Code / Codex ...) 有没有新版本:启动后和每 6 小时一次,
+     * 有新版本时弹一条通知。默认 true。只在 stable 渠道自动跑。
+     */
+    autoCheckAgents: boolean;
+    /**
+     * 发现新版本后自动升级 agent。升级前先弹通知倒计时,用户可以"立即升级"或"跳过此版本";
+     * 该 agent 有终端开着时等它关掉再升级。默认 false。需要 autoCheckAgents 开着。
+     */
+    autoUpdateAgents: boolean;
   };
 
   systemIntegration: {

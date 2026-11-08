@@ -27,9 +27,10 @@ import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
-import { getAppLabel, getBuildType, getLaunchExePath } from './build-type';
+import { getAppLabel, getBuildType, getChannel, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
 import { createAgentVersionChecker, findAgentSpec, type AgentVersionChecker } from './agent-versions';
+import { AgentAutoUpdater } from './agent-auto-update';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -93,6 +94,8 @@ import {
   type KnownHostsRefreshResponse,
   type ListShellsResponse,
   type ListAgentVersionsPayload,
+  type AgentNoticeActionPayload,
+  type AgentUpdateNotice,
   type ListAgentVersionsResponse,
   type UpgradeAgentPayload,
   type ListSshProfilesResponse,
@@ -155,7 +158,7 @@ import {
   type LinkStatusChangedPayload,
   type LinkStatusResponse,
 } from '@shared/protocol';
-import type { AppSnapshot, Settings, Template, ThemeId } from '@shared/types';
+import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -252,6 +255,8 @@ let linkSettingsManager: SettingsManager | null = null;
 /**
  * 注册全部 IPC handler 与事件桥接。整个应用只能调用一次。
  */
+/** 后台升级最多等这么久;卡住 (例如在等密码) 也不能一直占着升级队列 */
+const UPGRADE_TIMEOUT_MS = 15 * 60_000;
 export function installIpcLayer(deps: IpcLayerDeps): void {
   if (installed) throw new Error('[ipc] installIpcLayer() already called');
   installed = true;
@@ -1586,6 +1591,126 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   const getAgentChecker = (): AgentVersionChecker =>
     (agentChecker ??= createAgentVersionChecker(getPlatformAdapter()));
 
+  /**
+   * 开一个跑升级命令的终端。成功自动关闭,失败留着显示报错 (closeOnSuccess)。
+   * 返回的 exited 在终端退出时 resolve 退出码;UPGRADE_TIMEOUT_MS 内没退出 resolve null。
+   *
+   * @param ownerWindowId 新建页点状态点时是发起窗口;后台自动升级传 '' (无主终端,
+   *   不抢任何窗口的当前 tab,失败时用户可以从通知里打开它)
+   * @throws UpgradeUnknown 认不出安装方式;TemplateNotFound 不是内置 agent
+   */
+  const startAgentUpgrade = async (
+    templateId: string,
+    pathId: string,
+    ownerWindowId: string,
+    cols: number,
+    rows: number,
+  ): Promise<{ session: SessionInfo; exited: Promise<number | null> }> => {
+    // 升级命令由 main 按安装位置推出,renderer 传不进任意命令
+    if (!findAgentSpec(templateId)) {
+      throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
+    }
+    const plan = await getAgentChecker().upgradeFor(templateId);
+    if (!plan) {
+      throw makeIpcError(
+        'UpgradeUnknown',
+        `cannot tell how templateId="${templateId}" was installed. ` +
+          `Possible causes: (1) it is not on PATH, (2) it was installed by a method Ceteris does not recognise. ` +
+          `Update it the way it was installed.`,
+      );
+    }
+    const name = templatesManager.resolve(templateId).name;
+    const session = await sessionManager.createSession({
+      pathId,
+      templateId: 'shell',
+      ownerWindowId,
+      cols,
+      rows,
+      commandOverride: {
+        name: `${name} update`,
+        command: plan.command,
+        args: plan.args,
+        closeOnSuccess: true,
+      },
+    });
+    getAgentChecker().invalidate(templateId);
+    logger.info(
+      'ipc',
+      `agent upgrade started: template=${templateId} session=${session.id} via=${plan.method}`,
+    );
+    const exited = new Promise<number | null>((resolveExit) => {
+      // 升级结束再清一次缓存:升级期间打开的新建页可能缓存了旧版本号。
+      // sessionExited 在销毁 tab 之前发出,所以新建页重新拉取时已是新版本。
+      const onExit = (p: SessionExitedPayload): void => {
+        if (p.sessionId !== session.id) return;
+        getAgentChecker().invalidate(templateId);
+        logger.info('ipc', `agent upgrade finished: template=${templateId} exitCode=${p.exitCode}`);
+        finish(p.exitCode);
+      };
+      // 用户在升级跑完前手动关掉终端
+      const onDestroyed = (p: { sessionId: string }): void => {
+        if (p.sessionId === session.id) finish(null);
+      };
+      // 卡住的升级 (比如在等密码) 不能永远占着队列;终端本身留着,用户能看到
+      const timer = setTimeout(() => {
+        logger.warn(
+          'ipc',
+          `agent upgrade still running after ${UPGRADE_TIMEOUT_MS / 60_000} min: session=${session.id}`,
+        );
+        finish(null);
+      }, UPGRADE_TIMEOUT_MS);
+      timer.unref?.();
+      function finish(code: number | null): void {
+        clearTimeout(timer);
+        sessionManager.off('sessionExited', onExit);
+        sessionManager.off('sessionDestroyed', onDestroyed);
+        resolveExit(code);
+      }
+      sessionManager.on('sessionExited', onExit);
+      sessionManager.on('sessionDestroyed', onDestroyed);
+    });
+    return { session, exited };
+  };
+
+  /** 已经挂上 agent 通知监听的窗口 (见 AGENT_NOTICES_READY) */
+  const noticeReadyWindows = new Set<string>();
+
+  // 后台检查 + 先通知后自动升级 (见 agent-auto-update.ts)
+  const agentAutoUpdater = new AgentAutoUpdater({
+    list: (force) => getAgentChecker().list(force),
+    nameOf: (templateId) => templatesManager.resolve(templateId).name,
+    // stable 和 beta 常同时开着;只让 stable 自己跑,免得两边一起升级同一个全局包
+    isAutoCheckEnabled: () =>
+      getChannel() === 'stable' && settingsManager.get().behavior.autoCheckAgents !== false,
+    isAutoUpdateEnabled: () => settingsManager.get().behavior.autoUpdateAgents === true,
+    isAgentRunning: (templateId) =>
+      sessionManager.list().some((s) => s.templateId === templateId && s.state !== 'exited'),
+    // 只算已挂上通知监听的窗口:刚创建、还在加载的窗口收不到通知
+    hasWindow: () => noticeReadyWindows.size > 0,
+    startUpgrade: async (templateId) => {
+      const { session, exited } = await startAgentUpgrade(templateId, homedir(), '', 120, 30);
+      return { exitCode: await exited, sessionId: session.id, pathId: session.pathId };
+    },
+    notify: (notice) =>
+      broadcastEvent<AgentUpdateNotice>(EVENT_CHANNELS.AGENT_UPDATE_NOTICE, notice),
+  });
+  const onAgentSessionsChanged = (): void => agentAutoUpdater.onSessionsChanged();
+  sessionManager.on('sessionExited', onAgentSessionsChanged);
+  sessionManager.on('sessionDestroyed', onAgentSessionsChanged);
+  windowManager.onWindowClosed((windowId) => {
+    noticeReadyWindows.delete(windowId);
+  });
+  settingsManager.on('settingsChanged', (e: { changedKeys: string[] }) => {
+    if (
+      e.changedKeys.some(
+        (k) => k === 'behavior.autoCheckAgents' || k === 'behavior.autoUpdateAgents',
+      )
+    ) {
+      agentAutoUpdater.refreshSchedule();
+    }
+  });
+  agentAutoUpdater.refreshSchedule();
+
   handleCommand(
     COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
     async (
@@ -1600,56 +1725,37 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.AGENT_UPGRADE,
     async (_e, envelope: CommandEnvelope<UpgradeAgentPayload>): Promise<CreateSessionResponse> => {
       const { templateId, pathId, cols, rows } = envelope.payload;
-      // 升级命令由 main 按安装位置推出,renderer 传不进任意命令
-      if (!findAgentSpec(templateId)) {
-        throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
-      }
       if (pathRefFromId(pathId).kind === 'ssh') {
         throw makeIpcError('InvalidPayload', `agent upgrade runs on local paths only, got pathId="${pathId}"`);
       }
-      const plan = await getAgentChecker().upgradeFor(templateId);
-      if (!plan) {
-        throw makeIpcError(
-          'UpgradeUnknown',
-          `cannot tell how templateId="${templateId}" was installed. ` +
-            `Possible causes: (1) it is not on PATH, (2) it was installed by a method Ceteris does not recognise. ` +
-            `Update it the way it was installed.`,
-        );
-      }
-      const name = templatesManager.resolve(templateId).name;
       const oldTreeJson = JSON.stringify(pathManager.getTree());
-      const session = await sessionManager.createSession({
-        pathId,
-        templateId: 'shell',
-        ownerWindowId: envelope.windowId,
-        cols,
-        rows,
-        // 升级成功后终端自动关闭;失败时留着显示报错
-        commandOverride: {
-          name: `${name} update`,
-          command: plan.command,
-          args: plan.args,
-          closeOnSuccess: true,
-        },
-      });
-      getAgentChecker().invalidate(templateId);
-      // 升级结束再清一次缓存:升级期间打开的新建页可能缓存了旧版本号。
-      // sessionExited 在销毁 tab 之前发出,所以新建页重新拉取时已是新版本。
-      const onExit = (p: SessionExitedPayload): void => {
-        if (p.sessionId !== session.id) return;
-        getAgentChecker().invalidate(templateId);
-        logger.info('ipc', `agent upgrade finished: template=${templateId} exitCode=${p.exitCode}`);
-      };
-      // tab 被销毁 (自动关闭或用户手动关) 时摘掉监听,避免累积
-      const onDestroyed = (p: { sessionId: string }): void => {
-        if (p.sessionId !== session.id) return;
-        sessionManager.off('sessionExited', onExit);
-        sessionManager.off('sessionDestroyed', onDestroyed);
-      };
-      sessionManager.on('sessionExited', onExit);
-      sessionManager.on('sessionDestroyed', onDestroyed);
-      logger.info('ipc', `agent upgrade started: template=${templateId} session=${session.id}`);
+      const { session } = await startAgentUpgrade(templateId, pathId, envelope.windowId, cols, rows);
       return { session, pathTreeChanged: JSON.stringify(pathManager.getTree()) !== oldTreeJson };
+    },
+  );
+
+  // 窗口的通知监听挂上了:纯托盘期间搁置的升级现在可以通知并开始倒计时
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_NOTICES_READY,
+    (_e, envelope: CommandEnvelope<undefined>): void => {
+      noticeReadyWindows.add(envelope.windowId);
+      agentAutoUpdater.poke();
+    },
+  );
+
+  // 设置页"立即检查":任何渠道都能手动查,结果走通知
+  handleCommand(COMMAND_CHANNELS.AGENT_CHECK_NOW, async (): Promise<void> => {
+    await agentAutoUpdater.checkNow();
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_NOTICE_ACTION,
+    (_e, envelope: CommandEnvelope<AgentNoticeActionPayload>): void => {
+      const { templateId, action } = envelope.payload;
+      if (!findAgentSpec(templateId) || !['now', 'skip', 'update'].includes(action)) {
+        throw makeIpcError('InvalidPayload', `templateId="${templateId}" action="${action}"`);
+      }
+      agentAutoUpdater.act(templateId, action);
     },
   );
 

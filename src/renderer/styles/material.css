@@ -1327,6 +1327,15 @@ select.settings-input option {
   color: color-mix(in srgb, var(--color-danger, #f0f) 45%, var(--md-inverse-on-surface, #f0f));
 }
 
+/* snackbar 是反色底,按钮文字向前景色混合,保证对比度 */
+.toast-action {
+  color: color-mix(in srgb, var(--md-primary, #f0f) 40%, var(--md-inverse-on-surface, #f0f));
+}
+
+.toast-action:hover {
+  background-color: color-mix(in srgb, var(--md-inverse-on-surface, #f0f) 12%, transparent);
+}
+
 .toast-close {
   width: 28px;
   height: 28px;

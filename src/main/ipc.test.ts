@@ -108,6 +108,7 @@ vi.mock('./explorer-integration', () => ({
 // build-type 是纯函数但读 app.isPackaged,mock 安全
 vi.mock('./build-type', () => ({
   getBuildType: vi.fn(() => 'dev'),
+  getChannel: vi.fn(() => 'dev'),
 }));
 
 // ──────────────────────────────────────────────────────────────────

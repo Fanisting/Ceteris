@@ -71,6 +71,9 @@ export const DEFAULT_SETTINGS: Settings = {
     bracketedPaste: true,
     // ADR-018:默认检查更新。只提示并给下载链接,不自动下载安装。
     autoCheckUpdates: true,
+    // 新建页 agent 状态点:后台检查默认开,自动升级默认关 (升级前总会先通知)
+    autoCheckAgents: true,
+    autoUpdateAgents: false,
   },
   systemIntegration: {
     explorerOpenIn: 'new-window',

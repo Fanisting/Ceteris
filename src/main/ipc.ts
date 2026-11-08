@@ -796,7 +796,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.EXTENSIONS_REPORT_TERMINAL_LOOK,
     (_e, envelope: CommandEnvelope<unknown>): void => {
-      // 公式图片扩展 (ADR-018):不合法的报告直接丢掉,不进子进程环境变量。
+      // 公式图片扩展 (ADR-019):不合法的报告直接丢掉,不进子进程环境变量。
       const look = parseTerminalLook(envelope.payload);
       if (look) sessionManager.setTerminalLook(look);
     },

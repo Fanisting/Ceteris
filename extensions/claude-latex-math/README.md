@@ -1,6 +1,6 @@
 # Claude LaTeX Math (Ceteris fork)
 
-> This is a fork of [atomashevic/claude-latex-math](https://github.com/atomashevic/claude-latex-math) 0.4.0 (MIT, by Aleksandar Tomasevic), kept in the Ceteris repository so that it works with the Ceteris extension **Settings → Extensions → Claude Code formula images** (ADR-018).
+> This is a fork of [atomashevic/claude-latex-math](https://github.com/atomashevic/claude-latex-math) 0.4.0 (MIT, by Aleksandar Tomasevic), kept in the Ceteris repository so that it works with the Ceteris extension **Settings → Extensions → Claude Code formula images** (ADR-019).
 >
 > **Install:** `claude plugin marketplace add Fanisting/ceteris`, then `claude plugin install latex-math@ceteris`. Disable the original `latex-math@claude-latex-math` first if you have it.
 >

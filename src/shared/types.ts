@@ -479,7 +479,7 @@ export interface Settings {
    */
   extensions: {
     /**
-     * Claude Code 公式图片 (ADR-018):终端按 iTerm2 内联图片协议画图,XTVERSION
+     * Claude Code 公式图片 (ADR-019):终端按 iTerm2 内联图片协议画图,XTVERSION
      * 回 "iTerm2 3.5.0",Windows 上 PTY 改用 node-pty 自带的 ConPTY,Claude Code
      * 图片占位格画成空白,并把主题色与格子宽高比传给 latex-math 插件
      * (LATEX_MATH_* 环境变量)。需要另装仓库里 extensions/claude-latex-math 插件。

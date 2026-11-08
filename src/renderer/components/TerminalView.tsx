@@ -687,7 +687,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // 终端渲染器选择(mount 时决定,运行时切换需关 tab 重开)
   const terminalRenderer =
     appState.settings.advanced?.terminalRenderer ?? 'auto';
-  // 公式图片扩展 (ADR-018),运行时开关,不重建 xterm
+  // 公式图片扩展 (ADR-019),运行时开关,不重建 xterm
   const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
 
   // 把"创建期"读到的初始值用 useMemo 锁定 (terminal 创建后只用 mutator 调整),
@@ -1786,7 +1786,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id, terminalRenderer]);
 
-  // 公式图片扩展 (ADR-018):设置打开时给这个终端装图片 addon + XTVERSION 回复,
+  // 公式图片扩展 (ADR-019):设置打开时给这个终端装图片 addon + XTVERSION 回复,
   // 关掉时卸下。跟着 session / 渲染器重建,所以 deps 带上它们。
   useEffect(() => {
     const term = termRef.current;

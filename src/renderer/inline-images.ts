@@ -1,6 +1,6 @@
 /**
  * @file inline-images.ts
- * @purpose Renderer half of the "Claude Code formula images" extension (ADR-018,
+ * @purpose Renderer half of the "Claude Code formula images" extension (ADR-019,
  *          settings.extensions.claudeMathImages): lets programs draw pictures with the iTerm2
  *          inline image protocol (OSC 1337 File=), says so through XTVERSION, and reports the
  *          terminal's colours and cell shape to main for the latex-math plugin.

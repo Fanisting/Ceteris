@@ -1,7 +1,7 @@
 /**
  * @file claude-math-images.ts
  * @purpose The install commands for the latex-math Claude Code plugin that the "Claude Code
- *          formula images" extension needs (ADR-018), shown in Settings and typed into a terminal.
+ *          formula images" extension needs (ADR-019), shown in Settings and typed into a terminal.
  *
  * @关键设计:
  * - The settings button types one line and does not press Enter: pressing Enter is the user's

@@ -1,6 +1,6 @@
 /**
  * @file claude-math-images.ts
- * @purpose Main-process half of the "Claude Code formula images" extension (ADR-018,
+ * @purpose Main-process half of the "Claude Code formula images" extension (ADR-019,
  *          settings.extensions.claudeMathImages).
  *
  * @关键设计:

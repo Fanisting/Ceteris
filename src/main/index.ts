@@ -269,7 +269,7 @@ function bootstrap(): void {
       // 用户在 .bashrc / Profile.ps1 里可以拿这个版本号做条件判断。
       appVersion: app.getVersion(),
       tmuxSocket: channel.tmuxSocket,
-      // 公式图片扩展 (ADR-018):插件现读的终端颜色 / 格子宽高比
+      // 公式图片扩展 (ADR-019):插件现读的终端颜色 / 格子宽高比
       terminalLookFile: join(dataDir, 'extensions', 'terminal-look.json'),
     },
   );

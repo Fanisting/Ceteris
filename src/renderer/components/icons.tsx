@@ -65,7 +65,7 @@ export const Icons = {
   data: Database,
   systemIntegration: LinkIcon,
   ai: Psychology, // BETA-031 AI 助手
-  extensions: DeployedCode, // ADR-018 可选扩展
+  extensions: DeployedCode, // ADR-019 可选扩展
   advanced: Build,
   about: Info,
 

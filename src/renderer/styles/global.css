@@ -3438,7 +3438,7 @@ button:focus-visible,
   min-width: 0;
 }
 
-/* 扩展分类 (ADR-018):可复制的安装命令 */
+/* 扩展分类 (ADR-019):可复制的安装命令 */
 .settings-code-block {
   margin: 0;
   padding: 8px 10px;

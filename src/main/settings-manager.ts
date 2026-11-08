@@ -91,7 +91,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // 兼容性 bug 用(例如某些 TUI 的光标渲染在 WebGL 下异常)。
     terminalRenderer: 'auto',
   },
-  // 扩展默认全关 (ADR-018):公式图片会改 XTVERSION 回复与 Windows 的 ConPTY,
+  // 扩展默认全关 (ADR-019):公式图片会改 XTVERSION 回复与 Windows 的 ConPTY,
   // 只给主动打开的用户。
   extensions: {
     claudeMathImages: false,

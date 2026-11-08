@@ -505,7 +505,7 @@ export interface SessionManagerOptions {
   appVersion?: string;
   /** tmux -L name on remote hosts, so builds cannot attach to each other's sessions. */
   tmuxSocket?: string;
-  /** 公式图片扩展 (ADR-018):terminal-look.json 的路径,通常在数据目录 extensions/ 下 */
+  /** 公式图片扩展 (ADR-019):terminal-look.json 的路径,通常在数据目录 extensions/ 下 */
   terminalLookFile?: string;
 }
 
@@ -529,7 +529,7 @@ export class SessionManager extends EventEmitter {
   lastLaunchWarning: string | null = null;
 
   /**
-   * 公式图片扩展 (ADR-018):renderer 报告的终端颜色与格子宽高比写在这个文件里,
+   * 公式图片扩展 (ADR-019):renderer 报告的终端颜色与格子宽高比写在这个文件里,
    * 扩展打开时新 session 拿到它的路径 (LATEX_MATH_LOOK_FILE),插件每次画图现读。
    * undefined = 未配置 (测试场景)。
    */
@@ -713,7 +713,7 @@ export class SessionManager extends EventEmitter {
       programName: 'Ceteris',
       appVersion: this.appVersion,
     });
-    // 公式图片扩展 (ADR-018):spawn 时读一次,之后这个 session 一直按这个值走。
+    // 公式图片扩展 (ADR-019):spawn 时读一次,之后这个 session 一直按这个值走。
     const mathImages = this.settingsManager.get().extensions?.claudeMathImages === true;
     if (mathImages) {
       const gitBash = shells.find((s) => s.id === 'git-bash')?.executablePath;
@@ -783,7 +783,7 @@ export class SessionManager extends EventEmitter {
         // 下 node-pty fallback 到 winpty(winpty 会闪 conhost 窗口,
         // 用户报告 "新建 shell 时有一闪而过的新建窗口")。
         useConpty: true,
-        // 公式图片扩展 (ADR-018):系统 conhost 自己抢答 DA1 (CSI c),比终端对
+        // 公式图片扩展 (ADR-019):系统 conhost 自己抢答 DA1 (CSI c),比终端对
         // XTVERSION 的回复先到;Claude Code 把 DA1 当"回复已到齐",认定终端不画图。
         // node-pty 自带的 ConPTY 1.23 把 DA1 交给终端答,顺序就对了。
         // 只在扩展打开时用;非 Windows 平台 node-pty 忽略这个选项。

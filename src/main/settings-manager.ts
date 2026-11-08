@@ -69,6 +69,8 @@ export const DEFAULT_SETTINGS: Settings = {
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
+    // ADR-018:默认检查更新。只提示并给下载链接,不自动下载安装。
+    autoCheckUpdates: true,
   },
   systemIntegration: {
     explorerOpenIn: 'new-window',

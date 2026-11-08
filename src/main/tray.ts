@@ -28,6 +28,7 @@ import {
   dialog,
   Menu,
   nativeImage,
+  shell,
   Tray,
   type MenuItemConstructorOptions,
   type NativeImage,
@@ -38,6 +39,7 @@ import type { WindowManager } from './window-manager';
 import type { SessionInfo } from '@shared/types';
 import type { SessionManager } from './session-manager';
 import type { SettingsManager } from './settings-manager';
+import type { UpdateStatus } from '@shared/update-check';
 import { getAppLabel, getChannel, getRelaunchOptions } from './build-type';
 import { logger } from './logger';
 import { setQuitting } from './index';
@@ -172,12 +174,24 @@ export class TrayManager {
   /** M1-H:状态变化节流,避免高频抖动 */
   private rebuildTimer: NodeJS.Timeout | null = null;
   private currentIconVariant: 'default' | 'active' = 'default';
+  /** ADR-018:最近一次更新检查结果。有新版本时菜单顶部多一项下载入口 */
+  private updateStatus: UpdateStatus | null = null;
 
   constructor(
     private readonly windowManager: WindowManager,
     private readonly sessionManager?: SessionManager,
     private readonly settingsManager?: SettingsManager,
   ) {}
+
+  /**
+   * 更新检查状态变化时由 index.ts 调用。只有"是否有新版本 / 哪个版本"变了才重建菜单,
+   * 检查中、失败这些状态托盘不显示。
+   */
+  setUpdateStatus(status: UpdateStatus): void {
+    const before = this.updateStatus?.update?.version ?? null;
+    this.updateStatus = status;
+    if ((status.update?.version ?? null) !== before) this.rebuildContextMenu();
+  }
 
   /**
    * 初始化托盘。必须在 app.whenReady() 之后调用。
@@ -288,6 +302,21 @@ export class TrayManager {
     const windowCount = this.windowManager.count();
 
     const items: MenuItemConstructorOptions[] = [];
+
+    // ADR-018:有新版本时放在最上面。点击用浏览器打开本机系统对应的安装包直链,
+    // 不弹任何对话框,也不自动下载安装。
+    const update = this.updateStatus?.update;
+    if (update) {
+      items.push({
+        label: `有新版本 v${update.version},点击下载`,
+        click: () => {
+          shell
+            .openExternal(update.downloadUrl)
+            .catch((err) => logger.warn('TrayManager', 'open update download failed', err));
+        },
+      });
+      items.push({ type: 'separator' });
+    }
 
     items.push({
       label: '打开新窗口',

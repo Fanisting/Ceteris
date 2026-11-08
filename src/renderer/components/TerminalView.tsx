@@ -121,6 +121,7 @@ import { activateInlineImages, reportTerminalLook } from '../inline-images';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
 import { detectAgent } from '@shared/next-prompt';
+import { ColonTracker, findColonCommand } from '@shared/colon-commands';
 import type {
   LinkConnectionStatePayload,
   SuggestNextPromptPayload,
@@ -616,6 +617,8 @@ const SSH_STARTUP_DA_FILTER_MS = 5000;
 
 /** Lines from the end of the buffer used to guess the next prompt. */
 const SUGGEST_SCREEN_LINES = 60;
+/** Screen lines read to tell whether Claude Code or Codex owns the input (ADR-019). */
+const COLON_SCREEN_LINES = 40;
 
 interface TerminalViewProps {
   /**
@@ -689,6 +692,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     appState.settings.advanced?.terminalRenderer ?? 'auto';
   // 公式图片扩展 (ADR-019),运行时开关,不重建 xterm
   const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
+  // `name:` 命令扩展 (ADR-019)。onData 闭包只在 mount 时建一次,所以读 ref 拿最新列表。
+  const colonCommands = appState.settings.extensions?.colonCommands;
+  const colonCommandsRef = useRef(colonCommands);
+  colonCommandsRef.current = colonCommands;
 
   // 把"创建期"读到的初始值用 useMemo 锁定 (terminal 创建后只用 mutator 调整),
   // 否则每次 settings 引用变化都会重建 xterm 实例。
@@ -1653,6 +1660,25 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // 场景下避免 PTY 用旧 cols/rows 处理 prompt 折行错位。
     const sshDaFilterUntil =
       session.pathId.startsWith('ssh:') ? Date.now() + SSH_STARTUP_DA_FILTER_MS : 0;
+
+    // `name:` 命令 (ADR-019):跟踪当前输入行,在 Claude Code / Codex 里把已保存的
+    // `name:` 换成命令。只有冒号刚敲在已知名称后面时才读屏幕判断是不是 agent。
+    const colonTracker = new ColonTracker();
+    const resolveColonCommand = (name: string): string | null => {
+      const cfg = colonCommandsRef.current;
+      if (!cfg?.enabled) return null;
+      const entry = findColonCommand(cfg.commands, name);
+      if (!entry) return null;
+      const buffer = term.buffer.active;
+      const lines: string[] = [];
+      for (let y = Math.max(0, buffer.length - COLON_SCREEN_LINES); y < buffer.length; y++) {
+        lines.push(buffer.getLine(y)?.translateToString(true) ?? '');
+      }
+      if (!detectAgent(session.templateId, lines.join('\n'))) return null;
+      console.debug('[TerminalView] colon command', { sessionId: session.id, name });
+      return entry.command;
+    };
+
     const dataHandler = term.onData((data) => {
       // [IME-1 PROBE A] 临时探针 — 检测 onData 收到的 data 是否疑似
       // "textarea 累积历史被冲刷出去"。判定下沉到 isLikelyHistoryFlush
@@ -1717,9 +1743,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         });
         return;
       }
-      const base64 = encodeStringToBase64(data);
+      const toSend = colonTracker.feed(data, resolveColonCommand);
+      const base64 = encodeStringToBase64(toSend);
       setSuggestion(null);
-      const echoId = echo?.noteInput(data) ?? null;
+      const echoId = echo?.noteInput(toSend) ?? null;
       void window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
           COMMAND_CHANNELS.SESSION_SEND_INPUT,

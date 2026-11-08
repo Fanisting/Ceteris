@@ -20,6 +20,7 @@
  */
 import { EventEmitter } from 'node:events';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
+import { DEFAULT_COLON_COMMANDS, colonCommandsProblem } from '@shared/colon-commands';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
   QUICK_LAUNCH_MAX_ITEMS,
@@ -95,6 +96,11 @@ export const DEFAULT_SETTINGS: Settings = {
   // 只给主动打开的用户。
   extensions: {
     claudeMathImages: false,
+    // ADR-019:`name:` 命令默认关,列表先放两个 CLI 都有的斜杠命令。
+    colonCommands: {
+      enabled: false,
+      commands: DEFAULT_COLON_COMMANDS.map((c) => ({ ...c })),
+    },
   },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
@@ -520,6 +526,20 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `extensions.claudeMathImages=${String(s.extensions.claudeMathImages)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.colonCommands?.enabled !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.colonCommands.enabled=${String(s.extensions.colonCommands?.enabled)} 必须是 true 或 false`,
+    );
+  }
+  const colonProblem = colonCommandsProblem(s.extensions.colonCommands.commands);
+  if (colonProblem) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.colonCommands.commands 无效:${colonProblem}`,
+      { field: 'extensions.colonCommands.commands', got: s.extensions.colonCommands.commands },
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {

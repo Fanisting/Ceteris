@@ -140,6 +140,12 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/behavior\.quickLaunch/);
   });
 
+  it('非法 `name:` 命令列表 throw', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    bad.extensions.colonCommands.commands = [{ name: 'a b', command: '/x' }];
+    expect(() => validateSettings(bad)).toThrowError(/extensions\.colonCommands\.commands/);
+  });
+
   it('字号越界 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     bad.appearance.terminalFontSize = 5;

@@ -13,6 +13,7 @@
  */
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
+import type { ColonCommand } from './colon-commands';
 
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
@@ -485,6 +486,15 @@ export interface Settings {
      * (LATEX_MATH_* 环境变量)。需要另装仓库里 extensions/claude-latex-math 插件。
      */
     claudeMathImages: boolean;
+    /**
+     * `name:` 命令 (ADR-019):在 Claude Code / Codex 终端里,单词开头敲已保存的名称
+     * 加冒号,Ceteris 把它换成对应命令(默认 `/name`),不按 Enter。规则见
+     * shared/colon-commands.ts。
+     */
+    colonCommands: {
+      enabled: boolean;
+      commands: ColonCommand[];
+    };
   };
 
   /**

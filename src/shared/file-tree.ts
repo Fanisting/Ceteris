@@ -163,6 +163,7 @@ const VIEW_MIME_TYPES: Record<string, { kind: FileViewKind; mime: string }> = {
   markdown: { kind: 'markdown', mime: 'text/markdown' },
   txt: { kind: 'text', mime: 'text/plain' },
   json: { kind: 'text', mime: 'application/json' },
+  tex: { kind: 'text', mime: 'text/x-tex' },
   png: { kind: 'image', mime: 'image/png' },
   jpg: { kind: 'image', mime: 'image/jpeg' },
   jpeg: { kind: 'image', mime: 'image/jpeg' },
@@ -180,6 +181,16 @@ function viewEntry(name: string): { kind: FileViewKind; mime: string } | null {
 /** How the file tree shows a clicked file. Null means clicking only selects it. */
 export function fileViewKind(name: string): FileViewKind | null {
   return viewEntry(name)?.kind ?? null;
+}
+
+/**
+ * Whether the file can be read in pages and saved by the text editor: .txt, .json, .tex and
+ * Markdown (ADR-016, ADR-028). Markdown still opens as a rendered page and switches to the
+ * editor on request.
+ */
+export function isEditableTextFile(name: string): boolean {
+  const kind = fileViewKind(name);
+  return kind === 'text' || kind === 'markdown';
 }
 
 export function fileViewMime(name: string): string {

@@ -154,7 +154,12 @@ export class Osc1337Parser {
       const titleSeq = parseTitleOscPayload(payload);
       const isOsc1337 =
         payload.length >= 5 && payload.subarray(0, 5).equals(Buffer.from('1337;'));
-      if (isOsc1337) {
+      if (isOsc1337 && isInlineImagePayload(payload)) {
+        // iTerm2 内联图片 (File= / MultipartFile= / FilePart= / FileEnd) 不是
+        // 主进程要的事件,原样交给 renderer 的 @xterm/addon-image 去画。
+        // Claude Code 的 <Image> 在终端回 XTVERSION "iTerm2 3.5+" 时走这条协议。
+        passthroughChunks.push(input.subarray(escIdx, terminatorInfo.afterEnd));
+      } else if (isOsc1337) {
         const argText = payload.subarray(5).toString('utf8');
         events.push(parseOsc1337Arg(argText));
         // OSC 1337 整段从输出中剥离,不进 passthrough
@@ -238,6 +243,22 @@ function parseTitleOscPayload(payload: Buffer): string | null {
   }
   if (payload[1] !== 0x3b /* ';' */) return null;
   return payload.subarray(2).toString('utf8');
+}
+
+/**
+ * OSC 1337 的 iTerm2 内联图片前缀。payload 从 "1337;" 开始,前缀紧跟其后。
+ * FileEnd 没有 "=",其余三种都带。
+ */
+const INLINE_IMAGE_PREFIXES = ['File=', 'MultipartFile=', 'FilePart=', 'FileEnd'].map((p) =>
+  Buffer.from(`1337;${p}`),
+);
+
+/** payload (不含 ESC ] 与终止符) 是否为 iTerm2 内联图片序列。 */
+function isInlineImagePayload(payload: Buffer): boolean {
+  return INLINE_IMAGE_PREFIXES.some(
+    (prefix) =>
+      payload.length >= prefix.length && payload.subarray(0, prefix.length).equals(prefix),
+  );
 }
 
 /**

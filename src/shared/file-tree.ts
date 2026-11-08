@@ -144,6 +144,15 @@ export interface RenameEntryPayload {
   newName: string;
 }
 
+export interface CreateFilePayload {
+  /** The folder that gets the file, as an absolute path main returned */
+  dirPath: string;
+  name: string;
+}
+
+/** Same shape as a rename: the new file's path, or why it was not made. */
+export type CreateFileResponse = RenameEntryResponse;
+
 const entryCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export type FileViewKind = 'pdf' | 'image' | 'markdown' | 'text';

@@ -97,9 +97,34 @@
 }
 
 .file-tree-header-label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* New file: a small round icon button at the end of the header, like .file-tree-toggle. */
+.file-tree-header-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: transparent;
+  color: var(--md-on-surface-variant, #f0f);
+  cursor: pointer;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.file-tree-header-btn:hover {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
 }
 
 .file-tree-list {

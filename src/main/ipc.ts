@@ -179,6 +179,8 @@ import type { KnownHostsManager } from './known-hosts-manager';
 import { parseSshConfig } from './ssh-config-parser';
 import { detectSshAgent } from './ssh-agent';
 import type {
+  CreateFilePayload,
+  CreateFileResponse,
   ListDirPayload,
   ListDirResponse,
   ReadPdfPayload,
@@ -190,7 +192,7 @@ import type {
   WriteTextPayload,
   WriteTextResponse,
 } from '@shared/file-tree';
-import { listDirectory, renameEntry } from './file-tree';
+import { createFile, listDirectory, renameEntry } from './file-tree';
 import { writeTextFile } from './text-writer';
 import type { CustomThemeStore } from './custom-theme-store';
 import type { CustomTheme, TemplateValues } from '@shared/custom-themes';
@@ -1388,6 +1390,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.FS_RENAME,
     (_e, envelope: CommandEnvelope<RenameEntryPayload>): Promise<RenameEntryResponse> =>
       renameEntry(envelope.payload.path, envelope.payload.newName),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_CREATE_FILE,
+    (_e, envelope: CommandEnvelope<CreateFilePayload>): Promise<CreateFileResponse> =>
+      createFile(envelope.payload.dirPath, envelope.payload.name),
   );
 
   handleCommand(

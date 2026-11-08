@@ -52,6 +52,13 @@
   "fileTree.rename.error.not-found": "原项目已不存在",
   "fileTree.rename.error.denied": "无法重命名:可能正在被使用,或没有权限",
   "fileTree.rename.error.unknown": "重命名失败,详情见日志",
+  "fileTree.newFile": "新建文件",
+  "fileTree.newFile.placeholder": "文件名,例如 notes.txt",
+  "fileTree.create.error.invalid-name": "“{name}”不是有效的文件名",
+  "fileTree.create.error.exists": "已存在名为“{name}”的项目",
+  "fileTree.create.error.not-found": "文件夹已不存在",
+  "fileTree.create.error.denied": "无法新建文件:可能没有这里的权限",
+  "fileTree.create.error.unknown": "新建文件失败,详情见日志",
 
   "settings.title": "设置",
   "settings.close": "关闭设置",

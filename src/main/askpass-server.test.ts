@@ -5,7 +5,12 @@
 import { connect, type Socket } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AskpassServer } from './askpass-server';
-import { decodeAskpassReply, encodeAskpassRequest, type AskpassReply } from './platform/askpass';
+import {
+  ASKPASS_MAX_REQUEST_BYTES,
+  decodeAskpassReply,
+  encodeAskpassRequest,
+  type AskpassReply,
+} from './platform/askpass';
 
 vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -106,6 +111,39 @@ describe('AskpassServer + relayPrompt', () => {
       socket.on('close', () => resolve(data));
     });
     expect(JSON.parse(reply.trim())).toEqual({ cancel: true });
+  });
+
+  it('超长请求不等换行就取消,不调处理函数,服务器继续工作', async () => {
+    const server = createServer();
+    const path = await server.start();
+    const handler = vi.fn().mockResolvedValue('x');
+    const token = server.register(handler);
+    // 提示文本由服务器控制;没有换行的超长请求不能让 main 一直攒着
+    const reply = await new Promise<string>((resolve) => {
+      const socket = connect(path);
+      let data = '';
+      socket.setEncoding('utf8');
+      socket.on('connect', () => socket.write('x'.repeat(ASKPASS_MAX_REQUEST_BYTES + 1)));
+      socket.on('data', (chunk: string) => (data += chunk));
+      socket.on('error', () => undefined);
+      socket.on('close', () => resolve(data));
+    });
+    expect(JSON.parse(reply.trim())).toEqual({ cancel: true });
+    expect(handler).not.toHaveBeenCalled();
+    expect(await relayPrompt(path, token, 'p', null)).toBe('x');
+  });
+
+  it('stop 断开还在等答案的助手,答案迟到也不出错', async () => {
+    const server = createServer();
+    const path = await server.start();
+    let release: ((answer: string) => void) | null = null;
+    const token = server.register(() => new Promise((resolve) => (release = resolve)));
+    const relayed = relayPrompt(path, token, 'p', null);
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    await server.stop();
+    expect(await relayed).toBeNull();
+    release!('too late');
+    await new Promise((resolve) => setImmediate(resolve));
   });
 
   it('两次 start 返回同一路径;stop 后连不上', async () => {

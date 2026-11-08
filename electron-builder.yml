@@ -139,6 +139,12 @@ mac:
 ## - desktop entry 通过 Categories=System;TerminalEmulator 让 Nautilus / Nemo /
 ##   Caja 的 "在终端中打开" 找到 Ceteris (走 gsettings + freedesktop spec)
 linux:
+  # node-pty has no Linux prebuilds: Linux loads build/Release/pty.node, rebuilt for
+  # Electron during packaging. The Windows and Mac prebuilds are dead weight here and
+  # fail verify-artifacts as cross platform binaries.
+  files:
+    - '!node_modules/node-pty/prebuilds/**'
+    - '!node_modules/node-pty/third_party/**'
   target:
     - target: deb
       arch: [x64]

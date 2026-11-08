@@ -48,6 +48,12 @@ files:
   - '!**/node_modules/*.d.ts'
   - '!**/node_modules/.bin'
 
+# Same size trims as electron-builder.yml; see the notes there.
+electronLanguages:
+  - en-US
+  - zh-CN
+  - zh-TW
+
 asar: true
 asarUnpack:
   - node_modules/node-pty/**
@@ -75,6 +81,9 @@ win:
       arch: [x64]
   icon: build/icon.ico
   requestedExecutionLevel: asInvoker
+  files:
+    - '!node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**'
+    - '!node_modules/node-pty/third_party/conpty/*/win10-arm64/**'
 
 portable:
   artifactName: CeterisBeta-${version}-${arch}.${ext}

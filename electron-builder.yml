@@ -26,6 +26,18 @@ files:
   - '!**/node_modules/*.d.ts'
   - '!**/node_modules/.bin'
 
+# Install size: only packages under `dependencies` in package.json are copied into
+# app.asar, so anything the renderer uses lives in devDependencies (Vite bundles it into
+# out/renderer). Keep `dependencies` to what out/main and out/preload import at run time.
+#
+# Chromium's own strings (spellchecker, built-in menus) come from locales/*.pak; the 55
+# default languages take 39 MB. Ceteris's UI has its own en-US and zh-CN dictionaries, and
+# i18n.ts maps any zh-* system language to zh-CN, so zh-TW stays for Taiwan and Hong Kong.
+electronLanguages:
+  - en-US
+  - zh-CN
+  - zh-TW
+
 # Mac only: fixes node-pty permissions and signs the app. See the script.
 afterPack: scripts/after-pack.cjs
 
@@ -78,6 +90,12 @@ win:
   # NSIS installer/uninstaller chrome 只认 ICO,所以两者并发,由 generate-icon.cjs 一并产出。
   icon: build/icon.ico
   requestedExecutionLevel: asInvoker
+  # node-pty ships native files for every platform. The x64 Windows package only loads
+  # the win32-x64 ones; the others are dead weight, and verify-artifacts flags the
+  # Mac binaries as cross platform.
+  files:
+    - '!node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**'
+    - '!node_modules/node-pty/third_party/conpty/*/win10-arm64/**'
 
 nsis:
   oneClick: false

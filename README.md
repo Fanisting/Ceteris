@@ -169,7 +169,7 @@ Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown f
 - ✅ **Tags**: colour tags shown as dots on folders; filter the list by one or more tags
 - ✅ **Remote paths**: SSH profiles, remote bookmarks, and sidebar labels that show profile + remote path context
 - ✅ **Session lifecycle**: `active / idle / exited`; exited sessions stay visible until you close them manually (no time-based eviction, per ADR-008)
-- ✅ **Launch templates**: built in (Shell, Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Cursor, Aider, and Admin Shell on Windows) plus your own; right-click the tab bar **+** for a quick-launch ring
+- ✅ **Launch templates**: built in (Shell, Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Cursor, Aider, and Admin Shell on Windows) plus your own; your quick-launch picks sit in a dashed tab at the end of the tab bar, one click each
 - ✅ **SSH tmux mode**: per-launch attach-or-create tmux flow, directory-derived tmux session names, and shell fallback after tmux exits
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
 - ✅ **Ceteris Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)

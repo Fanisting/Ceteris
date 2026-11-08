@@ -167,7 +167,7 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **标签**:彩色标签以圆点显示在文件夹上,可按一个或多个标签筛选
 - ✅ **远程路径**:SSH 配置、远程书签,侧栏标签同时显示配置名和远程路径
 - ✅ **Session 生命周期**:`active / idle / exited` 三态;**已退出 session 无时限保留**,用户手动右键关闭才销毁(ADR-008)
-- ✅ **启动模板**:内置 Shell、Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor、Aider,Windows 上另有 Admin Shell,也可以自定义;右键标签栏的 **+** 弹出快捷启动圈
+- ✅ **启动模板**:内置 Shell、Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor、Aider,Windows 上另有 Admin Shell,也可以自定义;快捷启动的选项放在标签栏末尾的虚线标签里,点一下即启动
 - ✅ **SSH tmux 模式**:每次启动时新建或接入 tmux,tmux 会话名由目录推导,tmux 退出后回到 shell
 - ✅ **多窗口**:任意数量平等窗口;关窗即托盘模式;跨窗口 session 可见
 - ✅ **Ceteris Link(远程挂载)**:在另一台 Windows 机器上打开这台机器正在跑的终端标签页。同一批 session、同一份 scrollback、同一个正在跑的 agent;会话始终留在原机器运行。端到端加密(X25519 + AES-256-GCM),预共享令牌**从不上线路**。见 [docs/远程访问指南.md](docs/远程访问指南.md)

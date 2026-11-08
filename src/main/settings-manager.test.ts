@@ -346,7 +346,7 @@ describe('stripUnknownLegacyFields: advanced.enableRemote', () => {
   });
 });
 
-describe('next prompt key moved out of settings.json (ADR-021)', () => {
+describe('next prompt key moved out of settings.json (ADR-022)', () => {
   it('hands an old plain text key over once and leaves no copy in settings.json or .bak', async () => {
     const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');

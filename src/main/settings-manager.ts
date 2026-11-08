@@ -176,7 +176,7 @@ export class SettingsManager extends EventEmitter {
     // v1.5+ 迁移:explorerContextMenu 从 settings 移到系统状态,如果老 settings.json
     // 残留这个字段,静默剥掉(避免 deepMerge 原样带进运行时 settings 对象,污染
     // 导入导出归档 + TS 类型断言失败)。
-    // ADR-021: a key pasted before keys moved to secrets.json. Kept for the caller to move
+    // ADR-022: a key pasted before keys moved to secrets.json. Kept for the caller to move
     // into SecretStore, then stripped like any other legacy field.
     const legacyKey = (result.value as { ai?: { nextPrompt?: { apiKey?: unknown } } })?.ai
       ?.nextPrompt?.apiKey;
@@ -387,7 +387,7 @@ export function stripUnknownLegacyFields<T>(raw: T): T {
       const aiClone = { ...ai, statusRecheckSource: 'headless' };
       cloned['ai'] = aiClone;
     }
-    // ADR-021: the next prompt key moved to secrets.json. initialize() hands any old one
+    // ADR-022: the next prompt key moved to secrets.json. initialize() hands any old one
     // to SecretStore before this runs; an imported bundle never carried one.
     const np = ai['nextPrompt'];
     if (np && typeof np === 'object' && 'apiKey' in np) {

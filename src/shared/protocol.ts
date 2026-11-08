@@ -184,7 +184,7 @@ export const COMMAND_CHANNELS = {
   AI_LIST_NEXT_PROMPT_MODELS: 'cmd:ai:list-next-prompt-models',
   /** The repeated messages sent with each guess, shown in settings. */
   AI_GET_FREQUENT_PROMPTS: 'cmd:ai:get-frequent-prompts',
-  /** Sign in to OpenRouter in the browser and save the new key encrypted (ADR-021). */
+  /** Sign in to OpenRouter in the browser and save the new key encrypted (ADR-022). */
   AI_CONNECT_OPENROUTER: 'cmd:ai:connect-openrouter',
   AI_CANCEL_OPENROUTER_CONNECT: 'cmd:ai:cancel-openrouter-connect',
   /** Forget the saved OpenRouter key on this PC. */

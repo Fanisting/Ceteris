@@ -4,10 +4,10 @@
  *   and approves in the browser; main receives a key and stores it encrypted. The renderer
  *   never sees the key, only settings.ai.nextPrompt.keySaved.
  *
- * @对应文档章节:docs/软件定义书.md ADR-021
+ * @对应文档章节:docs/软件定义书.md ADR-022
  *
  * @不要在这里做的事:
- * - 不要加输入框让用户粘贴 key(ADR-021 的初衷)
+ * - 不要加输入框让用户粘贴 key(ADR-022 的初衷)
  */
 import { useState } from 'react';
 import { COMMAND_CHANNELS, type ConnectOpenRouterResponse } from '@shared/protocol';

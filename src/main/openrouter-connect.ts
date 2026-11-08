@@ -16,7 +16,7 @@
  *   one callback, a cancel, or five minutes.
  * - Only one attempt at a time: a new one cancels the old.
  *
- * @对应文档章节:docs/软件定义书.md ADR-021
+ * @对应文档章节:docs/软件定义书.md ADR-022
  *
  * @不要在这里做的事:
  * - 不要保存 key,那是 SecretStore 的事;这里只负责拿到它

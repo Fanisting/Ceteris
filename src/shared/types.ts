@@ -624,6 +624,18 @@ export interface Settings {
       /** Empty uses NEXT_PROMPT_DEFAULT_MODEL */
       model: string;
     };
+    /**
+     * ADR-029: short tab titles for agent tabs. The agent's own title is always shortened
+     * to maxChars; with enabled on and an API connected (nextPrompt above), a model also
+     * writes a title after each finished turn, following guide.
+     */
+    tabTitles: {
+      enabled: boolean;
+      /** The user's rules for titles, sent to the model. Empty uses the default guide. */
+      guide: string;
+      /** Longest title in characters, 8 to 60 */
+      maxChars: number;
+    };
     /** BETA-006:active→idle 跃迁前调 LLM 复核,默认关。开启需 apiKey 非空。 */
     statusRecheckEnabled: boolean;
     /**

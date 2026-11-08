@@ -19,6 +19,12 @@
  * 完整 schema 校验 + 版本迁移 + export/import 在 CP-4。
  */
 import { EventEmitter } from 'node:events';
+import {
+  AGENT_TITLE_DEFAULT_MAX_CHARS,
+  AGENT_TITLE_MAX_GUIDE_CHARS,
+  AGENT_TITLE_MAX_MAX_CHARS,
+  AGENT_TITLE_MIN_MAX_CHARS,
+} from '@shared/agent-title';
 import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import { isCustomThemeId } from '@shared/custom-themes';
 import { LEGADO_THEME_IDS } from '@shared/legado-themes';
@@ -119,6 +125,8 @@ export const DEFAULT_SETTINGS: Settings = {
     baseURL: '',
     model: '',
     nextPrompt: { enabled: false, keySaved: false, baseURL: '', model: '' },
+    // ADR-029:默认关,因为屏幕末尾会发给 API;缩短 agent 自己的标题不需要开
+    tabTitles: { enabled: false, guide: '', maxChars: AGENT_TITLE_DEFAULT_MAX_CHARS },
     statusRecheckEnabled: false,
     // BETA-006 v2:默认走 headless(已渲染文本),消除 ANSI 噪音与 PSReadLine
     // 重绘残影。老用户升级后字段缺失也会因为 SettingsManager.merge 走 default。
@@ -582,6 +590,32 @@ export function validateSettings(s: Settings): void {
       `advanced.terminalRenderer="${s.advanced.terminalRenderer}" 必须是 auto / webgl / dom`,
     );
   }
+  // ADR-029
+  const titles = s.ai.tabTitles;
+  if (typeof titles.enabled !== 'boolean' || typeof titles.guide !== 'string') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `ai.tabTitles 需要 enabled: boolean 和 guide: string,收到 ${JSON.stringify(titles)}`,
+    );
+  }
+  if (titles.guide.length > AGENT_TITLE_MAX_GUIDE_CHARS) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `ai.tabTitles.guide 有 ${titles.guide.length} 字,最多 ${AGENT_TITLE_MAX_GUIDE_CHARS}`,
+    );
+  }
+  if (!Number.isInteger(titles.maxChars)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `ai.tabTitles.maxChars=${String(titles.maxChars)} 必须是整数`,
+    );
+  }
+  checkRange(
+    'ai.tabTitles.maxChars',
+    titles.maxChars,
+    AGENT_TITLE_MIN_MAX_CHARS,
+    AGENT_TITLE_MAX_MAX_CHARS,
+  );
   if (typeof s.extensions.tabControlGuideSeen !== 'boolean') {
     throw new SettingsError(
       'InvalidSettings',

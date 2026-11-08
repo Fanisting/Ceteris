@@ -3,11 +3,11 @@
 > Your terminal sessions shouldn't die just because you closed the window.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/ceteris/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com/Fanisting/ceteris/releases)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#roadmap)
 [![中文文档](https://img.shields.io/badge/中文文档-README.zh--CN.md-red)](README.zh-CN.md)
 
-A path-centric, AI-agent-friendly terminal manager for Windows. Built for developers who run multiple long-running tasks (including Claude Code, Codex, OpenCode, and other AI coding agents) across many local or SSH working directories — and refuse to lose them when the window closes.
+A path-centric, AI-agent-friendly terminal manager for Windows, macOS and Linux. Built for developers who run multiple long-running tasks (including Claude Code, Codex, OpenCode, and other AI coding agents) across many local or SSH working directories, and who refuse to lose them when the window closes.
 
 > **Fork note**: Ceteris is a fork of [Marina](https://github.com/Liyue-Cheng/marina) by Liyue-Cheng, which began as EasyTerm.
 
@@ -102,7 +102,7 @@ Ceteris gives you:
 - **CWD tracking** — when an agent `cd`s somewhere, the tab shows ⚠ with the real cwd in tooltip
 - **SSH path bookmarks** — save remote profiles and bookmark remote working directories alongside local paths
 - **Remote tmux launch** — start or attach to tmux on a remote host, and return to the remote shell when tmux exits
-- **Templates** for `claude`, `codex`, `opencode` built-in, with full custom template support for your own commands
+- **Templates** for Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Cursor and Aider built in, with full custom template support for your own commands
 - **Session immortality** — close a window by accident and your agent keeps running. Reopen and continue where you left off.
 
 ## Quick Start
@@ -111,9 +111,21 @@ Ceteris gives you:
 
 ### Install
 
-1. Download the latest installer from [Releases](https://github.com/Fanisting/ceteris/releases)
-2. Run `Ceteris-Setup-x.y.z.exe`
-3. Launch from Start Menu or your desktop
+Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.3.0):
+
+| System | Download |
+|---|---|
+| Windows 10/11 (x64) | [Ceteris-Setup-0.3.0-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-Setup-0.3.0-x64.exe) |
+| macOS, Apple Silicon | [Ceteris-0.3.0-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-arm64.dmg) |
+| macOS, Intel | [Ceteris-0.3.0-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-x64.dmg) |
+| Linux (x64), any distribution | [Ceteris-0.3.0-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-x86_64.AppImage) |
+| Ubuntu or Debian (x64) | [Ceteris-0.3.0-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-amd64.deb) |
+
+- **Windows**: run the installer, then launch Ceteris from the Start Menu or your desktop. The installer is not code signed yet, so SmartScreen may warn: choose **More info**, then **Run anyway**.
+- **macOS**: open the `.dmg` and drag Ceteris into Applications. The app is not signed yet, so the first time, right-click it and choose **Open**.
+- **Linux**: run `chmod +x Ceteris-0.3.0-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.3.0-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
+
+Windows gets the most testing. The macOS and Linux builds are newer, so please [open an issue](https://github.com/Fanisting/ceteris/issues) if something breaks.
 
 ### First-Run
 
@@ -130,8 +142,10 @@ To experience what makes Ceteris different:
 
 1. Open 2-3 sessions in different paths
 2. Close the window (the × button)
-3. Look at your system tray — Ceteris is still running
-4. Click the tray icon — a new window opens, all sessions are still there
+3. Look at your system tray: Ceteris is still running
+4. Click the tray icon: a new window opens, and all sessions are still there
+
+On macOS Ceteris stays in the Dock instead. On Linux it runs as a regular desktop app and asks before you close the last window while sessions are running.
 
 That's it. That's the product.
 
@@ -148,12 +162,14 @@ Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown f
 
 ## Core Features
 
-### V1 (Current — alpha)
+### V1 (current alpha)
 
-- ✅ **Path management**: one folder list with renaming and tag filters; any folder you open stays listed
+- ✅ **Runs on Windows, macOS and Linux**: on macOS the app stays in the Dock when its windows close; on Linux it runs as a regular desktop app ([ADR-013](docs/软件定义书.md#adr-013))
+- ✅ **Path management**: one folder list with renaming; any folder you open stays listed
+- ✅ **Tags**: colour tags shown as dots on folders; filter the list by one or more tags
 - ✅ **Remote paths**: SSH profiles, remote bookmarks, and sidebar labels that show profile + remote path context
 - ✅ **Session lifecycle**: `active / idle / exited`; exited sessions stay visible until you close them manually (no time-based eviction, per ADR-008)
-- ✅ **Launch templates**: built-in (Shell / Claude Code / Codex / OpenCode) + custom
+- ✅ **Launch templates**: built in (Shell, Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Cursor, Aider, and Admin Shell on Windows) plus your own; right-click the tab bar **+** for a quick-launch ring
 - ✅ **SSH tmux mode**: per-launch attach-or-create tmux flow, directory-derived tmux session names, and shell fallback after tmux exits
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
 - ✅ **Ceteris Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
@@ -165,7 +181,11 @@ Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown f
 - ✅ **Drop folder onto terminal area** to spawn a new session in that path
 - ✅ **Multi-line paste guard** (confirm prompt prevents accidentally executing pasted scripts)
 - ✅ **Terminal search** (Ctrl+F) with match count
-- ✅ **Persistent logs** under `%APPDATA%\Ceteris\logs\`
+- ✅ **File panel**: browse the current folder (local, or over SFTP for SSH sessions) and open PDFs, images and markdown beside the terminal; they refresh when the file changes
+- ✅ **Edit txt and json** in place, with unsaved drafts kept across reconnects; files over 2 MB open as fast read-only pages
+- ✅ **Material Design 3 look** across windows, menus, dialogs and settings
+- ✅ **Chinese and English UI**, following the system language by default
+- ✅ **Persistent logs** in the app data folder (`%APPDATA%\Ceteris\logs\` on Windows)
 
 ### V1.1 (Planned)
 
@@ -179,17 +199,10 @@ Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown f
 - Tab drag-and-drop reordering
 - Tab tear-out to new window
 
-### V1.6 (In Planning — Beta Feedback Round)
+### Later
 
-- **Linux support** (Ubuntu 22.04 GNOME as Tier 1; Fedora / CentOS Stream 9 / RHEL 9 as Tier 2 via `.rpm` + AppImage). No system-tray dependency on GNOME — Ceteris runs as a regular desktop app on Linux (`lifecycleModel: 'no-persistence'`), with a blocking modal on last-window-close when sessions are still running. File-manager integration via freedesktop standards (`.desktop` + `Categories=TerminalEmulator` + gsettings + update-alternatives), no Nautilus extension required. See [ADR-013](docs/软件定义书.md#adr-013) and [BETA-003](docs/beta反馈工单库-20260515.md#beta-003--linux-支持方案-a无托盘普通桌面-app).
-- i18n (Chinese + English)
-- AI assistant settings page (foundation for LLM status recheck)
-
-### V2.0 (Community / Long-Term)
-
-- macOS support (`lifecycleModel: 'dock-resident'`, native HIG)
 - WSL session integration
-- (Candidate) Daemon architecture — splitting Electron main into a background daemon + UI viewer, enabling sessions to survive UI crashes and updates across all three platforms. Not committed; evaluation window when crash/upgrade session loss becomes a frequent issue.
+- (Candidate) Daemon architecture: split the Electron main process into a background daemon and a UI viewer, so sessions survive UI crashes and updates on all three platforms. Not committed; it will be evaluated if losing sessions to crashes or upgrades becomes a frequent complaint.
 
 ## Architecture (TL;DR)
 
@@ -209,7 +222,7 @@ For details:
 ## Building from Source
 
 ```bash
-# Prerequisites: Node.js 20+, Windows 10/11
+# Prerequisites: Node.js 20+ on Windows 10/11, macOS or Linux
 git clone https://github.com/Fanisting/ceteris.git
 cd ceteris
 npm install
@@ -220,18 +233,18 @@ npm test         # runs the backend test suite
 
 ## Help Wanted
 
-Ceteris is built and maintained by one person. **The architecture is intentionally cross-platform-ready** — see [`src/main/platform/`](src/main/platform/) and the `PlatformAdapter.lifecycleModel` field. Linux support is being implemented by the author for v1.6; macOS and other platforms are open for contributions:
+Ceteris is built and maintained by one person. **The architecture is cross-platform by design** (see [`src/main/platform/`](src/main/platform/) and the `PlatformAdapter.lifecycleModel` field), and Windows, macOS and Linux builds ship today. Contributions are welcome, especially:
 
 ### High Priority
 
-- [ ] **macOS support** — implement `src/main/platform/macos.ts` with `lifecycleModel: 'dock-resident'`. Electron's `window-all-closed` darwin default already aligns with macOS HIG (app stays in Dock); the cross-platform `<LastSessionConfirm />` modal should trigger on `Cmd+Q` / App Menu Quit when non-exited sessions exist.
+- [ ] **macOS and Linux testing**: both builds are new and see far less daily use than Windows
 - [ ] **WSL session integration**
 
 ### Medium Priority
 
 - [ ] Fish / Nushell shell hooks
 - [ ] Tab drag-and-drop
-- [ ] More themes (the 7 included are enough for me, but feel free)
+- [ ] More themes (17 ship today, but feel free)
 - [ ] i18n beyond Chinese + English
 
 ### Low Priority
@@ -260,17 +273,17 @@ To save you time:
 - ❌ **Not a tmux competitor** — tmux is a TUI, Ceteris is a GUI; different audiences
 - ❌ **Not a project management tool** — no kanban, no team features, no workspace concepts
 - ❌ **Not a full SSH client suite** — Ceteris supports path-centric SSH sessions, but it is not trying to replace dedicated SSH managers with port forwarding, file transfer, or remote host administration workflows
-- ❌ **Not a file editor** — open `code .` in a session if you need that
+- ❌ **Not a code editor**: txt and json files can be edited in place, but for code, open `code .` in a session
 - ❌ **Not a "tile-everything" power-user tool** — if you love vim keybindings in your terminal manager, you'll find Ceteris's mouse-first approach annoying. That's a feature, not a bug.
 
 ## Roadmap
 
 | Phase | What | When |
 |-------|------|------|
-| Phase 1 | V1: Internal use, Windows-only | In progress |
+| Phase 1 | V1: daily use on Windows, macOS and Linux | In progress |
 | Phase 2 | Open-source release, polish | After V1 stable |
 | Phase 3 | V1.x: status indicators, notifications, Explorer integration | Post-release |
-| Phase 4 | V2.0: cross-platform via community contributions | TBD |
+| Phase 4 | V2.0: WSL integration, candidate daemon architecture | TBD |
 
 This is a personal project built in spare time. There's no business behind it, no SLA, no committed timeline. If it solves your problem, great. If not, fork it.
 

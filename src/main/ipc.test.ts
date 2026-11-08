@@ -540,3 +540,49 @@ describe('IPC 来源检查', () => {
     expect(createCalls).toHaveLength(0);
   });
 });
+
+describe('IPC PDF 自动刷新与登录提示', () => {
+  function installWith(extra: Record<string, unknown>) {
+    return freshIpc().then(({ installIpcLayer }) => {
+      const { deps } = makeStubs();
+      installIpcLayer({ ...deps, ...extra } as Parameters<typeof installIpcLayer>[0]);
+    });
+  }
+
+  it('stat-file 查远端时是安静请求:不跳过失败缓存,也不允许弹登录提示', async () => {
+    const stat = vi.fn(async () => ({ size: 5, mtimeMs: 1000 }));
+    await installWith({ sftpPool: { stat } });
+    const res = await handlers.get(COMMAND_CHANNELS.FS_STAT_FILE)!(
+      {},
+      { windowId: 'w1', requestId: 'r', payload: { path: '/r/a.pdf', sshProfileId: 'ssh-1' } },
+    );
+    expect(res).toEqual({ ok: true, size: 5, mtimeMs: 1000 });
+    expect(stat).toHaveBeenCalledWith('ssh-1', '/r/a.pdf', { windowId: 'w1' });
+  });
+
+  it('read-pdf 只有用户点击 (fresh) 才允许弹登录提示,自动重读不允许', async () => {
+    const readChunk = vi.fn(async () => ({ chunk: Buffer.from('%PDF-1.4'), size: 8, mtimeMs: 1 }));
+    await installWith({ sftpPool: { readChunk } });
+    const read = handlers.get(COMMAND_CHANNELS.FS_READ_PDF)!;
+    const payload = { path: '/r/a.pdf', sshProfileId: 'ssh-1', offset: 0 };
+    await read({}, { windowId: 'w1', requestId: 'r1', payload });
+    await read({}, { windowId: 'w1', requestId: 'r2', payload: { ...payload, fresh: true } });
+    const options = readChunk.mock.calls.map((call) => (call as unknown[])[4]);
+    expect(options[0]).toMatchObject({ windowId: 'w1' });
+    expect((options[0] as { interactive?: boolean }).interactive).toBeFalsy();
+    expect((options[0] as { fresh?: boolean }).fresh).toBeFalsy();
+    expect(options[1]).toMatchObject({ windowId: 'w1', fresh: true, interactive: true });
+  });
+
+  it('askpass-answer 拒绝格式不对的答案,不交给 PromptBroker', async () => {
+    const answer = vi.fn(() => true);
+    await installWith({ promptBroker: { answer } });
+    const reply = handlers.get(COMMAND_CHANNELS.SSH_ASKPASS_ANSWER)!;
+    const send = (payload: unknown) => reply({}, { windowId: 'w1', requestId: 'r', payload });
+    expect(await send({ promptId: 5, answer: 'x' })).toBe(false);
+    expect(await send({ promptId: 'id', answer: 7 })).toBe(false);
+    expect(answer).not.toHaveBeenCalled();
+    expect(await send({ promptId: 'id', answer: null })).toBe(true);
+    expect(answer).toHaveBeenCalledWith('id', null);
+  });
+});

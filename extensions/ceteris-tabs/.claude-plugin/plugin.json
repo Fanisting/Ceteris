@@ -1,0 +1,13 @@
+{
+  "name": "ceteris-tabs",
+  "version": "0.1.0",
+  "description": "Lets Claude Code in a Ceteris coordinator tab open, close, rename, type into, read and wait for the other tabs of its folder.",
+  "author": {
+    "name": "Fanisting",
+    "url": "https://github.com/Fanisting"
+  },
+  "homepage": "https://github.com/Fanisting/ceteris/tree/main/extensions/ceteris-tabs",
+  "repository": "https://github.com/Fanisting/ceteris",
+  "license": "MIT",
+  "keywords": ["ceteris", "terminal", "tabs", "coordinator", "multi-agent", "mcp"]
+}

@@ -49,6 +49,7 @@ extraResources:
       - "!**/tools/**"
       - "!**/.claude-plugin/types/**"
       - "!**/tsconfig.json"
+      - "!**/*.d.mts"
   # Win11 新右键菜单(IExplorerCommand)资源 —— 仅 installed 形态使用,
   # SettingsView 通过 cmd:explorer-integration:set-modern 触发 install.ps1。
   # MSIX 包由 native/context-menu/scripts/build.ps1 离线生成,这里只搬运产物。

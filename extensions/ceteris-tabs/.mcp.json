@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ceteris-tabs": {
+      "command": "${CETERIS_CONTROL_NODE:-node}",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/ceteris-tabs-mcp.mjs"],
+      "env": {
+        "ELECTRON_RUN_AS_NODE": "1"
+      }
+    }
+  }
+}

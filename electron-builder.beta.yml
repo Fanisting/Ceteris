@@ -67,6 +67,7 @@ extraResources:
       - "!**/tools/**"
       - "!**/.claude-plugin/types/**"
       - "!**/tsconfig.json"
+      - "!**/*.d.mts"
 
 win:
   target:

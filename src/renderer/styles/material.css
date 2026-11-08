@@ -1947,6 +1947,7 @@ select.settings-input option {
   to {
     opacity: 0;
   }
+}
 
 /* ── Dev reload button (WindowChrome.tsx, dev builds only) ──────────
  * Centred over the whole title bar whatever the window style, and outside the drag region

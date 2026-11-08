@@ -76,11 +76,17 @@ export function LegadoDynamicControls({
     if (!el) return;
     const commit = (): void => {
       const value = el.value.toLowerCase();
-      if (value !== committed.current) onChangeRef.current({ legadoSeedColor: value });
+      if (value === committed.current) return;
+      // 先记成已提交:选择器关闭紧跟着失焦时,onBlur 不会把预览退回旧颜色(设置回传要晚一拍)
+      committed.current = value;
+      onChangeRef.current({ legadoSeedColor: value });
     };
     el.addEventListener('change', commit);
     return () => el.removeEventListener('change', commit);
   }, [mode]);
+
+  // 控件卸载(换主题、关设置页)时撤掉没提交的预览;在选择器里按 Esc 不会触发 change 也不一定失焦
+  useEffect(() => () => previewLegadoSeed(committed.current), []);
 
   const levels = Object.keys(LEGADO_CONTRAST_LEVELS) as LegadoContrast[];
   const levelLabel: Record<LegadoContrast, string> = {

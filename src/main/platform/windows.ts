@@ -692,15 +692,6 @@ export class WindowsAdapter implements PlatformAdapter {
   }
 
   /**
-   * Windows 上干净安装时种入收藏栏的默认条目:
-   * - 桌面(%USERPROFILE%\Desktop)
-   * - 主目录(%USERPROFILE%)
-   *
-   * 历史上还含临时目录,2026-05-16 移除独立"系统"分组的同时去掉 — 临时目录
-   * 日常打开终端的频次不足以占用一个默认收藏槽位。USERPROFILE 兜底用
-   * homedir(),Windows 上正常存在。
-   */
-  /**
    * Windows 强调色(设置 → 个性化 → 颜色)。Electron 返回 'RRGGBBAA',这里去掉透明度。
    * electron 在方法里按需加载:本文件的单测不在 Electron 里跑,顶层 import 会让它们拿到 undefined。
    */
@@ -728,6 +719,15 @@ export class WindowsAdapter implements PlatformAdapter {
     return () => systemPreferences.removeListener('accent-color-changed', handler);
   }
 
+  /**
+   * Windows 上干净安装时种入收藏栏的默认条目:
+   * - 桌面(%USERPROFILE%\Desktop)
+   * - 主目录(%USERPROFILE%)
+   *
+   * 历史上还含临时目录,2026-05-16 移除独立"系统"分组的同时去掉 — 临时目录
+   * 日常打开终端的频次不足以占用一个默认收藏槽位。USERPROFILE 兜底用
+   * homedir(),Windows 上正常存在。
+   */
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {
     const userProfile = process.env.USERPROFILE || homedir();
     return [

@@ -9,7 +9,7 @@
  * @对应文档章节: 软件定义书.md 6.1 (整体布局)、6.6 (设置页面);
  *   ipc-protocol.md 第 4 章 handshake
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { PROTOCOL_VERSION } from '@shared/protocol';
 import { AppStateProvider, useAppDispatch, useAppState, useIpcSync } from './store';
 import { Sidebar } from './components/Sidebar';
@@ -234,7 +234,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
   const legadoSeed = state.settings.appearance?.legadoSeedColor ?? LEGADO_DEFAULT_SEED;
   const legadoStyle = state.settings.appearance?.legadoPaletteStyle ?? 'tonalSpot';
   const legadoContrast = state.settings.appearance?.legadoContrast ?? 'standard';
-  useEffect(() => {
+  // useLayoutEffect:要赶在子组件(TerminalView)的主题 effect 之前,否则 Custom 主题第一帧是默认种子色
+  useLayoutEffect(() => {
     setLegadoDynamicInputs({ seed: legadoSeed, style: legadoStyle, contrast: legadoContrast });
   }, [legadoSeed, legadoStyle, legadoContrast]);
 

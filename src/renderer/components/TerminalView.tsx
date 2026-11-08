@@ -906,6 +906,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const customThemes = useCustomThemes();
   // Legado MD3 实时主题重新生成后引用会变,同样触发下面的主题 effect(ADR-030)
   const legadoDynamic = useLegadoDynamic();
+  // 只有选中实时主题时才让它触发重设配色,否则拖颜色、强调色变化会让每个终端白白重画
+  const legadoDynamicDep = themeId && isLegadoDynamicThemeId(themeId) ? legadoDynamic : null;
   const fontSize = appState.settings.appearance?.terminalFontSize ?? 13;
   const fontFamily =
     appState.settings.appearance?.terminalFontFamily ??
@@ -2022,7 +2024,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     if (!term) return;
     term.options.theme = getXtermTheme(themeId);
     term.options.minimumContrastRatio = isLightTheme(themeId) ? LIGHT_THEME_MIN_CONTRAST : 1;
-  }, [themeId, customThemes, legadoDynamic]);
+  }, [themeId, customThemes, legadoDynamicDep]);
 
   // SCROLL-1 二次修复 + KBD-1:reveal 后立即归还焦点给 helper-textarea。
   // 期间 host inert,焦点漂到 body / 上次 active 元素;reveal 让 inert 解除,

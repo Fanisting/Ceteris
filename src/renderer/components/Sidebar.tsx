@@ -724,15 +724,16 @@ function FolderList({
 
   return (
     <section className={`sidebar-category${empty ? ' empty' : ''}`}>
+      {/* No chevron slot: the icon lines up with the file tree header's folder icon, and the
+          count follows the title instead of sitting by the buttons (material.css). */}
       <header className="sidebar-category-header">
-        <span className="sidebar-category-chevron" aria-hidden="true" />
         <span className="sidebar-category-title">
           <span className="sidebar-category-icon" aria-hidden="true">
-            <Folder size={12} />
+            <Folder size={14} />
           </span>
           {t('sidebar.folders')}
+          {!empty && <span className="sidebar-category-count">{folders.length}</span>}
         </span>
-        {!empty && <span className="sidebar-category-count">{folders.length}</span>}
         <button
           type="button"
           className="sidebar-category-action"

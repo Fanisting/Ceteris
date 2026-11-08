@@ -55,6 +55,68 @@ describe('writeTextFile', () => {
     expect(await fs.readFile(path, 'utf8')).toBe('an agent wrote this');
   });
 
+  it.each([
+    ['only the size', 'longer text', 1_700_000_000],
+    ['only the modified time', 'new', 1_700_000_100],
+  ])('refuses when %s changed', async (_name, content, mtimeSeconds) => {
+    // A coarse clock can leave the modified time unchanged, and a rewrite can keep the size.
+    const path = join(dir, 'a.txt');
+    await fs.writeFile(path, 'old');
+    await fs.utimes(path, 1_700_000_000, 1_700_000_000);
+    const expected = await stamp(path);
+    await fs.writeFile(path, content);
+    await fs.utimes(path, mtimeSeconds, mtimeSeconds);
+    const now = await stamp(path);
+    // Exactly one of the two differs, so the case tests that one alone.
+    expect(Number(now.size !== expected.size) + Number(now.mtimeMs !== expected.mtimeMs)).toBe(1);
+    expect(await writeTextFile({ path, base64: b64('mine'), expected })).toEqual({
+      ok: false,
+      reason: 'changed',
+    });
+    expect(await fs.readFile(path, 'utf8')).toBe(content);
+  });
+
+  it('saves through a symbolic link into its target and keeps the link', async () => {
+    const target = join(dir, 'real.txt');
+    const link = join(dir, 'link.txt');
+    await fs.writeFile(target, 'old');
+    await fs.symlink(target, link, 'file');
+    const res = await writeTextFile({
+      path: link,
+      base64: b64('new'),
+      expected: await stamp(link),
+    });
+    expect(res.ok).toBe(true);
+    expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await fs.readFile(target, 'utf8')).toBe('new');
+    expect((await fs.readdir(dir)).sort()).toEqual(['link.txt', 'real.txt']);
+  });
+
+  it('keeps the original and removes the temporary file when the final rename fails', async () => {
+    const path = join(dir, 'a.txt');
+    await fs.writeFile(path, 'old');
+    // Windows refuses to replace a file another program holds open.
+    const rename = vi
+      .spyOn(fs, 'rename')
+      .mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'EBUSY' }));
+    try {
+      const res = await writeTextFile({ path, base64: b64('new'), expected: null });
+      expect(res).toEqual({ ok: false, reason: 'denied' });
+    } finally {
+      rename.mockRestore();
+    }
+    expect(await fs.readFile(path, 'utf8')).toBe('old');
+    expect(await fs.readdir(dir)).toEqual(['a.txt']);
+  });
+
+  it('accepts a save of exactly the largest size', async () => {
+    const path = join(dir, 'a.txt');
+    await fs.writeFile(path, 'old');
+    const base64 = Buffer.alloc(TEXT_WRITE_MAX_BYTES, 0x61).toString('base64');
+    const res = await writeTextFile({ path, base64, expected: null });
+    expect(res).toMatchObject({ ok: true, size: TEXT_WRITE_MAX_BYTES });
+  });
+
   it('overwrites when the user chose to, with no expected value', async () => {
     const path = join(dir, 'a.txt');
     await fs.writeFile(path, 'theirs');

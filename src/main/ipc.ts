@@ -397,6 +397,17 @@ export function broadcastUpdateStatus(status: UpdateStatus): void {
 }
 
 /**
+ * 把新的系统强调色推给本机所有窗口(ADR-030,Legado MD3 的强调色主题据此重新生成)。
+ * 发送范围同 broadcastCustomThemes:强调色跟随本机,远程窗口也要收到,虚拟窗口不发。
+ */
+export function broadcastAccentColor(hex: string | null): void {
+  const envelope = wrapEvent(hex);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(EVENT_CHANNELS.ACCENT_COLOR_CHANGED, envelope);
+  }
+}
+
+/**
  * 把新的用户主题列表推给本机所有窗口(ADR-026)。
  *
  * 不走 broadcastEvent:那条会跳过远程窗口(它们的数据来自 Host),而主题跟随本机,
@@ -1656,6 +1667,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       shell.showItemInFolder(path);
     }
   };
+  handleCommand(
+    COMMAND_CHANNELS.THEME_ACCENT_COLOR,
+    async (): Promise<string | null> => getPlatformAdapter().getAccentColor(),
+  );
   handleCommand(
     COMMAND_CHANNELS.THEME_LIST_CUSTOM,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<CustomTheme[]> =>

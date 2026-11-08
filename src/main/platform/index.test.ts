@@ -78,6 +78,8 @@ describe('getPlatformAdapter', () => {
       getRefreshedPath: () => process.env.PATH ?? '',
       normalizeSpawnEnv: (env: Record<string, string>) => env,
       getDefaultBookmarkSeeds: () => [],
+      getAccentColor: async () => null,
+      onAccentColorChanged: async () => () => {},
     };
     __setPlatformAdapterForTest(fakeAdapter);
     setPlatform('linux'); // linux 正常会 throw
@@ -100,6 +102,8 @@ describe('getPlatformAdapter', () => {
       getRefreshedPath: () => process.env.PATH ?? '',
       normalizeSpawnEnv: (env: Record<string, string>) => env,
       getDefaultBookmarkSeeds: () => [],
+      getAccentColor: async () => null,
+      onAccentColorChanged: async () => () => {},
     };
     __setPlatformAdapterForTest(fakeAdapter);
     expect(getPlatformAdapter()).toBe(fakeAdapter);

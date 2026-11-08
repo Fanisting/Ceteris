@@ -33,6 +33,7 @@ import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-
 import { SecretStore, type SecretsFile } from './secret-store';
 import {
   broadcastLinkStatus,
+  broadcastAccentColor,
   broadcastCustomThemes,
   broadcastUpdateStatus,
   decryptStoredPassword,
@@ -655,6 +656,10 @@ function bootstrap(): void {
       updateChecker.refreshSchedule();
       // 主题文件夹读取失败不影响启动,内置主题照常可用
       customThemes.start().catch((err) => logger.warn('themes', 'custom theme store start failed', err));
+      // ADR-030:系统强调色一变就推给所有窗口,Legado MD3 的强调色主题跟着重新生成
+      getPlatformAdapter()
+        .onAccentColorChanged(broadcastAccentColor)
+        .catch((err) => logger.warn('themes', 'accent color subscription failed', err));
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
       // 原因记在 LinkServer.lastError 里由设置页展示。

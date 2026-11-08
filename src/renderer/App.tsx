@@ -26,6 +26,8 @@ import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge'
 import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
 import { resolveThemeId, useCustomThemes } from './custom-themes';
+import { setLegadoDynamicInputs } from './legado-dynamic';
+import { LEGADO_DEFAULT_SEED } from '@shared/legado-dynamic-ids';
 
 type HandshakeState =
   | { status: 'pending' }
@@ -227,6 +229,14 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
   }, [currentTheme]);
+
+  // ADR-030:设置里的种子色 / 风格 / 对比度变了,重新生成 Legado MD3 的实时主题
+  const legadoSeed = state.settings.appearance?.legadoSeedColor ?? LEGADO_DEFAULT_SEED;
+  const legadoStyle = state.settings.appearance?.legadoPaletteStyle ?? 'tonalSpot';
+  const legadoContrast = state.settings.appearance?.legadoContrast ?? 'standard';
+  useEffect(() => {
+    setLegadoDynamicInputs({ seed: legadoSeed, style: legadoStyle, contrast: legadoContrast });
+  }, [legadoSeed, legadoStyle, legadoContrast]);
 
   // BETA-003c resize 修复:把平台标记挂到 <html data-platform>,CSS 据此
   // 排除 Linux 上的 .app-root border-radius — Linux 跑 transparent:false

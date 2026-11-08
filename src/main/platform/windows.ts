@@ -178,6 +178,12 @@ export function __getShellCandidatesForTest(): Array<{
 /** 同一份源码编译失败后不在本次运行里反复尝试,每次 SFTP 连接都起 csc 既慢又吵。 */
 let askpassBuildFailed: string | null = null;
 
+/** 'RRGGBBAA' / 'RRGGBB' → '#rrggbb';格式不对返回 null。 */
+export function accentHex(raw: string | undefined): string | null {
+  const m = /^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(raw ?? '');
+  return m ? `#${m[1]!.toLowerCase()}` : null;
+}
+
 export class WindowsAdapter implements PlatformAdapter {
   /**
    * 给 ssh 一个 SSH_ASKPASS 助手:一个用 Windows 自带的 csc.exe 编出来的 5 KB exe,
@@ -694,6 +700,34 @@ export class WindowsAdapter implements PlatformAdapter {
    * 日常打开终端的频次不足以占用一个默认收藏槽位。USERPROFILE 兜底用
    * homedir(),Windows 上正常存在。
    */
+  /**
+   * Windows 强调色(设置 → 个性化 → 颜色)。Electron 返回 'RRGGBBAA',这里去掉透明度。
+   * electron 在方法里按需加载:本文件的单测不在 Electron 里跑,顶层 import 会让它们拿到 undefined。
+   */
+  async getAccentColor(): Promise<string | null> {
+    try {
+      const { systemPreferences } = await import('electron');
+      return accentHex(systemPreferences.getAccentColor());
+    } catch (err) {
+      logger.warn(
+        'windows-adapter',
+        'getAccentColor failed; Legado accent theme uses the default seed',
+        err,
+      );
+      return null;
+    }
+  }
+
+  async onAccentColorChanged(listener: (hex: string | null) => void): Promise<() => void> {
+    const { systemPreferences } = await import('electron');
+    const handler = (_event: unknown, newColor: string): void => {
+      logger.info('windows-adapter', `accent color changed: ${newColor}`);
+      listener(accentHex(newColor));
+    };
+    systemPreferences.on('accent-color-changed', handler);
+    return () => systemPreferences.removeListener('accent-color-changed', handler);
+  }
+
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {
     const userProfile = process.env.USERPROFILE || homedir();
     return [

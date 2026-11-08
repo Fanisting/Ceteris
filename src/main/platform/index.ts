@@ -168,6 +168,18 @@ export interface PlatformAdapter {
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[];
 
   /**
+   * 系统强调色,'#rrggbb'(ADR-030:Legado MD3 的"Windows 强调色"主题拿它当种子色)。
+   * 读不到或平台不支持时返回 null,renderer 回退到默认种子色。
+   */
+  getAccentColor(): Promise<string | null>;
+
+  /**
+   * 订阅强调色变化,回调收到新颜色(读不到时为 null)。返回取消订阅函数。
+   * 不支持的平台不调用回调,返回空函数。
+   */
+  onAccentColorChanged(listener: (hex: string | null) => void): Promise<() => void>;
+
+  /**
    * SSH 方案 v2.1 §阶段 3.5:OpenSSH ControlPath socket 文件路径模板。
    *
    * - Linux/macOS:返回 `~/.ssh/cm-%r@%h:%p`(OpenSSH 自动展开 %r/%h/%p,

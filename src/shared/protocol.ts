@@ -260,6 +260,8 @@ export const COMMAND_CHANNELS = {
   THEME_CREATE_CUSTOM: 'cmd:theme:create-custom',
   /** 打开主题文件夹 */
   THEME_OPEN_FOLDER: 'cmd:theme:open-folder',
+  /** 本机系统强调色 '#rrggbb' 或 null(ADR-030,Legado MD3 的 Windows 强调色主题) */
+  THEME_ACCENT_COLOR: 'cmd:theme:accent-color',
   /** 用系统默认编辑器打开一个主题文件。payload: { id } */
   THEME_OPEN_FILE: 'cmd:theme:open-file',
 } as const;
@@ -338,6 +340,8 @@ export const EVENT_CHANNELS = {
   AGENT_UPDATE_NOTICE: 'evt:agent:update-notice',
   /** 主题文件夹里的文件变了,payload 是新的 CustomTheme[](ADR-026)。只发本机窗口 */
   CUSTOM_THEMES_UPDATED: 'evt:theme:custom-updated',
+  /** 系统强调色变了,payload 是 '#rrggbb' 或 null(ADR-030)。只发本机窗口 */
+  ACCENT_COLOR_CHANGED: 'evt:theme:accent-color-changed',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];

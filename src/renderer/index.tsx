@@ -31,6 +31,7 @@ import './styles/beamer-themes.css';
 import './styles/meizi-theme.css';
 // 必须在 material.css 之后:Legado MD3 主题块同样覆写 --md-* 角色
 import './styles/legado-themes.css';
+import './styles/legado-controls.css';
 import './styles/file-tree.css';
 // Rendered .md files use the OnePage reading look (MIT, credited in README)
 import './styles/markdown-onepage.css';
@@ -45,6 +46,7 @@ import './styles/ghost-tab.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
 import { initCustomThemes } from './custom-themes';
+import { initLegadoDynamic } from './legado-dynamic';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -56,4 +58,6 @@ if (!rootEl) {
 
 // 用户主题(ADR-026):在首次渲染前开始拉取,样式元素追加在上面所有样式表之后
 initCustomThemes();
+// ADR-030:Legado MD3 的种子色 / 强调色主题
+initLegadoDynamic();
 createRoot(rootEl).render(<App />);

@@ -4,7 +4,7 @@
  *   filter chip 选具体变体。
  *
  * @关键设计:
- * - 珠光(7 款)、Beamer(6 款)和 Legado MD3(22 款)在菜单里各占一行;选中系列后,下方出现该系列的变体 chip。
+ * - 珠光(7 款)、Beamer(6 款)和 Legado MD3(4 款实时 + 22 款固定)在菜单里各占一行;选中系列后,下方出现该系列的变体 chip。
  *   单个主题直接在菜单里选。
  * - 菜单里的名字一律英文,包括明暗标记,不随界面语言切换。
  * - 色块是一个带 data-theme 属性的 span,直接读该主题自己的 CSS 变量,所以永远与主题
@@ -95,7 +95,14 @@ const BEAMER: ThemeFamily = {
 const LEGADO: ThemeFamily = {
   key: 'legado-md3',
   label: 'Legado MD3',
-  options: LEGADO_THEMES.map((t) => ({ id: t.id, label: t.label, dark: t.dark })),
+  options: [
+    // 实时主题(ADR-030):种子色和 Windows 强调色生成,控件在 LegadoDynamicControls
+    { id: 'legado-md3-seed', label: 'Custom', dark: false },
+    { id: 'legado-md3-seed-dark', label: 'Custom Dark', dark: true },
+    { id: 'legado-md3-accent', label: 'Windows Accent', dark: false },
+    { id: 'legado-md3-accent-dark', label: 'Windows Accent Dark', dark: true },
+    ...LEGADO_THEMES.map((t) => ({ id: t.id, label: t.label, dark: t.dark })),
+  ],
 };
 
 /** 用户主题系列;没有主题文件时不出现在菜单里。 */

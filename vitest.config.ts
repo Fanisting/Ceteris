@@ -30,6 +30,9 @@ export default defineConfig({
     globals: false,
     include: ['src/main/**/*.{test,spec}.ts', 'src/shared/**/*.{test,spec}.ts'],
     exclude: ['node_modules', 'out', 'dist', 'release'],
+    // material-color-utilities 0.4.0 的部分内部 import 没写 .js 扩展名,Node 的 ESM 加载器
+    // 找不到;让 Vite 转换它(应用构建本来就由 Vite 打包,不受影响)。ADR-030
+    server: { deps: { inline: ['@material/material-color-utilities'] } },
     coverage: {
       provider: 'v8',
       include: ['src/main/**/*.ts', 'src/shared/**/*.ts'],

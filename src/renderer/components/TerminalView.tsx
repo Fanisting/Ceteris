@@ -113,6 +113,8 @@ import type { BuiltinThemeId, SessionInfo, ThemeId } from '@shared/types';
 import { isCustomThemeId } from '@shared/custom-themes';
 import { getCustomThemes, resolveThemeId, useCustomThemes } from '../custom-themes';
 import { LEGADO_THEMES, type LegadoThemeId } from '@shared/legado-themes';
+import { isLegadoDynamicThemeId, type LegadoDynamicThemeId } from '@shared/legado-dynamic-ids';
+import { getLegadoDynamicTerminal, useLegadoDynamic } from '../legado-dynamic';
 import { attachImeCompositionEndCleaner } from '@shared/ime-textarea-workaround';
 import { attachImeCompositionPositionLock } from '@shared/ime-composition-position-lock';
 import {
@@ -197,7 +199,8 @@ function buildLegadoXtermThemes(): Record<LegadoThemeId, ITheme> {
  * 与 global.css 的 [data-theme="..."] CSS 变量同源,任何主题变更都需
  * 同时更新这两处。
  */
-const XTERM_THEMES: Record<BuiltinThemeId, ITheme> = {
+// Legado MD3 的实时主题(ADR-030)不在表里,配色由 ../legado-dynamic 现算,见 getXtermTheme
+const XTERM_THEMES: Record<Exclude<BuiltinThemeId, LegadoDynamicThemeId>, ITheme> = {
   'ceteris-dark': {
     background: '#0e1514',
     foreground: '#dde4e3',
@@ -815,7 +818,14 @@ export function getXtermTheme(themeId: ThemeId | undefined): ITheme {
     }
     return XTERM_THEMES['ceteris-dark'];
   }
-  return XTERM_THEMES[(id ?? 'ceteris-dark') as BuiltinThemeId] ?? XTERM_THEMES['ceteris-dark'];
+  if (id && isLegadoDynamicThemeId(id)) {
+    const terminal = getLegadoDynamicTerminal(id);
+    return id.endsWith('-dark') ? terminal : { ...terminal, extendedAnsi: LIGHT_EXTENDED_ANSI };
+  }
+  return (
+    XTERM_THEMES[(id ?? 'ceteris-dark') as Exclude<BuiltinThemeId, LegadoDynamicThemeId>] ??
+    XTERM_THEMES['ceteris-dark']
+  );
 }
 
 /**
@@ -894,6 +904,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const themeId = appState.settings.appearance?.theme;
   // 主题文件保存后列表引用会变,下面的主题 effect 靠它重新取配色
   const customThemes = useCustomThemes();
+  // Legado MD3 实时主题重新生成后引用会变,同样触发下面的主题 effect(ADR-030)
+  const legadoDynamic = useLegadoDynamic();
   const fontSize = appState.settings.appearance?.terminalFontSize ?? 13;
   const fontFamily =
     appState.settings.appearance?.terminalFontFamily ??
@@ -2010,7 +2022,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     if (!term) return;
     term.options.theme = getXtermTheme(themeId);
     term.options.minimumContrastRatio = isLightTheme(themeId) ? LIGHT_THEME_MIN_CONTRAST : 1;
-  }, [themeId, customThemes]);
+  }, [themeId, customThemes, legadoDynamic]);
 
   // SCROLL-1 二次修复 + KBD-1:reveal 后立即归还焦点给 helper-textarea。
   // 期间 host inert,焦点漂到 body / 上次 active 元素;reveal 让 inert 解除,

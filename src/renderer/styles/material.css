@@ -1684,23 +1684,54 @@ select.settings-input option {
   outline-offset: -4px;
 }
 
-/* MD3 wavy activity indicator, drawn with a mask so it follows the theme colour. */
-.tab.running::before {
+/*
+ * Agent and activity indicators (ADR-020). One rule: moving means the agent does not need
+ * you; still or breathing means it does.
+ *   .running        wavy line: the agent is working (or a plain shell has output)
+ *   .agent-blocked  breathing bar and dot in the warning colour: it waits for approval
+ *   .agent-unseen   dot that pings twice: it finished while you were elsewhere
+ */
+
+/* MD3 wavy activity indicator, drawn with a mask so it follows the theme colour. It exists
+   on every tab so the stop can animate: the wave flattens into a line, then fades. */
+.tab::before {
   content: '';
   position: absolute;
   left: 10px;
   right: 10px;
   bottom: 0;
-  height: 4px;
-  background-color: var(--md-on-surface-variant, #f0f);
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='4'%3E%3Cpath d='M0 2Q3 0 6 2T12 2' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E");
+  height: 6px;
+  background-color: var(--md-primary, #f0f);
+  opacity: 0;
+  transform: scaleY(0.25);
+  transform-origin: 50% 100%;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='6'%3E%3Cpath d='M0 3Q4 0.4 8 3T16 3' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
   mask-repeat: repeat-x;
-  mask-size: 12px 4px;
-  animation: tab-wave 900ms linear infinite;
+  mask-size: 16px 6px;
+  pointer-events: none;
+  animation: tab-wave 650ms linear infinite;
+
+  /* Paused when hidden so idle tabs do not repaint; a stopping wave freezes as it flattens. */
+  animation-play-state: paused;
+  transition:
+    transform 500ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 400ms ease 900ms;
 }
 
-.tab.running.selected::before {
-  background-color: var(--md-primary, #f0f);
+.tab.running::before {
+  opacity: 1;
+  transform: scaleY(1);
+  animation-play-state: running;
+  transition:
+    transform 250ms ease,
+    opacity 100ms ease;
+}
+
+/* The selected tab gets its underline back at once, so its wave must not fade on top. */
+.tab.selected:not(.running)::before,
+.tab-blank::before {
+  opacity: 0;
+  transition: none;
 }
 
 .tab.running.selected::after {
@@ -1709,13 +1740,85 @@ select.settings-input option {
 
 @keyframes tab-wave {
   to {
-    mask-position: 12px 0;
+    mask-position: 16px 0;
+  }
+}
+
+.tab-agent-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--md-primary, #f0f);
+}
+
+.tab.agent-unseen .tab-agent-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-color: inherit;
+  animation: agent-ping 900ms ease-out 2;
+}
+
+.tab.agent-blocked .tab-agent-dot,
+.tab.agent-blocked.selected::after {
+  background-color: var(--color-warning, #f0f);
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+.tab.agent-blocked:not(.selected)::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background-color: var(--color-warning, #f0f);
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+/* The sidebar dot speaks the same language; its colour comes from the inline style. */
+.session-state-dot.agent-blocked {
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+.session-state-dot.agent-unseen {
+  position: relative;
+}
+
+.session-state-dot.agent-unseen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-color: inherit;
+  animation: agent-ping 900ms ease-out 2;
+}
+
+@keyframes agent-ping {
+  to {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+@keyframes agent-breathe {
+  50% {
+    opacity: 0.3;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab.running::before {
-    animation: none;
+  .tab::before,
+  .tab-agent-dot,
+  .tab-agent-dot::after,
+  .tab.agent-blocked::after,
+  .session-state-dot.agent-blocked,
+  .session-state-dot.agent-unseen::after {
+    animation: none !important;
   }
 }
 

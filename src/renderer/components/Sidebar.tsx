@@ -959,6 +959,7 @@ function PathItem({
               session={s}
               myWindowId={state.myWindowId}
               selected={state.selectedSessionId === s.id}
+              unseen={state.unseenDoneSessionIds.has(s.id)}
             />
           ))}
         </ul>
@@ -973,6 +974,8 @@ interface SessionItemProps {
   myWindowId: string;
   /** 父级传入 — 同上,避免订阅 state.selectedSessionId */
   selected: boolean;
+  /** ADR-020:agent 跑完时用户没在看;父级传入,理由同上 */
+  unseen: boolean;
 }
 
 /**
@@ -987,6 +990,7 @@ function SessionItemImpl({
   session,
   myWindowId,
   selected,
+  unseen,
 }: SessionItemProps): JSX.Element {
   const dispatch = useAppDispatch();
   const ctxMenu = useContextMenuApi();
@@ -1137,9 +1141,23 @@ function SessionItemImpl({
       title={fullTitle}
     >
       <span
-        className="session-state-dot"
-        style={{ backgroundColor: STATE_DOT_COLOR[session.state] }}
-        aria-label={`状态: ${session.state}`}
+        className={
+          'session-state-dot' +
+          (session.agentPhase === 'blocked'
+            ? ' agent-blocked'
+            : unseen
+              ? ' agent-unseen'
+              : '')
+        }
+        style={{
+          backgroundColor:
+            session.agentPhase === 'blocked'
+              ? 'var(--color-warning, #f0f)'
+              : unseen
+                ? 'var(--md-primary, #f0f)'
+                : STATE_DOT_COLOR[session.state],
+        }}
+        aria-label={`状态: ${session.agentPhase ?? session.state}`}
       >
         {session.state === 'exited' && session.exitCode === 0 && (
           <CheckBold size={11} className="session-state-dot-icon ok" />

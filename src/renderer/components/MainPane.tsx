@@ -820,6 +820,15 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     tooltipParts.push(tx(`已退出 (exitCode=${session.exitCode ?? 0})`, `Exited (exitCode=${session.exitCode ?? 0})`));
   }
 
+  // ADR-020:agent 的 phase 优先于输出驱动的 state。停在批准提示时在菜单里
+  // 移动光标也会有输出,不能因此又显示波浪;没有 agent 的 session 照旧按输出。
+  const phase = session.agentPhase ?? null;
+  const waving = phase === 'working' || (phase === null && session.state === 'active');
+  const blocked = phase === 'blocked';
+  const unseen = state.unseenDoneSessionIds.has(session.id);
+  if (blocked) tooltipParts.push(tx('等待你批准', 'Waiting for your approval'));
+  else if (unseen) tooltipParts.push(tx('已完成,等你查看', 'Finished, your turn'));
+
   return (
     <button
       type="button"
@@ -829,12 +838,15 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
         (variant === 'other' ? ' owned-by-other' : '') +
         (variant === 'orphan' ? ' orphan' : '') +
         (session.state === 'exited' ? ' exited' : '') +
-        (session.state === 'active' ? ' running' : '')
+        (waving ? ' running' : '') +
+        (blocked ? ' agent-blocked' : '') +
+        (unseen && !blocked ? ' agent-unseen' : '')
       }
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       title={tooltipParts.join('\n')}
     >
+      {(blocked || unseen) && <span className="tab-agent-dot" aria-hidden="true" />}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (
         <span className="tab-cwd-drift" aria-label={tx('当前目录已变', 'Current directory changed')}>

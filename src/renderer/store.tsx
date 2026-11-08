@@ -110,6 +110,24 @@ export interface AppState {
    * 也可通过工具栏按钮(BETA-028)在普通页面里切换。本窗口私有,不跨窗口同步。
    */
   simpleMode: boolean;
+
+  /**
+   * ADR-020:agent 跑完一轮 (agentPhase working → done) 时用户没在看的 session。
+   * Tab 和侧栏在这些 session 上显示圆点,直到用户选中它。放在 store 而不是 Tab
+   * 组件里:Tab 只为当前 path 挂载,别的文件夹里跑完的 agent 也要记住。
+   */
+  unseenDoneSessionIds: Set<string>;
+}
+
+/**
+ * The ids with one session removed, or the same set when it was not there, so the
+ * reducer only makes a new state when something changed.
+ */
+function withoutId(ids: Set<string>, id: string | null | undefined): Set<string> {
+  if (!id || !ids.has(id)) return ids;
+  const next = new Set(ids);
+  next.delete(id);
+  return next;
 }
 
 const EMPTY_TREE: PathTree = {
@@ -276,7 +294,23 @@ function reducer(state: AppState, action: AppAction): AppState {
       const merged: SessionInfo = { ...existing, ...action.changes };
       const sessions = new Map(state.sessions);
       sessions.set(action.sessionId, merged);
-      return { ...state, sessions };
+      // ADR-020:只有 working → done 才算"跑完了没看";启动时 null → done
+      // (agent 刚打开、还没干活) 不亮圆点。屏幕上可见 = 选中或在分屏里。
+      let unseenDoneSessionIds = state.unseenDoneSessionIds;
+      const phase = action.changes.agentPhase;
+      if (phase === 'done' && existing.agentPhase === 'working') {
+        const visible =
+          state.selectedSessionId === action.sessionId ||
+          (getEffectivePaneLayout(state) !== 'single' &&
+            getPaneSlots(state).some((s) => s?.id === action.sessionId));
+        if (!visible) {
+          unseenDoneSessionIds = new Set(unseenDoneSessionIds);
+          unseenDoneSessionIds.add(action.sessionId);
+        }
+      } else if (phase !== undefined && phase !== 'done') {
+        unseenDoneSessionIds = withoutId(unseenDoneSessionIds, action.sessionId);
+      }
+      return { ...state, sessions, unseenDoneSessionIds };
     }
 
     case 'templates/update':
@@ -289,7 +323,11 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'sessions/destroyed': {
       const sessions = new Map(state.sessions);
       sessions.delete(action.sessionId);
-      const next: AppState = { ...state, sessions };
+      const next: AppState = {
+        ...state,
+        sessions,
+        unseenDoneSessionIds: withoutId(state.unseenDoneSessionIds, action.sessionId),
+      };
       // 当前选中的 session 被销毁 → 取消选中
       // With split panes the selection moves to a pane still on screen instead: with
       // nothing selected the keyboard has no pane to go to. Slots come from the state
@@ -350,7 +388,11 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'view/select-session':
-      return { ...state, selectedSessionId: action.sessionId };
+      return {
+        ...state,
+        selectedSessionId: action.sessionId,
+        unseenDoneSessionIds: withoutId(state.unseenDoneSessionIds, action.sessionId),
+      };
 
     case 'view/set-pane-layout':
       return { ...state, paneLayout: action.layout };
@@ -394,6 +436,7 @@ function reducer(state: AppState, action: AppAction): AppState {
             ...next,
             selectedPathId: session.pathId,
             selectedSessionId: action.selectSessionId,
+            unseenDoneSessionIds: withoutId(next.unseenDoneSessionIds, action.selectSessionId),
             inSettingsView: false, // 选 session 隐含退出 settings
           };
         }
@@ -483,6 +526,7 @@ export function makeDefaultState(myWindowId: string, myWindowNumber: number): Ap
     lastTerminalDims: { cols: 120, rows: 30 },
     // BETA-027:默认普通页面;Explorer 简易模式打开时在 startup 显式 dispatch set
     simpleMode: false,
+    unseenDoneSessionIds: new Set(),
   };
 }
 

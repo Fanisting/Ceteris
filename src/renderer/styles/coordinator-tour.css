@@ -311,6 +311,20 @@
   line-height: 1.45;
 }
 
+/* 正文下的小链接:不用 Claude Code 时跳过设置和插件两步 */
+.ctour-link {
+  display: block;
+  margin: -4px 0 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--md-primary, #f0f);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .ctour-actions {
   display: flex;
   align-items: center;

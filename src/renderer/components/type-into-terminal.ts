@@ -22,6 +22,17 @@ import { useAppDispatch, useAppState } from '../store';
 import { useTranslation } from './LanguageProvider';
 import { useToast } from './Toast';
 
+/**
+ * Type text into a running tab without pressing Enter. SendInputPayload.data is base64 of the
+ * UTF-8 bytes, the same path TerminalView uses for keyboard input.
+ */
+export async function typeIntoSession(sessionId: string, text: string): Promise<void> {
+  const utf8 = new TextEncoder().encode(text);
+  let binary = '';
+  for (const byte of utf8) binary += String.fromCharCode(byte);
+  await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, { sessionId, data: btoa(binary) });
+}
+
 export interface TypeIntoNewTerminal {
   /** True while the tab is being opened; buttons that call `run` disable themselves. */
   preparing: boolean;

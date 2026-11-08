@@ -1,28 +1,37 @@
 /**
  * @file src/renderer/components/CoordinatorTour.tsx
  * @purpose The coordinator tour (ADR-024): an animated, step-by-step guide on top of the real
- *   window. It first introduces two roles: the Coordinator, which monitors and controls your
- *   Claude Code agents, and the Fintuner, which learns from the chat history where to save time
- *   and work more efficiently. Then it spotlights the tab to right-click, plays a cursor doing
+ *   window. It first introduces three roles: the Coordinator, which monitors and controls your
+ *   other agents; Workers, the normal tabs of its folder that take its work; and the
+ *   Fintuner, which learns from the chat history where to save time and work more efficiently. Then it spotlights the tab to right-click, plays a cursor doing
  *   it, points at the Coordinator item in the menu, the new coordinator row, the setting and the
- *   plugin install, shows how to give the coordinator a job, and ends with a button that opens
+ *   plugin install, shows how to add normal tabs as workers, how to give the coordinator a job, and ends with a button that opens
  *   a Fintuner.
- * - Both roles are a recommended way to use tabs, not code: a coordinator is a Claude Code tab
- *   with the Coordinator mark (ADR-023/024), a Fintuner is a Claude Code tab with a prompt. The
+ * - The roles are a recommended way to use tabs, not code: a coordinator is an agent tab with
+ *   the Coordinator mark (ADR-023/024), a Fintuner is an agent tab with a prompt. The
  *   intro says so. To make the roles easy to spot, the tour renames the tabs "Coordinator" and
- *   "Fintuner" (a manual rename, so Claude Code's own titles do not overwrite it). The two are
+ *   "Fintuner" (a manual rename, so the agent's own titles do not overwrite it). The two are
  *   at the same level: the Fintuner tab also gets the Coordinator mark, so both sit in the row
  *   above the tabs (and both may control tabs when that extension is on).
  *
  * @关键设计:
  * - It points at the real UI and the user does the real thing; the tour never clicks for them,
  *   except the Fintuner button, which opens that tab itself.
+ * - Prompts are pasted, not sent: "Paste an example" types a first job into the Coordinator,
+ *   and the Fintuner gets its brief once its agent has started (waitUntilSettled). The user
+ *   reads it and presses Enter. Prompts come in Chinese and English (@shared/coordinator-prompts)
+ *   and follow the interface language. If the agent never settles, the brief goes to the
+ *   clipboard instead.
  *   The overlay lets every click through (pointer-events: none) except on its own bubble.
  * - The step comes from app state (coordinatorTourStep in @shared/coordinator-tour), checked
  *   every animation frame together with where the target is. Right-clicking a tab, ticking
  *   Coordinator or turning the setting on moves the tour forward by itself.
- * - Targets are found through data attributes: data-quick-key="template:claude-code" inside
- *   data-guide="ghost-tab" (the Claude Code icon of the dashed quick launch tab, falling back to
+ * - It does not assume Claude Code. It points at whichever agent comes first among the quick
+ *   launch icons, the Fintuner runs the same agent as the coordinator, and the setting and plugin
+ *   steps (Claude Code only) drop out for a coordinator running another agent, or when the user
+ *   says they do not use Claude Code (canControlTabs in @shared/coordinator-tour).
+ * - Targets are found through data attributes: the first agent data-quick-key inside
+ *   data-guide="ghost-tab" (an agent icon among the quick launch icons, falling back to
  *   the tab itself and then to data-guide="new-tab", the +),
  *   data-session-id (each tab), data-guide="coordinator" (the menu item) and
  *   data-guide="coordinator-bar" (the coordinator row). Renaming those breaks the tour.
@@ -44,6 +53,7 @@ import { createPortal } from 'react-dom';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import {
   COORDINATOR_TOUR_STEPS,
+  canControlTabs,
   coordinatorTourStep,
   type CoordinatorTourInput,
   type CoordinatorTourStep,
@@ -54,10 +64,11 @@ import {
   type TabControlStatus,
 } from '@shared/tab-control';
 import type { CreateSessionResponse, RenameSessionPayload } from '@shared/protocol';
-import { useAppState } from '../store';
+import { COORDINATOR_JOB_PROMPT, FINTUNER_PROMPT } from '@shared/coordinator-prompts';
+import { useAppDispatch, useAppState, useAppStateRef, type AppState } from '../store';
 import { useTranslation } from './LanguageProvider';
 import { useToast } from './Toast';
-import { useTypeIntoNewTerminal } from './type-into-terminal';
+import { typeIntoSession, useTypeIntoNewTerminal } from './type-into-terminal';
 import { useQuickLaunch } from './useQuickLaunch';
 
 /** How often to look for the plugin again while the tour waits for the install. */
@@ -71,6 +82,43 @@ const EDGE = 12;
 /** Tab names the tour gives the two roles. */
 const COORD_NAME = 'Coordinator';
 const FINTUNER_NAME = 'Fintuner';
+/** What the tour calls the normal tabs a coordinator directs. They keep their own names. */
+const WORKER_NAME = 'Worker';
+
+/** How long a new agent may take to start before its prompt goes to the clipboard instead. */
+const SETTLE_TIMEOUT_MS = 30_000;
+/** Quiet time after the agent's start-up output that counts as ready for input. */
+const SETTLE_QUIET_MS = 1500;
+const SETTLE_POLL_MS = 250;
+
+/**
+ * Wait until a newly opened agent tab is ready to take typed input: it printed its start-up
+ * screen (state went active) and then stayed quiet for SETTLE_QUIET_MS, or its agent phase says
+ * done. Typing earlier can land in the shell before the agent starts, or be dropped.
+ * Resolves false when the tab exits or the wait times out.
+ */
+async function waitUntilSettled(
+  stateRef: { current: AppState },
+  sessionId: string,
+): Promise<boolean> {
+  const started = Date.now();
+  let sawOutput = false;
+  let quietSince: number | null = null;
+  while (Date.now() - started < SETTLE_TIMEOUT_MS) {
+    const session = stateRef.current.sessions.get(sessionId);
+    if (session?.state === 'exited') return false;
+    if (session?.agentPhase === 'done') return true;
+    if (session?.state === 'active') {
+      sawOutput = true;
+      quietSince = null;
+    } else if (session && sawOutput) {
+      quietSince ??= Date.now();
+      if (Date.now() - quietSince >= SETTLE_QUIET_MS) return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
+  }
+  return false;
+}
 
 /** Rename a tab the way the tab menu does; a failure only goes to the console. */
 function renameTab(sessionId: string, name: string): void {
@@ -92,6 +140,8 @@ interface Probe {
   target: Rect;
   /** The open tab menu, so the bubble can sit beside it instead of over it. */
   menu: Rect | null;
+  /** The coordinator's folder shows at least one normal tab, which is a worker. */
+  hasWorker: boolean;
 }
 
 function rectOf(el: Element | null): Rect | null {
@@ -112,16 +162,39 @@ function sameRect(a: Rect | null, b: Rect | null): boolean {
   );
 }
 
+/** Quick launch keys of plain shells; every other quick launch template is an agent. */
+const SHELL_QUICK_KEY = /^(shell:|template:(shell|admin-shell)$)/;
+
+/** Whether a quick launch key starts an agent rather than a plain shell. */
+function isAgentKey(key: string): boolean {
+  return !SHELL_QUICK_KEY.test(key);
+}
+
 /**
- * Where to open a Claude Code tab: its icon in the dashed quick launch tab (GhostTab), else the
- * dashed tab, else the + when quick launch is empty.
+ * Where to open an agent tab: the first agent icon among the quick launch icons (GhostTab),
+ * whatever agent the user put there, else the icon group, else the + when quick launch is empty.
  */
-function claudeLauncher(): Element | null {
+function agentLauncher(): Element | null {
+  const icons = [...document.querySelectorAll('[data-guide="ghost-tab"] [data-quick-key]')];
   return (
-    document.querySelector('[data-guide="ghost-tab"] [data-quick-key="template:claude-code"]') ??
+    icons.find((el) => isAgentKey(el.getAttribute('data-quick-key') ?? '')) ??
     document.querySelector('[data-guide="ghost-tab"]') ??
     document.querySelector('[data-guide="new-tab"]')
   );
+}
+
+/** The box around every normal tab of the current folder: the workers. */
+function workerTabs(): Rect | null {
+  const tabs = [
+    ...document.querySelectorAll('.tab-bar:not(.coordinator-bar) .tab[data-session-id]'),
+  ];
+  const rects = tabs.map(rectOf).filter((r): r is Rect => r !== null);
+  if (rects.length === 0) return null;
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.left + r.width));
+  const bottom = Math.max(...rects.map((r) => r.top + r.height));
+  return { left, top, width: right - left, height: bottom - top };
 }
 
 /** A tab of the current folder to right-click: the selected one, else the first. */
@@ -147,6 +220,8 @@ async function saveExtensions(
 export function CoordinatorTour(): JSX.Element | null {
   const { tx } = useTranslation();
   const state = useAppState();
+  const stateRef = useAppStateRef();
+  const dispatch = useAppDispatch();
   const toast = useToast();
   const typer = useTypeIntoNewTerminal();
   const seen = state.settings.extensions?.tabControlGuideSeen ?? false;
@@ -155,6 +230,9 @@ export function CoordinatorTour(): JSX.Element | null {
   const [open, setOpen] = useState(!seen);
   const [introSeen, setIntroSeen] = useState(false);
   const [rowSeen, setRowSeen] = useState(false);
+  const [workerSeen, setWorkerSeen] = useState(false);
+  // 用户说自己不用 Claude Code:跳过设置和插件两步
+  const [noClaude, setNoClaude] = useState(false);
   const [startSeen, setStartSeen] = useState(false);
   const [coordId, setCoordId] = useState<string | null>(null);
   const [pluginInstalled, setPluginInstalled] = useState<boolean | null>(null);
@@ -190,12 +268,16 @@ export function CoordinatorTour(): JSX.Element | null {
     (s) => s.coordinator === true && s.state !== 'exited',
   );
   const coord = coordinators.find((s) => s.id === coordId) ?? coordinators[0] ?? null;
+  // 标签控制只有 Claude Code 能用:协调者跑的是别的 agent,或用户说不用,就跳过那两步
+  const controlSupported = !noClaude && (coord ? canControlTabs(coord.templateId) : true);
 
   // 动画帧循环读的是这一帧的状态;放进 ref,循环本身不用随每次渲染重建
   const inputRef = useRef<Omit<CoordinatorTourInput, 'menuOpen' | 'hasFolderTab'>>({
     introSeen: false,
     hasCoordinator: false,
     rowSeen: false,
+    workerSeen: false,
+    controlSupported: true,
     enabled: false,
     pluginInstalled: null,
     startSeen: false,
@@ -204,6 +286,8 @@ export function CoordinatorTour(): JSX.Element | null {
     introSeen,
     hasCoordinator: coord !== null,
     rowSeen,
+    workerSeen,
+    controlSupported,
     enabled,
     pluginInstalled,
     startSeen,
@@ -230,17 +314,20 @@ export function CoordinatorTour(): JSX.Element | null {
       let target: Rect | null = null;
       let menu: Rect | null = null;
       if (step === 'intro') {
-        // 两个角色的介绍指着当前文件夹的标签栏:agent 们就住在这里
+        // 角色介绍指着当前文件夹的标签栏:agent 们就住在这里
         target = rectOf(document.querySelector('.tab-bar:not(.coordinator-bar) .tab-list'));
       } else if (step === 'open-tab' || step === 'fintuner') {
-        // 两步都是开一个 Claude Code:指着虚线标签里它的图标
-        target = rectOf(claudeLauncher());
+        // 两步都是开一个 agent:指着标签栏末尾第一个 agent 图标
+        target = rectOf(agentLauncher());
       } else if (step === 'right-click') target = rectOf(tab);
       else if (step === 'tick') {
         target = rectOf(menuItem);
         menu = rectOf(menuItem?.closest('.ctx-menu') ?? null);
       } else if (step === 'row') {
         target = rectOf(document.querySelector('[data-guide="coordinator-bar"]'));
+      } else if (step === 'worker') {
+        // 有普通标签就圈出它们 (这些就是 Worker),没有就指着开 agent 的图标
+        target = workerTabs() ?? rectOf(agentLauncher());
       } else if (coordIdRef.current) {
         target = rectOf(
           document.querySelector(
@@ -248,12 +335,13 @@ export function CoordinatorTour(): JSX.Element | null {
           ),
         );
       }
-      const next = target ? { step, target, menu } : null;
+      const next = target ? { step, target, menu, hasWorker: tab !== null } : null;
       const changed =
         (last === null) !== (next === null) ||
         (last !== null &&
           next !== null &&
           (last.step !== next.step ||
+            last.hasWorker !== next.hasWorker ||
             !sameRect(last.target, next.target) ||
             !sameRect(last.menu, next.menu)));
       if (changed) {
@@ -301,7 +389,7 @@ export function CoordinatorTour(): JSX.Element | null {
 
   if (!active || !probe) return null;
 
-  const { step, target, menu } = probe;
+  const { step, target, menu, hasWorker } = probe;
   const spot = {
     left: target.left - SPOT_PAD,
     top: target.top - SPOT_PAD,
@@ -342,7 +430,7 @@ export function CoordinatorTour(): JSX.Element | null {
   const pointX = step === 'intro' ? target.left + 40 : target.left + target.width / 2;
   const arrowX = Math.min(Math.max(18, pointX - bubbleLeft), width - 18);
 
-  // 光标动画演示动作:点 Claude Code 图标、右键标签、点菜单项;中间几步不需要
+  // 光标动画演示动作:点 agent 图标、右键标签、点菜单项;中间几步不需要
   const cursor =
     step === 'right-click'
       ? { x: target.left + target.width / 2, y: target.top + target.height / 2, right: true }
@@ -352,7 +440,7 @@ export function CoordinatorTour(): JSX.Element | null {
             y: target.top + target.height / 2,
             right: false,
           }
-        : step === 'open-tab'
+        : step === 'open-tab' || (step === 'worker' && !hasWorker)
           ? { x: target.left + target.width / 2, y: target.top + target.height / 2, right: false }
           : null;
 
@@ -361,23 +449,51 @@ export function CoordinatorTour(): JSX.Element | null {
     step === 'open-tab' ||
     step === 'right-click' ||
     step === 'tick' ||
-    step === 'row';
+    step === 'row' ||
+    step === 'worker';
   // open-tab 只是前置步骤,和 right-click 共用一个点
   const dotSteps = COORDINATOR_TOUR_STEPS.filter((s) => s !== 'open-tab');
   const dotIndex = dotSteps.indexOf(step === 'open-tab' ? 'right-click' : step);
   const dots = dotSteps.length;
 
-  const fintunerPrompt = tx(
-    '你是这个项目的 Fintuner。读这个文件夹最近的 Claude Code 对话记录(~/.claude/projects 里对应本项目的 .jsonl)和运行历史,找出:哪里浪费了时间或 token,哪些步骤可以合并或交给协调者自动做,哪些问题反复来问我、其实可以定成规则。给我一份按收益排序的改进清单,每条写明具体怎么改。',
-    "You are this project's Fintuner. Read the recent Claude Code chat history for this folder (its .jsonl files under ~/.claude/projects) and the run history, and find: where time or tokens were wasted, which steps could be merged or handed to the coordinator, and which questions keep coming back to me and could become rules. Give me a list of improvements ranked by payoff, each with exactly what to change.",
-  );
-  // 开 Fintuner:用快捷启动里的 Claude Code 开 (WSL / SSH 文件夹的 shell 规则都在那里),
-  // 改名 Fintuner,复制提示,结束引导。提示不替用户发送,读历史要花 token,由用户按 Enter。
+  // 提示跟界面语言走:中文用户拿到中文写的版本,英文用户拿到英文写的版本
+  const fintunerPrompt = tx(FINTUNER_PROMPT.zh, FINTUNER_PROMPT.en);
+  const jobPrompt = tx(COORDINATOR_JOB_PROMPT.zh, COORDINATOR_JOB_PROMPT.en);
+
+  // 把示例任务粘贴进 Coordinator (它已经在跑,不用等),切到它,让用户看一眼再按 Enter
+  const pasteJob = async (): Promise<void> => {
+    if (!coord) return;
+    try {
+      dispatch({ type: 'view/select-path', pathId: coord.pathId });
+      dispatch({ type: 'view/select-session', sessionId: coord.id });
+      await typeIntoSession(coord.id, jobPrompt);
+      toast.push({
+        kind: 'success',
+        message: tx(
+          `例子已粘贴到 ${COORD_NAME},看一眼再按 Enter。`,
+          `The example is pasted into ${COORD_NAME}. Read it, then press Enter.`,
+        ),
+        durationMs: 8000,
+      });
+    } catch (err) {
+      showError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // 开 Fintuner:和协调者用同一个 agent,协调者是 shell 时用快捷启动里第一个 agent。
+  // 优先走快捷启动 (WSL / SSH 文件夹的 shell 规则都在那里)。改名 Fintuner,结束引导,
+  // 等 agent 起来后粘贴提示。不替用户发送:读历史要花 token,由用户按 Enter。
+  const coordAgentKey = coord ? `template:${coord.templateId}` : null;
+  const fintunerItem =
+    quickLaunch.items.find((i) => i.key === coordAgentKey && isAgentKey(i.key)) ??
+    quickLaunch.items.find((i) => isAgentKey(i.key)) ??
+    null;
+  const fintunerTemplateId =
+    coord && isAgentKey(`template:${coord.templateId}`) ? coord.templateId : 'claude-code';
   const openFintuner = async (): Promise<void> => {
-    const item = quickLaunch.items.find((i) => i.key === 'template:claude-code');
     let sessionId: string | null = null;
-    if (item) {
-      sessionId = await quickLaunch.launch(item);
+    if (fintunerItem) {
+      sessionId = await quickLaunch.launch(fintunerItem);
     } else if (state.selectedPathId) {
       try {
         const dims = state.lastTerminalDims;
@@ -385,7 +501,7 @@ export function CoordinatorTour(): JSX.Element | null {
           COMMAND_CHANNELS.SESSION_CREATE,
           {
             pathId: state.selectedPathId,
-            templateId: 'claude-code',
+            templateId: fintunerTemplateId,
             cols: dims.cols,
             rows: dims.rows,
           },
@@ -402,20 +518,38 @@ export function CoordinatorTour(): JSX.Element | null {
     window.api
       .invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, { sessionId, coordinator: true })
       .catch((err: unknown) => console.warn('[CoordinatorTour] mark Fintuner failed', err));
+    // 先结束引导:等 agent 启动要几秒,这期间气泡不该挂着
+    void saveExtensions({ tabControlGuideSeen: true }, showError);
+    if (await waitUntilSettled(stateRef, sessionId)) {
+      try {
+        await typeIntoSession(sessionId, fintunerPrompt);
+        toast.push({
+          kind: 'success',
+          message: tx(
+            `提示已粘贴到 ${FINTUNER_NAME},看一眼再按 Enter。`,
+            `The brief is pasted into ${FINTUNER_NAME}. Read it, then press Enter.`,
+          ),
+          durationMs: 8000,
+        });
+        return;
+      } catch (err) {
+        console.warn('[CoordinatorTour] pasting the Fintuner brief failed', err);
+      }
+    }
+    // agent 没在 30 秒内安静下来 (或粘贴失败):退回到剪贴板
     try {
       await navigator.clipboard.writeText(fintunerPrompt);
       toast.push({
-        kind: 'success',
+        kind: 'info',
         message: tx(
-          `${FINTUNER_NAME} 已打开,提示已复制。等它启动后粘贴,按 Enter。`,
-          `${FINTUNER_NAME} is open and its prompt is copied. Paste it once it starts, then press Enter.`,
+          `${FINTUNER_NAME} 启动得有点慢,提示已复制,等它好了粘贴进去再按 Enter。`,
+          `${FINTUNER_NAME} is slow to start; its brief is copied. Paste it once it is ready, then press Enter.`,
         ),
-        durationMs: 8000,
+        durationMs: 10000,
       });
     } catch (err) {
       showError(err instanceof Error ? err.message : String(err));
     }
-    void saveExtensions({ tabControlGuideSeen: true }, showError);
   };
 
   const install = (): void => {
@@ -426,15 +560,18 @@ export function CoordinatorTour(): JSX.Element | null {
   // 文字尽量一行:引导叠在真界面上,读得越少越好
   const copy: Record<CoordinatorTourStep, { title: string; body: string }> = {
     intro: {
-      title: tx('两个角色', 'Two roles'),
+      title: tx('三个角色', 'Three roles'),
       body: tx(
-        '这是推荐用法,不是内置功能:两者都是普通的 Claude Code 标签,角色看你交给它的任务。',
-        'A recommended setup, not built-in features: both are plain Claude Code tabs, and the role is the job you give them.',
+        '这是推荐用法,不是内置功能:都是普通的 agent 标签(Claude Code、Codex 等),角色看你交给它的任务。',
+        'A recommended setup, not built-in features: all are plain agent tabs (Claude Code, Codex and others), and the role is the job you give them.',
       ),
     },
     'open-tab': {
-      title: tx('开一个 Claude Code', 'Open a Claude Code tab'),
-      body: tx('点虚线标签里的这个图标。', 'Click this icon in the dashed tab.'),
+      title: tx('开一个 agent', 'Open an agent'),
+      body: tx(
+        '点标签栏末尾你常用的 agent 图标,比如 Claude Code 或 Codex。',
+        'Click the icon of the agent you use at the end of the tab strip, such as Claude Code or Codex.',
+      ),
     },
     'right-click': {
       title: tx('右键这个标签', 'Right-click this tab'),
@@ -451,29 +588,58 @@ export function CoordinatorTour(): JSX.Element | null {
       title: tx(`这是 ${COORD_NAME}`, `This is ${COORD_NAME}`),
       body: tx('这一行在任何文件夹都看得到。', 'This row shows it from every folder.'),
     },
+    worker: hasWorker
+      ? {
+          title: tx(`这些是 ${WORKER_NAME}`, `These are ${WORKER_NAME}s`),
+          body: tx(
+            `同一文件夹的普通标签都归 ${COORD_NAME} 指挥。`,
+            `Normal tabs in this folder take work from ${COORD_NAME}.`,
+          ),
+        }
+      : {
+          title: tx(`加一个 ${WORKER_NAME}`, `Add a ${WORKER_NAME}`),
+          body: tx(
+            `普通标签就是 ${WORKER_NAME}。点这里开一个,或让 ${COORD_NAME} 自己开。`,
+            `Any normal tab is a ${WORKER_NAME}. Open one here, or let ${COORD_NAME} open them.`,
+          ),
+        },
     enable: {
       title: tx(`允许 ${COORD_NAME} 控制标签`, `Let ${COORD_NAME} control tabs`),
-      body: tx('只有协调者标签能用。', 'Only coordinator tabs get this.'),
+      body: tx(
+        '需要 Claude Code,且只有协调者标签能用。',
+        'Needs Claude Code, and only coordinator tabs get it.',
+      ),
     },
     plugin: {
-      title: tx('装 ceteris-tabs 插件', 'Add the ceteris-tabs plugin'),
+      title: tx('给 Claude Code 装 ceteris-tabs', 'Add ceteris-tabs to Claude Code'),
       body: tx(
         '命令输入到新终端,你按 Enter 才执行。',
         'The commands go into a new terminal; you press Enter.',
       ),
     },
-    start: {
-      title: tx(`在 ${COORD_NAME} 里交代任务`, `Give ${COORD_NAME} a job`),
-      body: tx(
-        '比如:“开两个 Claude Code,一个写测试,一个修 bug,做完告诉我。”',
-        'For example: “Open two Claude Code tabs, one for tests and one for the bug, and tell me when both are done.”',
-      ),
-    },
+    start: controlSupported
+      ? {
+          title: tx(`在 ${COORD_NAME} 里交代任务`, `Give ${COORD_NAME} a job`),
+          body: tx(
+            '交给它一件值得分给几个 agent 的事。',
+            'Give it a task worth splitting across agents.',
+          ),
+        }
+      : {
+          title: tx(
+            `从 ${COORD_NAME} 盯住 ${WORKER_NAME}`,
+            `Watch your ${WORKER_NAME}s from ${COORD_NAME}`,
+          ),
+          body: tx(
+            '自动派活目前只支持 Claude Code。用其他 agent 时,这一行和“运行中 / 等你处理”帮你看谁在跑、谁在等你。',
+            'Handing out work by itself needs Claude Code for now. With other agents, this row and the Running / Needs you filters show who runs and who waits for you.',
+          ),
+        },
     fintuner: {
       title: tx('再开一个 Fintuner', 'Now open a Fintuner'),
       body: tx(
-        `按钮在上方一行新开 ${FINTUNER_NAME},和 ${COORD_NAME} 同级,并复制好提示。`,
-        `The button opens ${FINTUNER_NAME} in the top row, level with ${COORD_NAME}, and copies its prompt.`,
+        `按钮用 ${COORD_NAME} 同款 agent 在上方一行开 ${FINTUNER_NAME},启动后自动粘贴提示。`,
+        `The button opens ${FINTUNER_NAME} in the top row with the same agent as ${COORD_NAME}, and pastes its brief once it starts.`,
       ),
     },
   };
@@ -536,8 +702,20 @@ export function CoordinatorTour(): JSX.Element | null {
               </dt>
               <dd>
                 {tx(
-                  '盯着并指挥其他 Claude Code:派活、看进度、收结果。',
-                  'Monitors and controls your other Claude Code tabs: hands out work, watches, collects results.',
+                  '盯着并指挥其他 agent:派活、看进度、收结果。',
+                  'Monitors and controls your other agents: hands out work, watches, collects results.',
+                )}
+              </dd>
+            </div>
+            <div className="ctour-role">
+              <dt>
+                <code>{WORKER_NAME}</code>
+                {tx(' 普通标签', '')}
+              </dt>
+              <dd>
+                {tx(
+                  `同一文件夹的其他标签,接 ${COORD_NAME} 派的活。`,
+                  `The other tabs of its folder, doing the work ${COORD_NAME} hands out.`,
                 )}
               </dd>
             </div>
@@ -555,6 +733,16 @@ export function CoordinatorTour(): JSX.Element | null {
           </dl>
         )}
         <p className="ctour-body">{copy[step].body}</p>
+        {step === 'start' && controlSupported && coord && (
+          <button type="button" className="ctour-link" onClick={() => void pasteJob()}>
+            {tx(`把一个例子粘贴到 ${COORD_NAME}`, `Paste an example into ${COORD_NAME}`)}
+          </button>
+        )}
+        {(step === 'enable' || step === 'plugin') && (
+          <button type="button" className="ctour-link" onClick={() => setNoClaude(true)}>
+            {tx('不用 Claude Code?跳过这两步', 'Not using Claude Code? Skip these two steps')}
+          </button>
+        )}
         <div className="ctour-actions">
           {step !== 'fintuner' && (
             <button
@@ -578,6 +766,11 @@ export function CoordinatorTour(): JSX.Element | null {
           )}
           {step === 'row' && (
             <button type="button" className="ctour-primary" onClick={() => setRowSeen(true)}>
+              {tx('下一步', 'Next')}
+            </button>
+          )}
+          {step === 'worker' && (
+            <button type="button" className="ctour-primary" onClick={() => setWorkerSeen(true)}>
               {tx('下一步', 'Next')}
             </button>
           )}

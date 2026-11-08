@@ -1,9 +1,10 @@
 /*
  * @file ghost-tab.css
- * @purpose 标签栏末尾的幽灵标签(GhostTab.tsx):虚线框、agent 图标按钮,以及框内的 + 按钮。
+ * @purpose 标签栏末尾的幽灵标签(GhostTab.tsx):一组 agent 图标按钮,后面跟着圆形的 + 按钮。
  *
  * @关键设计:
- * - 虚线框表示"还不是标签,点了才是";高度和圆角与 + 按钮一致,不撑高标签栏。
+ * - 不画外框 (用户 2026-11-08 要求去掉虚线框):图标本身就说明"点了才是标签";
+ *   + 是一个实心圆,和图标排在一起。高度不超过 + 按钮,不撑高标签栏。
  * - flex: 0 0 auto,标签多时先压缩真正的标签,框和里面的按钮保持原尺寸。
  * - 图标按钮悬停时上浮 1px 并加 MD3 状态层,和 + 按钮的反馈一致。
  *
@@ -18,13 +19,41 @@
   gap: 2px;
   height: 36px;
   margin-left: 4px;
-  padding: 0 1px 0 4px;
-  border: 1px dashed var(--md-outline, #f0f);
-  border-radius: var(--md-shape-full, 999px);
+  padding: 0;
 }
 
 .tab-ghost .tab.tab-blank {
-  margin-left: 0;
+  margin-left: 2px;
+}
+
+/*
+ * + 按钮是一个实心圆,所有主题都一样 (global.css 里它原本是会伸缩的 pill,material.css 里是
+ * 透明圆)。快捷启动为空时没有 .tab-ghost,+ 单独出现,也保持圆形。
+ */
+.tab-list .tab.tab-blank {
+  flex: 0 0 30px;
+  align-self: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--md-surface-container-highest, rgb(128 128 128 / 16%));
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.tab-list .tab.tab-blank:hover,
+.tab-list .tab.tab-blank.selected {
+  background-color: var(--md-secondary-container, rgb(128 128 128 / 28%));
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+/* 选中态不画普通标签底下那条横线:圆本身变色就够了 */
+.tab-list .tab.tab-blank::after {
+  content: none;
 }
 
 .tab-ghost-item {

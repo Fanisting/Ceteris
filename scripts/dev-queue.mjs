@@ -32,12 +32,15 @@
  *
  * @不要在这里做的事:
  * - Do not push or touch main; the dev build is local.
- * - Do not resolve conflicts automatically; the branch owner rebases and queues again.
+ * - Do not resolve conflicts beyond the routine ones in dev-queue-resolve.mjs (CHANGELOG, the
+ *   design doc's version rows and ADR sections, index.tsx imports). Anything else goes back to
+ *   the branch owner, who rebases and queues again.
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { resolveRoutineConflicts } from './dev-queue-resolve.mjs';
 
 const WT = path.resolve(process.env.CETERIS_DEV_WT ?? 'D:/ceteris-wt-preview');
 const BRANCH = process.env.CETERIS_DEV_BRANCH ?? 'dev-build';
@@ -379,13 +382,22 @@ function mergeOne({ branch, sha }, opts) {
     sha,
   ]);
   if (!merged.ok) {
-    const files = tryGit(['diff', '--name-only', '--diff-filter=U'])
+    // core.quotepath=false: otherwise git prints docs/软件定义书.md as an octal-escaped name.
+    const files = tryGit(['-c', 'core.quotepath=false', 'diff', '--name-only', '--diff-filter=U'])
       .out.split('\n')
       .filter(Boolean);
-    tryGit(['merge', '--abort']);
-    return skip(
-      `conflicts with ${BRANCH} in ${files.join(', ') || '(see git output)'}; merge ${BRANCH} into the branch, resolve, and queue again`,
-    );
+    const refused = files.length
+      ? resolveRoutineConflicts(WT, files)
+      : 'git listed no conflicted files';
+    const committed =
+      refused === null && tryGit(['add', '--', ...files]).ok && tryGit(['commit', '--no-edit']).ok;
+    if (!committed) {
+      tryGit(['merge', '--abort']);
+      return skip(
+        `conflicts with ${BRANCH} in ${files.join(', ') || '(see git output)'}${refused ? ` (${refused})` : ''}; rebase onto origin/main, resolve, and queue again`,
+      );
+    }
+    log(`resolved routine conflicts in ${files.join(', ')} for ${branch}`);
   }
 
   // From here on any failure undoes this one merge and nothing else.

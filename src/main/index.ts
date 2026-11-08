@@ -532,6 +532,8 @@ function bootstrap(): void {
 
       installIpcLayer({
         secretStore,
+        // Without it the usage handlers fall back to zeros and no call is ever counted.
+        nextPromptUsage,
         windowManager,
         viewSwitcher,
         pathManager,

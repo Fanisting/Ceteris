@@ -43,6 +43,7 @@ import { LinkManager } from './link/link-manager';
 import { getPlatformAdapter } from './platform';
 import { SftpPool } from './sftp-client';
 import { AskpassServer } from './askpass-server';
+import { TabControlServer } from './tab-control-server';
 import { PromptBroker } from './askpass-prompts';
 import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
@@ -266,6 +267,9 @@ function bootstrap(): void {
     },
   });
   const templatesManager = new TemplatesManager(templatesStore);
+  // Tab control (ADR-024). Built after sessionManager, which it drives; the env hook below
+  // reads it late, and a tab spawned before the pipe listens just gets no control env.
+  let tabControl: TabControlServer | null = null;
   const sessionManager = new SessionManager(
     windowManager,
     pathManager,
@@ -278,7 +282,30 @@ function bootstrap(): void {
       tmuxSocket: channel.tmuxSocket,
       // 公式图片扩展 (ADR-019):插件现读的终端颜色 / 格子宽高比
       terminalLookFile: join(dataDir, 'extensions', 'terminal-look.json'),
+      controlEnv: (sessionId) => tabControl?.envFor(sessionId) ?? {},
     },
+  );
+  tabControl = new TabControlServer(
+    {
+      enabled: () => settingsManager.get().extensions?.tabControl === true,
+      list: () => sessionManager.list(),
+      get: (sessionId) => sessionManager.get(sessionId),
+      templates: () => templatesManager.list(),
+      // No owner window: the window showing the coordinator keeps showing it.
+      create: (input) => sessionManager.createSession({ ...input, ownerWindowId: '' }),
+      close: (sessionId) => sessionManager.closeSession(sessionId),
+      rename: (sessionId, name) => sessionManager.renameSession(sessionId, name),
+      write: (sessionId, text) =>
+        sessionManager.sendInput(sessionId, Buffer.from(text, 'utf8').toString('base64')).accepted,
+      screenTail: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
+      bracketedPaste: (sessionId) => sessionManager.isBracketedPasteOn(sessionId),
+    },
+    // The plugin runs its MCP server with this executable and ELECTRON_RUN_AS_NODE=1.
+    process.execPath,
+  );
+  const tabControlServer = tabControl;
+  sessionManager.on('sessionDestroyed', (e: { sessionId: string }) =>
+    tabControlServer.service.revoke(e.sessionId),
   );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
 
@@ -504,6 +531,10 @@ function bootstrap(): void {
       await knownHostsManager.initialize();
       const tmplSrc = await templatesManager.initialize();
       logger.info('main', `templates loaded from: ${tmplSrc}`);
+      // Before any window opens, so every tab gets its control env. Takes milliseconds.
+      await tabControlServer.start().catch((err: unknown) => {
+        logger.error('main', 'tab control pipe failed to start; coordinator control disabled', err);
+      });
 
       // BETA-031:AI 助手客户端,settings 读取走 SettingsManager.get() 闭包,
       // 用户改 key / provider 即刻生效;BETA-006 用同实例做状态复核。
@@ -781,6 +812,7 @@ function bootstrap(): void {
     sessionManager.shutdown();
     sftpPool.shutdown();
     void askpassServer.stop();
+    void tabControlServer.stop();
     // 先关 Link:停止监听并断开所有连接,让对端立刻知道我们要走了,
     // 而不是等它们的心跳超时(最长 50 秒)才发现。
     if (linkManagerRef) {

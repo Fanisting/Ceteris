@@ -213,7 +213,7 @@ function makeStubSettingsManager(
       terminalRenderer: 'auto',
       ...overrides,
     },
-    extensions: { claudeMathImages: false, terminalMath: false },
+    extensions: { claudeMathImages: false, terminalMath: false, tabControl: false },
     // Ceteris Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
     // 结构,缺字段会让整个 stub 类型不成立。
     link: {
@@ -294,6 +294,7 @@ function makeManager(
     /** PER-2 / F1:默认 0 — 测试每个 chunk 立即 emit,保持现有时序断言 */
     emitBatchMs?: number;
     templates?: Template[];
+    controlEnv?: (sessionId: string) => Record<string, string>;
   } = {},
 ): {
   mgr: SessionManager;
@@ -314,6 +315,7 @@ function makeManager(
     inputQuietMs: opts.inputQuietMs ?? 0,
     emitBatchMs: opts.emitBatchMs ?? 0,
     skipCwdValidation: true,
+    ...(opts.controlEnv ? { controlEnv: opts.controlEnv } : {}),
   });
   return { mgr, win, path };
 }
@@ -373,6 +375,27 @@ describe('SessionManager — createSession', () => {
     expect(path.attached).toEqual([{ sessionId: info.id, path: 'C:\\proj\\a' }]);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(FakePty.instances).toHaveLength(1);
+  });
+
+  it('gives each tab its own control env, keyed by its session id (ADR-022)', async () => {
+    const prev = process.env.CETERIS_CONTROL_TOKEN;
+    process.env.CETERIS_CONTROL_TOKEN = 'parent-tab-token';
+    try {
+      const { mgr } = makeManager({ controlEnv: (id) => ({ CETERIS_CONTROL_PIPE: `pipe-${id}` }) });
+      const info = await mgr.createSession({
+        pathId: 'C:\\proj\\a',
+        templateId: 'shell',
+        ownerWindowId: 'w-1',
+        cols: 80,
+        rows: 24,
+      });
+      const env = FakePty.instances[0]!.options.env;
+      expect(env.CETERIS_CONTROL_PIPE).toBe(`pipe-${info.id}`);
+      expect(env.CETERIS_CONTROL_TOKEN).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.CETERIS_CONTROL_TOKEN;
+      else process.env.CETERIS_CONTROL_TOKEN = prev;
+    }
   });
 
   it('cols/rows 越界被夹到合法范围', async () => {

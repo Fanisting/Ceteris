@@ -2065,6 +2065,42 @@ async function handleSessionTabClick(sessionId: string) {
 
 ---
 
+## 附录 D:Tab control pipe(ADR-024)
+
+这条通道不走 Electron IPC,是 main 与 ceteris-tabs 插件的 MCP 服务器之间的命名管道。格式定义在 `src/shared/tab-control.ts`,插件 `extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs` 里有一份相同的纯 JS 实现,`tab-control-mcp.test.ts` 检查两边一致。
+
+**连接**:每个标签的环境变量里有 `CETERIS_CONTROL_PIPE`(Windows 为 `\.\pipe\ceteris-control-<pid>-<随机>`)和本标签的 `CETERIS_CONTROL_TOKEN`。一条连接一个请求,30 秒内收不到完整请求就断开。
+
+**请求**(一行 JSON,换行结尾,最多 256 KB):
+
+```typescript
+interface TabControlRequest {
+  v: 1;
+  token: string;
+  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename';
+  args: Record<string, unknown>;
+}
+```
+
+**回复**(一行 JSON):`{ ok: true, result }` 或 `{ ok: false, code, message }`。`code` 取值:`bad-request`、`disabled`、`unknown-token`、`not-coordinator`、`not-found`、`ambiguous`、`self`、`failed`。
+
+| op | args | result |
+|---|---|---|
+| `list` | 无 | `{ folder, tabs: TabSummary[] }`,只含调用方文件夹的标签,按创建时间排序 |
+| `get` | `tab` | `TabSummary` |
+| `templates` | 无 | `{ id, name, command, args }[]` |
+| `create` | `template?`(id 或名字,默认 shell)、`name?` | 新标签的 `TabSummary`;没有 owner 窗口,尺寸同调用方 |
+| `close` | `tab` | `{ closed }`;不能是调用方自己 |
+| `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
+| `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
+| `rename` | `tab`、`name` | `TabSummary` |
+
+`tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
+
+**授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。
+
+---
+
 **文档结束**
 
 > 本协议文档与 `软件定义书.md` 共同构成 Ceteris V1 的完整设计契约。

@@ -97,6 +97,7 @@ import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
 import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
+import { tabControlInstallLine, tabControlInstallLines } from '@shared/tab-control';
 import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
@@ -3082,18 +3083,19 @@ function ExtensionsPanel({
   const dispatch = useAppDispatch();
   const toast = useToast();
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
+  const tabControl = state.settings.extensions?.tabControl ?? false;
   const terminalMath = state.settings.extensions?.terminalMath ?? false;
   const [preparing, setPreparing] = useState(false);
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
   const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!enabled || marketplaceDir) return;
+    if ((!enabled && !tabControl) || marketplaceDir) return;
     window.api
       .invoke<unknown, { dir: string }>(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, {})
       .then((res) => setMarketplaceDir(res.dir))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, [enabled, marketplaceDir, setError]);
+  }, [enabled, tabControl, marketplaceDir, setError]);
 
   /**
    * 开一个新终端,把一行命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
@@ -3143,6 +3145,11 @@ function ExtensionsPanel({
   const handlePrepareInstall = (): void => {
     const dir = marketplaceDir;
     if (dir) void typeIntoNewTerminal((shellId) => latexMathInstallLine(shellId, dir));
+  };
+
+  const handlePrepareTabControl = (): void => {
+    const dir = marketplaceDir;
+    if (dir) void typeIntoNewTerminal((shellId) => tabControlInstallLine(shellId, dir));
   };
 
   return (
@@ -3238,6 +3245,53 @@ function ExtensionsPanel({
               )}
             >
               {tx('在新终端里输入命令', 'Type it in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
+
+      <SettingRow
+        label={tx('协调者控制标签页', 'Coordinator tab control')}
+        hint={tx(
+          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。',
+          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={tabControl}
+            onChange={(e) =>
+              void updateSettings({ extensions: { tabControl: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {tabControl && (
+        <SettingRow
+          label={tx('还需要的插件', 'Plugin you also need')}
+          hint={tx(
+            'Claude Code 通过随 Ceteris 安装的 ceteris-tabs 插件拿到这些工具。在终端里跑一次下面两条命令,然后在协调者标签里新开 Claude Code。右键标签,勾选"协调者"。',
+            'Claude Code gets these tools from the ceteris-tabs plugin, which ships with Ceteris. Run these two commands once in a terminal, then start Claude Code in the coordinator tab. Right-click a tab and tick Coordinator.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block">
+              <code>{marketplaceDir ? tabControlInstallLines(marketplaceDir) : '…'}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing || !marketplaceDir}
+              onClick={handlePrepareTabControl}
+              title={tx(
+                '打开一个新终端并输入这两条命令,不会自动执行',
+                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type them in a new terminal')}
             </button>
           </div>
         </SettingRow>

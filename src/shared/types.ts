@@ -558,6 +558,12 @@ export interface Settings {
      * 设置页按钮可以把"公式写进行内代码"这条指示加进 ~/.codex/AGENTS.md。
      */
     terminalMath: boolean;
+    /**
+     * Coordinator tab control (ADR-024): Claude Code in a coordinator tab may list, open,
+     * close, type into and read the other tabs of its folder through the ceteris-tabs
+     * plugin (extensions/ceteris-tabs). Checked on every request, so it applies at once.
+     */
+    tabControl: boolean;
   };
 
   /**

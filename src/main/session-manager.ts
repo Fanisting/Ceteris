@@ -85,6 +85,7 @@ import {
 } from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
 import {
   AGENT_PHASE_SCREEN_ROWS,
   classifyWork,
@@ -104,6 +105,8 @@ const SPAWN_ENV_SKIP = [
   'PORTABLE_EXECUTABLE_FILE',
   'PORTABLE_EXECUTABLE_APP_FILENAME',
   ...AGENT_SESSION_ENV,
+  // Tab control (ADR-024): each tab gets its own token; never inherit a parent tab's.
+  ...TAB_CONTROL_ENV_NAMES,
 ];
 
 /**
@@ -538,6 +541,11 @@ export interface SessionManagerOptions {
   tmuxSocket?: string;
   /** 公式图片扩展 (ADR-019):terminal-look.json 的路径,通常在数据目录 extensions/ 下 */
   terminalLookFile?: string;
+  /**
+   * Tab control (ADR-024): extra env for the tab about to spawn, keyed by its future session
+   * id (the pipe path and the tab's token). Called once per local or SSH spawn.
+   */
+  controlEnv?: (sessionId: string) => Record<string, string>;
 }
 
 export class SessionManager extends EventEmitter {
@@ -565,6 +573,7 @@ export class SessionManager extends EventEmitter {
    * undefined = 未配置 (测试场景)。
    */
   private readonly terminalLookFile: TerminalLookFile | undefined;
+  private readonly controlEnv: ((sessionId: string) => Record<string, string>) | undefined;
 
   /** 记下 renderer 量到的终端外观;已在跑的 Claude Code 下次画图就用上。 */
   setTerminalLook(look: TerminalLook): void {
@@ -613,6 +622,7 @@ export class SessionManager extends EventEmitter {
     this.terminalLookFile = options.terminalLookFile
       ? new TerminalLookFile(options.terminalLookFile)
       : undefined;
+    this.controlEnv = options.controlEnv;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -741,6 +751,8 @@ export class SessionManager extends EventEmitter {
             : undefined,
         );
 
+    // Chosen before spawn so the tab's control token (ADR-022) can name it in the env.
+    const sessionId = randomUUID();
     const env = buildSpawnEnv(process.env, SPAWN_ENV_SKIP);
     // BETA-001:Windows 上 process.env.PATH 是启动时的快照,装新软件后不会自动
     // 刷新。每次 spawn 前从注册表合并最新 PATH 覆写过去,确保新装的 python.exe /
@@ -764,6 +776,9 @@ export class SessionManager extends EventEmitter {
       const gitBash = shells.find((s) => s.id === 'git-bash')?.executablePath;
       Object.assign(env, mathImagesEnv(this.terminalLookFile?.path, gitBash));
     }
+    // Tab control (ADR-024): pipe path and this tab's token. Before the template env, like
+    // the terminal hints, though a template has no reason to override them.
+    if (this.controlEnv) Object.assign(env, this.controlEnv(sessionId));
     Object.assign(env, launchParams.env);
     Object.assign(env, template.env);
     // BETA-ENV-1:Windows 上必做的最后一道防御 —— 补齐 canonical SystemRoot
@@ -847,7 +862,6 @@ export class SessionManager extends EventEmitter {
       );
     }
 
-    const sessionId = randomUUID();
     const info: SessionInfo = {
       id: sessionId,
       pathId: sessionPathId,
@@ -1848,6 +1862,14 @@ export class SessionManager extends EventEmitter {
    * ANSI 转义,自然干净。
    */
   /** The end of a session's screen as plain text. Empty for an unknown session. */
+  /**
+   * Tab control (ADR-024): whether the program in the tab turned on bracketed paste
+   * (ESC [ ? 2004 h), read from the headless mirror. Multi-line text is wrapped only then.
+   */
+  isBracketedPasteOn(sessionId: string): boolean {
+    return this.sessions.get(sessionId)?.headlessTerm?.modes.bracketedPasteMode === true;
+  }
+
   getScreenTail(sessionId: string, maxRows: number): string {
     const managed = this.sessions.get(sessionId);
     return managed ? this.getHeadlessTail(managed, maxRows) : '';

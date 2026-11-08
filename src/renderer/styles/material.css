@@ -34,8 +34,27 @@
   --md-shape-lg: 16px;
   --md-shape-xl: 28px;
   --md-shape-full: 999px;
+  /* 动效:MD3 easing 与 duration 全套,motion.css 使用。emphasized 原本是一条
+     分段曲线,CSS 只能写单条 cubic-bezier,这里按 MD3 的 CSS 近似取值。
+     旧名字保留:--md-easing-decelerate 等于 emphasized decelerate,
+     short / medium / long 等于 short2 / short4 / medium2。 */
   --md-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --md-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --md-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
   --md-easing-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-duration-short1: 50ms;
+  --md-duration-short2: 100ms;
+  --md-duration-short3: 150ms;
+  --md-duration-short4: 200ms;
+  --md-duration-medium1: 250ms;
+  --md-duration-medium2: 300ms;
+  --md-duration-medium3: 350ms;
+  --md-duration-medium4: 400ms;
+  --md-duration-long1: 450ms;
+  --md-duration-long2: 500ms;
   --md-duration-short: 100ms;
   --md-duration-medium: 200ms;
   --md-duration-long: 300ms;

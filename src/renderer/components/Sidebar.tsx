@@ -33,7 +33,6 @@ import {
   CheckBold,
   ChevronRight,
   CloseBold,
-  ExpandMore,
   Terminal,
   Warning,
   Folder,
@@ -904,8 +903,12 @@ function PathItem({
             <Warning size={14} className="path-invalid-icon" />
           </span>
         ) : (
-          <span className="path-expand-arrow" aria-label={expanded ? '收起' : '展开'}>
-            {expanded ? <ExpandMore size={16} /> : <ChevronRight size={16} />}
+          // 同一个箭头转 90 度,而不是换成另一个图标:旋转过程说明了"展开"(motion.css)
+          <span
+            className={`path-expand-arrow${expanded ? ' expanded' : ''}`}
+            aria-label={expanded ? '收起' : '展开'}
+          >
+            <ChevronRight size={16} />
           </span>
         )}
         {renaming ? (

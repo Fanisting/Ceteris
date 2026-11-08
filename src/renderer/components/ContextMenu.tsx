@@ -70,11 +70,12 @@ export function useContextMenuApi(): ContextMenuApi {
 export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  /** origin:菜单从哪个角展开,跟着翻转走,入场缩放才指向点击点(motion.css)。 */
+  const [pos, setPos] = useState<{ x: number; y: number; origin: string } | null>(null);
   const subRef = useRef<HTMLDivElement | null>(null);
   /** The open second panel: its choices and the row it hangs from. */
   const [sub, setSub] = useState<{ items: ContextMenuItem[]; anchor: DOMRect } | null>(null);
-  const [subPos, setSubPos] = useState<{ x: number; y: number } | null>(null);
+  const [subPos, setSubPos] = useState<{ x: number; y: number; origin: string } | null>(null);
   // FOC-5:打开菜单前记录当前焦点 element,关闭时归还。
   //
   // 没有这个保护:用户右键终端 → 弹菜单 → 选/不选关闭 → 菜单 button
@@ -161,41 +162,51 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
     };
   }, [menu, close, isTop]);
 
-  // 视口边缘越界修正:测量实际尺寸后,优先翻转到点击点反向,再做夹紧兜底
+  // 视口边缘越界修正:测量实际尺寸后,优先翻转到点击点反向,再做夹紧兜底。
+  // 量 offsetWidth / offsetHeight 而不是 getBoundingClientRect:入场动画从 0.92 倍
+  // 缩放开始,getBoundingClientRect 会量到缩小后的尺寸,菜单贴边时就会越界。
+  // offset 尺寸是布局尺寸,不受 transform 影响。
   useLayoutEffect(() => {
     if (!menu) return;
     const el = menuRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
+    const rect = { width: el.offsetWidth, height: el.offsetHeight };
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const margin = 4;
     let nx = menu.x;
     let ny = menu.y;
+    let originX = 'left';
+    let originY = 'top';
     if (nx + rect.width > vw - margin) {
       const flipped = menu.x - rect.width;
       nx = flipped >= margin ? flipped : Math.max(margin, vw - rect.width - margin);
+      originX = 'right';
     }
     if (ny + rect.height > vh - margin) {
       const flipped = menu.y - rect.height;
       ny = flipped >= margin ? flipped : Math.max(margin, vh - rect.height - margin);
+      originY = 'bottom';
     }
-    setPos({ x: nx, y: ny });
+    setPos({ x: nx, y: ny, origin: `${originY} ${originX}` });
   }, [menu]);
 
   // Beside its row, or on the other side when the window edge is in the way.
   useLayoutEffect(() => {
     const el = subRef.current;
     if (!sub || !el) return;
-    const rect = el.getBoundingClientRect();
+    // 同上:布局尺寸,不受入场缩放影响
+    const rect = { width: el.offsetWidth, height: el.offsetHeight };
     const margin = 4;
     const right = sub.anchor.right + 2;
-    const x =
-      right + rect.width > window.innerWidth - margin
-        ? Math.max(margin, sub.anchor.left - rect.width - 2)
-        : right;
-    const y = Math.max(margin, Math.min(sub.anchor.top - 4, window.innerHeight - rect.height - margin));
-    setSubPos({ x, y });
+    const flip = right + rect.width > window.innerWidth - margin;
+    const x = flip ? Math.max(margin, sub.anchor.left - rect.width - 2) : right;
+    const y = Math.max(
+      margin,
+      Math.min(sub.anchor.top - 4, window.innerHeight - rect.height - margin),
+    );
+    // 子菜单从它挂着的那一行展开:在右侧时从左上角长出,翻到左侧时从右上角
+    setSubPos({ x, y, origin: flip ? 'top right' : 'top left' });
   }, [sub]);
 
   const renderItem = (it: ContextMenuItem, idx: number, inSubmenu: boolean): JSX.Element => {
@@ -250,6 +261,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
             left: pos ? pos.x : menu.x,
             top: pos ? pos.y : menu.y,
             visibility: pos ? 'visible' : 'hidden',
+            transformOrigin: pos?.origin,
           }}
           onMouseDown={(e) => e.stopPropagation()}
           role="menu"
@@ -266,6 +278,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
             left: subPos?.x ?? 0,
             top: subPos?.y ?? 0,
             visibility: subPos ? 'visible' : 'hidden',
+            transformOrigin: subPos?.origin,
           }}
           onMouseDown={(e) => e.stopPropagation()}
           role="menu"

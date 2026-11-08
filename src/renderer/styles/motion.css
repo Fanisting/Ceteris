@@ -1,0 +1,346 @@
+/*
+ * motion.css:Material Design 3 动效层,最后加载(index.tsx)。
+ *
+ * 为什么是独立文件:material.css 管外观,这里只管"东西从哪来、到哪去"。
+ * 删掉 import 就回到没有这些动效的样子,其它样式不受影响。
+ *
+ * 原则:
+ * - 动效解释变化,不做装饰。大多数 100 到 250ms,大面积入场最长 300ms 左右。
+ * - 只动 transform 和 opacity(状态层另外过渡颜色和 inset 阴影)。不动宽高和位置,
+ *   不触发布局。
+ * - 入场用 emphasized decelerate,退场用 accelerate 且更短:出现要看清,消失要让路。
+ * - 入场动画用 animation-fill-mode: backwards。播完不留 transform,不会给后代里的
+ *   position: fixed 元素造出新的包含块。
+ * - 永远不动 xterm 画布和终端输出,也不推迟终端拿焦点。
+ * - 退场需要元素多留一会儿,由 motion.ts 的 usePresence / MOTION_EXIT_MS(150ms,
+ *   等于 short3)负责,这里只写 .exiting / .leaving 的样子。
+ * - token 定义在 material.css 顶部,所有 var() 带 fallback
+ *   (src/shared/css-var-fallback.test.ts 强制)。
+ *
+ * 减少动效:global.css 末尾的 prefers-reduced-motion 规则把所有 animation 和
+ * transition 压到 0.01ms,对本文件同样生效;motion.ts 在该模式下也不留退场残影。
+ *
+ * 对应文档章节:软件定义书.md 5.1.9
+ */
+
+/* ── 1. 状态层 ───────────────────────────────────────────────────── */
+
+/* 统一时长和曲线。原来散落着 80ms ease、120ms ease、100ms standard 几种写法。 */
+.path-item-row,
+.session-item,
+.tab,
+.tab-close,
+.settings-nav-item,
+.settings-entry,
+.settings-theme-row,
+.settings-tab,
+.tag-chip,
+.tag-clear,
+.file-tree-row,
+.file-tree-toggle,
+.titlebar-btn,
+.path-open-terminal,
+.sidebar-category-action,
+.terminal-search-btn,
+.status-simple-toggle,
+.reconnect-button,
+.app-modal-button,
+.pdf-overlay-tool,
+.pdf-overlay-close,
+.next-prompt-dismiss {
+  transition-property: background-color, color, border-color, box-shadow, opacity;
+  transition-duration: var(--md-duration-short2, 100ms);
+  transition-timing-function: var(--md-easing-standard, ease);
+}
+
+/* 按下:MD3 pressed 状态层(10%)。用 inset 阴影叠在背景色上面,而不是替换背景色,
+   这样选中项的 secondary container 底色按下时还在,只是再深一层。
+   这些元素本身都没有 box-shadow,不会冲掉别的阴影。 */
+.path-item-row:active,
+.session-item:active,
+.tab:active,
+.tab-close:active,
+.settings-nav-item:active,
+.settings-entry:active:not(:disabled),
+.settings-theme-row:active,
+.settings-tab:active,
+.tag-chip:active:not(:disabled),
+.tag-clear:active,
+.file-tree-row:active,
+.file-tree-toggle:active,
+.titlebar-btn:active,
+.path-open-terminal:active,
+.sidebar-category-action:active,
+.terminal-search-btn:active:not(:disabled),
+.status-simple-toggle:active,
+.reconnect-button:active:not(:disabled),
+.app-modal-button:active,
+.pdf-overlay-tool:active,
+.pdf-overlay-close:active,
+.next-prompt-dismiss:active {
+  box-shadow: inset 0 0 0 100vmax var(--md-state-pressed, transparent);
+}
+
+/* ── 2. 菜单 ─────────────────────────────────────────────────────── */
+
+/* 从点击点那个角长出来。transform-origin 由 ContextMenu.tsx 按翻转方向写在行内。
+   透明度在前一半就到 1,缩放走完整段:先看见,再落定。
+   material.css 的 md-menu-in 只淡入,因为当时菜单用 getBoundingClientRect 量尺寸;
+   现在 ContextMenu.tsx 量布局尺寸(offsetWidth),缩放不会让越界判断出错。 */
+:root .ctx-menu {
+  animation: md-menu-enter var(--md-duration-short4, 200ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-menu-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── 3. 对话框 ───────────────────────────────────────────────────── */
+
+/* 入场沿用 material.css 的 md-dialog-in。退场:遮罩和面板一起淡出,面板顺势
+   微微上收,比入场快一半。 */
+:root .app-modal-backdrop.exiting {
+  pointer-events: none;
+  animation: md-fade-out var(--md-duration-short3, 150ms)
+    var(--md-easing-standard-accelerate, ease-in) forwards;
+}
+
+:root .app-modal-backdrop.exiting .app-modal-panel {
+  animation: md-dialog-out var(--md-duration-short3, 150ms)
+    var(--md-easing-emphasized-accelerate, ease-in) forwards;
+}
+
+@keyframes md-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* 只动 transform,透明度交给遮罩,两层透明度相乘会让面板消失得过早 */
+@keyframes md-dialog-out {
+  to {
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+/* ── 4. 通知 ─────────────────────────────────────────────────────── */
+
+/* 入场沿用 material.css 的 md-snackbar-in(从下方升起)。MD3 snackbar 退场只淡出。 */
+:root .toast.leaving {
+  pointer-events: none;
+  animation: md-fade-out var(--md-duration-short3, 150ms)
+    var(--md-easing-standard-accelerate, ease-in) forwards;
+}
+
+/* ── 5. 标签栏 ───────────────────────────────────────────────────── */
+
+/* 活动指示条从中间展开。标签宽度不一,而且运行中的标签用波浪线代替指示条,
+   所以不做跨标签滑动,每个标签的指示条在自己身上长出来。
+   运行结束时波浪线消失、指示条出现,同样走这段动画。 */
+.tab.selected::after {
+  animation: md-indicator-in var(--md-duration-medium1, 250ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-indicator-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.3);
+  }
+}
+
+/* 波浪线在选中与未选中之间换色 */
+.tab.running::before {
+  transition: background-color var(--md-duration-short2, 100ms) var(--md-easing-standard, ease);
+}
+
+/* 新标签淡入。换文件夹时整排标签换新,同样淡入,说明这是另一组终端。 */
+.tab:not(.tab-blank) {
+  animation: md-fade-in var(--md-duration-short3, 150ms)
+    var(--md-easing-standard-decelerate, ease-out) backwards;
+}
+
+@keyframes md-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── 6. 设置 ─────────────────────────────────────────────────────── */
+
+/* 切换分类:MD3 导航目的地之间用 fade through。旧内容立即卸载,这里是新内容的
+   入场半段:淡入并从 0.97 倍放大到原尺寸。分类组件各不相同,切换时
+   .settings-detail 的子元素整体重新挂载,所以挂在子元素上;远程分类里
+   Link / SSH 两个子页切换也走这里。
+   用缩小而不是下移:.settings-detail 可滚动,下移会让滚动区临时变长、滚动条跳一下。 */
+.settings-detail > * {
+  transform-origin: top center;
+  animation: md-fade-through-in var(--md-duration-medium1, 250ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-fade-through-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* 开关:MD3 的滑块未开时小、打开时大、按住时更大。material.css 已经给 transform
+   配了 200ms 过渡,这里只改各状态的大小。 */
+.settings-checkbox input[type='checkbox']::after {
+  transform: scale(0.8);
+}
+
+.settings-checkbox input[type='checkbox']:checked::after {
+  transform: translateX(16px) scale(1.2);
+}
+
+.settings-checkbox input[type='checkbox']:active:not(:disabled)::after {
+  transform: scale(1.4);
+}
+
+.settings-checkbox input[type='checkbox']:checked:active:not(:disabled)::after {
+  transform: translateX(16px) scale(1.4);
+}
+
+/* 单选:选中圆点从中心长出 */
+.settings-radio input[type='radio']:checked::after {
+  animation: md-radio-dot-in var(--md-duration-short4, 200ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-radio-dot-in {
+  from {
+    transform: translate(-50%, -50%) scale(0);
+  }
+}
+
+/* 文本框:聚焦描边渐变到 primary。平时就有一圈透明 outline,聚焦时只换颜色,
+   outline 才能过渡(从无到有没法插值)。 */
+.settings-input,
+.app-modal-input {
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition:
+    border-color var(--md-duration-short3, 150ms) var(--md-easing-standard, ease),
+    outline-color var(--md-duration-short3, 150ms) var(--md-easing-standard, ease);
+}
+
+/* ── 7. 侧栏 ─────────────────────────────────────────────────────── */
+
+/* 展开箭头旋转 90 度(Sidebar.tsx / FileTreePanel.tsx 始终画同一个右箭头) */
+.path-expand-arrow svg,
+.file-tree-chevron svg {
+  transition: transform var(--md-duration-short4, 200ms) var(--md-easing-standard, ease);
+}
+
+.path-expand-arrow.expanded svg,
+.file-tree-chevron.expanded svg {
+  transform: rotate(90deg);
+}
+
+/* 列表项出现:展开文件夹时它的终端、新加的文件夹、标签筛选后回到列表的文件夹,
+   都从上方轻轻落下。行和终端项分开挂,避免嵌套的两层动画叠加。 */
+.path-item-row,
+.session-item,
+.file-tree-row {
+  animation: md-list-item-in var(--md-duration-short4, 200ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-list-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* 文件面板在侧栏底部打开,从下方升起 */
+.file-tree-panel {
+  animation: md-rise-in var(--md-duration-medium1, 250ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ── 8. 主区 ─────────────────────────────────────────────────────── */
+
+/* 分屏里文件盖住自己那一格:原地淡入并从 0.98 倍放大。.pane-slot 可滚动,
+   用缩小而不是位移,滚动区不会临时变大。pdf.js 按 clientWidth 适应宽度,
+   不受 transform 影响。 */
+.pdf-overlay {
+  animation: md-scale-in var(--md-duration-medium1, 250ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+/* 只有一个终端时文件在终端左侧,从左边滑入。往左偏移不会产生可滚动的溢出。 */
+.session-stage-beside > .pdf-overlay {
+  animation-name: md-enter-from-start;
+}
+
+@keyframes md-enter-from-start {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
+/* 新建页和欢迎页替换主区内容时淡入。终端不在这里,终端从不做动画。 */
+.empty-path-state,
+.welcome-state {
+  animation: md-fade-in var(--md-duration-medium1, 250ms)
+    var(--md-easing-standard-decelerate, ease-out) backwards;
+}
+
+/* 浮在终端上的东西:搜索栏从上方落下,下一步提示从右下角长出。动的是浮层本身,
+   终端画布不动,搜索框挂载即聚焦,不等动画。 */
+:root .terminal-search-bar {
+  animation: md-drop-in var(--md-duration-short4, 200ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.next-prompt-chip {
+  transform-origin: right center;
+  animation: md-chip-in var(--md-duration-medium1, 250ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes md-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+  }
+}
+
+.link-banner {
+  animation: md-fade-in var(--md-duration-short4, 200ms)
+    var(--md-easing-standard-decelerate, ease-out) backwards;
+}

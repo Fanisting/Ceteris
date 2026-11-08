@@ -93,6 +93,8 @@ import { useTranslation } from './LanguageProvider';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
+import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
+import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
   | 'appearance'
@@ -102,6 +104,7 @@ type CategoryId =
   | 'remote'
   | 'system-integration'
   | 'ai'
+  | 'extensions'
   | 'advanced'
   | 'about';
 
@@ -121,6 +124,7 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
   { id: 'system-integration', iconName: 'systemIntegration', titleKey: 'settings.category.systemIntegration' },
   { id: 'ai', iconName: 'ai', titleKey: 'settings.category.ai' },
+  { id: 'extensions', iconName: 'extensions', titleKey: 'settings.category.extensions' },
   { id: 'advanced', iconName: 'advanced', titleKey: 'settings.category.advanced' },
   { id: 'about', iconName: 'about', titleKey: 'settings.category.about' },
 ];
@@ -233,6 +237,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
       return <SystemIntegrationPanel setError={setError} />;
     case 'ai':
       return <AiPanel setError={setError} />;
+    case 'extensions':
+      return <ExtensionsPanel setError={setError} />;
     case 'advanced':
       return <AdvancedPanel setError={setError} />;
     case 'about':
@@ -2976,6 +2982,184 @@ function AiPanel({
           {tx('清零', 'Reset')}
         </button>
       </SettingRow>
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 扩展分类 (ADR-019):可选功能,默认关,只影响打开之后新建的终端
+// ──────────────────────────────────────────────────────────────────
+
+function ExtensionsPanel({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const state = useAppState();
+  const dispatch = useAppDispatch();
+  const toast = useToast();
+  const enabled = state.settings.extensions?.claudeMathImages ?? false;
+  const terminalMath = state.settings.extensions?.terminalMath ?? false;
+  const [preparing, setPreparing] = useState(false);
+  // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
+  const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled || marketplaceDir) return;
+    window.api
+      .invoke<unknown, { dir: string }>(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, {})
+      .then((res) => setMarketplaceDir(res.dir))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  }, [enabled, marketplaceDir, setError]);
+
+  /**
+   * 开一个新终端,把一行命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
+   * 这一下就是同意。shell 与 SessionManager.pickShell 同规则(默认 shell,
+   * 否则检测到的第一个),这样 buildLine 才知道怎么加引号、用 `;` 还是 `&&`。
+   */
+  const typeIntoNewTerminal = async (buildLine: (shellId: string) => string): Promise<void> => {
+    setError(null);
+    setPreparing(true);
+    try {
+      const { shells } = await window.api.invoke<unknown, ListShellsResponse>(
+        COMMAND_CHANNELS.SETTINGS_LIST_SHELLS,
+        {},
+      );
+      const preferred = state.settings.shell?.defaultShellId ?? '';
+      const shell = shells.find((s) => s.id === preferred) ?? shells[0];
+      if (!shell) throw new Error(tx('没有检测到可用的 shell', 'No shell was detected'));
+      const dims = state.lastTerminalDims;
+      const created = await window.api.invoke<unknown, CreateSessionResponse>(
+        COMMAND_CHANNELS.SESSION_CREATE,
+        { templateId: 'shell', shellId: shell.id, cols: dims.cols, rows: dims.rows },
+      );
+      // SendInputPayload.data 是 base64 (UTF-8 字节),与 TerminalView 的输入同一条路。
+      const utf8 = new TextEncoder().encode(buildLine(shell.id));
+      await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
+        sessionId: created.session.id,
+        data: btoa(String.fromCharCode(...utf8)),
+      });
+      dispatch({ type: 'view/exit-settings' });
+      dispatch({ type: 'view/select-path', pathId: created.session.pathId });
+      dispatch({ type: 'view/select-session', sessionId: created.session.id });
+      toast.push({
+        kind: 'success',
+        message: tx(
+          '命令已经输入到新终端,检查后按 Enter 执行。',
+          'The command is typed into a new terminal. Check it, then press Enter to run it.',
+        ),
+        durationMs: 8000,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  const handlePrepareInstall = (): void => {
+    const dir = marketplaceDir;
+    if (dir) void typeIntoNewTerminal((shellId) => latexMathInstallLine(shellId, dir));
+  };
+
+  return (
+    <section className="settings-panel">
+      <h2 className="settings-panel-title">{tx('扩展', 'Extensions')}</h2>
+
+      <SettingRow
+        label={tx('Claude Code 公式图片', 'Claude Code formula images')}
+        hint={tx(
+          '在 Claude Code 的回复里把 LaTeX 公式排成图片。打开后:终端支持 iTerm2 内联图片并自报 iTerm2 3.5;Windows 上新终端改用自带的 ConPTY。只影响打开之后新建的终端。',
+          'Typesets the LaTeX math in Claude Code replies as images. When on, terminals accept iTerm2 inline images and identify as iTerm2 3.5, and new terminals on Windows use the bundled ConPTY. Applies to terminals opened afterwards.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) =>
+              void updateSettings({ extensions: { claudeMathImages: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {enabled && (
+        <SettingRow
+          label={tx('还需要的插件', 'Plugin you also need')}
+          hint={tx(
+            '公式由 Claude Code 的 latex-math 插件排版(需要 TeX Live、ImageMagick 和 Git Bash)。插件随 Ceteris 一起安装,在终端里跑一次下面两条命令把它加进 Claude Code,然后新开一个 Claude Code。若装过原版 latex-math@claude-latex-math,请先停用它。',
+            'The latex-math Claude Code plugin typesets the formulas (it needs TeX Live, ImageMagick and Git Bash). The plugin ships with Ceteris. Run these two commands once in a terminal to add it to Claude Code, then start a new Claude Code session. If you installed the original latex-math@claude-latex-math, disable it first.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block">
+              <code>{marketplaceDir ? latexMathInstallLines(marketplaceDir) : '…'}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing || !marketplaceDir}
+              onClick={handlePrepareInstall}
+              title={tx(
+                '打开一个新终端并输入这两条命令,不会自动执行',
+                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type them in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
+
+      <SettingRow
+        label={tx('Codex 公式渲染', 'Codex formula rendering')}
+        hint={tx(
+          'Codex 没有插件接口,会把公式转成 Unicode 文字。打开后,Ceteris 把终端里以文本出现的 $$…$$、\\(…\\) 和 \\[…\\] 用 KaTeX 画在原处(任何程序的输出都算)。立即对已打开的终端生效。',
+          'Codex has no plugin interface and turns formulas into Unicode text. When on, Ceteris draws the $$…$$, \\(…\\) and \\[…\\] it finds as text in a terminal with KaTeX, in place (in any program’s output). Applies to open terminals right away.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={terminalMath}
+            onChange={(e) =>
+              void updateSettings({ extensions: { terminalMath: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {terminalMath && (
+        <SettingRow
+          label={tx('告诉 Codex 怎么写公式', 'Tell Codex how to write formulas')}
+          hint={tx(
+            'Codex 只在行内代码里保留 LaTeX 原文。把下面这条指示加进 ~/.codex/AGENTS.md(Codex 的全局指示,只加一次),之后新开的 Codex 会话就会这样写公式。',
+            'Codex keeps LaTeX as written only inside inline code. Add this instruction to ~/.codex/AGENTS.md (Codex’s global instructions; added once), and new Codex sessions will write formulas this way.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block settings-code-wrap">
+              <code>{CODEX_MATH_INSTRUCTION}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing}
+              onClick={() => void typeIntoNewTerminal(codexMathInstructionCommand)}
+              title={tx(
+                '打开一个新终端并输入添加这条指示的命令,不会自动执行',
+                'Opens a new terminal with the command that adds this instruction; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type it in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
     </section>
   );
 }

@@ -269,6 +269,8 @@ function bootstrap(): void {
       // 用户在 .bashrc / Profile.ps1 里可以拿这个版本号做条件判断。
       appVersion: app.getVersion(),
       tmuxSocket: channel.tmuxSocket,
+      // 公式图片扩展 (ADR-019):插件现读的终端颜色 / 格子宽高比
+      terminalLookFile: join(dataDir, 'extensions', 'terminal-look.json'),
     },
   );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
@@ -443,8 +445,11 @@ function bootstrap(): void {
       // 生产 (file://) 不需要。
       // worker-src:pdf.js 在 Web Worker 里解析 PDF,worker 脚本打包在应用里,
       // dev 时 Vite 用 blob: 包一层。img-src blob: 给图片查看。
+      // 'wasm-unsafe-eval':@xterm/addon-image 用 WebAssembly 解 base64 图片数据;
+      // 只放行 WebAssembly 编译,不放行 JS eval / new Function。缺它时内联图片
+      // 的 OSC 1337 handler 抛 CompileError,整个终端的写入循环随之卡死。
       const cspProd =
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
         "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; " +
         "worker-src 'self' blob:";
       const cspDev =

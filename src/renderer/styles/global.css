@@ -3437,3 +3437,31 @@ button:focus-visible,
   white-space: nowrap;
   min-width: 0;
 }
+
+/* 扩展分类 (ADR-019):可复制的安装命令 */
+.settings-code-block {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  font-family: var(--terminal-font-family, monospace);
+  font-size: 12px;
+  white-space: pre;
+  overflow-x: auto;
+  user-select: text;
+}
+
+/* 扩展分类:命令块与"在新终端里输入命令"按钮上下排列 */
+.settings-code-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* 扩展分类:长的一行指示文字换行显示 */
+.settings-code-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

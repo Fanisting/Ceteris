@@ -194,6 +194,20 @@ describe('Osc1337Parser — fixture-driven invariants', () => {
     expect(parser.stashedBytes).toBe(0);
   });
 
+  it('iTerm2 内联图片 (File= / MultipartFile= / FilePart= / FileEnd) 原样透传,CurrentDir 仍被识别', () => {
+    // 图片交给 renderer 的 @xterm/addon-image;只有 CurrentDir 这类事件被主进程吃掉。
+    const images = [
+      '\x1b]1337;File=inline=1;size=4;width=2;height=1:AAAA\x07',
+      '\x1b]1337;MultipartFile=inline=1;size=4\x07',
+      '\x1b]1337;FilePart=AAAA\x07',
+      '\x1b]1337;FileEnd\x1b\\',
+    ].join('');
+    const parser = new Osc1337Parser();
+    const r = parser.parse(Buffer.from(`${images}\x1b]1337;CurrentDir=/tmp\x07`));
+    expect(r.passthrough.toString('utf8')).toBe(images);
+    expect(r.events).toEqual([{ kind: 'cwd', value: '/tmp' }]);
+  });
+
   it('passthrough 字节计数恒等于 (输入字节 - 已识别 OSC 字节)', () => {
     // 不变量的"字节守恒"形式,对所有 fixture 都该成立。
     const fixtures = [

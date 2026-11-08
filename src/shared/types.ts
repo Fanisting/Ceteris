@@ -509,6 +509,25 @@ export interface Settings {
   };
 
   /**
+   * 可选扩展。每项默认关,用户在 设置 → 扩展 里打开;只影响打开之后新建的终端。
+   */
+  extensions: {
+    /**
+     * Claude Code 公式图片 (ADR-019):终端按 iTerm2 内联图片协议画图,XTVERSION
+     * 回 "iTerm2 3.5.0",Windows 上 PTY 改用 node-pty 自带的 ConPTY,Claude Code
+     * 图片占位格画成空白,并把主题色与格子宽高比传给 latex-math 插件
+     * (LATEX_MATH_* 环境变量)。需要另装仓库里 extensions/claude-latex-math 插件。
+     */
+    claudeMathImages: boolean;
+    /**
+     * Codex 公式渲染 (ADR-022):在终端里找以文本形式出现的 LaTeX (`$$...$$`、`\(...\)`、
+     * `\[...\]`),用 KaTeX 在原处画出来。Codex 没有渲染钩子,所以由 Ceteris 在显示层做;
+     * 设置页按钮可以把"公式写进行内代码"这条指示加进 ~/.codex/AGENTS.md。
+     */
+    terminalMath: boolean;
+  };
+
+  /**
    * BETA-031 AI 助手 — 第一个 LLM 集成点。默认全 disabled,用户在设置页主动
    * 开启并填 API key 才生效。当前唯一 consumer 是 BETA-006(active→idle 跃迁
    * LLM 复核,避免 Vite 等长输出工具被误判 idle)。

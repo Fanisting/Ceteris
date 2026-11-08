@@ -210,6 +210,7 @@ function makeStubSettingsManager(
       terminalRenderer: 'auto',
       ...overrides,
     },
+    extensions: { claudeMathImages: false, terminalMath: false },
     // Ceteris Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
     // 结构,缺字段会让整个 stub 类型不成立。
     link: {

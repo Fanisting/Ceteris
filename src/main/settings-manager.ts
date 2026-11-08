@@ -91,6 +91,12 @@ export const DEFAULT_SETTINGS: Settings = {
     // 兼容性 bug 用(例如某些 TUI 的光标渲染在 WebGL 下异常)。
     terminalRenderer: 'auto',
   },
+  // 扩展默认全关 (ADR-019):公式图片会改 XTVERSION 回复与 Windows 的 ConPTY,
+  // 只给主动打开的用户。
+  extensions: {
+    claudeMathImages: false,
+    terminalMath: false,
+  },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
     provider: null,
@@ -509,6 +515,18 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `advanced.terminalRenderer="${s.advanced.terminalRenderer}" 必须是 auto / webgl / dom`,
+    );
+  }
+  if (typeof s.extensions.claudeMathImages !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.claudeMathImages=${String(s.extensions.claudeMathImages)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.terminalMath !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.terminalMath=${String(s.extensions.terminalMath)} 必须是 true 或 false`,
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {

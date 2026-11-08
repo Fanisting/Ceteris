@@ -1,0 +1,19 @@
+{
+  "name": "ceteris",
+  "owner": {
+    "name": "Fanisting",
+    "url": "https://github.com/Fanisting"
+  },
+  "plugins": [
+    {
+      "name": "latex-math",
+      "source": "./extensions/claude-latex-math",
+      "description": "LaTeX math in Claude Code replies as typeset images, with Ceteris support (Settings, Extensions, Claude Code formula images)",
+      "category": "productivity",
+      "tags": ["latex", "math", "ceteris", "terminal"]
+    }
+  ],
+  "metadata": {
+    "description": "Claude Code plugins that work with Ceteris extensions"
+  }
+}

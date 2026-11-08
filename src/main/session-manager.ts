@@ -50,7 +50,7 @@ import type {
   SessionOutputPayload,
   SessionStateChangedPayload,
 } from '@shared/protocol';
-import type { AgentPhase, SessionInfo, Template, Settings } from '@shared/types';
+import type { AgentWork, SessionInfo, Template, Settings } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import type { TemplatesManager } from './templates-manager';
@@ -83,7 +83,14 @@ import {
 } from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
-import { AGENT_PHASE_SCREEN_ROWS, detectAgentPhase } from '@shared/agent-phase';
+import {
+  AGENT_PHASE_SCREEN_ROWS,
+  classifyWork,
+  detectAgentPhase,
+  readWorkSignals,
+  updateTokenRate,
+  type TokenRate,
+} from '@shared/agent-phase';
 import { CHANNELS } from '@shared/channel';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
@@ -339,6 +346,8 @@ interface ManagedSession {
   idleTimer: NodeJS.Timeout | null;
   /** ADR-021:下一次读屏算 agentPhase 的计时器;null = 没有排队的读屏 */
   phaseTimer: NodeJS.Timeout | null;
+  /** ADR-021:spinner 上 token 计数的平滑速率,决定波浪快慢;不在 working 时为 null */
+  tokenRate: TokenRate | null;
   /** 启动后等 OSC 1337 的宽限计时器;到点未收到则启动 cwd 轮询 */
   cwdGraceTimer: NodeJS.Timeout | null;
   /** cwd 兜底轮询计时器 */
@@ -802,6 +811,7 @@ export class SessionManager extends EventEmitter {
       parser: new Osc1337Parser(),
       idleTimer: null,
       phaseTimer: null,
+      tokenRate: null,
       cwdGraceTimer: null,
       cwdPollTimer: null,
       oscReceived: false,
@@ -1537,12 +1547,17 @@ export class SessionManager extends EventEmitter {
 
     // ADR-021:退出的进程里没有 agent 在做事,不能留着 blocked 让 tab 一直闪
     managed.info.agentPhase = null;
+    managed.info.agentWork = null;
+    managed.info.agentPace = null;
+    managed.tokenRate = null;
     this.emitStateChanged(managed, {
       state: managed.info.state,
       exitCode: managed.info.exitCode,
       exitedAt: managed.info.exitedAt,
       pid: -1,
       agentPhase: null,
+      agentWork: null,
+      agentPace: null,
     });
     void oldState; // 留给将来加日志用
   }
@@ -1672,14 +1687,7 @@ export class SessionManager extends EventEmitter {
    */
   private becomeIdle(managed: ManagedSession): void {
     managed.info.state = 'idle';
-    const changes: Partial<SessionInfo> = { state: 'idle' };
-    const phase = this.readAgentPhase(managed);
-    if (phase !== (managed.info.agentPhase ?? null)) {
-      managed.info.agentPhase = phase;
-      changes.agentPhase = phase;
-      logger.info('SessionManager', `agentPhase sid=${managed.info.id} → ${phase ?? 'none'}`);
-    }
-    this.emitStateChanged(managed, changes);
+    this.emitStateChanged(managed, { state: 'idle', ...this.readAgentActivity(managed) });
   }
 
   /**
@@ -1694,22 +1702,44 @@ export class SessionManager extends EventEmitter {
     }, AGENT_PHASE_CHECK_MS);
   }
 
-  /** Reads the screen and broadcasts agentPhase when it changed. */
+  /** Reads the screen and broadcasts the agent fields that changed. */
   private updateAgentPhase(managed: ManagedSession): void {
     if (!this.sessions.has(managed.info.id) || managed.info.state === 'exited') return;
-    const phase = this.readAgentPhase(managed);
-    if (phase === (managed.info.agentPhase ?? null)) return;
-    managed.info.agentPhase = phase;
-    logger.info('SessionManager', `agentPhase sid=${managed.info.id} → ${phase ?? 'none'}`);
-    this.emitStateChanged(managed, { agentPhase: phase });
+    const changes = this.readAgentActivity(managed);
+    if (Object.keys(changes).length > 0) this.emitStateChanged(managed, changes);
   }
 
-  private readAgentPhase(managed: ManagedSession): AgentPhase | null {
-    return detectAgentPhase(
-      managed.info.templateId,
-      this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS),
-      managed.info.state,
-    );
+  /**
+   * Reads phase, work kind and pace from the screen, stores them on the session and
+   * returns only the fields that changed. Work and pace are null outside 'working'.
+   */
+  private readAgentActivity(
+    managed: ManagedSession,
+  ): Partial<Pick<SessionInfo, 'agentPhase' | 'agentWork' | 'agentPace'>> {
+    const screen = this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS);
+    const phase = detectAgentPhase(managed.info.templateId, screen, managed.info.state);
+    let work: AgentWork | null = null;
+    let pace: number | null = null;
+    if (phase === 'working') {
+      const signals = readWorkSignals(screen);
+      managed.tokenRate = updateTokenRate(managed.tokenRate, signals.tokens, Date.now());
+      ({ work, pace } = classifyWork(signals, managed.tokenRate));
+    } else {
+      managed.tokenRate = null;
+    }
+    const changes: Partial<Pick<SessionInfo, 'agentPhase' | 'agentWork' | 'agentPace'>> = {};
+    if (phase !== (managed.info.agentPhase ?? null)) {
+      changes.agentPhase = managed.info.agentPhase = phase;
+      logger.info('SessionManager', `agentPhase sid=${managed.info.id} → ${phase ?? 'none'}`);
+    }
+    if (work !== (managed.info.agentWork ?? null)) {
+      changes.agentWork = managed.info.agentWork = work;
+      logger.debug('SessionManager', `agentWork sid=${managed.info.id} → ${work ?? 'none'}`);
+    }
+    if (pace !== (managed.info.agentPace ?? null)) {
+      changes.agentPace = managed.info.agentPace = pace;
+    }
+    return changes;
   }
 
   /**

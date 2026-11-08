@@ -32,6 +32,7 @@ import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
 import {
   broadcastLinkStatus,
+  broadcastCustomThemes,
   broadcastUpdateStatus,
   decryptStoredPassword,
   installIpcLayer,
@@ -51,6 +52,7 @@ import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
 import { LATEST_RELEASE_URL, UpdateChecker, detectInstallTarget } from './update-checker';
 import { logger } from './logger';
+import { CustomThemeStore } from './custom-theme-store';
 import type {
   BookmarksFile,
   RecentFile,
@@ -272,6 +274,9 @@ function bootstrap(): void {
     },
   );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
+
+  // ADR-022:用户主题文件夹,文件保存后立刻推给所有窗口
+  const customThemes = new CustomThemeStore(join(dataDir, 'themes'), broadcastCustomThemes);
 
   // ADR-018:GitHub Releases 更新检查。只提示 + 给本机系统对应的直链,不下载不安装。
   // 定时检查只在 stable 且设置开着时跑;beta / dev 是本地测试构建,只在用户点"立即检查"时查。
@@ -526,8 +531,11 @@ function bootstrap(): void {
         sftpPool,
         promptBroker,
         updateChecker,
+        customThemes,
       });
       updateChecker.refreshSchedule();
+      // 主题文件夹读取失败不影响启动,内置主题照常可用
+      customThemes.start().catch((err) => logger.warn('themes', 'custom theme store start failed', err));
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
       // 原因记在 LinkServer.lastError 里由设置页展示。

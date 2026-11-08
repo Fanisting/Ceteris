@@ -23,6 +23,7 @@ import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
+import { resolveThemeId, useCustomThemes } from './custom-themes';
 
 type HandshakeState =
   | { status: 'pending' }
@@ -151,7 +152,9 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
   const state = useAppState();
   const dispatch = useAppDispatch();
 
-  const currentTheme = state.settings.appearance?.theme ?? 'light-pink';
+  // 用户主题文件被删或改名时回退到默认主题 (ADR-022);订阅列表让文件变化时重算
+  useCustomThemes();
+  const currentTheme = resolveThemeId(state.settings.appearance?.theme ?? 'light-pink');
   const windowStyle = state.settings.appearance?.windowStyle ?? 'windows';
   const uiZoom = state.settings.appearance?.uiZoom ?? 1;
   const uiFontFamily = state.settings.appearance?.uiFontFamily ?? '';

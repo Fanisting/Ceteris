@@ -33,6 +33,7 @@ import './styles/quick-launch.css';
 import './styles/theme-picker.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
+import { initCustomThemes } from './custom-themes';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -42,4 +43,6 @@ if (!rootEl) {
   );
 }
 
+// 用户主题(ADR-022):在首次渲染前开始拉取,样式元素追加在上面所有样式表之后
+initCustomThemes();
 createRoot(rootEl).render(<App />);

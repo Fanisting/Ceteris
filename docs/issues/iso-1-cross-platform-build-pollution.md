@@ -368,7 +368,7 @@ ISO-1 后:
 
 - `docs/issues/resize-1-linux-historical-lines-stuck-old-cols.md` — 直接受益方,
   下一轮排查应能跑完 checklist 步骤 1
-- `docs/方案-BETA-003-Linux支持-20260517.md` — Linux 支持工单,当时未要求
+- `docs/archive/方案-BETA-003-Linux支持-20260517.md` — Linux 支持工单,当时未要求
   Docker 入仓
 - `electron-builder.yml` 改动 — 三平台 `files` 过滤
 - `package.json` 新增 npm scripts — clean / switch / docker

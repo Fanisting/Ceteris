@@ -152,7 +152,7 @@ prompt 完整应是 `liyue@liyue-ysyx:~/workbench/ysyx/ysyx-workbench$ ` (50 字
 - [Issue #63 Horizontally resizing will not reflow terminal until input is changed](https://github.com/xtermjs/xterm.js/issues/63)
 - [Issue #2296 Reset isWrapped in windowsMode](https://github.com/xtermjs/xterm.js/issues/2296)
 - [Issue #2666 Windows mode does not flag some conpty lines are wrapped](https://github.com/xtermjs/xterm.js/issues/2666)
-- BETA-003 实施记录:`docs/方案-BETA-003-Linux支持-20260517.md`
+- BETA-003 实施记录:`docs/archive/方案-BETA-003-Linux支持-20260517.md`
 - 前置修复 BETA-003c(commit `7d4ebef`):Linux `transparent: false`,修了 `$COLUMNS` 跟随
 - PER-LINUX(commit `1dbc8bc`):Linux 跳 WebGL renderer 走 DOM renderer
 

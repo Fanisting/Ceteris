@@ -181,7 +181,7 @@ issue #4 落地 + xterm 6.1 升级对齐 VSCode + CURSOR-2 调研记录归档。
     - **远端 tmux session 列表面板**(只看不操作)— PR #2 已实现 per-launch attach-or-create,列表面板属于增值功能。
   - **M1 里程碑达成判定**:阶段 0(spec + PR #2 merge)+ 阶段 1(UI 分离 + 类型强化)+ 阶段 2-3 核心(本 PR)= Ceteris SSH 终端模式正式就位。SSH 用户能完成"管理远程服务器 + 进 shell 干活 + 用 tmux 保持会话 + 多 session 复用连接 + 主动重连"完整工作流。下一步走 0.2.0 GA 发版(beta.10 → beta.11 → 0.2.0)。
 
-- **SSH 阶段 1:UI 分离 + 类型强化 + PR #2 polish。** 落地 `docs/方案-SSH-完整支持-20260524.md` §阶段 1,把 PR #2 的 SSH MVP 收尾成"本地用户视野与 beta.9 100% 一致 + SSH 用户专属入口"。
+- **SSH 阶段 1:UI 分离 + 类型强化 + PR #2 polish。** 落地 `docs/archive/方案-SSH-完整支持-20260524.md` §阶段 1,把 PR #2 的 SSH MVP 收尾成"本地用户视野与 beta.9 100% 一致 + SSH 用户专属入口"。
   - **PathKind discriminated union(§II.1)**:`Bookmark / RecentEntry / PathNode` 改严格 discriminated union,`kind` 必填,ssh 变体 `sshProfileId` narrow 为必填。所有使用 Path 的函数走 `switch on kind` 自动 exhaustiveness check;新增 `assertNeverPathKind` 兜底,未来加 `'wsl'`/`'docker'` 时编译器强制找出所有需要补 case 的位置。
   - **磁盘迁移**:beta.9 之前的旧 schema(无 kind 字段)在 PathManager 启动时由 `migrateBookmarkOnLoad`/`migrateRecentOnLoad` 静默 coerce 为 local;损坏条目(kind=ssh 缺 sshProfileId)启动期丢弃不让用户进不来 Ceteris,导入 archive 走严格校验直接拒。新增 `PersistedBookmark`/`PersistedRecentEntry` 磁盘宽松 schema,与内存严格类型分离。
   - **Sidebar segmented control(§II.3)**:顶部加 `[本地] [远程]` segmented control,默认本地;`hasSshProfiles || advanced.enableRemote` 时才渲染(本地用户 = sidebar 跟 beta.9 完全一致);切到本地段时 device sections / temporary / recent 都按 `kind !== 'ssh'` 过滤,反之亦然。状态 localStorage 持久化跨重启保留。
@@ -297,7 +297,7 @@ beta.4 之后的开源准备 + Linux 首发回合。三件大事:**Linux 包正�
   alternatives 双分支(Debian / RHEL 系)。`PlatformAdapter.lifecycleModel` 字段
   新增,三平台分别 `tray-resident` / `dock-resident` / `no-persistence`。
   LastSessionConfirm modal 在 Linux 最后窗口 + 仍有 alive session 时弹二次确认。
-  详见 ADR-013 与 `docs/方案-BETA-003-Linux支持-20260517.md`。
+  详见 ADR-013 与 `docs/archive/方案-BETA-003-Linux支持-20260517.md`。
 - **Linux 安装包三种**:`.deb`(Debian/Ubuntu)、`.rpm`(Fedora/RHEL/CentOS)、
   `.AppImage`(通用)。Docker 在容器内构建,Tier 1 测试目标 Ubuntu 22.04 GNOME。
 - **dev / portable / installed 三套实例共存**:数据目录、单实例锁、任务栏图标
@@ -356,7 +356,7 @@ beta.4 之后的开源准备 + Linux 首发回合。三件大事:**Linux 包正�
   **修复未实施 — beta.6 处理**。
 - **IME-1 / DROP-1 工单存档**:中文 IME 标点冲刷 + sidebar 拖文件光标闪烁,
   根因待定。
-- BETA-003 实施方案存档:`docs/方案-BETA-003-Linux支持-20260517.md`。
+- BETA-003 实施方案存档:`docs/archive/方案-BETA-003-Linux支持-20260517.md`。
 
 ### 已知限制(beta.5 仍存在,等后续 release 修)
 
@@ -381,7 +381,7 @@ beta.4 之后的开源准备 + Linux 首发回合。三件大事:**Linux 包正�
 
 ## [0.1.0-beta.4] — 2026-05-16
 
-Beta 反馈勘误回合一次性收口 32 条工单。详见 `docs/beta反馈工单库-20260515.md`。
+Beta 反馈勘误回合一次性收口 32 条工单。详见 `docs/archive/beta反馈工单库-20260515.md`。
 跳过的工单:**BETA-003**(Ubuntu 支持,Linux 集成方案仍在修改)与
 **BETA-019**(Claude Code 光标闪烁,唯一未知根因,等用户复现信息)。
 

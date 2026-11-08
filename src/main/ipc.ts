@@ -1614,9 +1614,25 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         ownerWindowId: envelope.windowId,
         cols,
         rows,
-        commandOverride: { name: `${name} update`, ...spec.upgrade },
+        // 升级成功后终端自动关闭;失败时留着显示报错
+        commandOverride: { name: `${name} update`, ...spec.upgrade, closeOnSuccess: true },
       });
       getAgentChecker().invalidate(templateId);
+      // 升级结束再清一次缓存:升级期间打开的新建页可能缓存了旧版本号。
+      // sessionExited 在销毁 tab 之前发出,所以新建页重新拉取时已是新版本。
+      const onExit = (p: SessionExitedPayload): void => {
+        if (p.sessionId !== session.id) return;
+        getAgentChecker().invalidate(templateId);
+        logger.info('ipc', `agent upgrade finished: template=${templateId} exitCode=${p.exitCode}`);
+      };
+      // tab 被销毁 (自动关闭或用户手动关) 时摘掉监听,避免累积
+      const onDestroyed = (p: { sessionId: string }): void => {
+        if (p.sessionId !== session.id) return;
+        sessionManager.off('sessionExited', onExit);
+        sessionManager.off('sessionDestroyed', onDestroyed);
+      };
+      sessionManager.on('sessionExited', onExit);
+      sessionManager.on('sessionDestroyed', onDestroyed);
       logger.info('ipc', `agent upgrade started: template=${templateId} session=${session.id}`);
       return { session, pathTreeChanged: JSON.stringify(pathManager.getTree()) !== oldTreeJson };
     },

@@ -353,7 +353,7 @@ export class WindowsAdapter implements PlatformAdapter {
   buildShellLaunchParams(
     shell: ShellInfo,
     hookFilePath: string,
-    commandToRun?: { command: string; args: string[] },
+    commandToRun?: { command: string; args: string[]; exitAfter?: boolean },
   ): { args: string[]; env: Record<string, string> } {
     switch (shell.id) {
       case 'pwsh':
@@ -375,6 +375,14 @@ export class WindowsAdapter implements PlatformAdapter {
           const cmd = quotePwshSingle(commandToRun.command);
           const a = commandToRun.args.map(quotePwshSingle).join(' ');
           scriptBlock += `; & ${cmd}${a ? ' ' + a : ''}`;
+          if (commandToRun.exitAfter) {
+            // 去掉 -NoExit,并把命令的退出码带出去。只看 $LASTEXITCODE 不够:
+            // 命令不存在时它不会被设置,PowerShell 会以 0 退出,tab 就被误关。
+            // $? 在"命令不存在"和"原生命令非 0 退出"时都为 false (PS 5.1 / 7 实测)。
+            const exitWithStatus =
+              'if ($?) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }';
+            return { args: ['-Command', `${scriptBlock}; ${exitWithStatus}`], env: {} };
+          }
         }
         return {
           args: ['-NoExit', '-Command', scriptBlock],
@@ -393,7 +401,8 @@ export class WindowsAdapter implements PlatformAdapter {
         if (commandToRun) {
           // /K 让 cmd 跑完命令后保持开启;命令直接用引号包
           const quoted = [commandToRun.command, ...commandToRun.args].map(quoteCmd).join(' ');
-          return { args: ['/K', quoted], env };
+          // exitAfter 时用 /C:跑完即退出,退出码即命令退出码
+          return { args: [commandToRun.exitAfter ? '/C' : '/K', quoted], env };
         }
         return { args: [], env };
       }
@@ -428,7 +437,13 @@ export class WindowsAdapter implements PlatformAdapter {
         if (commandToRun) {
           const cmdLine = [commandToRun.command, ...commandToRun.args].map(quoteBash).join(' ');
           return {
-            args: ['--rcfile', hookFilePath, '-i', '-c', `${cmdLine}; exec bash -i`],
+            args: [
+              '--rcfile',
+              hookFilePath,
+              '-i',
+              '-c',
+              commandToRun.exitAfter ? cmdLine : `${cmdLine}; exec bash -i`,
+            ],
             env: {},
           };
         }

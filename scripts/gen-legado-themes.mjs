@@ -137,10 +137,12 @@ function tokensFor(s, dark) {
   }
 
   const hover = (fg, bg) => mix(fg, bg, 8);
+  // Accent and error text also appear in menus and on hover backgrounds, not only on the page.
+  const textBgs = [...surfaces, menu, s.surfaceContainerHigh];
   const weightFor = (color) => {
     for (let w = 100; w >= 0; w -= 10) {
       const text = mix(color, s.onSurface, w);
-      if (surfaces.every((bg) => contrast(text, bg) >= 4.5 && contrast(text, hover(text, bg)) >= 4.5)) return w;
+      if (textBgs.every((bg) => contrast(text, bg) >= 4.5 && contrast(text, hover(text, bg)) >= 4.5)) return w;
     }
     return 0;
   };

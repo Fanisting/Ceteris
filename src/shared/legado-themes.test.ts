@@ -91,6 +91,12 @@ describe('legado md3 themes', () => {
     expect(new Set(LEGADO_THEME_IDS).size).toBe(LEGADO_THEME_IDS.length);
     const missing = LEGADO_THEME_IDS.filter((id) => blockFor(id) === '');
     expect(missing).toEqual([]);
+    const notHex = THEMES.flatMap(({ theme, t }) =>
+      Object.entries(t)
+        .filter(([name, value]) => !name.endsWith('-weight') && !/^#[0-9a-f]{6}$/.test(value))
+        .map(([name, value]) => `${theme.id} ${name}=${value}`),
+    );
+    expect(notHex).toEqual([]);
     const entry = readFileSync(resolve(RENDERER, 'index.tsx'), 'utf8');
     const material = entry.indexOf("import './styles/material.css'");
     expect(material).toBeGreaterThanOrEqual(0);
@@ -123,6 +129,7 @@ describe('legado md3 themes', () => {
       if (/color-scheme:\s*light/.test(blockFor(theme.id)) === theme.dark) {
         wrong.push(`${theme.id} color-scheme`);
       }
+      if (luminance(t['--color-bg-primary']!) > 0.5 === theme.dark) wrong.push(`${theme.id} tone`);
       if (theme.terminal.background !== t['--color-bg-primary']) wrong.push(`${theme.id} term bg`);
       if (theme.terminal.foreground !== t['--color-text-primary'])
         wrong.push(`${theme.id} term fg`);
@@ -152,7 +159,7 @@ describe('legado md3 themes', () => {
 
   it('keeps labels readable on hover, selected and filled backgrounds', () => {
     const failures = collectUnreadable((check) => {
-      for (const { theme, t, surfaces, primaryText, errorText } of THEMES) {
+      for (const { theme, t, surfaces, menu, primaryText, errorText } of THEMES) {
         const onSurface = t['--color-text-primary']!;
         const selected = t['--md-secondary-container']!;
         for (const bg of [t['--color-bg-hover']!, t['--color-bg-active']!, selected]) {
@@ -164,7 +171,8 @@ describe('legado md3 themes', () => {
         check(`${theme.id} on-primary`, onPrimary, accent);
         check(`${theme.id} on-primary hover`, onPrimary, mix(onPrimary, accent, HOVER_LAYER));
         check(`${theme.id} on-error`, t['--md-on-error']!, t['--color-danger']!);
-        for (const bg of surfaces) {
+        // 强调色和错误色文字也出现在菜单和悬停底上
+        for (const bg of [...surfaces, menu, t['--color-bg-hover']!]) {
           check(`${theme.id} primary text`, primaryText, bg);
           check(`${theme.id} error text`, errorText, bg);
           check(`${theme.id} primary hover`, primaryText, mix(primaryText, bg, HOVER_LAYER));

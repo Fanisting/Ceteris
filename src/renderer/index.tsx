@@ -26,6 +26,7 @@ import './styles/material.css';
 import './styles/file-tree.css';
 import './styles/path-tags.css';
 import './styles/quick-launch.css';
+import './styles/ghost-tab.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
 

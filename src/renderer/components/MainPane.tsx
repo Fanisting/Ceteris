@@ -69,6 +69,7 @@ import {
   type DetectedShell,
 } from './launch-options';
 import { QuickLaunchOverlay } from './QuickLaunchOverlay';
+import { GhostTab } from './GhostTab';
 import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
@@ -632,16 +633,19 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
             selected={s.id === selectedSessionId}
           />
         ))}
-        <button
-          type="button"
-          className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
-          onClick={handleClickBlankTab}
-          onContextMenu={handleBlankTabContextMenu}
-          title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
-          aria-label={tx('新建终端', 'New terminal')}
-        >
-          <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={18} /></span>
-        </button>
+        {/* 幽灵标签:快捷启动的 agent 图标 + 原来的新建按钮,见 GhostTab.tsx */}
+        <GhostTab pathId={state.selectedPathId}>
+          <button
+            type="button"
+            className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
+            onClick={handleClickBlankTab}
+            onContextMenu={handleBlankTabContextMenu}
+            title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
+            aria-label={tx('新建终端', 'New terminal')}
+          >
+            <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={18} /></span>
+          </button>
+        </GhostTab>
       </div>
       {quickLaunchAnchor && state.selectedPathId && (
         <QuickLaunchOverlay

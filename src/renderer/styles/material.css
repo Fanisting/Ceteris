@@ -313,6 +313,9 @@ button:focus-visible,
   color: var(--md-on-error, #f0f);
 }
 
+/* The tab page (and settings, which takes its place) is the one block in the window, with the
+ * Material large shape (16px). Everything else is plain text on the shell. The window itself is
+ * rounded by Windows 11 at a fixed 8px, and the shell in global.css follows it. */
 .main-pane,
 .settings-detail {
   margin: 0 8px 8px 0;
@@ -406,7 +409,23 @@ button:focus-visible,
 
 /* ── 侧栏(navigation drawer) ──────────────────────────────────── */
 
-.sidebar {
+/* pdf.js loads pdf_viewer.css for the whole app (PdfJsViewer.tsx), and it styles its own
+ * `.sidebar` class: border, shadow, 8px radius, width limits (180 to 632px), padding and an
+ * offset. That rule landed on Ceteris's sidebar too and drew an outlined card around it.
+ * The reset below wins on specificity and undoes every property it sets.
+ *
+ * The sidebar is not a block: no fill, no corners, no outline. Its text sits on the shell. */
+.app-body > .sidebar {
+  inset-block-start: auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding-block: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
   background-color: transparent;
 }
 

@@ -1,7 +1,8 @@
 /**
  * @file src/renderer/components/TextFileView.tsx
- * @purpose Shows a .txt or .json file in the file viewer. Small files can be edited and saved.
- *   Very large files open as read-only pages.
+ * @purpose Shows a .txt, .json or .tex file in the file viewer, and a Markdown file once the user
+ *   switches it to editing. Small files can be edited and saved. Very large files open as
+ *   read-only pages.
  *
  * @关键设计:
  * - The size decides: up to TEXT_EDIT_MAX_BYTES the file loads whole into a textarea. A larger
@@ -12,7 +13,7 @@
  * - Unsaved text lives in text-drafts.ts, so this component can unmount at any time.
  * - SSH tabs are read-only, because the SFTP tree is. A Link window edits: the host does the save.
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-016
+ * @对应文档章节: 软件定义书.md 14.6, ADR-016, ADR-028
  *
  * @不要在这里做的事:
  * - 不要把格式、高亮这类功能加进来:这里只为顺手改一下文本,不是 IDE
@@ -88,7 +89,8 @@ type Loaded =
 /** Where each open large file was left, so switching tabs and back keeps the place. */
 const pagePositions = new Map<string, number>();
 
-async function draftKeyOf(source: PdfSource): Promise<string> {
+/** Key of a file's unsaved draft. PdfOverlay uses it to preview Markdown edits before saving. */
+export async function draftKeyOf(source: PdfSource): Promise<string> {
   const link = await window.api
     .invoke<undefined, LinkConnectionStatePayload | null>(
       COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,

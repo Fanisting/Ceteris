@@ -340,6 +340,18 @@
   color: var(--color-text-primary, #f0f);
 }
 
+/* Markdown Preview / Edit switch: words, not icons, and the current mode stays filled. */
+.pdf-overlay-tool-text {
+  width: auto;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.pdf-overlay-tool-text.active {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
 .pdf-overlay-badge {
   flex: 0 0 auto;
   display: inline-flex;

@@ -1,6 +1,6 @@
 /**
  * @file src/main/text-writer.ts
- * @purpose Saves a .txt or .json file edited in the viewer. A save either replaces the whole
+ * @purpose Saves a .txt, .json, .tex or Markdown file edited in the viewer. A save either replaces the whole
  *   file or leaves it exactly as it was.
  *
  * @关键设计:
@@ -11,9 +11,10 @@
  *   decides. Passing null skips the check: that is the user choosing to overwrite.
  * - Symbolic links are resolved first. Renaming over the link would replace it with a file.
  * - The original's mode is copied, since the temporary file starts with default permissions.
- * - Limited to the text kind: over Link this command writes to the host's disk.
+ * - Limited to editable text files (isEditableTextFile): over Link this command writes to the
+ *   host's disk.
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-016
+ * @对应文档章节: 软件定义书.md 14.6, ADR-016, ADR-028
  *
  * @不要在这里做的事:
  * - 不要创建新文件:目标必须已存在,这里只保存编辑
@@ -27,7 +28,11 @@
 import { randomBytes } from 'node:crypto';
 import { constants, promises as fs } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
-import { fileViewKind, type WriteTextPayload, type WriteTextResponse } from '@shared/file-tree';
+import {
+  isEditableTextFile,
+  type WriteTextPayload,
+  type WriteTextResponse,
+} from '@shared/file-tree';
 import { TEXT_WRITE_MAX_BYTES } from '@shared/text-file';
 import { logger } from './logger';
 
@@ -48,7 +53,7 @@ function failureOf(err: unknown): WriteTextResponse {
  */
 export async function writeTextFile(payload: WriteTextPayload): Promise<WriteTextResponse> {
   const { path, base64, expected } = payload;
-  if (!isAbsolute(path) || fileViewKind(path) !== 'text') return { ok: false, reason: 'not-found' };
+  if (!isAbsolute(path) || !isEditableTextFile(path)) return { ok: false, reason: 'not-found' };
   // Checked on the encoded length first, so an oversized payload is never decoded.
   if (base64.length > ((TEXT_WRITE_MAX_BYTES + 2) / 3) * 4) {
     return { ok: false, reason: 'too-large' };

@@ -43,6 +43,8 @@ export interface ContextMenuItem {
   submenu?: ContextMenuItem[];
   /** 点击触发,菜单自动关闭 */
   onSelect?: () => void | Promise<void>;
+  /** Rendered as data-guide, so a guided tour can point at this item (CoordinatorTour). */
+  guideId?: string;
 }
 
 export interface ContextMenuState {
@@ -231,6 +233,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }): JSX.
         }
         disabled={!!it.disabled}
         title={it.hint}
+        data-guide={it.guideId}
         aria-haspopup={it.submenu ? 'menu' : undefined}
         onMouseEnter={showSubmenu}
         onClick={(e) => {

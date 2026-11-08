@@ -804,6 +804,7 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
           onClick={handleClickBlankTab}
           onContextMenu={handleBlankTabContextMenu}
+          data-guide="new-tab"
           title={tx(
             '新建终端:选择 Shell 或模板。右键快速启动 agent',
             'New terminal: pick a shell or template. Right click to start an agent quickly',
@@ -830,6 +831,7 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
     <>
       <div
         className="tab-bar coordinator-bar"
+        data-guide="coordinator-bar"
         role="group"
         aria-label={tx('协调者', 'Coordinators')}
       >
@@ -1065,6 +1067,7 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
       }
       onClick={handleClick}
       onContextMenu={handleContextMenu}
+      data-session-id={session.id}
       title={tooltipParts.join('\n')}
     >
       <AgentWave

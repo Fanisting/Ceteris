@@ -97,6 +97,8 @@ export const DEFAULT_SETTINGS: Settings = {
     claudeMathImages: false,
     terminalMath: false,
     tabControl: false,
+    // 协调者引导 (ADR-024):老设置文件缺这个字段,deep merge 补 false,升级后也会看到一次
+    tabControlGuideSeen: false,
   },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
@@ -516,6 +518,12 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `advanced.terminalRenderer="${s.advanced.terminalRenderer}" 必须是 auto / webgl / dom`,
+    );
+  }
+  if (typeof s.extensions.tabControlGuideSeen !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.tabControlGuideSeen=${String(s.extensions.tabControlGuideSeen)} 必须是 true 或 false`,
     );
   }
   if (typeof s.extensions.tabControl !== 'boolean') {

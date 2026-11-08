@@ -531,6 +531,12 @@ export interface Settings {
      * plugin (extensions/ceteris-tabs). Checked on every request, so it applies at once.
      */
     tabControl: boolean;
+    /**
+     * Whether the user closed the coordinator guide with Got it (ADR-024). Default false, and
+     * older settings files get false too, so everyone sees the guide once after the update:
+     * on the next launch, and again the first time they tick Coordinator until they close it.
+     */
+    tabControlGuideSeen: boolean;
   };
 
   /**

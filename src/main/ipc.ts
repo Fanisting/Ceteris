@@ -202,6 +202,11 @@ import { detectAgent } from '@shared/next-prompt';
 import { suggestNextPrompt } from './next-prompt-client';
 import type { ViewSwitcher } from './view-switcher';
 import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
+import {
+  TAB_CONTROL_PLUGIN_ID,
+  isClaudePluginInstalled,
+  type TabControlStatus,
+} from '@shared/tab-control';
 
 export interface IpcLayerDeps {
   /** Optional like aiClient, so tests need not build it. */
@@ -821,6 +826,25 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         appPath: app.getAppPath(),
       }),
     }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_TAB_CONTROL_STATUS,
+    async (): Promise<TabControlStatus> => {
+      // 协调者引导 (ADR-024):读 Claude Code 自己的插件登记表。CLAUDE_CONFIG_DIR 是
+      // Claude Code 认的配置目录覆盖;没设就是 ~/.claude。文件不存在 (没装过任何插件)、
+      // 读不了或不是 JSON 都当没装,引导就继续显示安装那一步。
+      const configDir = process.env.CLAUDE_CONFIG_DIR || joinPath(homedir(), '.claude');
+      const file = joinPath(configDir, 'plugins', 'installed_plugins.json');
+      try {
+        const registry: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
+        return { pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID) };
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') logger.warn('ipc', `tab control status: cannot read ${file}`, err);
+        return { pluginInstalled: false };
+      }
+    },
   );
 
   handleCommand(

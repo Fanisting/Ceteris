@@ -74,6 +74,8 @@ export const COMMAND_CHANNELS = {
   EXTENSIONS_REPORT_TERMINAL_LOOK: 'cmd:extensions:report-terminal-look',
   /** 公式图片扩展:随 Ceteris 一起安装的插件 marketplace 目录,设置页拿它拼安装命令 */
   EXTENSIONS_GET_MARKETPLACE_DIR: 'cmd:extensions:get-marketplace-dir',
+  /** 协调者控制 (ADR-024):Claude Code 是否已装 ceteris-tabs 插件,协调者引导用它打勾 */
+  EXTENSIONS_TAB_CONTROL_STATUS: 'cmd:extensions:tab-control-status',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**

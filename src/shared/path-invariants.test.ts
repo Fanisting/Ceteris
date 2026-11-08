@@ -4,7 +4,7 @@
  *   PathKind discriminated union exhaustiveness。
  *
  * 这些测试是"本地不变式"的最后一道防线 — 任何破坏它们的改动会让 CI Gate-1
- * 失败。详见 docs/方案-SSH-完整支持-20260524.md §III 阶段 1 / §IV CI Gates。
+ * 失败。详见 docs/archive/方案-SSH-完整支持-20260524.md §III 阶段 1 / §IV CI Gates。
  *
  * 不在这里的:
  *   - PathManager 持久化迁移测试 → path-manager.test.ts

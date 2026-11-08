@@ -174,7 +174,7 @@ export const COMMAND_CHANNELS = {
   SYSTEM_CLIPBOARD_READ_TEXT: 'cmd:system:clipboard-read-text',
   SYSTEM_CLIPBOARD_WRITE_TEXT: 'cmd:system:clipboard-write-text',
 
-  /** BETA-031:AI 助手测试连接 — 主进程用 SDK 跑一次 ping,返回成功 / 错误描述 */
+  /** BETA-031:AI 助手测试连接 — 主进程发一次 ping 请求,返回成功 / 错误描述 */
   AI_TEST_CONNECTION: 'cmd:ai:test-connection',
   AI_SUGGEST_NEXT_PROMPT: 'cmd:ai:suggest-next-prompt',
   AI_GET_NEXT_PROMPT_USAGE: 'cmd:ai:get-next-prompt-usage',

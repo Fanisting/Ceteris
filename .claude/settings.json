@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "oh-my-claudecode@omc": false
+  },
+  "env": {
+    "DISABLE_OMC": "1"
+  }
+}

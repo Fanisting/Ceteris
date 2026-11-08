@@ -59,7 +59,9 @@ EasyTerm-userdata-*/
 
 # Claude Code / Cursor / agent local state (machine-specific, includes user
 # permission grants and other non-shareable settings)
-.claude/
+.claude/*
+!.claude/settings.json
+.omc/
 
 # Local PR review notes / drafts — not for upstream
 docs/pr-reviews/

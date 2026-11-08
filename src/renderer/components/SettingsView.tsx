@@ -2760,7 +2760,7 @@ function AiPanel({
               value={model}
               placeholder={
                 provider === 'anthropic'
-                  ? 'claude-haiku-4-5-20251001'
+                  ? 'claude-haiku-5-5'
                   : 'gpt-4o-mini'
               }
               onChange={(e) =>

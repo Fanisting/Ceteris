@@ -65,8 +65,6 @@ npm-debug.log*
 # 文档 / 演示资料 — 不参与构建,缩小 context
 # ============================================================
 docs/checkpoints
-docs/presentation/images
-docs/presentation/slides
 *.pdf
 
 # ============================================================

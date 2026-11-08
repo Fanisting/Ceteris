@@ -74,7 +74,7 @@ if (top !== undefined && bot !== undefined &&
 
 验证步骤:
 1. `npm view @xterm/addon-serialize@latest version` ≥ `0.15.0`
-2. 升级,re-run `scripts/repro-cursor-1.mjs`,close+reopen Ceteris 窗口
+2. 升级,re-run `scripts/repro-cursor-1.mjs`(2026-11 已删,从 git 历史取回),close+reopen Ceteris 窗口
 3. 在 `getScrollback` 临时 log 输出 SerializeAddon 原生 output,确认含 `\x1b[?25l` 和 DECSTBM(当对应状态成立时)
 4. 确认后 → 删除 `session-manager.ts` 中的 polyfill 段(grep `XTERM-SERIALIZE-POLYFILL` 找位置)
 5. 删除本 issue

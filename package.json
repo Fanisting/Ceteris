@@ -21,6 +21,7 @@
     "build:stable": "node scripts/build-channel.mjs stable",
     "build:beta": "node scripts/build-channel.mjs beta",
     "beta": "node scripts/open-beta.mjs",
+    "devq": "node scripts/dev-queue.mjs",
     "build:linux": "electron-vite build && electron-builder --linux deb rpm AppImage --x64",
     "build:linux:deb": "electron-vite build && electron-builder --linux deb --x64",
     "build:linux:appimage": "electron-vite build && electron-builder --linux AppImage --x64",

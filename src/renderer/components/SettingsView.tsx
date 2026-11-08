@@ -48,7 +48,6 @@ import {
   type UpdateTemplatePayload,
   type UpdateTemplateResponse,
 } from '@shared/protocol';
-import { BEAMER_THEMES } from '@shared/beamer-themes';
 import { formatDisplayPath, toWslUncPath } from '@shared/path-display';
 import type {
   NewTerminalShellPolicy,
@@ -56,7 +55,6 @@ import type {
   StartupBehavior,
   Template,
   TerminalRightClick,
-  ThemeId,
   WindowStyle,
 } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
@@ -91,6 +89,7 @@ import type {
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
 import { useTranslation } from './LanguageProvider';
+import { ThemePicker } from './ThemePicker';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
@@ -247,36 +246,6 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
 // 外观分类
 // ──────────────────────────────────────────────────────────────────
 
-const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; note?: string }> = [
-  { id: 'ceteris-dark', label: 'Ceteris Dark', tone: '深色', note: '默认' },
-  { id: 'ceteris-light', label: 'Ceteris Light', tone: '浅色' },
-  { id: 'rose-pine', label: 'Rose Pine', tone: '深色' },
-  { id: 'rose-pine-dawn', label: 'Rose Pine Dawn', tone: '浅色' },
-  { id: 'rose-pine-moon', label: 'Rose Pine Moon', tone: '深色' },
-  { id: 'cutie', label: 'Cutie', tone: '浅色', note: 'Kawaii' },
-  { id: 'light-pink', label: 'Light Pink', tone: '浅色', note: 'Kawaii' },
-  { id: 'fairyfloss', label: 'Fairyfloss', tone: '深色', note: 'Kawaii' },
-  { id: 'business', label: 'Business', tone: '深色' },
-  { id: 'ubuntu', label: 'Ubuntu', tone: '深色' },
-  { id: 'windows-terminal', label: 'Windows Terminal', tone: '深色' },
-  // BETA-033 起新增的 4 个流行深色主题
-  { id: 'one-dark-pro', label: 'One Dark Pro', tone: '深色' },
-  { id: 'dracula', label: 'Dracula', tone: '深色' },
-  { id: 'tokyo-night', label: 'Tokyo Night', tone: '深色' },
-  { id: 'tokyo-night-day', label: 'Tokyo Night Day', tone: '浅色' },
-  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', tone: '深色' },
-  { id: 'catppuccin-latte', label: 'Catppuccin Latte', tone: '浅色' },
-  // 珠光系列:配色取自小红书色板,note 是色板原名
-  { id: 'pearl-lapis', label: 'Lapis', tone: '浅色', note: '青金曜华' },
-  { id: 'pearl-sapphire', label: 'Sapphire', tone: '浅色', note: '宝蓝金脉' },
-  { id: 'pearl-rose', label: 'Rose Dew', tone: '浅色', note: '玫金晨露' },
-  { id: 'pearl-ember', label: 'Ember', tone: '浅色', note: '绯霞金露' },
-  { id: 'pearl-jade', label: 'Jade', tone: '浅色', note: '翠玉金瞳' },
-  { id: 'pearl-moon', label: 'Moonlight', tone: '浅色', note: '月白珠光' },
-  { id: 'pearl-frost', label: 'Frost', tone: '浅色', note: '银蓝霜露' },
-  ...BEAMER_THEMES,
-];
-
 function AppearancePanel({
   setError,
 }: {
@@ -330,24 +299,10 @@ function AppearancePanel({
         label={tx('主题', 'Theme')}
         hint={tx('所有窗口立即同步;xterm 颜色与 UI 同步切换', 'Applies to all windows immediately; xterm colors stay in sync')}
       >
-        <select
-          className="settings-input"
+        <ThemePicker
           value={theme}
-          aria-label={tx('主题', 'Theme')}
-          onChange={(e) =>
-            void updateSettings(
-              { appearance: { theme: e.target.value as ThemeId } },
-              setError,
-            )
-          }
-        >
-          {THEMES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label} · {t.tone === '深色' ? tx('深色', 'Dark') : tx('浅色', 'Light')}
-              {t.note ? ` · ${t.note === '默认' ? tx('默认', 'Default') : t.note}` : ''}
-            </option>
-          ))}
-        </select>
+          onChange={(id) => void updateSettings({ appearance: { theme: id } }, setError)}
+        />
       </SettingRow>
 
       <SettingRow

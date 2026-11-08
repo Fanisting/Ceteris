@@ -57,6 +57,9 @@ import {
   type SetPaneSessionsPayload,
   type SuggestNextPromptPayload,
   type SuggestNextPromptResponse,
+  type ListNextPromptModelsResponse,
+  type GetFrequentPromptsResponse,
+  type ConnectOpenRouterResponse,
   type ViewStateResponse,
   type ViewSwitchPayload,
   type AddSshProfilePayload,
@@ -206,13 +209,18 @@ import {
   writeBundle,
 } from './data-bundle';
 import { detectAgent } from '@shared/next-prompt';
-import { suggestNextPrompt } from './next-prompt-client';
+import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
+import { FrequentPromptReader } from './frequent-prompts';
+import { ConnectCancelled, cancelOpenRouterConnect, connectOpenRouter } from './openrouter-connect';
+import type { SecretStore } from './secret-store';
 import type { ViewSwitcher } from './view-switcher';
 import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
 
 export interface IpcLayerDeps {
   /** Optional like aiClient, so tests need not build it. */
   nextPromptUsage?: NextPromptUsageTracker;
+  /** Encrypted API keys (ADR-025). Optional so tests need not build it. */
+  secretStore?: SecretStore;
   windowManager: WindowManager;
   pathManager: PathManager;
   settingsManager: SettingsManager;
@@ -1227,7 +1235,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SETTINGS_UPDATE,
     (_e, envelope: CommandEnvelope<UpdateSettingsPayload>): void => {
-      settingsManager.update(envelope.payload.partial);
+      // keySaved mirrors SecretStore and only main may change it (ADR-025).
+      const partial = envelope.payload.partial;
+      if (partial?.ai?.nextPrompt && 'keySaved' in partial.ai.nextPrompt) {
+        delete partial.ai.nextPrompt.keySaved;
+      }
+      settingsManager.update(partial);
     },
   );
 
@@ -1377,6 +1390,58 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // Read on the machine that makes the call, so a remote view gets the Host's habits.
+  const frequentPrompts = new FrequentPromptReader();
+  const nextPromptConfig = () => ({
+    ...settingsManager.get().ai.nextPrompt,
+    apiKey: deps.secretStore?.getNextPromptKey() ?? '',
+  });
+  const refuseRemote = (windowId: string | undefined): void => {
+    if (windowId && windowManager.isWindowRemote(windowId)) {
+      throw new Error(
+        '远程视图里不能连接或断开 OpenRouter:key 保存在主机上。请在主机的 Ceteris 设置里操作',
+      );
+    }
+  };
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_CONNECT_OPENROUTER,
+    async (
+      _e,
+      envelope: CommandEnvelope<undefined>,
+    ): Promise<ConnectOpenRouterResponse> => {
+      refuseRemote(envelope.windowId);
+      if (!deps.secretStore) throw new Error('SecretStore 未初始化,无法保存 key');
+      try {
+        const key = await connectOpenRouter((url) => shell.openExternal(url));
+        deps.secretStore.setNextPromptKey(key);
+        settingsManager.update({ ai: { nextPrompt: { keySaved: true } } });
+        return { connected: true };
+      } catch (err) {
+        if (err instanceof ConnectCancelled) return { connected: false };
+        throw err;
+      }
+    },
+  );
+
+  handleCommand(COMMAND_CHANNELS.AI_CANCEL_OPENROUTER_CONNECT, (): void => {
+    cancelOpenRouterConnect();
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_DISCONNECT_OPENROUTER,
+    (_e, envelope: CommandEnvelope<undefined>): void => {
+      refuseRemote(envelope.windowId);
+      deps.secretStore?.setNextPromptKey('');
+      const { baseURL } = settingsManager.get().ai.nextPrompt;
+      // Without a key OpenRouter guesses can only fail, so stop asking.
+      settingsManager.update({
+        ai: { nextPrompt: { keySaved: false, ...(baseURL.trim() ? {} : { enabled: false }) } },
+      });
+      logger.info('ipc', 'next prompt OpenRouter key forgotten');
+    },
+  );
+
   // Not local-only on purpose: a remote view sends this to the Host, whose settings
   // hold the key, so the laptop needs no key of its own.
   handleCommand(
@@ -1385,12 +1450,30 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       _e,
       envelope: CommandEnvelope<SuggestNextPromptPayload>,
     ): Promise<SuggestNextPromptResponse> => {
-      const config = settingsManager.get().ai.nextPrompt;
-      const suggestion = await suggestNextPrompt(config, envelope.payload.screen, fetch, (usage) =>
-        deps.nextPromptUsage?.record(usage),
+      const config = nextPromptConfig();
+      const suggestion = await suggestNextPrompt(
+        config,
+        envelope.payload.screen,
+        fetch,
+        (usage) => deps.nextPromptUsage?.record(usage),
+        await frequentPrompts.get(),
       );
       return { suggestion };
     },
+  );
+
+  // Asks the Host for a remote view, like the suggestion itself: the list must match the
+  // address and key that the guesses will use.
+  handleCommand(
+    COMMAND_CHANNELS.AI_LIST_NEXT_PROMPT_MODELS,
+    async (): Promise<ListNextPromptModelsResponse> => ({
+      models: await listNextPromptModels(nextPromptConfig()),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS,
+    async (): Promise<GetFrequentPromptsResponse> => ({ prompts: await frequentPrompts.get() }),
   );
 
   handleCommand(

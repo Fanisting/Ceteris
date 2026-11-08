@@ -72,9 +72,11 @@ import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
 import { NEXT_PROMPT_DEFAULT_BASE_URL,
-  NEXT_PROMPT_DEFAULT_MODEL,
+  type FrequentPrompt,
   type NextPromptUsage,
   nextPromptConfigured } from '@shared/next-prompt';
+import { NextPromptModelPicker } from './NextPromptModelPicker';
+import { OpenRouterAccount } from './OpenRouterAccount';
 import type {
   CreateSessionResponse,
   DataAgentStats,
@@ -85,6 +87,7 @@ import type {
   DataImportResponse,
   SuggestNextPromptPayload,
   SuggestNextPromptResponse,
+  GetFrequentPromptsResponse,
 } from '@shared/protocol';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
@@ -2667,7 +2670,7 @@ function AiPanel({
   const statusRecheckSource = ai?.statusRecheckSource ?? 'headless';
   const [testing, setTesting] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', baseURL: '', model: '' };
+  const nextPrompt = ai?.nextPrompt ?? { enabled: false, keySaved: false, baseURL: '', model: '' };
   const nextPromptReady = nextPromptConfigured(nextPrompt);
   const [testingNextPrompt, setTestingNextPrompt] = useState(false);
   const [usage, setUsage] = useState<NextPromptUsage | null>(null);
@@ -2678,6 +2681,13 @@ function AiPanel({
       .catch((err) => console.error('[Settings] read usage failed', err));
   }, []);
   useEffect(refreshUsage, [refreshUsage]);
+  const [habits, setHabits] = useState<FrequentPrompt[] | null>(null);
+  useEffect(() => {
+    window.api
+      .invoke<undefined, GetFrequentPromptsResponse>(COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS, undefined)
+      .then((res) => setHabits(res.prompts))
+      .catch((err) => console.error('[Settings] read frequent prompts failed', err));
+  }, []);
 
   const handleTestNextPrompt = async (): Promise<void> => {
     setTestingNextPrompt(true);
@@ -2911,10 +2921,33 @@ function AiPanel({
       <h3 className="link-subsection-title">{tx('下一步提示建议', 'Next prompt suggestions')}</h3>
       <p className="settings-panel-hint">
         {tx(
-          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字会发送给 OpenRouter,所以屏幕上的密钥或私密内容也会被发送。',
-          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen goes to OpenRouter, including anything private shown there.',
+          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字和下面列出的常用消息会发送给这个 API(默认 OpenRouter),所以屏幕上的密钥或私密内容也会被发送。',
+          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen and the frequent messages listed below go to that API (OpenRouter by default), including anything private shown on screen.',
         )}
       </p>
+
+      <SettingRow
+        label={tx('OpenRouter 账号', 'OpenRouter account')}
+        hint={
+          nextPrompt.keySaved
+            ? tx(
+                'key 已加密保存在本机,只发给 OpenRouter。断开只删除本机这份;要作废它,到 openrouter.ai 的 Keys 页删除 "Ceteris next prompt"',
+                'The key is encrypted on this PC and sent only to OpenRouter. Disconnecting deletes this copy; to revoke it, delete "Ceteris next prompt" on the Keys page at openrouter.ai',
+              )
+            : tx(
+                '在浏览器里登录 OpenRouter 并同意,Ceteris 会自动拿到一个专用 key 并加密保存,不用复制粘贴',
+                'Sign in to OpenRouter in your browser and approve. Ceteris receives its own key and stores it encrypted; nothing to copy or paste',
+              )
+        }
+      >
+        <OpenRouterAccount
+          connected={nextPrompt.keySaved}
+          onError={(msg) => toast.push({ kind: 'error', message: msg })}
+          onConnected={() =>
+            toast.push({ kind: 'success', message: tx('已连接 OpenRouter', 'Connected to OpenRouter') })
+          }
+        />
+      </SettingRow>
 
       <SettingRow label={tx('启用建议', 'Enable suggestions')}>
         <label className="settings-checkbox">
@@ -2933,8 +2966,8 @@ function AiPanel({
       <SettingRow
         label={tx('API 地址', 'API address')}
         hint={tx(
-          '留空使用 OpenRouter。可填任何兼容 OpenAI 的地址,模型名也要一起改',
-          'Leave empty for OpenRouter. Any OpenAI compatible address works; set its model too',
+          '留空使用 OpenRouter。也可填本地模型服务(如 Ollama 的 http://127.0.0.1:11434/v1),这时不需要账号,OpenRouter key 也不会发给它',
+          'Leave empty for OpenRouter. Or a local model server, such as Ollama at http://127.0.0.1:11434/v1; it needs no account and never receives the OpenRouter key',
         )}
       >
         <input
@@ -2950,35 +2983,42 @@ function AiPanel({
       </SettingRow>
 
       <SettingRow
-        label={tx('API Key', 'API key')}
-        hint={tx('使用 OpenRouter 时必填,本地模型可留空', 'Required for OpenRouter; a local model may not need one')}
+        label={tx('模型', 'Model')}
+        hint={tx(
+          '列表来自上面的 API 地址。小模型够用:每次只猜一句话,停下就猜一次',
+          'Listed from the API address above. A small model is enough: each guess is one line, made at every stop',
+        )}
       >
-        <input
-          className="settings-input"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          value={nextPrompt.apiKey}
-          onChange={(e) =>
-            void updateSettings({ ai: { nextPrompt: { apiKey: e.target.value } } }, setError)
+        <NextPromptModelPicker
+          model={nextPrompt.model}
+          baseURL={nextPrompt.baseURL ?? ''}
+          keySaved={nextPrompt.keySaved}
+          onChange={(value) =>
+            void updateSettings({ ai: { nextPrompt: { model: value } } }, setError)
           }
         />
       </SettingRow>
 
       <SettingRow
-        label={tx('模型', 'Model')}
-        hint={tx('留空使用默认模型,约 0.2 秒一次', 'Leave empty for the default, about 0.2s per guess')}
+        label={tx('你的常用消息', 'Your frequent messages')}
+        hint={tx(
+          '从 Claude Code 和 Codex 的历史记录里找出发过 3 次以上的短消息,随每次猜测一起发送,模型合适时会原样建议',
+          'Short messages you sent to Claude Code or Codex 3 or more times, read from their history. Sent with each guess so the model can offer them word for word',
+        )}
       >
-        <input
-          className="settings-input"
-          type="text"
-          spellCheck={false}
-          placeholder={NEXT_PROMPT_DEFAULT_MODEL}
-          value={nextPrompt.model}
-          onChange={(e) =>
-            void updateSettings({ ai: { nextPrompt: { model: e.target.value } } }, setError)
-          }
-        />
+        {habits === null ? (
+          <span className="settings-usage">…</span>
+        ) : habits.length === 0 ? (
+          <span className="settings-usage">{tx('还没有', 'None yet')}</span>
+        ) : (
+          <ul className="next-prompt-habits">
+            {habits.map((h) => (
+              <li key={h.text}>
+                {h.text} <span className="settings-row-hint">×{h.count}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </SettingRow>
 
       <SettingRow label={tx('测试', 'Test')}>

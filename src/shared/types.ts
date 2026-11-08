@@ -585,7 +585,11 @@ export interface Settings {
      */
     nextPrompt: {
       enabled: boolean;
-      apiKey: string;
+      /**
+       * An OpenRouter key is saved, encrypted, in secrets.json (ADR-025). Set only by the
+       * main process. The key itself never appears in settings.
+       */
+      keySaved: boolean;
       /** Any OpenAI compatible API. Empty uses OpenRouter. */
       baseURL: string;
       /** Empty uses NEXT_PROMPT_DEFAULT_MODEL */

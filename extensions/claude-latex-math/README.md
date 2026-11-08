@@ -2,7 +2,7 @@
 
 > This is a fork of [atomashevic/claude-latex-math](https://github.com/atomashevic/claude-latex-math) 0.4.0 (MIT, by Aleksandar Tomasevic), kept in the Ceteris repository so that it works with the Ceteris extension **Settings → Extensions → Claude Code formula images** (ADR-019).
 >
-> **Install:** `claude plugin marketplace add Fanisting/ceteris`, then `claude plugin install latex-math@ceteris`. Disable the original `latex-math@claude-latex-math` first if you have it.
+> **Install:** Ceteris ships this plugin in its install folder (`resources/extensions`, which is a local Claude Code marketplace named `ceteris`). In Ceteris, open Settings, Extensions, turn on Claude Code formula images, and click the button that types the two install commands into a new terminal; press Enter to run them. By hand: `claude plugin marketplace add "<Ceteris folder>/resources/extensions"`, then `claude plugin install latex-math@ceteris`. Disable the original `latex-math@claude-latex-math` first if you have it.
 >
 > **What the fork changes:**
 > - Draws images in Ceteris (`TERM_PROGRAM=Ceteris`). Ceteris answers XTVERSION as iTerm2 3.5, so Claude Code sends the pictures as iTerm2 inline images, which take bytes instead of a file path.

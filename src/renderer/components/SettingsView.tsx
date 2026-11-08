@@ -93,7 +93,7 @@ import { useTranslation } from './LanguageProvider';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
-import { LATEX_MATH_INSTALL_LINES, latexMathInstallLine } from '@shared/claude-math-images';
+import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
 
 type CategoryId =
   | 'appearance'
@@ -3000,6 +3000,16 @@ function ExtensionsPanel({
   const toast = useToast();
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
   const [preparing, setPreparing] = useState(false);
+  // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
+  const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled || marketplaceDir) return;
+    window.api
+      .invoke<unknown, { dir: string }>(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, {})
+      .then((res) => setMarketplaceDir(res.dir))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  }, [enabled, marketplaceDir, setError]);
 
   /**
    * 开一个新终端,把安装命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
@@ -3007,6 +3017,8 @@ function ExtensionsPanel({
    * 否则检测到的第一个),这样才知道两条命令之间用 `;` 还是 `&&`。
    */
   const handlePrepareInstall = async (): Promise<void> => {
+    const dir = marketplaceDir;
+    if (!dir) return;
     setError(null);
     setPreparing(true);
     try {
@@ -3023,7 +3035,7 @@ function ExtensionsPanel({
         { templateId: 'shell', shellId: shell.id, cols: dims.cols, rows: dims.rows },
       );
       // SendInputPayload.data 是 base64 (UTF-8 字节),与 TerminalView 的输入同一条路。
-      const utf8 = new TextEncoder().encode(latexMathInstallLine(shell.id));
+      const utf8 = new TextEncoder().encode(latexMathInstallLine(shell.id, dir));
       await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
         sessionId: created.session.id,
         data: btoa(String.fromCharCode(...utf8)),
@@ -3073,18 +3085,18 @@ function ExtensionsPanel({
         <SettingRow
           label={tx('还需要的插件', 'Plugin you also need')}
           hint={tx(
-            '公式由 Claude Code 的 latex-math 插件排版(需要 TeX Live、ImageMagick 和 Git Bash)。在终端里跑一次下面两条命令,然后新开一个 Claude Code。若装过原版 latex-math@claude-latex-math,请先停用它。',
-            'The latex-math Claude Code plugin typesets the formulas (it needs TeX Live, ImageMagick and Git Bash). Run these two commands once in a terminal, then start a new Claude Code session. If you installed the original latex-math@claude-latex-math, disable it first.',
+            '公式由 Claude Code 的 latex-math 插件排版(需要 TeX Live、ImageMagick 和 Git Bash)。插件随 Ceteris 一起安装,在终端里跑一次下面两条命令把它加进 Claude Code,然后新开一个 Claude Code。若装过原版 latex-math@claude-latex-math,请先停用它。',
+            'The latex-math Claude Code plugin typesets the formulas (it needs TeX Live, ImageMagick and Git Bash). The plugin ships with Ceteris. Run these two commands once in a terminal to add it to Claude Code, then start a new Claude Code session. If you installed the original latex-math@claude-latex-math, disable it first.',
           )}
         >
           <div className="settings-code-stack">
             <pre className="settings-code-block">
-              <code>{LATEX_MATH_INSTALL_LINES}</code>
+              <code>{marketplaceDir ? latexMathInstallLines(marketplaceDir) : '…'}</code>
             </pre>
             <button
               type="button"
               className="settings-button"
-              disabled={preparing}
+              disabled={preparing || !marketplaceDir}
               onClick={() => void handlePrepareInstall()}
               title={tx(
                 '打开一个新终端并输入这两条命令,不会自动执行',

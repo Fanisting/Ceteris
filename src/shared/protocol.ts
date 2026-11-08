@@ -72,6 +72,8 @@ export const COMMAND_CHANNELS = {
    * main 写进之后新 session 的 LATEX_MATH_* 环境变量。payload 见 claude-math-images.ts。
    */
   EXTENSIONS_REPORT_TERMINAL_LOOK: 'cmd:extensions:report-terminal-look',
+  /** 公式图片扩展:随 Ceteris 一起安装的插件 marketplace 目录,设置页拿它拼安装命令 */
+  EXTENSIONS_GET_MARKETPLACE_DIR: 'cmd:extensions:get-marketplace-dir',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**

@@ -1,22 +1,36 @@
 /**
  * @file claude-math-images.test.ts
- * @purpose One test per rule: the typed line joins both commands with the shell's separator and
- *          never ends in a newline, so the user's Enter runs it.
+ * @purpose One test per rule: the typed line quotes the bundled folder and joins both commands the
+ *          way each shell needs, and never ends in a newline, so the user's Enter runs it.
  */
 import { describe, expect, it } from 'vitest';
 import { latexMathInstallLine } from './claude-math-images';
 
+const DIR = 'C:\\Program Files\\Ceteris\\resources\\extensions';
+const INSTALL = 'claude plugin install latex-math@ceteris';
+
 describe('latexMathInstallLine', () => {
-  it('joins both commands with && for cmd and ; for every other shell, with no newline', () => {
-    expect(latexMathInstallLine('cmd')).toBe(
-      'claude plugin marketplace add Fanisting/ceteris && claude plugin install latex-math@ceteris',
+  it('quotes the folder and joins the commands per shell, with no newline', () => {
+    expect(latexMathInstallLine('cmd', DIR)).toBe(
+      `claude plugin marketplace add "${DIR}" && ${INSTALL}`,
     );
-    for (const shell of ['pwsh', 'powershell', 'git-bash', 'zsh']) {
-      const line = latexMathInstallLine(shell);
-      expect(line).toBe(
-        'claude plugin marketplace add Fanisting/ceteris; claude plugin install latex-math@ceteris',
-      );
-      expect(line).not.toMatch(/[\r\n]/);
+    expect(latexMathInstallLine('pwsh', DIR)).toBe(
+      `claude plugin marketplace add '${DIR}'; ${INSTALL}`,
+    );
+    expect(latexMathInstallLine('git-bash', DIR)).toBe(
+      `claude plugin marketplace add '${DIR}'; ${INSTALL}`,
+    );
+    for (const shell of ['cmd', 'pwsh', 'powershell', 'git-bash', 'zsh']) {
+      expect(latexMathInstallLine(shell, DIR)).not.toMatch(/[\r\n]/);
     }
+  });
+
+  it("escapes a ' in the folder for PowerShell and for POSIX shells", () => {
+    expect(latexMathInstallLine('powershell', "C:\\O'Neil\\extensions")).toBe(
+      `claude plugin marketplace add 'C:\\O''Neil\\extensions'; ${INSTALL}`,
+    );
+    expect(latexMathInstallLine('zsh', "/home/o'neil/extensions")).toBe(
+      `claude plugin marketplace add '/home/o'\\''neil/extensions'; ${INSTALL}`,
+    );
   });
 });

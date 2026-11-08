@@ -7,7 +7,12 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTempDataDir, removeTempDataDir } from './persistence';
-import { TerminalLookFile, mathImagesEnv, parseTerminalLook } from './claude-math-images';
+import {
+  TerminalLookFile,
+  bundledMarketplaceDir,
+  mathImagesEnv,
+  parseTerminalLook,
+} from './claude-math-images';
 
 describe('claude-math-images', () => {
   let dir = '';
@@ -50,5 +55,17 @@ describe('claude-math-images', () => {
       background: '#f5f5f5',
       cellAspect: 0.407,
     });
+  });
+});
+
+describe('bundledMarketplaceDir', () => {
+  it('uses resources/extensions when packaged and the repository folder in a dev run', () => {
+    const where = { resourcesPath: join('C:', 'App', 'resources'), appPath: join('D:', 'repo') };
+    expect(bundledMarketplaceDir({ ...where, isPackaged: true })).toBe(
+      join('C:', 'App', 'resources', 'extensions'),
+    );
+    expect(bundledMarketplaceDir({ ...where, isPackaged: false })).toBe(
+      join('D:', 'repo', 'extensions'),
+    );
   });
 });

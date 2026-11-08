@@ -18,7 +18,7 @@
  * - Do not read settings here: session-manager.ts decides per spawn whether the extension is on.
  */
 import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /** What a terminal looks like, as the renderer measured it. */
 export interface TerminalLook {
@@ -89,4 +89,18 @@ export class TerminalLookFile {
     });
     return this.pending;
   }
+}
+
+/**
+ * The folder Claude Code adds as a local plugin marketplace: `extensions/` with its
+ * `.claude-plugin/marketplace.json`. An installed Ceteris ships it in `resources/extensions`
+ * (electron-builder extraResources, outside asar so Claude Code can read it); a dev run uses the
+ * repository's own folder.
+ */
+export function bundledMarketplaceDir(where: {
+  isPackaged: boolean;
+  resourcesPath: string;
+  appPath: string;
+}): string {
+  return join(where.isPackaged ? where.resourcesPath : where.appPath, 'extensions');
 }

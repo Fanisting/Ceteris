@@ -57,6 +57,16 @@ asarUnpack:
 extraResources:
   - from: src/shell-hooks
     to: shell-hooks
+  # 公式图片扩展 (ADR-019):latex-math 插件和它的本地 marketplace。Claude Code 读这个
+  # 目录 (`claude plugin marketplace add <install>\resources\extensions`),所以放在 asar 外。
+  - from: extensions
+    to: extensions
+    filter:
+      - "**/*"
+      - "!**/tests/**"
+      - "!**/tools/**"
+      - "!**/.claude-plugin/types/**"
+      - "!**/tsconfig.json"
 
 win:
   target:

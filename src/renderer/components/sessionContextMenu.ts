@@ -43,7 +43,7 @@ export function buildSessionContextMenu(
       onSelect: onRename,
     },
     {
-      // ADR-021:勾选后标签移到标签栏上方的 coordinator 行。任何窗口都能改,
+      // ADR-023:勾选后标签移到标签栏上方的 coordinator 行。任何窗口都能改,
       // 它只决定标签放在哪一行,不动所有权。
       label: tx('协调者', 'Coordinator'),
       hint: tx(

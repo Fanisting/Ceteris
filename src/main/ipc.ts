@@ -738,7 +738,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  // ADR-021
+  // ADR-023
   handleCommand(
     COMMAND_CHANNELS.SESSION_SET_COORDINATOR,
     (_e, envelope: CommandEnvelope<SetCoordinatorPayload>): void => {

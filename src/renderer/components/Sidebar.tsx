@@ -145,7 +145,7 @@ export function Sidebar(): JSX.Element {
   const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [managedTag, setManagedTag] = useState<string | null>(null);
-  // ADR-021:内置的 Running / Needs you 筛选,一次只选一个(两者互斥,同时选只会清空)
+  // ADR-023:内置的 Running / Needs you 筛选,一次只选一个(两者互斥,同时选只会清空)
   const [statusFilter, setStatusFilter] = useState<SessionStatusFilter | null>(null);
   // ADR-018: a newer release puts a dot on the settings button.
   const { status: updateStatus } = useUpdateStatus();
@@ -251,7 +251,7 @@ export function Sidebar(): JSX.Element {
   // counting rather than leaving the list empty.
   const activeTags = selectedTags.filter((tag) => allTags.some((c) => c.name === tag));
   const taggedFolders = folders.filter((n) => matchesTags(n.tags, activeTags));
-  // ADR-021:状态筛选按 session 算,跨所有文件夹,与文件夹标签是"且"的关系。
+  // ADR-023:状态筛选按 session 算,跨所有文件夹,与文件夹标签是"且"的关系。
   // 计数只数标签筛选后剩下的文件夹,点下去看到的数目与计数一致。
   const statusOf = (sid: string): SessionStatusFilter | null => {
     const s = state.sessions.get(sid);
@@ -452,7 +452,7 @@ export function Sidebar(): JSX.Element {
           onAdd={() => void handleAddBookmark()}
         />
       </div>
-      {/* ADR-021:Running / Needs you 总在,所以这一栏不再只在有标签时出现 */}
+      {/* ADR-023:Running / Needs you 总在,所以这一栏不再只在有标签时出现 */}
       <div className="sidebar-tag-bar">
         <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
           {SESSION_STATUS_FILTERS.map((status) => {
@@ -721,7 +721,7 @@ function PathItem({
 }: {
   node: PathNode;
   displayNameOverride?: string;
-  /** ADR-021:设了就只列这类 session,并且总是展开,一眼看到全部 */
+  /** ADR-023:设了就只列这类 session,并且总是展开,一眼看到全部 */
   statusFilter: SessionStatusFilter | null;
 } & TagDotActions): JSX.Element {
   const state = useAppState();

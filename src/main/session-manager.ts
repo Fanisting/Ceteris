@@ -921,7 +921,7 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * ADR-021:标记或取消 coordinator。所有窗口经 sessionStateChanged 同步,把它的
+   * ADR-023:标记或取消 coordinator。所有窗口经 sessionStateChanged 同步,把它的
    * 标签放进标签栏上方的 coordinator 行。幂等;不存在的 sessionId 静默,与
    * renameSession 一致。exited 的 session 也能改,用户可能想把它移出那一行。
    */

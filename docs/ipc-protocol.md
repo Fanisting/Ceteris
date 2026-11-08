@@ -222,7 +222,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:send-input` | 向 session 发送键盘输入 |
 | `cmd:session:resize` | 通知 session 终端尺寸变化 |
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
-| `cmd:session:set-coordinator` | **(ADR-021)** 标记或取消 coordinator,标签移到标签栏上方一行 |
+| `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
 | `cmd:session:get-scrollback` | 获取 session 的 scrollback 缓冲(切换 owner 时用) |
 | `cmd:bookmark:add` | 添加收藏路径 |
 | `cmd:bookmark:remove` | 移除收藏 |
@@ -731,7 +731,7 @@ interface ClearManualRenamePayload {
 
 ---
 
-#### `cmd:session:set-coordinator` (ADR-021)
+#### `cmd:session:set-coordinator` (ADR-023)
 标记或取消 coordinator。所有窗口把 coordinator 的标签放进标签栏上方单独一行,
 不论当前打开的是哪个文件夹。任何窗口都能改,所有权不变。
 

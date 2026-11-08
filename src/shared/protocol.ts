@@ -75,7 +75,7 @@ export const COMMAND_CHANNELS = {
    * 的任务进度标题重新生效。
    */
   SESSION_CLEAR_MANUAL_RENAME: 'cmd:session:clear-manual-rename',
-  /** ADR-021:标记或取消 coordinator,其标签显示在标签栏上方单独一行 */
+  /** ADR-023:标记或取消 coordinator,其标签显示在标签栏上方单独一行 */
   SESSION_SET_COORDINATOR: 'cmd:session:set-coordinator',
   /**
    * 右键 Tab → "在新窗口中打开"。原子地把 session 从调用方窗口释放,

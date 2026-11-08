@@ -199,7 +199,7 @@ button.tag-chip {
   padding-left: 12px;
 }
 
-/* ADR-021: the built-in Running and Needs you filters, first in the bar. */
+/* ADR-023: the built-in Running and Needs you filters, first in the bar. */
 button.status-filter-chip {
   padding: 0 10px 0 8px;
 }

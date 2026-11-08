@@ -241,7 +241,7 @@ export interface SessionInfo {
   agentPace?: number | null;
   /**
    * The user marked this session as a coordinator: its tab sits in a row of its own above
-   * the folder's tabs, whichever folder is open (ADR-022). Lives as long as the session.
+   * the folder's tabs, whichever folder is open (ADR-023). Lives as long as the session.
    */
   coordinator?: boolean;
   /** 退出码 (state === 'exited' 时有值) */

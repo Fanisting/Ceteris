@@ -613,7 +613,7 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
-  // ADR-021:coordinator 来自所有文件夹,按创建顺序排在上面一行,不会因为新开
+  // ADR-023:coordinator 来自所有文件夹,按创建顺序排在上面一行,不会因为新开
   // 终端而挪位置;下面一行只剩本文件夹的其余标签,同一个 session 不出现两次。
   const coordinators = [...state.sessions.values()]
     .filter((s) => s.coordinator)
@@ -697,7 +697,7 @@ interface TabProps {
   session: SessionInfo;
   myWindowId: string;
   selected: boolean;
-  /** ADR-021:coordinator 行里的标签显示所属文件夹,同名的 agent 才分得清 */
+  /** ADR-023:coordinator 行里的标签显示所属文件夹,同名的 agent 才分得清 */
   folderLabel?: string | undefined;
 }
 
@@ -761,7 +761,7 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
     });
   };
 
-  // ADR-021:coordinator 标签可能属于别的文件夹,选中它时侧栏和下面一行跟着切到
+  // ADR-023:coordinator 标签可能属于别的文件夹,选中它时侧栏和下面一行跟着切到
   // 那个文件夹。select-path 会先自动选一个本窗口的 session,紧接着的
   // select-session 再改成被点的这个。
   const selectOwnFolder = (): void => {

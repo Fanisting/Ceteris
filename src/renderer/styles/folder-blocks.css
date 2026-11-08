@@ -1,40 +1,69 @@
-/* Folder blocks: the second layout of the sidebar folder list (Sidebar.tsx, layout 'block').
- * Folders sit in a grid of cards that wraps by sidebar width; a click opens that folder's
- * sessions under a back row (layout 'open'). The list layout's rules are untouched. */
+/* Folder pebbles: the second layout of the sidebar folder list (Sidebar.tsx, layout 'block').
+ * Each pebble is as wide as its name and they wrap like words, packed close, so nothing
+ * lines up in columns. A click opens that folder's sessions under a back row (layout
+ * 'open'). The list layout's rules are untouched. */
 
 .sidebar-blocks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 4px;
   margin: 2px 0 0;
-  padding: 0;
+  padding: 0 2px;
   list-style: none;
 }
 
 .path-block {
   min-width: 0;
+  max-width: 100%;
 }
 
 .path-block-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 6px;
-  min-height: 60px;
-  padding: 8px 6px 4px 10px;
-  border-radius: var(--md-shape-md, 12px);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
   background-color: var(--md-surface-container-high, #f0f);
   color: var(--md-on-surface, #f0f);
   cursor: pointer;
-  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+  transition:
+    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    transform var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+/* Four pebble outlines, picked per folder from its id (pebbleShape in Sidebar.tsx). Uneven
+ * corner radii and slight padding differences make the row read as stones, not chips. */
+.pebble-shape-0 > .path-block-card {
+  border-radius: 14px 11px 13px 10px / 12px 14px 11px 13px;
+}
+
+.pebble-shape-1 > .path-block-card {
+  padding: 0 12px 0 9px;
+  border-radius: 11px 15px 10px 14px / 14px 11px 13px 12px;
+}
+
+.pebble-shape-2 > .path-block-card {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 12px 10px 14px 13px / 11px 13px 12px 14px;
+}
+
+.pebble-shape-3 > .path-block-card {
+  height: 28px;
+  padding: 0 9px 0 12px;
+  border-radius: 15px 12px 11px 14px / 13px 12px 15px 11px;
 }
 
 .path-block-card:hover {
   background-color: color-mix(
     in srgb,
-    var(--md-on-surface, #f0f) 8%,
+    var(--md-on-surface, #f0f) 10%,
     var(--md-surface-container-high, #f0f)
   );
+  transform: translateY(-1px);
 }
 
 .path-block-card:focus-visible {
@@ -51,56 +80,39 @@
   opacity: 0.55;
 }
 
-.path-block-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
 .path-block-icon {
   display: block;
   flex: 0 0 auto;
-  color: var(--md-on-surface-variant, #f0f);
-}
-
-.path-block.selected .path-block-icon {
-  color: inherit;
 }
 
 .path-block-name {
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.path-block-foot {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 24px;
-  min-width: 0;
+.path-block-card .path-name-rename-input {
+  width: 96px;
+  font-size: 12px;
 }
 
-/* One dot per session, coloured like the session rows; they wrap rather than hide. */
+/* One dot per session, coloured like the session rows. */
 .path-block-sessions {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 3px;
-  min-width: 0;
+  gap: 2px;
 }
 
 .path-block-dot {
   display: inline-block;
   flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
 }
 
@@ -109,23 +121,10 @@
 }
 
 .path-block-more {
+  margin-left: 1px;
   color: var(--md-on-surface-variant, #f0f);
   font-size: 10px;
   line-height: 12px;
-}
-
-.path-block .path-tag-dots {
-  flex: 0 0 auto;
-}
-
-/* The terminal button sits in the foot; the shared rule pushes it right with margin-left. */
-.path-block .path-open-terminal {
-  margin-left: 0;
-}
-
-.path-block-card:hover .path-open-terminal,
-.path-block.selected .path-open-terminal {
-  opacity: 1;
 }
 
 /* ── An opened folder: back row, then the same session rows as the list layout ── */
@@ -190,5 +189,9 @@
 @media (prefers-reduced-motion: reduce) {
   .path-block-dot.agent-blocked {
     animation: none !important;
+  }
+
+  .path-block-card:hover {
+    transform: none;
   }
 }

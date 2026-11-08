@@ -57,6 +57,7 @@ const SINGLE_THEMES: ThemeOption[] = [
   { id: 'tokyo-night-day', label: 'Tokyo Night Day', dark: false },
   { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', dark: true },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', dark: false },
+  { id: 'meizi', label: 'Meizi', dark: false, note: '梅子' },
 ];
 
 const PEARL: ThemeFamily = {

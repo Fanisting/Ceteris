@@ -27,6 +27,8 @@ import './styles/material.css';
 import './styles/pearl-themes.css';
 // 必须在 material.css 之后:Beamer 主题块要覆写它在 :root 推导的 --md-* 角色
 import './styles/beamer-themes.css';
+// 必须在 material.css 之后:梅子主题同样覆写 --md-* 角色
+import './styles/meizi-theme.css';
 import './styles/file-tree.css';
 import './styles/path-tags.css';
 import './styles/quick-launch.css';

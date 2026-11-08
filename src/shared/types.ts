@@ -117,6 +117,8 @@ export type ThemeId =
   | 'pearl-jade'
   | 'pearl-moon'
   | 'pearl-frost'
+  // 梅子,配色见 src/renderer/styles/meizi-theme.css
+  | 'meizi'
   // 取自 LaTeX Beamer 模板配色,清单见 beamer-themes.ts
   | BeamerThemeId;
 

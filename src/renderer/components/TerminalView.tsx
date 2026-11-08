@@ -108,6 +108,7 @@ import {
   type SessionOutputPayload,
 } from '@shared/protocol';
 import { BEAMER_THEMES, type BeamerThemeId } from '@shared/beamer-themes';
+import { MEIZI_TERMINAL } from '@shared/meizi-theme';
 import type { SessionInfo, ThemeId } from '@shared/types';
 import { attachImeCompositionEndCleaner } from '@shared/ime-textarea-workaround';
 import { attachImeCompositionPositionLock } from '@shared/ime-composition-position-lock';
@@ -783,6 +784,8 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
     extendedAnsi: LIGHT_EXTENDED_ANSI,
   },
   ...buildBeamerXtermThemes(),
+  // 梅子,与 meizi-theme.css 同源
+  meizi: { ...MEIZI_TERMINAL, extendedAnsi: LIGHT_EXTENDED_ANSI },
 };
 
 function getXtermTheme(themeId: ThemeId | undefined): ITheme {

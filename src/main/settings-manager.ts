@@ -146,6 +146,8 @@ const VALID_THEMES: ThemeId[] = [
   'pearl-jade',
   'pearl-moon',
   'pearl-frost',
+  // 梅子
+  'meizi',
   ...BEAMER_THEME_IDS,
 ];
 

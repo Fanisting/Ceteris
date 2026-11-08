@@ -412,7 +412,7 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:view:get-state',
   'cmd:view:switch',
   // OpenRouter sign in opens a browser. Forwarded, it would open on the Host where nobody
-  // is looking, so a remote view refuses these instead (ADR-022).
+  // is looking, so a remote view refuses these instead (ADR-025).
   'cmd:ai:connect-openrouter',
   'cmd:ai:cancel-openrouter-connect',
   'cmd:ai:disconnect-openrouter',

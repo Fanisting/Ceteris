@@ -210,7 +210,7 @@ import type { ViewSwitcher } from './view-switcher';
 export interface IpcLayerDeps {
   /** Optional like aiClient, so tests need not build it. */
   nextPromptUsage?: NextPromptUsageTracker;
-  /** Encrypted API keys (ADR-022). Optional so tests need not build it. */
+  /** Encrypted API keys (ADR-025). Optional so tests need not build it. */
   secretStore?: SecretStore;
   windowManager: WindowManager;
   pathManager: PathManager;
@@ -1195,7 +1195,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SETTINGS_UPDATE,
     (_e, envelope: CommandEnvelope<UpdateSettingsPayload>): void => {
-      // keySaved mirrors SecretStore and only main may change it (ADR-022).
+      // keySaved mirrors SecretStore and only main may change it (ADR-025).
       const partial = envelope.payload.partial;
       if (partial?.ai?.nextPrompt && 'keySaved' in partial.ai.nextPrompt) {
         delete partial.ai.nextPrompt.keySaved;

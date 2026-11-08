@@ -476,7 +476,7 @@ function bootstrap(): void {
       const { bookmarksSource } = await pathManager.initialize();
       await nextPromptUsage.initialize();
       await secretStore.initialize();
-      // ADR-022: move a key pasted in an older version out of settings.json, then rewrite
+      // ADR-025: move a key pasted in an older version out of settings.json, then rewrite
       // both settings.json and its .bak so no plain text copy stays on disk.
       const legacyKey = settingsManager.takeLegacyNextPromptKey();
       if (legacyKey) {

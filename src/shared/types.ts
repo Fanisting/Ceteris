@@ -504,7 +504,7 @@ export interface Settings {
     nextPrompt: {
       enabled: boolean;
       /**
-       * An OpenRouter key is saved, encrypted, in secrets.json (ADR-022). Set only by the
+       * An OpenRouter key is saved, encrypted, in secrets.json (ADR-025). Set only by the
        * main process. The key itself never appears in settings.
        */
       keySaved: boolean;

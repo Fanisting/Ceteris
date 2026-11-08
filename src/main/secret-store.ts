@@ -13,7 +13,7 @@
  * - Without OS encryption (a Linux desktop with no keyring) the key is held in memory for
  *   this run only, never written in plain text.
  *
- * @对应文档章节:docs/软件定义书.md ADR-022
+ * @对应文档章节:docs/软件定义书.md ADR-025
  *
  * @不要在这里做的事:
  * - 不要把明文 key 写进日志、settings 或任何发给 renderer 的消息

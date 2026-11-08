@@ -407,6 +407,12 @@ export interface Settings {
      * 默认 true 因为 Ceteris 默认 shell 是 PowerShell,大多数用户用 pwsh。
      */
     bracketedPaste: boolean;
+    /**
+     * Check GitHub Releases for a newer version every few hours (ADR-018). Default true.
+     * Only the stable channel checks on its own; beta and dev only check when asked.
+     * Ceteris never downloads or installs by itself; it shows a direct download link.
+     */
+    autoCheckUpdates: boolean;
   };
 
   systemIntegration: {

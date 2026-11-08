@@ -199,6 +199,7 @@ function makeStubSettingsManager(
       terminalRightClick: 'menu',
       quickLaunch: [],
       bracketedPaste: true,
+      autoCheckUpdates: true,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {

@@ -208,6 +208,12 @@ export const COMMAND_CHANNELS = {
   LINK_ACK_UNCONFIRMED: 'cmd:link:ack-unconfirmed',
   VIEW_GET_STATE: 'cmd:view:get-state',
   VIEW_SWITCH: 'cmd:view:switch',
+
+  // Update 域(ADR-018)。查的是本机这份安装,所以都在 LINK_LOCAL_ONLY_CHANNELS 里。
+  /** 当前更新状态(UpdateStatus),窗口挂载时拉一次 */
+  UPDATE_GET_STATUS: 'cmd:update:get-status',
+  /** 立刻查一次 GitHub Releases,返回查完后的 UpdateStatus。任何 channel 都可用 */
+  UPDATE_CHECK_NOW: 'cmd:update:check-now',
 } as const;
 
 export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHANNELS];
@@ -278,6 +284,8 @@ export const EVENT_CHANNELS = {
    */
   LINK_CONNECTION_STATE: 'evt:link:connection-state',
   VIEW_STATE_CHANGED: 'evt:view:state-changed',
+  /** UpdateStatus 变化(开始检查 / 查到新版本 / 失败 / 开关变化),广播给本机所有窗口 */
+  UPDATE_STATUS_CHANGED: 'evt:update:status-changed',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];

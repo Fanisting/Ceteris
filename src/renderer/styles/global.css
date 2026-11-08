@@ -2630,6 +2630,40 @@ select.settings-input option {
   color: var(--color-bg-primary, #f0f);
 }
 
+/* ADR-018:关于页"检查更新"一行可能有 2 到 4 个按钮,窄窗口下换行。 */
+.settings-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 有新版本时的下载按钮:用主题强调色填充,和其它灰按钮区分开。 */
+.settings-button.primary {
+  background-color: var(--md-primary, var(--color-accent-special, #f0f));
+  border-color: var(--md-primary, var(--color-accent-special, #f0f));
+  color: var(--md-on-primary, var(--color-bg-primary, #f0f));
+}
+
+/*
+ * 侧栏设置按钮上的新版本小圆点(ADR-018)。只是一个点,不抢终端的注意力;
+ * 悬停提示写着版本号,点进去直接到关于页。
+ */
+.settings-entry.has-update {
+  position: relative;
+}
+
+.settings-entry.has-update::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--md-primary, var(--color-accent-special, #f0f));
+  box-shadow: 0 0 0 2px var(--md-surface-container, var(--color-bg-secondary, #f0f));
+}
+
 .settings-info-text {
   color: var(--color-text-muted, #f0f);
   font-size: 12px;

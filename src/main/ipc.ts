@@ -181,6 +181,8 @@ import { isAppPageUrl } from './ipc-sender';
 import { readPdfChunk, readRemotePdfChunk, statRemoteViewFile, statViewFile } from './pdf-reader';
 import type { SftpPool } from './sftp-client';
 import type { PromptBroker } from './askpass-prompts';
+import type { UpdateChecker } from './update-checker';
+import type { UpdateStatus } from '@shared/update-check';
 import { applyLocalThemeToResult, splitThemeUpdate, withLocalTheme } from '@shared/link-theme';
 import { logger } from './logger';
 import { setQuitting } from './index';
@@ -223,6 +225,11 @@ export interface IpcLayerDeps {
   sftpPool?: SftpPool;
   /** 后台 SFTP 登录提示的答案回到这里。未注入时 cmd:ssh:askpass-answer 返回 false */
   promptBroker?: PromptBroker;
+  /**
+   * GitHub Releases 更新检查(ADR-018)。可选:单测不带它,此时 cmd:update:get-status
+   * 返回 idle,cmd:update:check-now 抛 UpdateCheckUnavailable。
+   */
+  updateChecker?: UpdateChecker;
 }
 
 let installed = false;
@@ -345,6 +352,14 @@ export function setLinkCommandForwarder(fn: LinkCommandForwarder | null): void {
  */
 export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
   broadcastEvent<LinkStatusChangedPayload>(EVENT_CHANNELS.LINK_STATUS_CHANGED, payload);
+}
+
+/**
+ * 把更新检查的新状态推给所有窗口(设置页"关于"和侧栏的设置按钮据此显示)。
+ * 由 UpdateChecker 的 onStatus 调用,出口和 broadcastLinkStatus 一样只在 ipc.ts。
+ */
+export function broadcastUpdateStatus(status: UpdateStatus): void {
+  broadcastEvent<UpdateStatus>(EVENT_CHANNELS.UPDATE_STATUS_CHANGED, status);
 }
 
 /**
@@ -1416,6 +1431,33 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         throw makeIpcError('InvalidUrl', `不允许的 URL 协议: "${url}"`);
       }
       await shell.openExternal(url);
+    },
+  );
+
+  // ADR-018:更新检查。下载走上面的 open-external(https 直链),这里只给状态。
+  handleCommand(
+    COMMAND_CHANNELS.UPDATE_GET_STATUS,
+    (_e, _envelope: CommandEnvelope<undefined>): UpdateStatus =>
+      deps.updateChecker?.getStatus() ?? {
+        state: 'idle',
+        currentVersion: app.getVersion(),
+        update: null,
+        checkedAt: null,
+        error: null,
+        autoCheck: false,
+      },
+  );
+  handleCommand(
+    COMMAND_CHANNELS.UPDATE_CHECK_NOW,
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<UpdateStatus> => {
+      if (!deps.updateChecker) {
+        throw makeIpcError(
+          'UpdateCheckUnavailable',
+          '[ipc] update check is not wired in this process. Possible causes: a test harness ' +
+            'without updateChecker, or index.ts failed to create it (see main.log for UpdateChecker).',
+        );
+      }
+      return deps.updateChecker.checkNow('manual');
     },
   );
 

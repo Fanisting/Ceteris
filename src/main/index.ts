@@ -132,12 +132,12 @@ function openDevDebugPort(): void {
 }
 
 /**
- * Logs the port from <userData>/DevToolsActivePort, which Chromium writes once the port is
- * open. A file older than this launch is left over from an earlier run, which means the port
+ * Logs the port from DevToolsActivePort, which Chromium writes once the port is open. It goes
+ * in the sessionData folder (set to <userData>/session-data in bootstrap), not in userData. A file older than this launch is left over from an earlier run, which means the port
  * did not open: usually a fixed CETERIS_DEV_DEBUG_PORT that another dev copy already holds.
  */
 function logDevDebugPort(requested: number, startedAt: number, attempt = 0): void {
-  const file = join(app.getPath('userData'), 'DevToolsActivePort');
+  const file = join(app.getPath('sessionData'), 'DevToolsActivePort');
   const fresh = existsSync(file) && statSync(file).mtimeMs >= startedAt - 2000;
   const port = fresh ? parseDevToolsActivePort(readFileSync(file, 'utf8')) : null;
   if (port !== null) {

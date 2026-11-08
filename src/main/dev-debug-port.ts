@@ -11,7 +11,7 @@
  * - By default Chromium picks any free port (port 0). A fixed default such as 9222 let only
  *   the first dev copy bind it; every other copy got no port at all and said nothing, and
  *   several sessions often run dev copies at once. The port it picked is written to
- *   `DevToolsActivePort` in the data folder and logged by index.ts.
+ *   `DevToolsActivePort` in the session-data folder and logged by index.ts.
  * - CETERIS_DEV_DEBUG_PORT fixes a port (for a tool that needs a known one), and `off` turns
  *   the port off.
  *

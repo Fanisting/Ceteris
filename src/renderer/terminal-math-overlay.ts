@@ -1,6 +1,6 @@
 /**
  * @file terminal-math-overlay.ts
- * @purpose Renderer half of the "Codex formula rendering" extension (ADR-021,
+ * @purpose Renderer half of the "Codex formula rendering" extension (ADR-022,
  *          settings.extensions.terminalMath): finds LaTeX written as plain text in the visible
  *          terminal rows and draws a KaTeX rendering over it.
  *

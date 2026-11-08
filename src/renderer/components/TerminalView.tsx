@@ -690,7 +690,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     appState.settings.advanced?.terminalRenderer ?? 'auto';
   // 公式图片扩展 (ADR-019),运行时开关,不重建 xterm
   const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
-  // Codex 公式渲染 (ADR-021),运行时开关,不重建 xterm
+  // Codex 公式渲染 (ADR-022),运行时开关,不重建 xterm
   const terminalMath = appState.settings.extensions?.terminalMath ?? false;
 
   // 把"创建期"读到的初始值用 useMemo 锁定 (terminal 创建后只用 mutator 调整),
@@ -1804,7 +1804,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     return reportTerminalLook(term, getXtermTheme(themeId));
   }, [claudeMathImages, session.id, terminalRenderer, themeId, fontSize, fontFamily, lineHeight]);
 
-  // Codex 公式渲染 (ADR-021):把终端里以文本出现的 LaTeX 用 KaTeX 画在原处。主题或字号
+  // Codex 公式渲染 (ADR-022):把终端里以文本出现的 LaTeX 用 KaTeX 画在原处。主题或字号
   // 变了就整体重来,新覆盖层用新颜色。
   useEffect(() => {
     const term = termRef.current;

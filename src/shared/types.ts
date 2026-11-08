@@ -486,7 +486,7 @@ export interface Settings {
      */
     claudeMathImages: boolean;
     /**
-     * Codex 公式渲染 (ADR-021):在终端里找以文本形式出现的 LaTeX (`$$...$$`、`\(...\)`、
+     * Codex 公式渲染 (ADR-022):在终端里找以文本形式出现的 LaTeX (`$$...$$`、`\(...\)`、
      * `\[...\]`),用 KaTeX 在原处画出来。Codex 没有渲染钩子,所以由 Ceteris 在显示层做;
      * 设置页按钮可以把"公式写进行内代码"这条指示加进 ~/.codex/AGENTS.md。
      */

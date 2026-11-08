@@ -2,7 +2,7 @@
  * @file terminal-math.ts
  * @purpose Finds LaTeX math written as plain text in terminal output, and builds the command that
  *          tells Codex to write its formulas that way. Part of the "Codex formula rendering"
- *          extension (ADR-021, settings.extensions.terminalMath).
+ *          extension (ADR-022, settings.extensions.terminalMath).
  *
  * @关键设计:
  * - Codex has no render hook and turns the TeX it understands into Unicode text before printing.

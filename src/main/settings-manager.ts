@@ -54,6 +54,9 @@ export const DEFAULT_SETTINGS: Settings = {
     macOSTrafficLightHoverSymbols: false,
     // issue #4 默认关。TabBar 与 Sidebar 内容重复,用户可勾上更紧凑。
     hideTopTabBar: false,
+    // ADR-027:小庆祝默认开,小石子一直可见所以默认关。
+    celebrations: true,
+    pebble: false,
   },
   shell: {
     defaultShellId: '',

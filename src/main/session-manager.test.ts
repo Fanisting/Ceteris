@@ -180,6 +180,8 @@ function makeStubSettingsManager(
       uiZoom: 1,
       macOSTrafficLightHoverSymbols: false,
       hideTopTabBar: false,
+      celebrations: true,
+      pebble: false,
     },
     ai: {
       provider: null,

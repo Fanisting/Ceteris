@@ -395,6 +395,16 @@ export interface Settings {
      * 与 simpleMode 正交:simpleMode 优先(它连 Sidebar 一起藏)。
      */
     hideTopTabBar: boolean;
+    /**
+     * ADR-027:agent 跑完一轮时的小庆祝(圆点上飞出几颗小星星,样式随主题)。
+     * 默认开;关掉后标题栏小石子也一起不显示。
+     */
+    celebrations: boolean;
+    /**
+     * ADR-027:标题栏里 16px 的小石子。全部空闲时打盹,agent 干活时睁眼,
+     * 跑完时笑两秒。它一直可见,所以默认关;celebrations 关时也不显示。
+     */
+    pebble: boolean;
   };
 
   /**

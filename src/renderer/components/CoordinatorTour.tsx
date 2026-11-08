@@ -5,16 +5,25 @@
  *   Claude Code agents, and the Fintuner, which learns from the chat history where to save time
  *   and work more efficiently. Then it spotlights the tab to right-click, plays a cursor doing
  *   it, points at the Coordinator item in the menu, the new coordinator row, the setting and the
- *   plugin install, shows how to start Claude Code in the coordinator tab, and ends with a
- *   prompt that starts a Fintuner.
+ *   plugin install, shows how to give the coordinator a job, and ends with a button that opens
+ *   a Fintuner.
+ * - Both roles are a recommended way to use tabs, not code: a coordinator is a Claude Code tab
+ *   with the Coordinator mark (ADR-023/024), a Fintuner is a Claude Code tab with a prompt. The
+ *   intro says so. To make the roles easy to spot, the tour renames the tabs "Coordinator" and
+ *   "Fintuner" (a manual rename, so Claude Code's own titles do not overwrite it). The two are
+ *   at the same level: the Fintuner tab also gets the Coordinator mark, so both sit in the row
+ *   above the tabs (and both may control tabs when that extension is on).
  *
  * @关键设计:
- * - It points at the real UI and the user does the real thing; the tour never clicks for them.
+ * - It points at the real UI and the user does the real thing; the tour never clicks for them,
+ *   except the Fintuner button, which opens that tab itself.
  *   The overlay lets every click through (pointer-events: none) except on its own bubble.
  * - The step comes from app state (coordinatorTourStep in @shared/coordinator-tour), checked
  *   every animation frame together with where the target is. Right-clicking a tab, ticking
  *   Coordinator or turning the setting on moves the tour forward by itself.
- * - Targets are found through data attributes: data-guide="new-tab" (the + tab),
+ * - Targets are found through data attributes: data-quick-key="template:claude-code" inside
+ *   data-guide="ghost-tab" (the Claude Code icon of the dashed quick launch tab, falling back to
+ *   the tab itself and then to data-guide="new-tab", the +),
  *   data-session-id (each tab), data-guide="coordinator" (the menu item) and
  *   data-guide="coordinator-bar" (the coordinator row). Renaming those breaks the tour.
  * - When the tour opens: on launch while settings.extensions.tabControlGuideSeen is false (a new
@@ -44,19 +53,32 @@ import {
   tabControlInstallLine,
   type TabControlStatus,
 } from '@shared/tab-control';
+import type { CreateSessionResponse, RenameSessionPayload } from '@shared/protocol';
 import { useAppState } from '../store';
 import { useTranslation } from './LanguageProvider';
 import { useToast } from './Toast';
 import { useTypeIntoNewTerminal } from './type-into-terminal';
+import { useQuickLaunch } from './useQuickLaunch';
 
 /** How often to look for the plugin again while the tour waits for the install. */
 const PLUGIN_POLL_MS = 3000;
 /** Space between the spotlight and the element it lights, in px. */
 const SPOT_PAD = 4;
 const BUBBLE_WIDTH = 300;
-/** The two concept steps carry more text, so their bubble is wider. */
+/** The intro shows both roles side by side in text, so its bubble is wider. */
 const WIDE_BUBBLE_WIDTH = 360;
 const EDGE = 12;
+/** Tab names the tour gives the two roles. */
+const COORD_NAME = 'Coordinator';
+const FINTUNER_NAME = 'Fintuner';
+
+/** Rename a tab the way the tab menu does; a failure only goes to the console. */
+function renameTab(sessionId: string, name: string): void {
+  const payload: RenameSessionPayload = { sessionId, newDisplayName: name };
+  window.api
+    .invoke(COMMAND_CHANNELS.SESSION_RENAME, payload)
+    .catch((err: unknown) => console.warn(`[CoordinatorTour] rename to ${name} failed`, err));
+}
 
 interface Rect {
   left: number;
@@ -87,6 +109,18 @@ function sameRect(a: Rect | null, b: Rect | null): boolean {
     Math.round(a.top) === Math.round(b.top) &&
     Math.round(a.width) === Math.round(b.width) &&
     Math.round(a.height) === Math.round(b.height)
+  );
+}
+
+/**
+ * Where to open a Claude Code tab: its icon in the dashed quick launch tab (GhostTab), else the
+ * dashed tab, else the + when quick launch is empty.
+ */
+function claudeLauncher(): Element | null {
+  return (
+    document.querySelector('[data-guide="ghost-tab"] [data-quick-key="template:claude-code"]') ??
+    document.querySelector('[data-guide="ghost-tab"]') ??
+    document.querySelector('[data-guide="new-tab"]')
   );
 }
 
@@ -129,13 +163,20 @@ export function CoordinatorTour(): JSX.Element | null {
   const [bubbleHeight, setBubbleHeight] = useState(180);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
+  const quickLaunch = useQuickLaunch(state.selectedPathId, 16);
+
   const showError = (message: string): void => toast.push({ kind: 'error', message });
 
+  // 勾选协调者:打开引导,并在引导还没被关掉时把标签改名为 coord
+  const seenRef = useRef(seen);
+  seenRef.current = seen;
   useEffect(() => {
     const onTicked = (e: Event): void => {
       const detail = (e as CustomEvent<{ sessionId?: string } | undefined>).detail;
-      setCoordId(detail?.sessionId ?? null);
+      const sessionId = detail?.sessionId ?? null;
+      setCoordId(sessionId);
       setOpen(true);
+      if (sessionId && !seenRef.current) renameTab(sessionId, COORD_NAME);
     };
     window.addEventListener(COORDINATOR_GUIDE_EVENT, onTicked);
     return () => window.removeEventListener(COORDINATOR_GUIDE_EVENT, onTicked);
@@ -192,8 +233,8 @@ export function CoordinatorTour(): JSX.Element | null {
         // 两个角色的介绍指着当前文件夹的标签栏:agent 们就住在这里
         target = rectOf(document.querySelector('.tab-bar:not(.coordinator-bar) .tab-list'));
       } else if (step === 'open-tab' || step === 'fintuner') {
-        // Fintuner 也是从 + 号开一个 Claude Code
-        target = rectOf(document.querySelector('[data-guide="new-tab"]'));
+        // 两步都是开一个 Claude Code:指着虚线标签里它的图标
+        target = rectOf(claudeLauncher());
       } else if (step === 'right-click') target = rectOf(tab);
       else if (step === 'tick') {
         target = rectOf(menuItem);
@@ -269,7 +310,7 @@ export function CoordinatorTour(): JSX.Element | null {
   };
 
   // 气泡:菜单那一步放在菜单旁边,其余放在目标下方 (放不下就放上方),左右不出窗口
-  const width = step === 'intro' || step === 'fintuner' ? WIDE_BUBBLE_WIDTH : BUBBLE_WIDTH;
+  const width = step === 'intro' ? WIDE_BUBBLE_WIDTH : BUBBLE_WIDTH;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   let bubbleLeft: number;
@@ -301,7 +342,7 @@ export function CoordinatorTour(): JSX.Element | null {
   const pointX = step === 'intro' ? target.left + 40 : target.left + target.width / 2;
   const arrowX = Math.min(Math.max(18, pointX - bubbleLeft), width - 18);
 
-  // 光标动画演示动作:右键标签、点菜单项、点 +;之后几步不需要
+  // 光标动画演示动作:点 Claude Code 图标、右键标签、点菜单项;中间几步不需要
   const cursor =
     step === 'right-click'
       ? { x: target.left + target.width / 2, y: target.top + target.height / 2, right: true }
@@ -330,19 +371,51 @@ export function CoordinatorTour(): JSX.Element | null {
     '你是这个项目的 Fintuner。读这个文件夹最近的 Claude Code 对话记录(~/.claude/projects 里对应本项目的 .jsonl)和运行历史,找出:哪里浪费了时间或 token,哪些步骤可以合并或交给协调者自动做,哪些问题反复来问我、其实可以定成规则。给我一份按收益排序的改进清单,每条写明具体怎么改。',
     "You are this project's Fintuner. Read the recent Claude Code chat history for this folder (its .jsonl files under ~/.claude/projects) and the run history, and find: where time or tokens were wasted, which steps could be merged or handed to the coordinator, and which questions keep coming back to me and could become rules. Give me a list of improvements ranked by payoff, each with exactly what to change.",
   );
-  const copyFintunerPrompt = (): void => {
-    navigator.clipboard
-      .writeText(fintunerPrompt)
-      .then(() =>
-        toast.push({
-          kind: 'success',
-          message: tx(
-            '提示已复制。点 + 开一个 Claude Code,粘贴进去。',
-            'Prompt copied. Click + to open Claude Code and paste it in.',
-          ),
-        }),
-      )
-      .catch((err: unknown) => showError(err instanceof Error ? err.message : String(err)));
+  // 开 Fintuner:用快捷启动里的 Claude Code 开 (WSL / SSH 文件夹的 shell 规则都在那里),
+  // 改名 Fintuner,复制提示,结束引导。提示不替用户发送,读历史要花 token,由用户按 Enter。
+  const openFintuner = async (): Promise<void> => {
+    const item = quickLaunch.items.find((i) => i.key === 'template:claude-code');
+    let sessionId: string | null = null;
+    if (item) {
+      sessionId = await quickLaunch.launch(item);
+    } else if (state.selectedPathId) {
+      try {
+        const dims = state.lastTerminalDims;
+        const res = await window.api.invoke<unknown, CreateSessionResponse>(
+          COMMAND_CHANNELS.SESSION_CREATE,
+          {
+            pathId: state.selectedPathId,
+            templateId: 'claude-code',
+            cols: dims.cols,
+            rows: dims.rows,
+          },
+        );
+        sessionId = res.session.id;
+      } catch (err) {
+        showError(err instanceof Error ? err.message : String(err));
+      }
+    }
+    if (!sessionId) return;
+    renameTab(sessionId, FINTUNER_NAME);
+    // Fintuner 和 Coordinator 同级:同样打上协调者标记,放进上方那一行。
+    // 不派发 COORDINATOR_GUIDE_EVENT,否则它会被改名成 Coordinator。
+    window.api
+      .invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, { sessionId, coordinator: true })
+      .catch((err: unknown) => console.warn('[CoordinatorTour] mark Fintuner failed', err));
+    try {
+      await navigator.clipboard.writeText(fintunerPrompt);
+      toast.push({
+        kind: 'success',
+        message: tx(
+          `${FINTUNER_NAME} 已打开,提示已复制。等它启动后粘贴,按 Enter。`,
+          `${FINTUNER_NAME} is open and its prompt is copied. Paste it once it starts, then press Enter.`,
+        ),
+        durationMs: 8000,
+      });
+    } catch (err) {
+      showError(err instanceof Error ? err.message : String(err));
+    }
+    void saveExtensions({ tabControlGuideSeen: true }, showError);
   };
 
   const install = (): void => {
@@ -350,68 +423,57 @@ export function CoordinatorTour(): JSX.Element | null {
     if (dir) void typer.run((shellId) => tabControlInstallLine(shellId, dir), showError);
   };
 
+  // 文字尽量一行:引导叠在真界面上,读得越少越好
   const copy: Record<CoordinatorTourStep, { title: string; body: string }> = {
     intro: {
-      title: tx('认识两个角色', 'Meet two roles'),
+      title: tx('两个角色', 'Two roles'),
       body: tx(
-        '同时跑很多 agent 时,让它们分工。先设一个协调者,最后再认识 Fintuner。',
-        'When you run many agents at once, give them roles. First you set up a Coordinator; the Fintuner comes at the end.',
-      ),
-    },
-    fintuner: {
-      title: tx('再认识 Fintuner', 'Now meet the Fintuner'),
-      body: tx(
-        'Fintuner 回看这个项目的对话历史,告诉你下次怎么更省时间、更省钱、少让你做决定。点 + 开一个 Claude Code,把下面这段提示交给它。',
-        'The Fintuner reads back through this project’s chat history and tells you how to save time and money next time, with fewer decisions left to you. Click + to open Claude Code and give it this prompt.',
+        '这是推荐用法,不是内置功能:两者都是普通的 Claude Code 标签,角色看你交给它的任务。',
+        'A recommended setup, not built-in features: both are plain Claude Code tabs, and the role is the job you give them.',
       ),
     },
     'open-tab': {
-      title: tx('先开一个标签', 'Open a tab first'),
-      body: tx(
-        '点 + 新建一个终端,比如 Claude Code。协调者就是一个打了标记的普通标签。',
-        'Click + to open a terminal, such as Claude Code. A coordinator is an ordinary tab with a mark on it.',
-      ),
+      title: tx('开一个 Claude Code', 'Open a Claude Code tab'),
+      body: tx('点虚线标签里的这个图标。', 'Click this icon in the dashed tab.'),
     },
     'right-click': {
       title: tx('右键这个标签', 'Right-click this tab'),
-      body: tx(
-        '协调者就是一个打了标记的普通标签,在它的右键菜单里设置。',
-        'A coordinator is an ordinary tab with a mark on it. You set it from the tab menu.',
-      ),
+      body: tx('把它设为协调者。', 'You will make it the coordinator.'),
     },
     tick: {
       title: tx('勾选“协调者”', 'Tick Coordinator'),
       body: tx(
-        '勾上后,这个标签移到标签栏上方单独一行。',
-        'The tab then moves to its own row above the tabs.',
+        `它会改名为 ${COORD_NAME},移到上方一行。`,
+        `It is renamed ${COORD_NAME} and moves to a row on top.`,
       ),
     },
     row: {
-      title: tx('这就是你的协调者', 'This is your coordinator'),
-      body: tx(
-        '它待在上方这一行,切到任何文件夹都看得到。接下来让它能指挥同一文件夹的其他标签。',
-        'It stays in this row and is seen from every folder. Next, let it run the other tabs of its folder.',
-      ),
+      title: tx(`这是 ${COORD_NAME}`, `This is ${COORD_NAME}`),
+      body: tx('这一行在任何文件夹都看得到。', 'This row shows it from every folder.'),
     },
     enable: {
-      title: tx('允许它控制标签', 'Let it control tabs'),
-      body: tx(
-        '打开 设置 → 扩展 里的“协调者控制标签页”。只有协调者标签能用,其他标签一律被拒。',
-        'Turn on Coordinator tab control in Settings → Extensions. Only coordinator tabs may use it; every other tab is refused.',
-      ),
+      title: tx(`允许 ${COORD_NAME} 控制标签`, `Let ${COORD_NAME} control tabs`),
+      body: tx('只有协调者标签能用。', 'Only coordinator tabs get this.'),
     },
     plugin: {
-      title: tx('给 Claude Code 装插件', 'Add the plugin to Claude Code'),
+      title: tx('装 ceteris-tabs 插件', 'Add the ceteris-tabs plugin'),
       body: tx(
-        'ceteris-tabs 插件随 Ceteris 安装。按钮会在新终端里输入两条命令,你按 Enter 才执行;装好后这里自动进入下一步。',
-        'The ceteris-tabs plugin ships with Ceteris. The button types two commands into a new terminal; nothing runs until you press Enter. Once it is installed, this moves on by itself.',
+        '命令输入到新终端,你按 Enter 才执行。',
+        'The commands go into a new terminal; you press Enter.',
       ),
     },
     start: {
-      title: tx('在这里开 Claude Code', 'Start Claude Code here'),
+      title: tx(`在 ${COORD_NAME} 里交代任务`, `Give ${COORD_NAME} a job`),
       body: tx(
-        '然后交给它,比如:“开两个 Claude Code 标签,一个写测试,一个修这个 bug,都做完告诉我。”它只能管同一文件夹的标签。',
-        'Then hand it work, for example: “Open two Claude Code tabs, one writing tests and one fixing this bug, and tell me when both are done.” It can only run tabs in its own folder.',
+        '比如:“开两个 Claude Code,一个写测试,一个修 bug,做完告诉我。”',
+        'For example: “Open two Claude Code tabs, one for tests and one for the bug, and tell me when both are done.”',
+      ),
+    },
+    fintuner: {
+      title: tx('再开一个 Fintuner', 'Now open a Fintuner'),
+      body: tx(
+        `按钮在上方一行新开 ${FINTUNER_NAME},和 ${COORD_NAME} 同级,并复制好提示。`,
+        `The button opens ${FINTUNER_NAME} in the top row, level with ${COORD_NAME}, and copies its prompt.`,
       ),
     },
   };
@@ -468,35 +530,41 @@ export function CoordinatorTour(): JSX.Element | null {
         {step === 'intro' && (
           <dl className="ctour-roles">
             <div className="ctour-role">
-              <dt>{tx('协调者 Coordinator', 'Coordinator')}</dt>
+              <dt>
+                <code>{COORD_NAME}</code>
+                {tx(' 协调者', '')}
+              </dt>
               <dd>
                 {tx(
-                  '盯着并指挥你的 Claude Code agent:开新标签派活,看谁在跑、谁在等你批准,读结果,收尾。你只需要和它说话。',
-                  'Monitors and controls your Claude Code agents: opens tabs and hands out work, sees who is running and who waits for your approval, reads the results and wraps up. You only talk to it.',
+                  '盯着并指挥其他 Claude Code:派活、看进度、收结果。',
+                  'Monitors and controls your other Claude Code tabs: hands out work, watches, collects results.',
                 )}
               </dd>
             </div>
             <div className="ctour-role">
-              <dt>Fintuner</dt>
+              <dt>
+                <code>{FINTUNER_NAME}</code>
+              </dt>
               <dd>
                 {tx(
-                  '从对话历史里学习:哪里浪费了时间和 token,哪些决定不必每次问你,下次怎样更快、更省。',
-                  'Learns from the chat history: where time and tokens went to waste, which decisions need not come to you every time, and how to be faster and cheaper next time.',
+                  '读对话历史,找出省时间、提效率的办法。',
+                  'Reads the chat history and finds ways to save time and work faster.',
                 )}
               </dd>
             </div>
           </dl>
         )}
         <p className="ctour-body">{copy[step].body}</p>
-        {step === 'fintuner' && <blockquote className="ctour-prompt">{fintunerPrompt}</blockquote>}
         <div className="ctour-actions">
-          <button
-            type="button"
-            className="ctour-quiet"
-            onClick={() => void saveExtensions({ tabControlGuideSeen: true }, showError)}
-          >
-            {tx('不再提示', "Don't show again")}
-          </button>
+          {step !== 'fintuner' && (
+            <button
+              type="button"
+              className="ctour-quiet"
+              onClick={() => void saveExtensions({ tabControlGuideSeen: true }, showError)}
+            >
+              {tx('不再提示', "Don't show again")}
+            </button>
+          )}
           <span className="ctour-spacer" />
           {step !== 'fintuner' && (
             <button type="button" className="ctour-quiet" onClick={() => setOpen(false)}>
@@ -539,15 +607,20 @@ export function CoordinatorTour(): JSX.Element | null {
           )}
           {step === 'fintuner' && (
             <>
-              <button type="button" className="ctour-quiet" onClick={copyFintunerPrompt}>
-                {tx('复制提示', 'Copy prompt')}
+              <button
+                type="button"
+                className="ctour-quiet"
+                onClick={() => void saveExtensions({ tabControlGuideSeen: true }, showError)}
+              >
+                {tx('完成', 'Done')}
               </button>
               <button
                 type="button"
                 className="ctour-primary"
-                onClick={() => void saveExtensions({ tabControlGuideSeen: true }, showError)}
+                disabled={!state.selectedPathId}
+                onClick={() => void openFintuner()}
               >
-                {tx('完成', 'Done')}
+                {tx('开 Fintuner', 'Open Fintuner')}
               </button>
             </>
           )}

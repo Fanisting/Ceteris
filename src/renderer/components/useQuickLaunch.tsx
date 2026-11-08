@@ -49,7 +49,8 @@ export interface QuickLaunch {
   /** shell 列表还没取回时为 false,此时 items 为空 */
   ready: boolean;
   items: ResolvedQuickLaunchItem[];
-  launch: (item: ResolvedQuickLaunchItem) => Promise<void>;
+  /** Opens the item's tab; resolves to the new session id, or null when it failed. */
+  launch: (item: ResolvedQuickLaunchItem) => Promise<string | null>;
 }
 
 /**
@@ -124,8 +125,8 @@ export function useQuickLaunch(pathId: string | null, iconSize: number): QuickLa
           .filter((item): item is ResolvedQuickLaunchItem => item !== null)
       : [];
 
-  const launch = async (item: ResolvedQuickLaunchItem): Promise<void> => {
-    if (!pathId) return;
+  const launch = async (item: ResolvedQuickLaunchItem): Promise<string | null> => {
+    if (!pathId) return null;
     try {
       const dims = state.lastTerminalDims;
       const res = await window.api.invoke<unknown, CreateSessionResponse>(
@@ -142,6 +143,7 @@ export function useQuickLaunch(pathId: string | null, iconSize: number): QuickLa
       dispatch({ type: 'view/select-session', sessionId: res.session.id });
       if (res.warning) toast.push({ kind: 'warn', message: tx(res.warning, res.warning) });
       focusTerminalDom();
+      return res.session.id;
     } catch (err) {
       console.error(
         `[QuickLaunch] create-session failed: pathId=${pathId} template=${item.templateId} shell=${item.shellId ?? '-'}`,
@@ -154,6 +156,7 @@ export function useQuickLaunch(pathId: string | null, iconSize: number): QuickLa
         kind: 'error',
         message: tx(`新建终端失败:${reason}`, `Failed to create terminal: ${reason}`),
       });
+      return null;
     }
   };
 

@@ -13,6 +13,8 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+// 角色分工和终端配色与实时生成的主题共用;Node 22.18+ 的类型擦除可以直接加载 .ts
+import { LEGADO_ROLES, legadoCssBlock, legadoLook } from '../src/shared/legado-palette.ts';
 
 const [ktDir, root] = process.argv.slice(2);
 
@@ -31,17 +33,6 @@ const SCHEMES = [
   ['mujika', 'Mujika', 'Band', '乐队'],
 ];
 
-const ROLES = [
-  'primary', 'onPrimary', 'primaryContainer', 'onPrimaryContainer',
-  'secondary', 'onSecondary', 'secondaryContainer', 'onSecondaryContainer',
-  'tertiary', 'tertiaryContainer',
-  'error', 'onError', 'errorContainer',
-  'background', 'surface', 'onSurface', 'surfaceVariant', 'onSurfaceVariant',
-  'outline', 'outlineVariant', 'inverseSurface', 'inverseOnSurface', 'inversePrimary',
-  'surfaceContainerLowest', 'surfaceContainerLow', 'surfaceContainer',
-  'surfaceContainerHigh', 'surfaceContainerHighest',
-];
-
 function parseBlock(src, name) {
   const start = src.indexOf(`val ${name} =`);
   const end = src.indexOf('\n    )', start);
@@ -51,180 +42,8 @@ function parseBlock(src, name) {
     if (argb.slice(0, 2).toUpperCase() !== 'FF') throw new Error(`${name} ${role} not opaque`);
     out[role] = `#${argb.slice(2).toLowerCase()}`;
   }
-  for (const r of ROLES) if (!out[r]) throw new Error(`missing ${r} in ${name}`);
-  return Object.fromEntries(ROLES.map((r) => [r, out[r]]));
-}
-
-// ── colour maths (same formulas as the tests) ──
-const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const hex = (c) => `#${c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
-function lum(h) {
-  const [r, g, b] = rgb(h).map((v) => {
-    const c = v / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-const contrast = (a, b) => {
-  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-};
-const mix = (a, b, w) => {
-  const [ca, cb] = [rgb(a), rgb(b)];
-  return hex(ca.map((v, i) => Math.round((v * w + cb[i] * (100 - w)) / 100)));
-};
-function toHsl(h) {
-  let [r, g, b] = rgb(h).map((v) => v / 255);
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let hh = 0, s = 0;
-  const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    hh = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-    hh /= 6;
-  }
-  return [hh, s, l];
-}
-function fromHsl(hh, s, l) {
-  const f = (p, q, t) => {
-    if (t < 0) t += 1;
-    if (t > 1) t -= 1;
-    if (t < 1 / 6) return p + (q - p) * 6 * t;
-    if (t < 1 / 2) return q;
-    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-    return p;
-  };
-  if (s === 0) return hex([l * 255, l * 255, l * 255]);
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  return hex([f(p, q, hh + 1 / 3), f(p, q, hh), f(p, q, hh - 1 / 3)].map((v) => v * 255));
-}
-/** Move a colour's lightness away from the backgrounds until it reaches `target` on all of them. */
-function readable(base, bgs, dark, target = 4.6) {
-  let [hh, s, l] = toHsl(base);
-  for (let i = 0; i < 200; i++) {
-    const c = fromHsl(hh, s, l);
-    if (bgs.every((bg) => contrast(c, bg) >= target)) return c;
-    l = dark ? Math.min(1, l + 0.005) : Math.max(0, l - 0.005);
-  }
-  throw new Error(`cannot make ${base} readable`);
-}
-/** Shift lightness by delta (bright ANSI variants). */
-function shift(c, delta) {
-  const [hh, s, l] = toHsl(c);
-  return fromHsl(hh, s, Math.max(0, Math.min(1, l + delta)));
-}
-
-// Hue seeds for colours an MD3 scheme does not have. Light seeds are MD3 tone 40,
-// dark seeds tone 80; readable() then fixes contrast against this scheme's surfaces.
-const SEEDS = {
-  light: { green: '#3a6a1f', yellow: '#735c00', blue: '#3a5ba9', magenta: '#8b3f88', cyan: '#00687a', warning: '#7a5900', success: '#1f6c35', info: '#2a5db0' },
-  dark: { green: '#9fd68b', yellow: '#e2c55c', blue: '#adc6ff', magenta: '#f7adef', cyan: '#82d2e6', warning: '#e9c46a', success: '#8bd6a3', info: '#a8c8ff' },
-};
-
-function tokensFor(s, dark) {
-  const bgPrimary = s.surfaceContainerLow; // tab page = Legado card container
-  const bgSecondary = s.background; // frame = Legado page background / top bar / nav bar
-  const menu = s.surfaceContainer; // menus and dialogs = Legado dialog / floating bar
-  const surfaces = [bgPrimary, bgSecondary];
-  const statusBgs = [bgPrimary, bgSecondary, menu];
-  const seeds = dark ? SEEDS.dark : SEEDS.light;
-
-  let muted = s.outline;
-  for (let w = 0; w <= 100 && !statusBgs.every((bg) => contrast(muted, bg) >= 4.5); w += 5) {
-    muted = mix(s.onSurfaceVariant, s.outline, w);
-  }
-
-  const hover = (fg, bg) => mix(fg, bg, 8);
-  // Accent and error text also appear in menus and on hover backgrounds, not only on the page.
-  const textBgs = [...surfaces, menu, s.surfaceContainerHigh];
-  const weightFor = (color) => {
-    for (let w = 100; w >= 0; w -= 10) {
-      const text = mix(color, s.onSurface, w);
-      if (textBgs.every((bg) => contrast(text, bg) >= 4.5 && contrast(text, hover(text, bg)) >= 4.5)) return w;
-    }
-    return 0;
-  };
-
-  // Elink's selected grey #808080 carries white text at 3.95:1. Only when the scheme fails
-  // AA, darken or lighten the container away from the text and use onSurface on it.
-  let selected = s.secondaryContainer;
-  let onSelected = s.onSecondaryContainer;
-  if (contrast(onSelected, selected) < 4.5 || contrast(s.onSurface, selected) < 4.5) {
-    selected = readable(selected, [s.onSurface], !dark);
-    onSelected = s.onSurface;
-  }
-
-  const t = {
-    '--color-bg-primary': bgPrimary,
-    '--color-bg-secondary': bgSecondary,
-    '--color-bg-elevated': s.surfaceContainerHigh,
-    '--color-bg-hover': s.surfaceContainerHigh,
-    '--color-bg-active': s.surfaceContainerHighest,
-    '--color-bg-strong': s.outlineVariant,
-    '--color-text-primary': s.onSurface,
-    '--color-text-secondary': s.onSurfaceVariant,
-    '--color-text-muted': muted,
-    '--color-danger': s.error,
-    '--color-warning': readable(seeds.warning, statusBgs, dark),
-    '--color-success': readable(seeds.success, statusBgs, dark),
-    '--color-info': readable(seeds.info, statusBgs, dark),
-    '--color-accent-secondary': s.secondary,
-    '--color-accent-special': s.primary,
-    '--md-primary': s.primary,
-    '--md-on-primary': s.onPrimary,
-    '--md-secondary-container': selected,
-    '--md-on-secondary-container': onSelected,
-    '--md-surface-container-high': menu,
-    '--md-surface-container-highest': s.surfaceContainerHighest,
-    '--md-outline': s.outline,
-    '--md-outline-variant': s.outlineVariant,
-    '--md-on-error': s.onError,
-    '--md-inverse-surface': s.inverseSurface,
-    '--md-inverse-on-surface': s.inverseOnSurface,
-  };
-  const pw = weightFor(s.primary);
-  const ew = weightFor(s.error);
-  if (pw < 100) t['--md-primary-text-weight'] = `${pw}%`;
-  if (ew < 100) t['--md-error-text-weight'] = `${ew}%`;
-  return t;
-}
-
-function terminalFor(s, t, dark) {
-  const bg = t['--color-bg-primary'];
-  const seeds = dark ? SEEDS.dark : SEEDS.light;
-  const r = (c) => readable(c, [bg], dark);
-  const brighter = (c) => r(shift(c, dark ? 0.08 : -0.08));
-  const red = r(s.error);
-  const green = r(seeds.green);
-  const yellow = r(seeds.yellow);
-  const blue = r(seeds.blue);
-  const magenta = r(seeds.magenta);
-  const cyan = r(seeds.cyan);
-  // primaryContainer first; e-ink schemes make it equal to the page, so fall through.
-  const selection =
-    [s.primaryContainer, s.secondaryContainer, s.surfaceContainerHighest, s.outlineVariant].find(
-      (c) => contrast(s.onSurface, c) >= 4.5 && contrast(c, bg) >= 1.08,
-    ) ?? s.secondaryContainer;
-  return {
-    background: bg,
-    foreground: s.onSurface,
-    cursor: s.primary,
-    cursorAccent: s.onPrimary,
-    selectionBackground: selection,
-    black: dark ? s.surfaceContainerHighest : s.onSurface,
-    red, green, yellow, blue, magenta, cyan,
-    white: dark ? s.onSurfaceVariant : r(s.onSurfaceVariant),
-    brightBlack: t['--color-text-muted'],
-    brightRed: brighter(red),
-    brightGreen: brighter(green),
-    brightYellow: brighter(yellow),
-    brightBlue: brighter(blue),
-    brightMagenta: brighter(magenta),
-    brightCyan: brighter(cyan),
-    brightWhite: s.onSurface,
-  };
+  for (const r of LEGADO_ROLES) if (!out[r]) throw new Error(`missing ${r} in ${name}`);
+  return Object.fromEntries(LEGADO_ROLES.map((r) => [r, out[r]]));
 }
 
 const themes = [];
@@ -232,7 +51,7 @@ for (const [key, file, label, note] of SCHEMES) {
   const src = readFileSync(join(ktDir, `${file}ColorScheme.kt`), 'utf8');
   for (const dark of [false, true]) {
     const scheme = parseBlock(src, dark ? 'darkScheme' : 'lightScheme');
-    const tokens = tokensFor(scheme, dark);
+    const { tokens, terminal } = legadoLook(scheme, dark);
     themes.push({
       id: `legado-md3-${key}${dark ? '-dark' : ''}`,
       key,
@@ -242,7 +61,7 @@ for (const [key, file, label, note] of SCHEMES) {
       dark,
       scheme,
       tokens,
-      terminal: terminalFor(scheme, tokens, dark),
+      terminal,
     });
   }
 }
@@ -284,10 +103,7 @@ css.push(`/*
 `);
 for (const th of themes) {
   css.push(`/* ${th.label} (${th.file}${th.dark ? ' dark' : ''}, ${th.note}) */`);
-  css.push(`[data-theme='${th.id}'] {`);
-  for (const [k, v] of Object.entries(th.tokens)) css.push(`  ${k}: ${v};`);
-  if (!th.dark) css.push('', '  color-scheme: light;');
-  css.push('}', '');
+  css.push(legadoCssBlock(th.id, th.tokens, th.dark));
 }
 css.push(
   '/* 页面里的卡片和按钮用 surfaceContainer,同 Legado 的 ToggleChip、悬浮底栏和对话框:浅色比页面深一级,',
@@ -317,19 +133,18 @@ ts.push(`/**
  *   darkScheme),名字取自它的 themes_item 数组(英文 + 简体中文)。
  * - 界面配色在 src/renderer/styles/legado-themes.css,由同一生成脚本写出;角色对应关系写在那个文件
  *   的头注释里。legado-themes.test.ts 核对 CSS 与这里的色板一致。
+ * - 界面 token 和终端配色由 legado-palette.ts 从色板算出,用种子色实时生成的主题也用它。
  * - 终端:底色 = surfaceContainerLow(与标签页同色),正文 onSurface,光标 primary,选区
- *   primaryContainer。ANSI 色:red 取 error,其余按固定色相调到在底色上 >= 4.5:1,
- *   bright 版本在浅色主题里更深、深色主题里更亮。
+ *   primaryContainer。ANSI 色从固定色相起步(红色是 MD3 标准 error 色),调到在底色上 >= 4.5:1;
+ *   浅色主题 bright 更深,深色主题普通色取 tone 70、bright 取 tone 80。规则在 legado-palette.ts。
  * - 放在 shared 而不是 TerminalView:settings-manager 要校验 ID,vitest 也只收集 shared/main。
  *
  * @对应文档章节:软件定义书.md 5.1.9
  */
 import type { TerminalPalette } from './beamer-themes';
+import type { LegadoScheme } from './legado-palette';
 
-/** Legado 的 MD3 颜色角色,只收 Ceteris 用到的。 */
-export interface LegadoScheme {
-${ROLES.map((r) => `  ${r}: string;`).join('\n')}
-}
+export type { LegadoScheme };
 
 export const LEGADO_THEME_IDS = [
 ${themes.map((t) => `  ${q(t.id)},`).join('\n')}

@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   WindowsAdapter,
+  accentHex,
   __getShellCandidatesForTest,
   __parseWslDistroListOutputForTest,
   __setListWslDistrosImplForTest,
@@ -433,5 +434,17 @@ void vi;
 describe('WindowsAdapter.getSshControlPath', () => {
   it('返回 null:Windows 版 ssh.exe 收到 ControlMaster=auto 会直接退出', () => {
     expect(new WindowsAdapter().getSshControlPath()).toBeNull();
+  });
+});
+
+describe('accentHex (ADR-030)', () => {
+  it('把 Electron 的 RRGGBBAA 换成 #rrggbb,格式不对返回 null', () => {
+    expect(['0078D4FF', '#1a2b3c', 'abc', '', undefined].map(accentHex)).toEqual([
+      '#0078d4',
+      '#1a2b3c',
+      null,
+      null,
+      null,
+    ]);
   });
 });

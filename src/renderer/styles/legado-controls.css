@@ -1,0 +1,77 @@
+/*
+ * @file legado-controls.css
+ * @purpose 设置 → 外观里 Legado MD3 实时主题的控件(LegadoDynamicControls.tsx,ADR-030)。
+ *
+ * @关键设计:
+ * - 对比度沿用主题变体的 filter chip(.theme-chip,见 theme-picker.css),风格下拉沿用
+ *   .settings-input,这里只排版和画种子色的圆形色块。
+ * - 原生 color 输入去掉浏览器默认的方框和内边距,画成 28px 的圆,和主题色块一个语言。
+ *
+ * @对应文档章节:软件定义书.md 5.1.9、ADR-030
+ */
+
+.legado-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 280px;
+}
+
+.legado-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.legado-controls-label {
+  flex: 0 0 72px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 13px;
+}
+
+.legado-controls-row .settings-input {
+  flex: 1 1 auto;
+  max-width: 220px;
+}
+
+.legado-seed-input {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--md-outline, #f0f);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.legado-seed-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.legado-seed-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.legado-accent-dot {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--md-outline, #f0f);
+  border-radius: 50%;
+}
+
+.legado-controls-hex {
+  color: var(--md-on-surface, #f0f);
+  font-size: 13px;
+}
+
+.legado-controls-note {
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 13px;
+}
+
+.legado-contrast {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

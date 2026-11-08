@@ -25,36 +25,13 @@
   max-width: 100%;
   height: 26px;
   padding: 0 10px;
-  border-radius: 13px;
+
+  /* A symmetric capsule: equal round ends, the same for every folder. */
+  border-radius: var(--md-shape-full, 999px);
   background-color: var(--md-surface-container-high, #f0f);
   color: var(--md-on-surface, #f0f);
   cursor: pointer;
-  transition:
-    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
-    transform var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
-}
-
-/* Four pebble outlines, picked per folder from its id (pebbleShape in Sidebar.tsx). Uneven
- * corner radii and slight padding differences make the row read as stones, not chips. */
-.pebble-shape-0 > .path-block-card {
-  border-radius: 14px 11px 13px 10px / 12px 14px 11px 13px;
-}
-
-.pebble-shape-1 > .path-block-card {
-  padding: 0 12px 0 9px;
-  border-radius: 11px 15px 10px 14px / 14px 11px 13px 12px;
-}
-
-.pebble-shape-2 > .path-block-card {
-  height: 24px;
-  padding: 0 11px;
-  border-radius: 12px 10px 14px 13px / 11px 13px 12px 14px;
-}
-
-.pebble-shape-3 > .path-block-card {
-  height: 28px;
-  padding: 0 9px 0 12px;
-  border-radius: 15px 12px 11px 14px / 13px 12px 15px 11px;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
 }
 
 .path-block-card:hover {
@@ -63,7 +40,6 @@
     var(--md-on-surface, #f0f) 10%,
     var(--md-surface-container-high, #f0f)
   );
-  transform: translateY(-1px);
 }
 
 .path-block-card:focus-visible {
@@ -71,14 +47,9 @@
   outline-offset: 1px;
 }
 
-.path-block.selected > .path-block-card {
-  background-color: var(--md-secondary-container, #f0f);
-  color: var(--md-on-secondary-container, #f0f);
-}
-
-/* The pebble holding the session on screen: a ring that follows the pebble's own uneven
- * outline. An inset shadow, not a border, so the pebble keeps its size and the row does
- * not reflow when the chosen session moves to another folder. */
+/* The pebble holding the session on screen (or the selected folder): a ring that follows
+ * the pebble's outline, with no selection fill colour. An inset shadow, not a border, so
+ * the pebble keeps its size and the row does not reflow when the choice moves. */
 .path-block.chosen > .path-block-card {
   box-shadow: inset 0 0 0 1.5px var(--md-primary, #f0f);
 }
@@ -142,9 +113,7 @@
   gap: 6px;
   min-height: 32px;
   padding: 0 12px 0 2px;
-  border-radius: var(--md-shape-full, 999px);
-  background-color: var(--md-secondary-container, #f0f);
-  color: var(--md-on-secondary-container, #f0f);
+  color: var(--md-on-surface, #f0f);
   font-size: 13px;
 }
 
@@ -189,6 +158,36 @@
   margin-top: 2px;
 }
 
+/* The chosen session in an opened folder is outlined as a pebble, like the folder pebbles:
+ * a symmetric capsule ring and no fill, instead of the list layout's filled capsule. */
+.path-open-folder .session-item {
+  border-radius: var(--md-shape-full, 999px);
+
+  /* No flicker on click (motion.css applies these to every session row):
+   * - no fade-in, so the list does not flash in when a pebble opens it;
+   * - no box-shadow transition, so the ring moves to the new row at once instead of
+   *   fading out on one row and in on the other. */
+  animation: none;
+  transition-property: background-color, color, opacity;
+}
+
+.path-open-folder .session-item.selected {
+  background-color: transparent;
+  color: var(--md-on-surface, #f0f);
+  box-shadow: inset 0 0 0 1.5px var(--md-primary, #f0f);
+}
+
+.path-open-folder .session-item.selected:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+/* motion.css paints the pressed layer as an inset box-shadow, which would wipe the ring for
+ * the length of the click. Keep the ring and show the press in the background instead. */
+.path-open-folder .session-item.selected:active {
+  background-color: var(--md-state-pressed, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--md-primary, #f0f);
+}
+
 .path-open-folder-empty {
   padding: 8px 12px;
 }
@@ -196,9 +195,5 @@
 @media (prefers-reduced-motion: reduce) {
   .path-block-dot.agent-blocked {
     animation: none !important;
-  }
-
-  .path-block-card:hover {
-    transform: none;
   }
 }

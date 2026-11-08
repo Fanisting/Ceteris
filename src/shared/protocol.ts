@@ -12,6 +12,7 @@
  *
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
+import type { SessionRole } from './session-role';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
 import type {
@@ -87,6 +88,11 @@ export const COMMAND_CHANNELS = {
   SESSION_CLEAR_MANUAL_RENAME: 'cmd:session:clear-manual-rename',
   /** ADR-023:标记或取消 coordinator,其标签显示在标签栏上方单独一行 */
   SESSION_SET_COORDINATOR: 'cmd:session:set-coordinator',
+  /**
+   * ADR-024:给标签一个角色 (Coordinator / Fintuner) 或清除 (Worker)。带角色的标签改名为
+   * 角色名、放进上方一行;清除时名字还没被改过就恢复原名。
+   */
+  SESSION_SET_ROLE: 'cmd:session:set-role',
   /**
    * 右键 Tab → "在新窗口中打开"。原子地把 session 从调用方窗口释放,
    * 创建新窗口并把所有权直接转给新窗口,新窗口启动时从 URL ?selectSessionId
@@ -260,6 +266,8 @@ export const COMMAND_CHANNELS = {
   THEME_CREATE_CUSTOM: 'cmd:theme:create-custom',
   /** 打开主题文件夹 */
   THEME_OPEN_FOLDER: 'cmd:theme:open-folder',
+  /** 本机系统强调色 '#rrggbb' 或 null(ADR-030,Legado MD3 的 Windows 强调色主题) */
+  THEME_ACCENT_COLOR: 'cmd:theme:accent-color',
   /** 用系统默认编辑器打开一个主题文件。payload: { id } */
   THEME_OPEN_FILE: 'cmd:theme:open-file',
 } as const;
@@ -338,6 +346,8 @@ export const EVENT_CHANNELS = {
   AGENT_UPDATE_NOTICE: 'evt:agent:update-notice',
   /** 主题文件夹里的文件变了,payload 是新的 CustomTheme[](ADR-026)。只发本机窗口 */
   CUSTOM_THEMES_UPDATED: 'evt:theme:custom-updated',
+  /** 系统强调色变了,payload 是 '#rrggbb' 或 null(ADR-030)。只发本机窗口 */
+  ACCENT_COLOR_CHANGED: 'evt:theme:accent-color-changed',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];
@@ -474,6 +484,12 @@ export interface RenameSessionPayload {
 export interface SetCoordinatorPayload {
   sessionId: string;
   coordinator: boolean;
+}
+
+export interface SetRolePayload {
+  sessionId: string;
+  /** null clears the role: the tab becomes a Worker again */
+  role: SessionRole | null;
 }
 
 export interface CloseSessionPayload {

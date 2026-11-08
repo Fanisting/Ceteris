@@ -18,7 +18,7 @@
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
 import { app, Menu, net, safeStorage, session as electronSession } from 'electron';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
 import { TrayManager } from './tray';
@@ -33,6 +33,7 @@ import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-
 import { SecretStore, type SecretsFile } from './secret-store';
 import {
   broadcastLinkStatus,
+  broadcastAccentColor,
   broadcastCustomThemes,
   broadcastUpdateStatus,
   decryptStoredPassword,
@@ -238,6 +239,10 @@ function bootstrap(): void {
   // Chromium 在该子目录里独立初始化缓存,旧目录的占用对它不再可见。
   // 必须在 app.whenReady 之前调,否则 session 已用旧 path 初始化了。
   app.setPath('sessionData', join(dataDir, 'session-data'));
+  // Chromium writes DevToolsActivePort into sessionData as soon as the dev debugging port
+  // opens, before anything else has created the folder. On a fresh data folder that write
+  // failed, so the dev port was open but could not be found (logDevDebugPort).
+  mkdirSync(join(dataDir, 'session-data'), { recursive: true });
 
   // M1-D:绑定日志目录 (fire-and-forget,在此之前的 logger 调用先缓存到内存)
   void logger.setLogDir(join(dataDir, 'logs'));
@@ -655,6 +660,10 @@ function bootstrap(): void {
       updateChecker.refreshSchedule();
       // 主题文件夹读取失败不影响启动,内置主题照常可用
       customThemes.start().catch((err) => logger.warn('themes', 'custom theme store start failed', err));
+      // ADR-030:系统强调色一变就推给所有窗口,Legado MD3 的强调色主题跟着重新生成
+      getPlatformAdapter()
+        .onAccentColorChanged(broadcastAccentColor)
+        .catch((err) => logger.warn('themes', 'accent color subscription failed', err));
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
       // 原因记在 LinkServer.lastError 里由设置页展示。

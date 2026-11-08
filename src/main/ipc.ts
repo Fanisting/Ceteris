@@ -77,6 +77,7 @@ import {
   type ClipboardWriteTextResponse,
   type CloseSessionPayload,
   type SetCoordinatorPayload,
+  type SetRolePayload,
   type CommandEnvelope,
   type CreateSessionPayload,
   type CreateSessionResponse,
@@ -223,6 +224,7 @@ import { ConnectCancelled, cancelOpenRouterConnect, connectOpenRouter } from './
 import type { SecretStore } from './secret-store';
 import type { ViewSwitcher } from './view-switcher';
 import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
+import { isSessionRoleOrNull } from '@shared/session-role';
 import {
   TAB_CONTROL_PLUGIN_ID,
   isClaudePluginInstalled,
@@ -394,6 +396,17 @@ export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
  */
 export function broadcastUpdateStatus(status: UpdateStatus): void {
   broadcastEvent<UpdateStatus>(EVENT_CHANNELS.UPDATE_STATUS_CHANGED, status);
+}
+
+/**
+ * 把新的系统强调色推给本机所有窗口(ADR-030,Legado MD3 的强调色主题据此重新生成)。
+ * 发送范围同 broadcastCustomThemes:强调色跟随本机,远程窗口也要收到,虚拟窗口不发。
+ */
+export function broadcastAccentColor(hex: string | null): void {
+  const envelope = wrapEvent(hex);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(EVENT_CHANNELS.ACCENT_COLOR_CHANGED, envelope);
+  }
 }
 
 /**
@@ -789,6 +802,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.SESSION_SET_COORDINATOR,
     (_e, envelope: CommandEnvelope<SetCoordinatorPayload>): void => {
       sessionManager.setCoordinator(envelope.payload.sessionId, envelope.payload.coordinator);
+    },
+  );
+
+  // ADR-024:角色 (Coordinator / Fintuner),null 回到 Worker
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_ROLE,
+    (_e, envelope: CommandEnvelope<SetRolePayload>): void => {
+      const { sessionId, role } = envelope.payload;
+      if (!isSessionRoleOrNull(role)) {
+        throw new Error(
+          `[IPC] set-role: unknown role ${JSON.stringify(role)} for sessionId="${sessionId}". ` +
+            `Expected 'coordinator', 'fintuner' or null; check the tab menu or the coordinator tour.`,
+        );
+      }
+      sessionManager.setRole(sessionId, role);
     },
   );
 
@@ -1656,6 +1684,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       shell.showItemInFolder(path);
     }
   };
+  handleCommand(
+    COMMAND_CHANNELS.THEME_ACCENT_COLOR,
+    async (): Promise<string | null> => getPlatformAdapter().getAccentColor(),
+  );
   handleCommand(
     COMMAND_CHANNELS.THEME_LIST_CUSTOM,
     async (_e, _envelope: CommandEnvelope<undefined>): Promise<CustomTheme[]> =>

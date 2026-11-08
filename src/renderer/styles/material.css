@@ -484,6 +484,23 @@ button:focus-visible,
   height: 16px;
 }
 
+/* The Folders header lines up with the file tree header below it (file-tree.css): both
+ * folder icons sit 20px from the sidebar edge (8px dropzone + 12px here, against 8px panel
+ * margin + 12px header padding), both are 14px with a 6px gap to the text, and the last
+ * button ends 14px from the edge like the file tree's new file button. */
+.sidebar-bookmarks-dropzone .sidebar-category-header {
+  padding: 0 6px 0 12px;
+}
+
+.sidebar-bookmarks-dropzone .sidebar-category-title {
+  gap: 6px;
+}
+
+.sidebar-bookmarks-dropzone .sidebar-category-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .sidebar-category-count {
   font-family: inherit;
   font-size: 11px;

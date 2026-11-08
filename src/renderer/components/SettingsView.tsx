@@ -101,6 +101,8 @@ import { useToast } from './Toast';
 import { useTypeIntoNewTerminal } from './type-into-terminal';
 import { useTranslation } from './LanguageProvider';
 import { ThemePicker } from './ThemePicker';
+import { LegadoDynamicControls } from './LegadoDynamicControls';
+import { isLegadoDynamicThemeId, LEGADO_DEFAULT_SEED } from '@shared/legado-dynamic-ids';
 import { NextPromptCostChart, formatUsd } from './NextPromptCostChart';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
@@ -323,6 +325,25 @@ function AppearancePanel({
           onChange={(id) => void updateSettings({ appearance: { theme: id } }, setError)}
         />
       </SettingRow>
+
+      {/* ADR-030:Legado MD3 的 Custom / Windows Accent 主题才显示 */}
+      {isLegadoDynamicThemeId(theme) && (
+        <SettingRow
+          label={tx('Legado MD3 配色', 'Legado MD3 colours')}
+          hint={tx(
+            '用一个颜色生成整套 Material 3 配色,同 legado-with-MD3 的自定义主题',
+            'Builds a full Material 3 scheme from one colour, like the custom theme in legado-with-MD3',
+          )}
+        >
+          <LegadoDynamicControls
+            mode={theme.startsWith('legado-md3-seed') ? 'seed' : 'accent'}
+            seed={a?.legadoSeedColor ?? LEGADO_DEFAULT_SEED}
+            style={a?.legadoPaletteStyle ?? 'tonalSpot'}
+            contrast={a?.legadoContrast ?? 'standard'}
+            onChange={(patch) => void updateSettings({ appearance: patch }, setError)}
+          />
+        </SettingRow>
+      )}
 
       <SettingRow
         label={tx('窗口风格', 'Window style')}
@@ -1232,7 +1253,7 @@ function BehaviorPanel({
 
       <SettingRow
         label={tx('快捷启动', 'Quick launch')}
-        hint={tx('显示在标签栏末尾的虚线标签里,点一下即启动', 'Shown in the dashed tab at the end of the tab bar, one click to start')}
+        hint={tx('显示在标签栏末尾、+ 号旁边,点一下即启动', 'Shown next to the + at the end of the tab bar, one click to start')}
       >
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}

@@ -397,6 +397,8 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:theme:create-custom',
   'cmd:theme:open-folder',
   'cmd:theme:open-file',
+  // 强调色主题跟随本机系统颜色(ADR-030)
+  'cmd:theme:accent-color',
   // Link 自身的管理命令全部本地执行。在远程窗口里点"断开",断的必须是
   // 本机这条连接;转发给 Host 会变成"让 Host 断开它自己的某条连接",
   // 语义完全错误。

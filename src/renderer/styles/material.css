@@ -1856,7 +1856,8 @@ select.settings-input option {
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1) rotate(var(--rot));
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1)
+      rotate(var(--rot, 0deg));
   }
 }
 

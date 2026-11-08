@@ -17,7 +17,7 @@
  *
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
-import { app, Menu, net, session as electronSession } from 'electron';
+import { app, Menu, net, safeStorage, session as electronSession } from 'electron';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
@@ -30,6 +30,7 @@ import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
+import { SecretStore, type SecretsFile } from './secret-store';
 import {
   broadcastLinkStatus,
   broadcastUpdateStatus,
@@ -219,6 +220,10 @@ function bootstrap(): void {
   const templatesStore = new JsonStore<TemplatesFile>(join(dataDir, 'templates.json'));
   const nextPromptUsage = new NextPromptUsageTracker(
     new JsonStore<NextPromptUsageFile>(join(dataDir, 'next-prompt-usage.json')),
+  );
+  const secretStore = new SecretStore(
+    new JsonStore<SecretsFile>(join(dataDir, 'secrets.json')),
+    safeStorage,
   );
 
   const channel = CHANNELS[getChannel()];
@@ -470,6 +475,19 @@ function bootstrap(): void {
       logger.setLevel(settingsManager.get().advanced.logLevel === 'DEBUG' ? 'debug' : 'info');
       const { bookmarksSource } = await pathManager.initialize();
       await nextPromptUsage.initialize();
+      await secretStore.initialize();
+      // ADR-021: move a key pasted in an older version out of settings.json, then rewrite
+      // both settings.json and its .bak so no plain text copy stays on disk.
+      const legacyKey = settingsManager.takeLegacyNextPromptKey();
+      if (legacyKey) {
+        secretStore.setNextPromptKey(legacyKey);
+        await secretStore.flush();
+        settingsManager.update({ ai: { nextPrompt: { keySaved: true } } });
+        await settingsManager.rewriteBothCopies();
+        logger.info('main', 'moved the next prompt key from settings.json to secrets.json');
+      }
+      // The flag mirrors the store: a secrets.json from another PC cannot be decrypted here.
+      settingsManager.update({ ai: { nextPrompt: { keySaved: secretStore.hasNextPromptKey() } } });
       logger.info('main', `bookmarks loaded from: ${bookmarksSource}`);
       const sshProfilesSrc = await sshProfileManager.initialize();
       logger.info('main', `ssh profiles loaded from: ${sshProfilesSrc}`);
@@ -513,6 +531,7 @@ function bootstrap(): void {
       });
 
       installIpcLayer({
+        secretStore,
         windowManager,
         viewSwitcher,
         pathManager,
@@ -764,6 +783,7 @@ function bootstrap(): void {
         settingsManager.flush(),
         pathManager.flush(),
         nextPromptUsage.flush(),
+        secretStore.flush(),
         sshProfileManager.flush(),
         knownHostsManager.flush(),
         templatesManager.flush(),

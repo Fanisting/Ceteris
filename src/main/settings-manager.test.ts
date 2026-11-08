@@ -345,3 +345,35 @@ describe('stripUnknownLegacyFields: advanced.enableRemote', () => {
     expect(raw.advanced.enableRemote).toBe(false);
   });
 });
+
+describe('next prompt key moved out of settings.json (ADR-021)', () => {
+  it('hands an old plain text key over once and leaves no copy in settings.json or .bak', async () => {
+    const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { JsonStore: RealStore } = await import('./persistence');
+    const dir = await mkdtemp(join(tmpdir(), 'ceteris-test-'));
+    try {
+      const file = join(dir, 'settings.json');
+      const old = structuredClone(DEFAULT_SETTINGS) as unknown as {
+        ai: { nextPrompt: Record<string, unknown> };
+      };
+      old.ai.nextPrompt['apiKey'] = 'sk-or-plain';
+      delete old.ai.nextPrompt['keySaved'];
+      await writeFile(file, JSON.stringify(old));
+
+      const mgr = new SettingsManager(new RealStore<Settings>(file, 0));
+      await mgr.initialize();
+      expect(mgr.takeLegacyNextPromptKey()).toBe('sk-or-plain');
+      expect(mgr.takeLegacyNextPromptKey()).toBe('');
+      expect(mgr.get().ai.nextPrompt).not.toHaveProperty('apiKey');
+
+      mgr.update({ ai: { nextPrompt: { keySaved: true } } });
+      await mgr.rewriteBothCopies();
+      expect(await readFile(file, 'utf8')).not.toContain('sk-or-plain');
+      expect(await readFile(`${file}.bak`, 'utf8')).not.toContain('sk-or-plain');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

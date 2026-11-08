@@ -77,6 +77,7 @@ import { NEXT_PROMPT_DEFAULT_BASE_URL,
   type NextPromptUsage,
   nextPromptConfigured } from '@shared/next-prompt';
 import { NextPromptModelPicker } from './NextPromptModelPicker';
+import { OpenRouterAccount } from './OpenRouterAccount';
 import type {
   CreateSessionResponse,
   DataAgentStats,
@@ -2621,7 +2622,7 @@ function AiPanel({
   const statusRecheckSource = ai?.statusRecheckSource ?? 'headless';
   const [testing, setTesting] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', baseURL: '', model: '' };
+  const nextPrompt = ai?.nextPrompt ?? { enabled: false, keySaved: false, baseURL: '', model: '' };
   const nextPromptReady = nextPromptConfigured(nextPrompt);
   const [testingNextPrompt, setTestingNextPrompt] = useState(false);
   const [usage, setUsage] = useState<NextPromptUsage | null>(null);
@@ -2877,6 +2878,29 @@ function AiPanel({
         )}
       </p>
 
+      <SettingRow
+        label={tx('OpenRouter 账号', 'OpenRouter account')}
+        hint={
+          nextPrompt.keySaved
+            ? tx(
+                'key 已加密保存在本机,只发给 OpenRouter。断开只删除本机这份;要作废它,到 openrouter.ai 的 Keys 页删除 "Ceteris next prompt"',
+                'The key is encrypted on this PC and sent only to OpenRouter. Disconnecting deletes this copy; to revoke it, delete "Ceteris next prompt" on the Keys page at openrouter.ai',
+              )
+            : tx(
+                '在浏览器里登录 OpenRouter 并同意,Ceteris 会自动拿到一个专用 key 并加密保存,不用复制粘贴',
+                'Sign in to OpenRouter in your browser and approve. Ceteris receives its own key and stores it encrypted; nothing to copy or paste',
+              )
+        }
+      >
+        <OpenRouterAccount
+          connected={nextPrompt.keySaved}
+          onError={(msg) => toast.push({ kind: 'error', message: msg })}
+          onConnected={() =>
+            toast.push({ kind: 'success', message: tx('已连接 OpenRouter', 'Connected to OpenRouter') })
+          }
+        />
+      </SettingRow>
+
       <SettingRow label={tx('启用建议', 'Enable suggestions')}>
         <label className="settings-checkbox">
           <input
@@ -2894,8 +2918,8 @@ function AiPanel({
       <SettingRow
         label={tx('API 地址', 'API address')}
         hint={tx(
-          '留空使用 OpenRouter。可填任何兼容 OpenAI 的地址,模型名也要一起改',
-          'Leave empty for OpenRouter. Any OpenAI compatible address works; set its model too',
+          '留空使用 OpenRouter。也可填本地模型服务(如 Ollama 的 http://127.0.0.1:11434/v1),这时不需要账号,OpenRouter key 也不会发给它',
+          'Leave empty for OpenRouter. Or a local model server, such as Ollama at http://127.0.0.1:11434/v1; it needs no account and never receives the OpenRouter key',
         )}
       >
         <input
@@ -2911,22 +2935,6 @@ function AiPanel({
       </SettingRow>
 
       <SettingRow
-        label={tx('API Key', 'API key')}
-        hint={tx('使用 OpenRouter 时必填,本地模型可留空', 'Required for OpenRouter; a local model may not need one')}
-      >
-        <input
-          className="settings-input"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          value={nextPrompt.apiKey}
-          onChange={(e) =>
-            void updateSettings({ ai: { nextPrompt: { apiKey: e.target.value } } }, setError)
-          }
-        />
-      </SettingRow>
-
-      <SettingRow
         label={tx('模型', 'Model')}
         hint={tx(
           '列表来自上面的 API 地址。小模型够用:每次只猜一句话,停下就猜一次',
@@ -2936,7 +2944,7 @@ function AiPanel({
         <NextPromptModelPicker
           model={nextPrompt.model}
           baseURL={nextPrompt.baseURL ?? ''}
-          apiKey={nextPrompt.apiKey}
+          keySaved={nextPrompt.keySaved}
           onChange={(value) =>
             void updateSettings({ ai: { nextPrompt: { model: value } } }, setError)
           }

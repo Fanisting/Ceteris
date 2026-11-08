@@ -98,7 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // F6(beta 勘误2):自定义 endpoint,空串走官方默认地址
     baseURL: '',
     model: '',
-    nextPrompt: { enabled: false, apiKey: '', baseURL: '', model: '' },
+    nextPrompt: { enabled: false, keySaved: false, baseURL: '', model: '' },
     statusRecheckEnabled: false,
     // BETA-006 v2:默认走 headless(已渲染文本),消除 ANSI 噪音与 PSReadLine
     // 重绘残影。老用户升级后字段缺失也会因为 SettingsManager.merge 走 default。
@@ -155,6 +155,7 @@ export class SettingsError extends Error {
 
 export class SettingsManager extends EventEmitter {
   private settings: Settings;
+  private legacyNextPromptKey = '';
 
   /** @param defaults what a new data folder starts with. Each channel changes a little. */
   constructor(
@@ -175,6 +176,11 @@ export class SettingsManager extends EventEmitter {
     // v1.5+ 迁移:explorerContextMenu 从 settings 移到系统状态,如果老 settings.json
     // 残留这个字段,静默剥掉(避免 deepMerge 原样带进运行时 settings 对象,污染
     // 导入导出归档 + TS 类型断言失败)。
+    // ADR-021: a key pasted before keys moved to secrets.json. Kept for the caller to move
+    // into SecretStore, then stripped like any other legacy field.
+    const legacyKey = (result.value as { ai?: { nextPrompt?: { apiKey?: unknown } } })?.ai
+      ?.nextPrompt?.apiKey;
+    this.legacyNextPromptKey = typeof legacyKey === 'string' ? legacyKey.trim() : '';
     const migrated = stripUnknownLegacyFields(result.value);
     // 不论从哪加载,都要走一遍 deep merge 防止用户文件少字段
     const merged = deepMerge(this.defaults, migrated as DeepPartial<Settings>);
@@ -264,6 +270,27 @@ export class SettingsManager extends EventEmitter {
         settings: structuredClone(merged),
         changedKeys,
       });
+    }
+  }
+
+  /**
+   * The next prompt key found in plain text in settings.json at startup, '' when none.
+   * Returns it once, so the caller moves it to SecretStore exactly one time.
+   */
+  takeLegacyNextPromptKey(): string {
+    const key = this.legacyNextPromptKey;
+    this.legacyNextPromptKey = '';
+    return key;
+  }
+
+  /**
+   * Writes the current settings twice. JsonStore copies the old file to .bak before each
+   * write, so the second write is what removes a plain text key from settings.json.bak.
+   */
+  async rewriteBothCopies(): Promise<void> {
+    for (let i = 0; i < 2; i++) {
+      this.store.set(structuredClone(this.settings));
+      await this.store.flush();
     }
   }
 
@@ -359,6 +386,15 @@ export function stripUnknownLegacyFields<T>(raw: T): T {
       const cloned = ensureClone();
       const aiClone = { ...ai, statusRecheckSource: 'headless' };
       cloned['ai'] = aiClone;
+    }
+    // ADR-021: the next prompt key moved to secrets.json. initialize() hands any old one
+    // to SecretStore before this runs; an imported bundle never carried one.
+    const np = ai['nextPrompt'];
+    if (np && typeof np === 'object' && 'apiKey' in np) {
+      const cloned = ensureClone();
+      const npClone = { ...(np as Record<string, unknown>) };
+      delete npClone['apiKey'];
+      cloned['ai'] = { ...(cloned['ai'] as Record<string, unknown>), nextPrompt: npClone };
     }
   }
 

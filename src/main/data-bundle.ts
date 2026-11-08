@@ -185,7 +185,7 @@ async function importAgent(
 export function stripSecrets(archive: SettingsArchiveV1): SettingsArchiveV1 {
   const copy = JSON.parse(JSON.stringify(archive)) as SettingsArchiveV1;
   copy.settings.ai.apiKey = '';
-  copy.settings.ai.nextPrompt.apiKey = '';
+  copy.settings.ai.nextPrompt.keySaved = false;
   copy.settings.link = { ...copy.settings.link, hostToken: '', hostEnabled: false };
   copy.settings.link.savedHosts = copy.settings.link.savedHosts.map((h) => ({ ...h, token: '' }));
   for (const t of copy.templates.templates) t.env = {};
@@ -200,7 +200,7 @@ export function withLocalSecrets(
   const copy = JSON.parse(JSON.stringify(archive)) as SettingsArchiveV1;
   const ai = copy.settings.ai;
   ai.apiKey = current.ai.apiKey;
-  ai.nextPrompt.apiKey = current.ai.nextPrompt.apiKey;
+  ai.nextPrompt.keySaved = current.ai.nextPrompt.keySaved;
   if (!ai.apiKey) ai.statusRecheckEnabled = false;
   if (!nextPromptConfigured(ai.nextPrompt)) ai.nextPrompt.enabled = false;
   copy.settings.link = current.link;

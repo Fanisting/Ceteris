@@ -12,10 +12,10 @@ import {
   NEXT_PROMPT_DEFAULT_BASE_URL,
   NEXT_PROMPT_DEFAULT_MODEL,
   NEXT_PROMPT_MAX_SCREEN_CHARS,
-  nextPromptConfigured,
   nextPromptEndpoint,
   nextPromptSystem,
   parseModelList,
+  sendsOpenRouterKey,
   type FrequentPrompt,
   type NextPromptModelOption,
 } from '@shared/next-prompt';
@@ -24,14 +24,16 @@ const TIMEOUT_MS = 8_000;
 const MAX_REPLY_TOKENS = 60;
 
 export interface NextPromptConfig {
+  /** The connected OpenRouter key from SecretStore, '' when none. */
   apiKey: string;
   baseURL: string;
   model: string;
 }
 
-function authHeaders(config: NextPromptConfig): Record<string, string> {
+/** The OpenRouter key goes to OpenRouter only; a custom address gets no key at all. */
+function authHeaders(config: NextPromptConfig, url: string): Record<string, string> {
   const key = config.apiKey.trim();
-  return key ? { Authorization: `Bearer ${key}` } : {};
+  return key && sendsOpenRouterKey(url) ? { Authorization: `Bearer ${key}` } : {};
 }
 
 async function post(
@@ -41,15 +43,16 @@ async function post(
   disableReasoning: boolean,
   fetchImpl: typeof fetch,
 ): Promise<Response> {
-  return fetchImpl(nextPromptEndpoint(config.baseURL), {
+  const url = nextPromptEndpoint(config.baseURL);
+  return fetchImpl(url, {
     method: 'POST',
-    headers: { ...authHeaders(config), 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(config, url), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL,
       max_tokens: MAX_REPLY_TOKENS,
       temperature: 0.3,
       // Asks OpenRouter for the price. Another provider may refuse the unknown field.
-      ...(nextPromptEndpoint(config.baseURL).startsWith(NEXT_PROMPT_DEFAULT_BASE_URL)
+      ...(url.startsWith(NEXT_PROMPT_DEFAULT_BASE_URL)
         ? { usage: { include: true } }
         : {}),
       ...(disableReasoning ? { reasoning: { enabled: false } } : {}),
@@ -74,7 +77,9 @@ export async function suggestNextPrompt(
   onUsage?: (usage: unknown) => void,
   frequent: readonly FrequentPrompt[] = [],
 ): Promise<string | null> {
-  if (!nextPromptConfigured(config)) throw new Error('未填写 API Key 或 API 地址');
+  if (!config.baseURL.trim() && !config.apiKey.trim()) {
+    throw new Error('还没有连接 OpenRouter:在设置 → AI 助手里点"连接 OpenRouter",或填写本地模型地址');
+  }
 
   let res = await post(config, screen, frequent, true, fetchImpl);
   // Reasoning only slows this down, but some models refuse to switch it off.
@@ -103,14 +108,14 @@ export async function listNextPromptModels(
 ): Promise<NextPromptModelOption[]> {
   const url = nextPromptEndpoint(config.baseURL).replace(/\/chat\/completions$/i, '/models');
   const res = await fetchImpl(url, {
-    headers: authHeaders(config),
+    headers: authHeaders(config, url),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 200);
     throw new Error(
       `读取模型列表失败:${url} 返回 ${res.status}:${detail}。` +
-        '可能是这个地址不提供 /models,或 API Key 不对;可以选"其他"手动填写模型名',
+        '可能是这个地址不提供 /models,或需要登录;可以选"其他"手动填写模型名',
     );
   }
   return parseModelList(await res.json());

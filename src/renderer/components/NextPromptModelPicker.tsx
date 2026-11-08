@@ -26,18 +26,19 @@ import { COMMAND_CHANNELS, type ListNextPromptModelsResponse } from '@shared/pro
 import { useTranslation } from './LanguageProvider';
 
 const OTHER = '__other__';
-/** Wait for the user to stop typing an address or key before asking it for models. */
+/** Wait for the user to stop typing an address before asking it for models. */
 const REFETCH_DELAY_MS = 600;
 
 export function NextPromptModelPicker({
   model,
   baseURL,
-  apiKey,
+  keySaved,
   onChange,
 }: {
   model: string;
   baseURL: string;
-  apiKey: string;
+  /** Refetch on connect or disconnect, since some providers list models only to members. */
+  keySaved: boolean;
   onChange: (model: string) => void;
 }): JSX.Element {
   const { tx } = useTranslation();
@@ -46,7 +47,7 @@ export function NextPromptModelPicker({
   const [typing, setTyping] = useState(false);
   const usesOpenRouter = !baseURL.trim();
 
-  // Refetch when the address or key changes: both decide which models answer.
+  // Refetch when the address or the account changes: both decide which models answer.
   useEffect(() => {
     let stale = false;
     const timer = window.setTimeout(() => {
@@ -70,7 +71,7 @@ export function NextPromptModelPicker({
       stale = true;
       window.clearTimeout(timer);
     };
-  }, [baseURL, apiKey]);
+  }, [baseURL, keySaved]);
 
   const recommended = usesOpenRouter ? RECOMMENDED_NEXT_PROMPT_MODELS : [];
   const byId = useMemo(() => new Map((models ?? []).map((m) => [m.id, m])), [models]);

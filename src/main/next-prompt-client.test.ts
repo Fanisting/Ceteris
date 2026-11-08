@@ -48,10 +48,10 @@ describe('suggestNextPrompt', () => {
     await expect(suggestNextPrompt(CONFIG, 's', fetchImpl as never)).rejects.toThrow(/402/);
   });
 
-  it('does not call out without a key', async () => {
+  it('does not call OpenRouter before the account is connected', async () => {
     const fetchImpl = vi.fn();
     await expect(suggestNextPrompt({ apiKey: ' ', baseURL: '', model: '' }, 's', fetchImpl as never)).rejects.toThrow(
-      /API Key/,
+      /OpenRouter/,
     );
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -82,14 +82,21 @@ describe('custom API address', () => {
     ]);
   });
 
-  it('sends no key to a local model that has none', async () => {
+  it('never sends the OpenRouter key to another address', async () => {
     let headers: Record<string, string> = {};
     const fetchImpl = (async (_url: string, init: RequestInit) => {
       headers = init.headers as Record<string, string>;
       return reply();
     }) as unknown as typeof fetch;
     await suggestNextPrompt(
-      { apiKey: '', baseURL: 'http://127.0.0.1:11434/v1', model: 'm' },
+      { apiKey: 'sk-or-secret', baseURL: 'http://127.0.0.1:11434/v1', model: 'm' },
+      'x',
+      fetchImpl,
+    );
+    expect(headers).not.toHaveProperty('Authorization');
+    // A look-alike host must not pass the prefix check either.
+    await suggestNextPrompt(
+      { apiKey: 'sk-or-secret', baseURL: 'https://openrouter.ai.evil.example/api/v1', model: 'm' },
       'x',
       fetchImpl,
     );

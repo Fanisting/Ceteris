@@ -65,9 +65,20 @@ export function nextPromptEndpoint(baseURL: string | undefined): string {
   return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`;
 }
 
-/** A custom address may be a local model with no key, so either one is enough to run. */
-export function nextPromptConfigured(config: { apiKey: string; baseURL?: string }): boolean {
-  return !!config.apiKey.trim() || !!config.baseURL?.trim();
+/**
+ * OpenRouter needs a connected account; a custom address is taken to need no key, since it
+ * is usually a local model server.
+ */
+export function nextPromptConfigured(config: { keySaved: boolean; baseURL?: string }): boolean {
+  return config.baseURL?.trim() ? true : config.keySaved;
+}
+
+/**
+ * Whether a request to this endpoint may carry the OpenRouter key. The key is OpenRouter's,
+ * so a custom address never receives it.
+ */
+export function sendsOpenRouterKey(endpoint: string): boolean {
+  return endpoint.startsWith(`${NEXT_PROMPT_DEFAULT_BASE_URL}/`);
 }
 
 const MAX_SUGGESTION_CHARS = 160;

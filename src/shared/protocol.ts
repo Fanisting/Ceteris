@@ -184,6 +184,11 @@ export const COMMAND_CHANNELS = {
   AI_LIST_NEXT_PROMPT_MODELS: 'cmd:ai:list-next-prompt-models',
   /** The repeated messages sent with each guess, shown in settings. */
   AI_GET_FREQUENT_PROMPTS: 'cmd:ai:get-frequent-prompts',
+  /** Sign in to OpenRouter in the browser and save the new key encrypted (ADR-021). */
+  AI_CONNECT_OPENROUTER: 'cmd:ai:connect-openrouter',
+  AI_CANCEL_OPENROUTER_CONNECT: 'cmd:ai:cancel-openrouter-connect',
+  /** Forget the saved OpenRouter key on this PC. */
+  AI_DISCONNECT_OPENROUTER: 'cmd:ai:disconnect-openrouter',
 
   /**
    * IME-1 探针 dump — renderer 在 onData 检测到疑似 LEAK 时,把 ring buffer
@@ -1207,6 +1212,11 @@ export interface SuggestNextPromptResponse {
 
 export interface ListNextPromptModelsResponse {
   models: NextPromptModelOption[];
+}
+
+export interface ConnectOpenRouterResponse {
+  /** false when the user cancelled; real failures throw instead. */
+  connected: boolean;
 }
 
 export interface GetFrequentPromptsResponse {

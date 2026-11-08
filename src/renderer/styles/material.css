@@ -2103,6 +2103,14 @@ select.settings-input option {
 }
 
 .next-prompt-chart {
+  /* Categorical slots 1 to 4 of the dataviz reference palette, light and dark steps,
+     checked for colour blind separation on adjacent pairs. light-dark() follows the
+     color-scheme each theme sets. Other is a neutral gray on purpose. */
+  --np-series-1: light-dark(#2a78d6, #3987e5);
+  --np-series-2: light-dark(#eb6834, #d95926);
+  --np-series-3: light-dark(#1baf7a, #199e70);
+  --np-series-4: light-dark(#eda100, #c98500);
+  --np-series-other: light-dark(#8a8984, #75746e);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2116,18 +2124,74 @@ select.settings-input option {
   color: var(--md-on-surface, #f0f);
 }
 
+.next-prompt-chart-plot {
+  position: relative;
+  height: 72px;
+}
+
+.next-prompt-chart-plot g {
+  transition: opacity var(--md-duration-short, 0.1s) linear;
+}
+
+.next-prompt-chart-plot g.is-dim {
+  opacity: 0.45;
+}
+
+.next-prompt-chart-tip {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  min-width: 180px;
+  padding: 6px 8px;
+  border-radius: var(--md-shape-sm, 4px);
+  background: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface, #f0f);
+  box-shadow: var(--md-elevation-2, 0 2px 6px rgba(0, 0, 0, 0.2));
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.next-prompt-chart-tip-title {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.next-prompt-chart-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.next-prompt-chart-tip-row span:last-child {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.next-prompt-chart-tip-row i,
+.next-prompt-chart-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
 .next-prompt-chart-foot {
   display: flex;
   justify-content: space-between;
 }
 
-.next-prompt-chart-bar {
-  fill: var(--md-primary, #f0f);
-  opacity: 0.75;
+.next-prompt-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }
 
-.next-prompt-chart-bar.is-hover {
-  opacity: 1;
+.next-prompt-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .next-prompt-chart-axis {

@@ -27,6 +27,8 @@ export interface NextPromptUsage {
 export interface NextPromptDay {
   calls: number;
   costUsd: number;
+  /** The same day split by model id. Missing in days saved before models were kept. */
+  models?: Record<string, { calls: number; costUsd: number }>;
 }
 
 /** Days kept in NextPromptUsage.daily; older days drop out on the next call. */
@@ -47,24 +49,74 @@ export function localDay(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/** Key of the stacked segment that folds models past the chart's colour slots. */
+export const OTHER_MODELS = 'other';
+/** Key for cost from days saved before models were kept. */
+export const UNKNOWN_MODEL = 'unknown';
+
+export interface DailyCostChart {
+  /**
+   * Segment keys from the bottom of each bar up: model ids in the order they first
+   * appear in the window, then OTHER_MODELS if any were folded. A model keeps its
+   * place, and so its colour, from one day to the next.
+   */
+  series: string[];
+  days: Array<{
+    day: string;
+    calls: number;
+    costUsd: number;
+    parts: Array<{ key: string; calls: number; costUsd: number }>;
+  }>;
+}
+
 /**
- * The last `days` days ending today, oldest first, with zero for days without calls.
+ * The last `days` days ending today, oldest first, each split into one part per model.
  *
- * @param today the day the chart ends on; days are stepped with setDate so DST is safe
+ * @param today the day the chart ends on; days are stepped by date so DST is safe
+ * @param maxModels models drawn in their own colour; the rest fold into OTHER_MODELS,
+ *   since a chart can only keep so many colours apart
  */
-export function dailyCosts(
+export function dailyCostChart(
   usage: NextPromptUsage,
   today: Date,
   days = 14,
-): Array<NextPromptDay & { day: string }> {
-  const out: Array<NextPromptDay & { day: string }> = [];
+  maxModels = 4,
+): DailyCostChart {
+  const window: Array<{ day: string; hit: NextPromptDay | undefined }> = [];
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-    const day = localDay(d);
-    const hit = usage.daily?.[day];
-    out.push({ day, calls: hit?.calls ?? 0, costUsd: hit?.costUsd ?? 0 });
+    const day = localDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i));
+    window.push({ day, hit: usage.daily?.[day] });
   }
-  return out;
+  const split = (hit: NextPromptDay): Record<string, { calls: number; costUsd: number }> =>
+    hit.models ?? { [UNKNOWN_MODEL]: { calls: hit.calls, costUsd: hit.costUsd } };
+
+  const order: string[] = [];
+  for (const { hit } of window) {
+    if (!hit) continue;
+    const models = split(hit);
+    // Within a day, the bigger spender first, so the order does not hang on key order.
+    for (const m of Object.keys(models).sort((x, y) => models[y]!.costUsd - models[x]!.costUsd)) {
+      if (!order.includes(m)) order.push(m);
+    }
+  }
+  const named = order.slice(0, maxModels);
+  const folded = order.length > maxModels;
+  const series = folded ? [...named, OTHER_MODELS] : named;
+
+  return {
+    series,
+    days: window.map(({ day, hit }) => {
+      const parts = series.map((key) => ({ key, calls: 0, costUsd: 0 }));
+      if (hit) {
+        for (const [m, v] of Object.entries(split(hit))) {
+          const part = parts[named.includes(m) ? named.indexOf(m) : named.length]!;
+          part.calls += v.calls;
+          part.costUsd += v.costUsd;
+        }
+      }
+      return { day, calls: hit?.calls ?? 0, costUsd: hit?.costUsd ?? 0, parts };
+    }),
+  };
 }
 
 function count(value: unknown): number {
@@ -77,16 +129,29 @@ function count(value: unknown): number {
  *
  * @param day localDay() of the call; it also gets the call, and days past the last
  *   NEXT_PROMPT_DAYS_KEPT are dropped
+ * @param model the model id the call asked for, for the per model split of the day
  */
 export function addNextPromptUsage(
   total: NextPromptUsage,
   usage: unknown,
   day: string,
+  model: string,
 ): NextPromptUsage {
   const u = (typeof usage === 'object' && usage !== null ? usage : {}) as Record<string, unknown>;
   const priced = typeof u['cost'] === 'number' && Number.isFinite(u['cost']) && u['cost'] >= 0;
+  const cost = count(u['cost']);
   const before = total.daily?.[day] ?? { calls: 0, costUsd: 0 };
-  const daily = { ...total.daily, [day]: { calls: before.calls + 1, costUsd: before.costUsd + count(u['cost']) } };
+  // A day saved before models were kept has no split; its earlier calls stay unattributed.
+  const models = before.models ?? (before.calls > 0 ? { [UNKNOWN_MODEL]: { calls: before.calls, costUsd: before.costUsd } } : {});
+  const m = models[model] ?? { calls: 0, costUsd: 0 };
+  const daily = {
+    ...total.daily,
+    [day]: {
+      calls: before.calls + 1,
+      costUsd: before.costUsd + cost,
+      models: { ...models, [model]: { calls: m.calls + 1, costUsd: m.costUsd + cost } },
+    },
+  };
   // YYYY-MM-DD sorts as text in date order.
   const kept = Object.keys(daily).sort().slice(-NEXT_PROMPT_DAYS_KEPT);
   return {

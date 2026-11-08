@@ -21,7 +21,11 @@
  * - cmd:session:create / close / claim / release / focus-owner / send-input / resize
  * - 所有 evt:* 广播
  */
-import { EMPTY_NEXT_PROMPT_USAGE, type NextPromptUsage } from '@shared/next-prompt';
+import {
+  EMPTY_NEXT_PROMPT_USAGE,
+  NEXT_PROMPT_DEFAULT_MODEL,
+  type NextPromptUsage,
+} from '@shared/next-prompt';
 import type { NextPromptUsageTracker } from './next-prompt-usage';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
@@ -1496,7 +1500,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         config,
         envelope.payload.screen,
         fetch,
-        (usage) => deps.nextPromptUsage?.record(usage),
+        (usage) => deps.nextPromptUsage?.record(usage, config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL),
         await frequentPrompts.get(),
       );
       return { suggestion };

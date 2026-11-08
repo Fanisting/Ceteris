@@ -921,6 +921,20 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * ADR-021:标记或取消 coordinator。所有窗口经 sessionStateChanged 同步,把它的
+   * 标签放进标签栏上方的 coordinator 行。幂等;不存在的 sessionId 静默,与
+   * renameSession 一致。exited 的 session 也能改,用户可能想把它移出那一行。
+   */
+  setCoordinator(sessionId: string, coordinator: boolean): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    if ((managed.info.coordinator ?? false) === coordinator) return;
+    managed.info.coordinator = coordinator;
+    logger.info('SessionManager', `setCoordinator sid=${sessionId} → ${coordinator}`);
+    this.emitStateChanged(managed, { coordinator });
+  }
+
+  /**
    * 关闭并销毁 session — 用户右键"关闭"或应用退出时调。
    *
    * 与 CP-2 不同:exited 状态的 session 也由此销毁 (软件定义书 8.3 ADR-008

@@ -222,6 +222,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:send-input` | 向 session 发送键盘输入 |
 | `cmd:session:resize` | 通知 session 终端尺寸变化 |
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
+| `cmd:session:set-coordinator` | **(ADR-021)** 标记或取消 coordinator,标签移到标签栏上方一行 |
 | `cmd:session:get-scrollback` | 获取 session 的 scrollback 缓冲(切换 owner 时用) |
 | `cmd:bookmark:add` | 添加收藏路径 |
 | `cmd:bookmark:remove` | 移除收藏 |
@@ -727,6 +728,28 @@ interface ClearManualRenamePayload {
 - 清掉 `manuallyRenamed` 标记
 - 不立即改 displayName(留待下一次 OSC 0/1/2 到来时覆盖)
 - 不广播事件(标记本身对 UI 不可见)
+
+---
+
+#### `cmd:session:set-coordinator` (ADR-021)
+标记或取消 coordinator。所有窗口把 coordinator 的标签放进标签栏上方单独一行,
+不论当前打开的是哪个文件夹。任何窗口都能改,所有权不变。
+
+```typescript
+// Payload
+interface SetCoordinatorPayload {
+  sessionId: string;
+  coordinator: boolean;
+}
+// Response: void
+```
+
+**Side Effects**:
+- 值真的变了才广播 `evt:session:state-changed`(`changes.coordinator` 在内)
+- 标记随 session 存在,session 销毁即消失,不持久化
+
+**Errors**:
+- 不存在的 sessionId 静默 no-op
 
 ---
 

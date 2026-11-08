@@ -239,6 +239,11 @@ export interface SessionInfo {
   agentWork?: AgentWork | null;
   /** While generating: how fast, 0.25 to 1 in quarter steps, from the token counter. */
   agentPace?: number | null;
+  /**
+   * The user marked this session as a coordinator: its tab sits in a row of its own above
+   * the folder's tabs, whichever folder is open (ADR-022). Lives as long as the session.
+   */
+  coordinator?: boolean;
   /** 退出码 (state === 'exited' 时有值) */
   exitCode?: number;
   /** PTY 进程退出时间 (Unix ms,state === 'exited' 时有值) */

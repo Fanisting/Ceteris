@@ -75,6 +75,8 @@ export const COMMAND_CHANNELS = {
    * 的任务进度标题重新生效。
    */
   SESSION_CLEAR_MANUAL_RENAME: 'cmd:session:clear-manual-rename',
+  /** ADR-021:标记或取消 coordinator,其标签显示在标签栏上方单独一行 */
+  SESSION_SET_COORDINATOR: 'cmd:session:set-coordinator',
   /**
    * 右键 Tab → "在新窗口中打开"。原子地把 session 从调用方窗口释放,
    * 创建新窗口并把所有权直接转给新窗口,新窗口启动时从 URL ?selectSessionId
@@ -417,6 +419,11 @@ export interface CreateSessionResponse {
 export interface RenameSessionPayload {
   sessionId: string;
   newDisplayName: string;
+}
+
+export interface SetCoordinatorPayload {
+  sessionId: string;
+  coordinator: boolean;
 }
 
 export interface CloseSessionPayload {

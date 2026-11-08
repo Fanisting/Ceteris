@@ -1551,6 +1551,25 @@ describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () =>
     expect(mgr.get(info.id)!.displayName).toBe('My Pinned Name');
   });
 
+  it('setCoordinator broadcasts only real changes', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const changes: unknown[] = [];
+    mgr.on('sessionStateChanged', (p: { changes: unknown }) => changes.push(p.changes));
+    mgr.setCoordinator(info.id, true);
+    mgr.setCoordinator(info.id, true);
+    mgr.setCoordinator(info.id, false);
+    mgr.setCoordinator('missing', true);
+    expect(changes).toEqual([{ coordinator: true }, { coordinator: false }]);
+    expect(mgr.get(info.id)!.coordinator).toBe(false);
+  });
+
   it('OSC 标题里 \\n / \\t 被替成空格,过长截到 100', async () => {
     const { mgr } = makeManager();
     const info = await mgr.createSession({

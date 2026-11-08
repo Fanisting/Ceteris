@@ -248,6 +248,16 @@ export const COMMAND_CHANNELS = {
   UPDATE_GET_STATUS: 'cmd:update:get-status',
   /** 立刻查一次 GitHub Releases,返回查完后的 UpdateStatus。任何 channel 都可用 */
   UPDATE_CHECK_NOW: 'cmd:update:check-now',
+
+  // 用户主题域(ADR-026)。主题文件在本机数据目录,所以都在 LINK_LOCAL_ONLY_CHANNELS 里。
+  /** 当前所有用户主题(CustomTheme[]),窗口挂载时拉一次 */
+  THEME_LIST_CUSTOM: 'cmd:theme:list-custom',
+  /** 用模板新建一个主题文件并用系统默认编辑器打开。payload: TemplateValues */
+  THEME_CREATE_CUSTOM: 'cmd:theme:create-custom',
+  /** 打开主题文件夹 */
+  THEME_OPEN_FOLDER: 'cmd:theme:open-folder',
+  /** 用系统默认编辑器打开一个主题文件。payload: { id } */
+  THEME_OPEN_FILE: 'cmd:theme:open-file',
 } as const;
 
 export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHANNELS];
@@ -322,6 +332,8 @@ export const EVENT_CHANNELS = {
   UPDATE_STATUS_CHANGED: 'evt:update:status-changed',
   /** agent 版本通知 (有新版本 / 即将自动升级 / 等 agent 关掉 / 升级完成 / 升级失败) */
   AGENT_UPDATE_NOTICE: 'evt:agent:update-notice',
+  /** 主题文件夹里的文件变了,payload 是新的 CustomTheme[](ADR-026)。只发本机窗口 */
+  CUSTOM_THEMES_UPDATED: 'evt:theme:custom-updated',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];

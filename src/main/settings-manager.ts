@@ -20,13 +20,14 @@
  */
 import { EventEmitter } from 'node:events';
 import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
+import { isCustomThemeId } from '@shared/custom-themes';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
   QUICK_LAUNCH_MAX_ITEMS,
   isValidQuickLaunchItems,
 } from '@shared/quick-launch';
-import type { Settings, ThemeId } from '@shared/types';
+import type { BuiltinThemeId, Settings } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
 
@@ -129,7 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
 };
 
-const VALID_THEMES: ThemeId[] = [
+const VALID_THEMES: BuiltinThemeId[] = [
   'ceteris-dark',
   'ceteris-light',
   'rose-pine',
@@ -536,10 +537,13 @@ function validateLinkSettings(s: Settings): void {
 }
 
 export function validateSettings(s: Settings): void {
-  if (!VALID_THEMES.includes(s.appearance.theme)) {
+  // 用户主题文件只校验 id 格式:文件可能稍后才放进主题文件夹,或已被删除,此时
+  // renderer 回退到默认配色,不拒绝整份设置。
+  const theme = s.appearance.theme;
+  if (!isCustomThemeId(theme) && !VALID_THEMES.includes(theme as BuiltinThemeId)) {
     throw new SettingsError(
       'InvalidSettings',
-      `appearance.theme="${s.appearance.theme}" 不是合法主题,允许: ${VALID_THEMES.join(', ')}`,
+      `appearance.theme="${theme}" 不是合法主题,允许: ${VALID_THEMES.join(', ')} 或 custom:<slug>`,
       { field: 'appearance.theme', got: s.appearance.theme, allowed: VALID_THEMES },
     );
   }

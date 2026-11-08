@@ -15,6 +15,7 @@ import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 
 import type { BeamerThemeId } from './beamer-themes';
+import type { CustomThemeId } from './custom-themes';
 
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
@@ -106,9 +107,12 @@ export type AppLifecycleState =
 export type PostExitAction = 'close_session' | 'keep_shell' | 'hold';
 
 /**
- * 主题 ID (软件定义书 5.1.9)。
+ * 主题 ID (软件定义书 5.1.9):内置主题,或用户主题文件 `custom:<slug>`(ADR-026)。
  */
-export type ThemeId =
+export type ThemeId = BuiltinThemeId | CustomThemeId;
+
+/** 随应用发布的主题。只有它们在 TerminalView 的 XTERM_THEMES 里有固定配色。 */
+export type BuiltinThemeId =
   // Material Design 3 主题,默认主题。配色由海青种子色 #006a6a 生成
   | 'ceteris-dark'
   | 'ceteris-light'

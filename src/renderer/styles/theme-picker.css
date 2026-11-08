@@ -208,3 +208,34 @@
   border-radius: 50%;
   background-color: var(--color-accent-special, #f0f);
 }
+
+/* 用户主题(ADR-026):菜单下方的文件操作,MD3 text button */
+.theme-custom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: -12px;
+}
+
+.theme-custom-action {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: transparent;
+  color: var(--md-primary-text, #f0f);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.theme-custom-action:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.theme-custom-note {
+  margin: 0;
+  color: var(--md-error-text, #f0f);
+  font-size: 12px;
+  user-select: text;
+}

@@ -188,6 +188,8 @@ import type {
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
 import { writeTextFile } from './text-writer';
+import type { CustomThemeStore } from './custom-theme-store';
+import type { CustomTheme, TemplateValues } from '@shared/custom-themes';
 import { isAppPageUrl } from './ipc-sender';
 import { readPdfChunk, readRemotePdfChunk, statRemoteViewFile, statViewFile } from './pdf-reader';
 import type { SftpPool } from './sftp-client';
@@ -247,6 +249,8 @@ export interface IpcLayerDeps {
    * 返回 idle,cmd:update:check-now 抛 UpdateCheckUnavailable。
    */
   updateChecker?: UpdateChecker;
+  /** 用户主题文件夹(ADR-026)。可选:单测不带它,此时列表为空,其余主题命令抛错 */
+  customThemes?: CustomThemeStore;
 }
 
 let installed = false;
@@ -379,6 +383,19 @@ export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
  */
 export function broadcastUpdateStatus(status: UpdateStatus): void {
   broadcastEvent<UpdateStatus>(EVENT_CHANNELS.UPDATE_STATUS_CHANGED, status);
+}
+
+/**
+ * 把新的用户主题列表推给本机所有窗口(ADR-026)。
+ *
+ * 不走 broadcastEvent:那条会跳过远程窗口(它们的数据来自 Host),而主题跟随本机,
+ * 远程窗口也要用本机的主题文件。也不发给虚拟窗口,对端用它自己的主题。
+ */
+export function broadcastCustomThemes(themes: CustomTheme[]): void {
+  const envelope = wrapEvent(themes);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(EVENT_CHANNELS.CUSTOM_THEMES_UPDATED, envelope);
+  }
 }
 
 /**
@@ -1581,6 +1598,61 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         );
       }
       return deps.updateChecker.checkNow('manual');
+    },
+  );
+
+  // ADR-026:用户主题文件。打开文件用系统默认程序;.css 没有关联程序时
+  // shell.openPath 返回错误文本,此时退而在资源管理器里选中该文件。
+  const requireThemes = (): CustomThemeStore => {
+    if (!deps.customThemes) {
+      throw makeIpcError(
+        'CustomThemesUnavailable',
+        '[ipc] custom theme store is not wired in this process. Possible causes: a test ' +
+          'harness without customThemes, or index.ts failed to start it (see main.log for themes).',
+      );
+    }
+    return deps.customThemes;
+  };
+  const openThemeFile = async (path: string): Promise<void> => {
+    const err = await shell.openPath(path);
+    if (err) {
+      logger.warn('themes', `openPath failed for ${path}: ${err}; showing it in the folder`);
+      shell.showItemInFolder(path);
+    }
+  };
+  handleCommand(
+    COMMAND_CHANNELS.THEME_LIST_CUSTOM,
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<CustomTheme[]> =>
+      (await deps.customThemes?.list()) ?? [],
+  );
+  handleCommand(
+    COMMAND_CHANNELS.THEME_CREATE_CUSTOM,
+    async (_e, envelope: CommandEnvelope<TemplateValues>): Promise<{ id: string }> => {
+      const store = requireThemes();
+      const { id, path } = await store.create(envelope.payload);
+      broadcastCustomThemes(await store.list());
+      await openThemeFile(path);
+      return { id };
+    },
+  );
+  handleCommand(
+    COMMAND_CHANNELS.THEME_OPEN_FOLDER,
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<void> => {
+      await shell.openPath(requireThemes().dir);
+    },
+  );
+  handleCommand(
+    COMMAND_CHANNELS.THEME_OPEN_FILE,
+    async (_e, envelope: CommandEnvelope<{ id: string }>): Promise<void> => {
+      const path = requireThemes().pathOf(envelope.payload.id);
+      if (!path) {
+        throw makeIpcError(
+          'ThemeNotFound',
+          `[ipc] no theme file for id="${envelope.payload.id}". Possible causes: the file was ` +
+            'renamed or deleted after the menu was drawn.',
+        );
+      }
+      await openThemeFile(path);
     },
   );
 

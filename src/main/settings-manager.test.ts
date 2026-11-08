@@ -126,6 +126,11 @@ describe('validateSettings', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     (bad.appearance as { theme: string }).theme = 'nonexistent';
     expect(() => validateSettings(bad)).toThrowError(/InvalidSettings/);
+    // 用户主题只看 id 格式,文件是否存在由 renderer 回退处理
+    (bad.appearance as { theme: string }).theme = 'custom:Bad Name';
+    expect(() => validateSettings(bad)).toThrowError(/InvalidSettings/);
+    (bad.appearance as { theme: string }).theme = 'custom:my-theme';
+    expect(() => validateSettings(bad)).not.toThrow();
   });
 
   it('quickLaunch 默认是 Claude Code 和 Codex', () => {

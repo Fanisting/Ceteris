@@ -294,10 +294,12 @@ button:focus-visible,
   color: var(--md-on-error, #f0f);
 }
 
+/* Blocks use the Material medium shape (12px). The window itself is rounded by Windows 11 at
+ * a fixed 8px (DWM only offers 8px or 4px presets), and the shell in global.css follows it. */
 .main-pane,
 .settings-detail {
   margin: 0 8px 8px 0;
-  border-radius: var(--md-shape-lg, 16px);
+  border-radius: var(--md-shape-md, 12px);
   background-color: var(--md-surface, #f0f);
   overflow: hidden;
 }
@@ -393,7 +395,7 @@ button:focus-visible,
  * The reset below wins on specificity and undoes every property it sets.
  *
  * The sidebar is a block of its own: the same tonal surface as the file panel inside it,
- * rounded like the main pane, and set apart from the window by colour alone, no outline. */
+ * rounded like the main pane (12px), and set apart from the window by colour alone, no outline. */
 .app-body > .sidebar {
   inset-block-start: auto;
   width: auto;
@@ -402,7 +404,7 @@ button:focus-visible,
   margin: 0 8px 8px;
   padding-block: 0;
   border: none;
-  border-radius: var(--md-shape-lg, 16px);
+  border-radius: var(--md-shape-md, 12px);
   box-shadow: none;
   backdrop-filter: none;
   background-color: color-mix(

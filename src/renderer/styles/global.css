@@ -775,7 +775,8 @@ button:disabled {
  * 等所有主流 Linux 终端一致)。
  */
 html:not([data-platform='linux']) .app-root.with-shell {
-  border-radius: 10px;
+  /* Matches Windows 11's own 8px window corners, so the shell never shows past them. */
+  border-radius: 8px;
   overflow: hidden;
 }
 

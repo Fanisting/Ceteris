@@ -67,6 +67,7 @@ import { useToast } from './Toast';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import { buildSessionContextMenu } from './sessionContextMenu';
+import { CelebrationBurst } from './CelebrationBurst';
 
 /**
  * 状态点颜色 (软件定义书 6.2.4 状态指示):
@@ -960,6 +961,11 @@ function PathItem({
               myWindowId={state.myWindowId}
               selected={state.selectedSessionId === s.id}
               unseen={state.unseenDoneSessionIds.has(s.id)}
+              celebrate={
+                !!state.settings.appearance?.hideTopTabBar &&
+                (state.settings.appearance?.celebrations ?? true)
+              }
+              themeId={state.settings.appearance?.theme}
             />
           ))}
         </ul>
@@ -976,6 +982,13 @@ interface SessionItemProps {
   selected: boolean;
   /** ADR-021:agent 跑完时用户没在看;父级传入,理由同上 */
   unseen: boolean;
+  /**
+   * ADR-027:圆点亮起时在这里撒小星星。只在顶部标签栏隐藏时为 true,
+   * 否则标签上已经撒过,两处同时撒太吵。
+   */
+  celebrate: boolean;
+  /** ADR-027:当前主题,决定小庆祝的样式 */
+  themeId: string | undefined;
 }
 
 /**
@@ -991,7 +1004,11 @@ function SessionItemImpl({
   myWindowId,
   selected,
   unseen,
+  celebrate,
+  themeId,
 }: SessionItemProps): JSX.Element {
+  // ADR-027:小庆祝锚在状态圆点上
+  const stateDotRef = useRef<HTMLSpanElement>(null);
   const dispatch = useAppDispatch();
   const ctxMenu = useContextMenuApi();
   const toast = useToast();
@@ -1141,6 +1158,7 @@ function SessionItemImpl({
       title={fullTitle}
     >
       <span
+        ref={stateDotRef}
         className={
           'session-state-dot' +
           (session.agentPhase === 'blocked'
@@ -1168,6 +1186,14 @@ function SessionItemImpl({
             <CloseBold size={11} className="session-state-dot-icon fail" />
           )}
       </span>
+      {celebrate && (
+        <CelebrationBurst
+          play={unseen && session.agentPhase !== 'blocked'}
+          anchorRef={stateDotRef}
+          enabled
+          themeId={themeId}
+        />
+      )}
       {renaming ? (
         <input
           ref={renameInputRef}

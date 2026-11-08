@@ -75,17 +75,10 @@
   flex-direction: column;
   margin: 0 8px 4px;
   overflow: hidden;
-  border: 1px solid var(--md-outline-variant, transparent);
   border-radius: var(--md-shape-md, 12px);
-  /* A tonal step, not a fixed colour. Themes without a full Material palette derive
-   * surface-container and surface-container-high from the same token, so the panel used to
-   * vanish into the shell behind it. Mixing toward the text colour lightens dark themes and
-   * darkens light ones, so the panel stands apart in every theme. */
-  background-color: color-mix(
-    in srgb,
-    var(--md-on-surface, #f0f) 6%,
-    var(--md-surface-container-high, #f0f)
-  );
+  /* Same colour as the sidebar it sits in (material.css), with no outline: the sidebar and
+   * the file panel read as one block, set apart from the window by colour alone. */
+  background-color: transparent;
 }
 
 .file-tree-header {

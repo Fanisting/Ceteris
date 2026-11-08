@@ -79,7 +79,8 @@
     'PingFang SC',
     sans-serif;
   font-size: 16px;
-  line-height: 1.7;
+  /* OnePage uses 1.7; the developer asked for slightly tighter lines. */
+  line-height: 1.55;
 }
 
 .file-view-markdown ::selection {

@@ -11,6 +11,7 @@ import { buildSftpArgs, SftpError, SftpPathError, SftpPool, type SftpProfile } f
 import { ASKPASS_PIPE_ENV, ASKPASS_TOKEN_ENV } from './platform/askpass';
 import type { AskpassHandler } from './askpass-server';
 import type { PromptRequest } from './askpass-prompts';
+import { logger } from './logger';
 import {
   encodePacket,
   FX_STATUS,
@@ -703,7 +704,7 @@ describe('密码登录', () => {
  */
 function createRelayPool(
   fakes: () => FakeServer,
-  profile: SftpProfile = PROFILE,
+  profile: SftpProfile | ((profileId: string) => SftpProfile) = PROFILE,
   pipePath: string | null = '\\\\.\\pipe\\test',
   promptUser?: (request: PromptRequest) => Promise<string | null>,
 ) {
@@ -713,7 +714,7 @@ function createRelayPool(
   let answer: string | null = 'from-user';
   let clock = 1000;
   const pool = new SftpPool({
-    getProfile: () => profile,
+    getProfile: (profileId) => (typeof profile === 'function' ? profile(profileId) : profile),
     resolveExecutable: (name) => (name === 'ssh' ? '/bin/ssh' : null),
     askpass: {
       helper: () => ({ command: 'C:\\app\\Ceteris.exe', env: { HELPER_MODE: '1' } }),
@@ -975,6 +976,109 @@ describe('askpass 中继', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('ssh 自己退出时注销令牌,之后拿这个令牌来的提示没人回答', async () => {
+    const fakes: FakeServer[] = [];
+    const { pool, handlers } = createRelayPool(() => {
+      const fake = new FakeServer(TREE);
+      fakes.push(fake);
+      return fake;
+    });
+    expect((await pool.list('p1', '~')).ok).toBe(true);
+    expect(handlers.size).toBe(1);
+    fakes[0]?.emit('close', 255);
+    expect(handlers.size).toBe(0);
+  });
+
+  it('两条 ssh 同时登录时,各自的提示只回到自己的 profile 和窗口', async () => {
+    const fakes: FakeServer[] = [];
+    const { pool, spawned, handlers, prompts } = createRelayPool(
+      () => {
+        const fake = new FakeServer(TREE);
+        fake.holdHandshake = true;
+        fakes.push(fake);
+        return fake;
+      },
+      (profileId) => ({ ...PROFILE, id: profileId, host: `${profileId}.example.test` }),
+    );
+    const first = pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+    const second = pool.list('p2', '~', { interactive: true, windowId: 'w2' });
+    await flush();
+    const tokens = spawned.map((s) => s.env[ASKPASS_TOKEN_ENV] as string);
+    expect(new Set(tokens).size).toBe(2);
+    await Promise.all([
+      handlers.get(tokens[1]!)!('second password: ', null),
+      handlers.get(tokens[0]!)!('first password: ', null),
+    ]);
+    const byProfile = Object.fromEntries(
+      prompts.map((p) => [p.payload.profileId, [p.windowId, p.payload.host, p.payload.prompt]]),
+    );
+    expect(byProfile).toEqual({
+      p1: ['w1', 'p1.example.test', 'first password: '],
+      p2: ['w2', 'p2.example.test', 'second password: '],
+    });
+    fakes.forEach((fake) => fake.releaseHandshake());
+    expect((await first).ok).toBe(true);
+    expect((await second).ok).toBe(true);
+    pool.shutdown();
+  });
+
+  it('助手不可用时退回 BatchMode=yes,连用户自己的 SSH_ASKPASS 也不留给 ssh', async () => {
+    // Git for Windows 之类会设 SSH_ASKPASS;不清掉的话,服务器的提示会交给别人的程序
+    vi.stubEnv('SSH_ASKPASS', 'C:\\Git\\mingw64\\bin\\git-askpass.exe');
+    vi.stubEnv('SSH_ASKPASS_REQUIRE', 'force');
+    const spawned: Array<{ args: string[]; env: Record<string, string> }> = [];
+    const register = vi.fn(() => 't1');
+    const pool = new SftpPool({
+      getProfile: () => PROFILE,
+      resolveExecutable: (name) => (name === 'ssh' ? '/bin/ssh' : null),
+      askpass: {
+        // csc.exe 缺失或编译失败时 prepareSshAskpass 给的就是 null
+        helper: () => null,
+        server: { pipePath: '\\\\.\\pipe\\test', register, unregister: vi.fn() },
+        promptUser: vi.fn(),
+      },
+      spawnProcess: (_file, args, env) => {
+        spawned.push({ args, env });
+        return asChild(new FakeServer(TREE));
+      },
+    });
+    try {
+      expect((await pool.list('p1', '~')).ok).toBe(true);
+      pool.shutdown();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(spawned[0]?.args).toContain('BatchMode=yes');
+    expect(spawned[0]?.env).not.toHaveProperty('SSH_ASKPASS');
+    expect(spawned[0]?.env).not.toHaveProperty('SSH_ASKPASS_REQUIRE');
+    expect(spawned[0]?.env).not.toHaveProperty(ASKPASS_TOKEN_ENV);
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it('保存的密码和用户的回答都不进日志', async () => {
+    const fake = new FakeServer(TREE);
+    fake.holdHandshake = true;
+    const { pool, prompt } = createRelayPool(
+      () => fake,
+      { ...PROFILE, authType: 'password', password: 'saved-pw-7Q' },
+      undefined,
+      async () => 'duo-reply-9Z',
+    );
+    const listing = pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+    await flush();
+    expect(await prompt("me@example.test's password: ")).toBe('saved-pw-7Q');
+    expect(await prompt('(me@example.test) Passcode or option (1-3): ')).toBe('duo-reply-9Z');
+    fake.releaseHandshake();
+    expect((await listing).ok).toBe(true);
+    pool.shutdown();
+    expect(logger.info).toHaveBeenCalled();
+    const logged = JSON.stringify(
+      Object.values(logger).map((fn) => vi.mocked(fn as (...args: unknown[]) => void).mock.calls),
+    );
+    expect(logged).not.toContain('saved-pw-7Q');
+    expect(logged).not.toContain('duo-reply-9Z');
   });
 });
 

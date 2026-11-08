@@ -34,8 +34,27 @@
   --md-shape-lg: 16px;
   --md-shape-xl: 28px;
   --md-shape-full: 999px;
+  /* 动效:MD3 easing 与 duration 全套,motion.css 使用。emphasized 原本是一条
+     分段曲线,CSS 只能写单条 cubic-bezier,这里按 MD3 的 CSS 近似取值。
+     旧名字保留:--md-easing-decelerate 等于 emphasized decelerate,
+     short / medium / long 等于 short2 / short4 / medium2。 */
   --md-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --md-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --md-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
   --md-easing-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-duration-short1: 50ms;
+  --md-duration-short2: 100ms;
+  --md-duration-short3: 150ms;
+  --md-duration-short4: 200ms;
+  --md-duration-medium1: 250ms;
+  --md-duration-medium2: 300ms;
+  --md-duration-medium3: 350ms;
+  --md-duration-medium4: 400ms;
+  --md-duration-long1: 450ms;
+  --md-duration-long2: 500ms;
   --md-duration-short: 100ms;
   --md-duration-medium: 200ms;
   --md-duration-long: 300ms;
@@ -294,6 +313,9 @@ button:focus-visible,
   color: var(--md-on-error, #f0f);
 }
 
+/* The tab page (and settings, which takes its place) is the one block in the window, with the
+ * Material large shape (16px). Everything else is plain text on the shell. The window itself is
+ * rounded by Windows 11 at a fixed 8px, and the shell in global.css follows it. */
 .main-pane,
 .settings-detail {
   margin: 0 8px 8px 0;
@@ -387,7 +409,23 @@ button:focus-visible,
 
 /* ── 侧栏(navigation drawer) ──────────────────────────────────── */
 
-.sidebar {
+/* pdf.js loads pdf_viewer.css for the whole app (PdfJsViewer.tsx), and it styles its own
+ * `.sidebar` class: border, shadow, 8px radius, width limits (180 to 632px), padding and an
+ * offset. That rule landed on Ceteris's sidebar too and drew an outlined card around it.
+ * The reset below wins on specificity and undoes every property it sets.
+ *
+ * The sidebar is not a block: no fill, no corners, no outline. Its text sits on the shell. */
+.app-body > .sidebar {
+  inset-block-start: auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding-block: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
   background-color: transparent;
 }
 
@@ -1749,4 +1787,196 @@ select.settings-input option {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
+}
+
+/* ── Title bar easter egg (TitlebarAppName.tsx) ────────────────
+ * Click the app name: it hops, sparkles fly out, and a bubble says "You found me!".
+ * The name opts out of the drag region, or the click never reaches it.
+ */
+
+.titlebar-title .titlebar-app-name {
+  display: inline-block;
+  cursor: pointer;
+  transform-origin: 50% 90%;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-title .titlebar-app-name.is-happy {
+  animation: easter-hop 720ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+@keyframes easter-hop {
+  0% {
+    transform: none;
+  }
+  14% {
+    transform: scale(1.16, 0.84);
+  }
+  34% {
+    transform: translateY(-5px) scale(0.92, 1.1) rotate(-7deg);
+  }
+  54% {
+    transform: translateY(0) scale(1.08, 0.93) rotate(5deg);
+  }
+  74% {
+    transform: scale(0.97, 1.03) rotate(-2deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.easter-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.easter-sparkle {
+  position: fixed;
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+  text-shadow: 0 0 6px currentColor;
+  animation: easter-sparkle 1200ms cubic-bezier(0.2, 0.8, 0.3, 1) var(--delay, 0ms) forwards;
+}
+
+@keyframes easter-sparkle {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  20% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(1)
+      rotate(var(--rot, 0deg));
+  }
+}
+
+/* The bubble's fade out starts 350ms before TitlebarAppName removes it (SHOW_MS 2600). */
+.easter-bubble {
+  position: fixed;
+  padding: 8px 14px;
+  border-radius: 18px;
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+  box-shadow: var(--md-elevation-3, none);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transform-origin: var(--tail-x, 20px) 0;
+  animation:
+    easter-bubble-in 460ms cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    easter-bubble-out 350ms ease-in 2250ms forwards;
+}
+
+/* The tail points up at the name. */
+.easter-bubble::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: calc(var(--tail-x, 20px) - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background-color: inherit;
+  transform: rotate(45deg);
+}
+
+.easter-bubble-text {
+  position: relative;
+  display: inline-block;
+  animation: easter-bubble-float 1.4s ease-in-out 460ms infinite alternate;
+}
+
+@keyframes easter-bubble-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.3);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes easter-bubble-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.92);
+  }
+}
+
+@keyframes easter-bubble-float {
+  to {
+    transform: translateY(-2px) rotate(-1deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .titlebar-title .titlebar-app-name.is-happy,
+  .easter-bubble-text {
+    animation: none;
+  }
+
+  .easter-sparkle {
+    display: none;
+  }
+
+  .easter-bubble {
+    animation:
+      easter-fade-in 200ms ease-out both,
+      easter-bubble-fade-out 350ms ease-in 2250ms forwards;
+  }
+}
+
+@keyframes easter-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes easter-bubble-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ── Dev reload button (WindowChrome.tsx, dev builds only) ──────────
+ * Centred over the whole title bar whatever the window style, and outside the drag region
+ * so the click reaches it. Dashed outline so it never reads as part of the product. */
+.app-titlebar {
+  position: relative;
+}
+
+.titlebar-dev-reload {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px dashed var(--md-outline, #f0f);
+  border-radius: var(--md-shape-full, 999px);
+  background-color: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-dev-reload:hover {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
 }

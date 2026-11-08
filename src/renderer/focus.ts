@@ -58,8 +58,9 @@ export function focusTerminalDom(): void {
       '.terminal-search-input',
     );
     if (searchInput && document.activeElement === searchInput) return;
-    // Modal 打开时跳过(自绘 Modal 自己管理焦点 trap)
-    if (document.querySelector('.app-modal-backdrop')) return;
+    // Modal 打开时跳过(自绘 Modal 自己管理焦点 trap)。正在淡出的残影(.exiting)
+    // 已经关了,不能挡住焦点回到终端,见 motion.ts。
+    if (document.querySelector('.app-modal-backdrop:not(.exiting)')) return;
     // 设置视图打开时跳过(用户在编辑设置)
     if (document.querySelector('.settings-view')) return;
     // With split panes the first terminal in the DOM may not be the selected one, so

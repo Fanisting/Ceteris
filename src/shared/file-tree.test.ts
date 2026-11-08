@@ -1,6 +1,7 @@
 /**
  * @file src/shared/file-tree.test.ts
- * @purpose 覆盖文件树纯逻辑:文件名校验、根目录推导、慢速双击判定、行展开、路径修正。
+ * @purpose 覆盖文件树纯逻辑:文件名校验、根目录推导、慢速双击判定、行展开、路径修正、
+ *   自动刷新的文件变化判断。
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -11,6 +12,7 @@ import {
   isValidEntryName,
   remapPath,
   resolveFileTreeRoot,
+  sameFileStat,
   sortEntries,
   type FileTreeEntry,
 } from './file-tree';
@@ -185,5 +187,22 @@ describe('remapPath', () => {
 
   it('不误伤前缀相同的兄弟目录', () => {
     expect(remapPath('C:\\p\\older', 'C:\\p\\old', 'C:\\p\\new')).toBe('C:\\p\\older');
+  });
+});
+
+describe('sameFileStat', () => {
+  it('大小或修改时间任一变化都算变了:重编出来的 PDF 常常一样大', () => {
+    const before = { size: 100, mtimeMs: 1000 };
+    expect(sameFileStat(before, { size: 100, mtimeMs: 1000 })).toBe(true);
+    expect(sameFileStat(before, { size: 100, mtimeMs: 2000 })).toBe(false);
+    expect(sameFileStat(before, { size: 101, mtimeMs: 1000 })).toBe(false);
+  });
+
+  it('服务器不给修改时间时只看大小;没有基线时只和没有基线相同', () => {
+    expect(sameFileStat({ size: 100, mtimeMs: null }, { size: 100, mtimeMs: null })).toBe(true);
+    expect(sameFileStat({ size: 100, mtimeMs: null }, { size: 99, mtimeMs: null })).toBe(false);
+    expect(sameFileStat({ size: 100, mtimeMs: 1000 }, { size: 100, mtimeMs: null })).toBe(false);
+    expect(sameFileStat(null, { size: 100, mtimeMs: 1000 })).toBe(false);
+    expect(sameFileStat(null, null)).toBe(true);
   });
 });

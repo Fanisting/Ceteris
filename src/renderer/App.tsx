@@ -26,7 +26,7 @@ import { SshAskpassBridge } from './components/SshAskpassBridge';
 
 type HandshakeState =
   | { status: 'pending' }
-  | { status: 'ok'; appLabel: string }
+  | { status: 'ok'; appLabel: string; isDev: boolean }
   | { status: 'mismatch'; mainVersion: number; rendererVersion: number }
   | { status: 'error'; message: string };
 
@@ -92,7 +92,7 @@ export function App(): JSX.Element {
     }
     window.api
       .getProtocolVersion()
-      .then(({ protocolVersion, appLabel }) => {
+      .then(({ protocolVersion, appLabel, buildType }) => {
         if (protocolVersion !== PROTOCOL_VERSION) {
           setHandshake({
             status: 'mismatch',
@@ -102,7 +102,7 @@ export function App(): JSX.Element {
           return;
         }
         document.title = appLabel;
-        setHandshake({ status: 'ok', appLabel });
+        setHandshake({ status: 'ok', appLabel, isDev: buildType === 'dev' });
       })
       .catch((err: unknown) => {
         setHandshake({
@@ -141,12 +141,12 @@ export function App(): JSX.Element {
   // handshake OK
   return (
     <AppStateProvider myWindowId={window.api.windowId} myWindowNumber={window.api.windowNumber}>
-      <ConnectedShell appLabel={handshake.appLabel} />
+      <ConnectedShell appLabel={handshake.appLabel} isDev={handshake.isDev} />
     </AppStateProvider>
   );
 }
 
-function ConnectedShell({ appLabel }: { appLabel: string }): JSX.Element {
+function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean }): JSX.Element {
   const sync = useIpcSync();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -263,7 +263,7 @@ function ConnectedShell({ appLabel }: { appLabel: string }): JSX.Element {
               data-window-style={windowStyle}
               data-simple-mode={state.simpleMode ? 'true' : 'false'}
             >
-              <WindowChrome windowStyle={windowStyle} appLabel={appLabel} />
+              <WindowChrome windowStyle={windowStyle} appLabel={appLabel} isDev={isDev} />
               {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
               <LinkConnectionBanner />
               {state.inSettingsView ? (

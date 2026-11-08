@@ -12,7 +12,8 @@
  *
  *   主进程已 `frame: false`,这里要负责:
  *   - 提供 -webkit-app-region: drag 拖动区
- *   - 显示应用标题 + 视图切换按钮(版本号在 设置 → 关于)
+ *   - 显示应用标题 + 视图切换按钮(版本号在 设置 → 关于);点应用名有个小彩蛋,见 TitlebarAppName
+ *   - dev 构建在标题栏正中多一个重新加载按钮,见 DevReloadButton
  *   - 监听 evt:window:max-state-changed 切按钮图标 / app-root 圆角
  *
  * @对应文档章节: 软件定义书 6.7 (窗口视觉),M1 待办 P0-1
@@ -26,7 +27,8 @@ import {
 } from '@shared/protocol';
 import type { WindowStyle } from '@shared/types';
 import { ViewSwitchButton } from './ViewSwitchButton';
-import { Close, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
+import { TitlebarAppName } from './TitlebarAppName';
+import { Close, Sync, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
 import { focusTerminalDom } from '../focus';
 import { useAppState } from '../store';
 
@@ -34,9 +36,32 @@ interface Props {
   windowStyle: WindowStyle;
   /** Which build this is, so stable, beta and dev cannot be mistaken for each other. */
   appLabel: string;
+  /** Dev build (npm run dev): shows the reload button at the top middle. */
+  isDev: boolean;
 }
 
-export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
+/**
+ * Dev only: reloads this window, for a quick look after a change. electron-vite already
+ * hot-swaps renderer modules; this also picks up what HMR cannot (stores, main-process IPC
+ * replies, CSS order). Main-process changes need `npm run dev -- --watch`, which restarts
+ * the app on its own. Centred over the title bar, outside the drag region.
+ */
+function DevReloadButton(): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="titlebar-dev-reload"
+      onClick={() => window.location.reload()}
+      title="Reload this window (dev only)"
+      aria-label="Reload this window"
+    >
+      <Sync size={16} />
+      <span>Reload</span>
+    </button>
+  );
+}
+
+export function WindowChrome({ windowStyle, appLabel, isDev }: Props): JSX.Element {
   const [maximized, setMaximized] = useState(false);
   const state = useAppState();
   const hoverSymbols = state.settings.appearance?.macOSTrafficLightHoverSymbols ?? false;
@@ -89,7 +114,11 @@ export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
   // 双击标题栏拖动区切最大化(原生 frame 默认行为,自绘后需要自己接)
   const handleDragRegionDblClick = (e: ReactMouseEvent<HTMLDivElement>): void => {
     // 只在拖动区本身触发,不要被按钮冒泡进来
-    if ((e.target as HTMLElement).closest('.titlebar-btn,.titlebar-traffic,.titlebar-view-switch')) {
+    if (
+      (e.target as HTMLElement).closest(
+        '.titlebar-btn,.titlebar-traffic,.titlebar-view-switch,.titlebar-app-name,.titlebar-dev-reload',
+      )
+    ) {
       return;
     }
     callToggleMax();
@@ -105,21 +134,20 @@ export function WindowChrome({ windowStyle, appLabel }: Props): JSX.Element {
         callToggleMax={callToggleMax}
         hoverSymbols={hoverSymbols}
         handleDragRegionDblClick={handleDragRegionDblClick}
+        devReload={isDev ? <DevReloadButton /> : null}
       />
     );
   }
 
   // Windows 风格(默认):标题在左,控制按钮在右
   return (
-    <div
-      className="app-titlebar app-titlebar-windows"
-      onDoubleClick={handleDragRegionDblClick}
-    >
+    <div className="app-titlebar app-titlebar-windows" onDoubleClick={handleDragRegionDblClick}>
       <div className="titlebar-title titlebar-drag">
-        <span className="titlebar-app-name">{appLabel}</span>
+        <TitlebarAppName label={appLabel} />
         <ViewSwitchButton />
       </div>
       <div className="titlebar-spacer titlebar-drag" />
+      {isDev && <DevReloadButton />}
       <div className="titlebar-controls" aria-label="窗口控制(Windows 风格)">
         <button
           type="button"
@@ -175,6 +203,7 @@ function MacosTitlebar({
   callToggleMax,
   hoverSymbols,
   handleDragRegionDblClick,
+  devReload,
 }: {
   appLabel: string;
   maximized: boolean;
@@ -183,6 +212,7 @@ function MacosTitlebar({
   callToggleMax: () => void;
   hoverSymbols: boolean;
   handleDragRegionDblClick: (e: ReactMouseEvent<HTMLDivElement>) => void;
+  devReload: JSX.Element | null;
 }): JSX.Element {
   void maximized; // 当前 UI 中 max 按钮不区分图标,标记 used
   return (
@@ -233,10 +263,11 @@ function MacosTitlebar({
       </div>
       <div className="titlebar-spacer titlebar-drag" />
       <div className="titlebar-title titlebar-drag">
-        <span className="titlebar-app-name">{appLabel}</span>
+        <TitlebarAppName label={appLabel} />
         <ViewSwitchButton />
       </div>
       <div className="titlebar-spacer titlebar-drag" />
+      {devReload}
     </div>
   );
 }

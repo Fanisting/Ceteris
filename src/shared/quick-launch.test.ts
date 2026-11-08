@@ -29,9 +29,7 @@ describe('isValidQuickLaunchItems', () => {
   });
 
   it('模板和 shell 可以同 id', () => {
-    expect(
-      isValidQuickLaunchItems([template('x'), { kind: 'shell', id: 'x' }]),
-    ).toBe(true);
+    expect(isValidQuickLaunchItems([template('x'), { kind: 'shell', id: 'x' }])).toBe(true);
   });
 
   it.each([
@@ -42,10 +40,7 @@ describe('isValidQuickLaunchItems', () => {
     ['空 id', [template('')]],
     ['id 非字符串', [{ kind: 'template', id: 1 }]],
     ['重复项', [template('a'), template('a')]],
-    [
-      '超过上限',
-      Array.from({ length: QUICK_LAUNCH_MAX_ITEMS + 1 }, (_, i) => template(`t${i}`)),
-    ],
+    ['超过上限', Array.from({ length: QUICK_LAUNCH_MAX_ITEMS + 1 }, (_, i) => template(`t${i}`))],
   ])('拒绝 %s', (_name, value) => {
     expect(isValidQuickLaunchItems(value)).toBe(false);
   });
@@ -87,57 +82,68 @@ describe('quickLaunchItemKey', () => {
 });
 
 describe('radialPositions', () => {
-  const anchor = { x: 600, y: 40 };
-  const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
-    Math.hypot(a.x - b.x, a.y - b.y);
+  // + 号在一个很高的视口正中,不触发平移,便于检查扇形本身的形状
+  const anchor = { x: 300, y: 400 };
+  const viewport = { width: 1200, height: 800 };
+  const all = [1, 2, 3, 4, 5, 6, 7, 8];
+  const near = (a: number, b: number): boolean => Math.abs(a - b) < 1e-6;
 
   it('0 个选项返回空', () => {
-    expect(radialPositions(0, anchor, 1200)).toEqual([]);
+    expect(radialPositions(0, anchor, viewport)).toEqual([]);
   });
 
-  it('1 个选项在 + 号正下方', () => {
-    const [only] = radialPositions(1, anchor, 1200);
-    expect(only?.x).toBe(600);
-    expect(only?.y).toBeGreaterThan(anchor.y);
+  it.each(all)('%i 个选项全在 + 号右侧,不盖住左边的侧栏', (count) => {
+    for (const p of radialPositions(count, anchor, viewport)) {
+      expect(p.x).toBeGreaterThan(anchor.x + 21);
+    }
   });
 
-  it('两个默认选项分列 + 号左右', () => {
-    const [left, right] = radialPositions(2, anchor, 1200);
-    expect(left!.x).toBeLessThan(anchor.x);
-    expect(right!.x).toBeGreaterThan(anchor.x);
+  it.each(all)('%i 个选项以穿过 + 号的水平线上下对称', (count) => {
+    const points = radialPositions(count, anchor, viewport);
+    for (const p of points) {
+      const mirror = 2 * anchor.y - p.y;
+      expect(points.some((q) => near(q.x, p.x) && near(q.y, mirror))).toBe(true);
+    }
   });
 
-  it.each([1, 2, 3, 4, 5, 6, 7, 8])(
-    '%i 个选项都明显低于 + 号,不会盖住同一行的标签文字',
-    (count) => {
-      for (const p of radialPositions(count, anchor, 1200)) {
-        expect(p.y - anchor.y).toBeGreaterThan(21);
-      }
-    },
-  );
-
-  it.each([2, 3, 4, 5, 6, 7, 8])('%i 个选项都在 + 号下方且互不重叠', (count) => {
-    const points = radialPositions(count, anchor, 1200);
+  it.each(all)('%i 个选项两两之间都不重叠', (count) => {
+    const points = radialPositions(count, anchor, viewport);
     expect(points).toHaveLength(count);
-    for (const p of points) expect(p.y).toBeGreaterThanOrEqual(anchor.y - 1e-6);
-    for (let i = 1; i < points.length; i += 1) {
-      expect(distance(points[i]!, points[i - 1]!)).toBeGreaterThanOrEqual(70);
+    for (let i = 0; i < points.length; i += 1) {
+      for (let j = i + 1; j < points.length; j += 1) {
+        const gap = Math.hypot(points[i]!.x - points[j]!.x, points[i]!.y - points[j]!.y);
+        expect(gap).toBeGreaterThanOrEqual(70);
+      }
     }
   });
 
-  it.each([
-    ['贴右边', 1190],
-    ['贴左边', 10],
-  ])('%s时整组留在视口内', (_name, x) => {
-    for (const p of radialPositions(8, { x, y: 40 }, 1200)) {
-      expect(p.x - 21).toBeGreaterThanOrEqual(0);
-      expect(p.x + 21).toBeLessThanOrEqual(1200);
+  it('8 个选项在空间够时也在 + 号 230px 以内,鼠标不用走太远', () => {
+    for (const p of radialPositions(8, anchor, viewport)) {
+      expect(Math.hypot(p.x - anchor.x, p.y - anchor.y)).toBeLessThanOrEqual(230);
     }
   });
 
-  it('窗口极窄时居中,不产生 NaN', () => {
-    for (const p of radialPositions(8, anchor, 100)) {
-      expect(Number.isFinite(p.x)).toBe(true);
+  // 真实窗口里 + 号中心离顶部约 60px
+  const top = { x: 300, y: 60 };
+
+  it.each(all)('%i 个选项在贴窗口顶部的 + 号旁仍以它为轴上下对称,并留在窗口内', (count) => {
+    const points = radialPositions(count, top, viewport);
+    for (const p of points) {
+      expect(p.y - 21).toBeGreaterThanOrEqual(0);
+      const mirror = 2 * top.y - p.y;
+      expect(points.some((q) => near(q.x, p.x) && near(q.y, mirror))).toBe(true);
+    }
+  });
+
+  it('贴窗口右边时整组左移,留在视口内', () => {
+    for (const p of radialPositions(8, { x: 1150, y: 400 }, viewport)) {
+      expect(p.x + 21).toBeLessThanOrEqual(viewport.width);
+    }
+  });
+
+  it('窗口极小时居中,不产生 NaN', () => {
+    for (const p of radialPositions(8, anchor, { width: 100, height: 100 })) {
+      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
     }
   });
 });

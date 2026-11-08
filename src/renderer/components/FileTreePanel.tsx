@@ -57,7 +57,7 @@ import {
 } from '../store';
 import { useContextMenuApi } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
-import { ChevronRight, Draft, ExpandMore, Folder, FolderOpen } from './material-symbols';
+import { ChevronRight, Draft, Folder, FolderOpen } from './material-symbols';
 import { useToast } from './Toast';
 
 const POLL_INTERVAL_MS = 3000;
@@ -477,8 +477,12 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
               onContextMenu={(e) => handleContextMenu(e, row)}
             >
               {entry.isDirectory ? (
-                <span className="file-tree-chevron" onClick={(e) => handleChevronClick(e, row)}>
-                  {isExpanded ? <ExpandMore size={16} /> : <ChevronRight size={16} />}
+                <span
+                  className={`file-tree-chevron${isExpanded ? ' expanded' : ''}`}
+                  onClick={(e) => handleChevronClick(e, row)}
+                >
+                  {/* 一个箭头旋转 90 度表示展开,见 motion.css */}
+                  <ChevronRight size={16} />
                 </span>
               ) : (
                 <span className="file-tree-chevron placeholder" />

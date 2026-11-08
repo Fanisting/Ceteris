@@ -8,6 +8,8 @@
  *   - 关闭按钮 + 点击 toast 体也可关闭
  *   - 主进程 IPC 错误等场景:catch 后 toast.push({ kind: 'error', message })
  *
+ *   - 消失时先淡出 150ms 再卸载(.leaving,见 styles/motion.css 与 motion.ts)
+ *
  *   不引入新依赖,纯 React + CSS。
  */
 import {
@@ -22,6 +24,7 @@ import {
 } from 'react';
 import { Icon } from './icons';
 import { focusTerminalDom } from '../focus';
+import { MOTION_EXIT_MS, prefersReducedMotion } from '../motion';
 
 export type ToastKind = 'info' | 'success' | 'warn' | 'error';
 
@@ -54,19 +57,54 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [items, setItems] = useState<Toast[]>([]);
   const nextId = useRef(1);
   const pausedIds = useRef<Set<number>>(new Set());
+  // 正在淡出的 toast。它们还在 items 里(所以还渲染),但已经不计时、不响应鼠标,
+  // MOTION_EXIT_MS 后才真正移除。ref 给 ticker 用,state 给渲染用。
+  const [leaving, setLeaving] = useState<ReadonlySet<number>>(new Set());
+  const leavingRef = useRef<ReadonlySet<number>>(leaving);
+  leavingRef.current = leaving;
+  const itemsRef = useRef<Toast[]>(items);
+  itemsRef.current = items;
 
-  const dismiss = useCallback((id: number): void => {
-    // FOC-5:若 dismiss 由用户点击 toast 体 / 关闭按钮触发,activeElement
-    // 会是 toast button → toast 立即 unmount → 焦点漂到 body。
-    // 检测 active 是否在 .toast 内,是的话 dismiss 后归还焦点给 xterm。
-    // 自动 ticker dismiss 时 activeElement 不在 toast,focus.ts 工具会
-    // no-op(只在 body / null 时才动)。
-    const active = document.activeElement;
-    const triggeredByUser = !!(active && active.closest('.toast'));
-    setItems((prev) => prev.filter((t) => t.id !== id));
-    pausedIds.current.delete(id);
-    if (triggeredByUser) focusTerminalDom();
+  /**
+   * 让一批 toast 退场:标记 leaving,淡出结束后从 items 删掉。
+   * 系统开了"减少动效"时直接删。重复调用同一个 id 无害。
+   */
+  const retire = useCallback((ids: number[]): void => {
+    if (ids.length === 0) return;
+    for (const id of ids) pausedIds.current.delete(id);
+    const remove = (): void => {
+      setItems((prev) => prev.filter((t) => !ids.includes(t.id)));
+      setLeaving((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+    };
+    if (prefersReducedMotion()) {
+      remove();
+      return;
+    }
+    setLeaving((prev) => new Set([...prev, ...ids]));
+    setTimeout(remove, MOTION_EXIT_MS);
   }, []);
+
+  const dismiss = useCallback(
+    (id: number): void => {
+      // FOC-5:若 dismiss 由用户点击 toast 体 / 关闭按钮触发,activeElement
+      // 会是 toast button → toast 立即 unmount → 焦点漂到 body。
+      // 检测 active 是否在 .toast 内,是的话 dismiss 后归还焦点给 xterm。
+      // 自动 ticker dismiss 时 activeElement 不在 toast,focus.ts 工具会
+      // no-op(只在 body / null 时才动)。
+      const active = document.activeElement;
+      const triggeredByUser = !!(active && active.closest('.toast'));
+      // 淡出期间 toast 还在 DOM 里,焦点会留在它的按钮上,focusTerminalDom 只在焦点
+      // 落回 body 时才动手。先放掉焦点,效果与立即卸载相同。
+      if (triggeredByUser && active instanceof HTMLElement) active.blur();
+      retire([id]);
+      if (triggeredByUser) focusTerminalDom();
+    },
+    [retire],
+  );
 
   const push = useCallback((t: ToastInput): void => {
     const id = nextId.current++;
@@ -83,16 +121,17 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
     if (items.length === 0) return undefined;
     const timer = setInterval(() => {
       const now = Date.now();
-      setItems((prev) =>
-        prev.filter((t) => {
-          if (pausedIds.current.has(t.id)) return true;
+      const expired = itemsRef.current
+        .filter((t) => {
+          if (leavingRef.current.has(t.id) || pausedIds.current.has(t.id)) return false;
           const dur = t.durationMs ?? (t.kind === 'error' ? 8000 : 4000);
-          return now - t.bornAt < dur;
-        }),
-      );
+          return now - t.bornAt >= dur;
+        })
+        .map((t) => t.id);
+      retire(expired);
     }, 500);
     return () => clearInterval(timer);
-  }, [items.length]);
+  }, [items.length, retire]);
 
   const api = useMemo<ToastApi>(() => ({ push, dismiss }), [push, dismiss]);
 
@@ -103,7 +142,7 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
         {items.map((t) => (
           <div
             key={t.id}
-            className={`toast toast-${t.kind}`}
+            className={`toast toast-${t.kind}${leaving.has(t.id) ? ' leaving' : ''}`}
             onMouseEnter={() => pausedIds.current.add(t.id)}
             onMouseLeave={() => pausedIds.current.delete(t.id)}
             onClick={() => dismiss(t.id)}

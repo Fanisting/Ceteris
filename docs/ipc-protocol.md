@@ -6,8 +6,13 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.4 · 最后更新:2026-11-07
+文档版本:1.5 · 最后更新:2026-11-08
 
+> **v1.5 变更**(GitHub Releases 更新检查,软件定义书 ADR-018):
+> - 新增 `cmd:update:get-status`、`cmd:update:check-now` 与事件 `evt:update:status-changed`
+> - domain 白名单加 `update`
+> - settings 加 `behavior.autoCheckUpdates`(默认 true)
+>
 > **v1.4 变更**(PDF 实时预览 + SFTP 交互式登录,软件定义书 ADR-017):
 > - 新增 `cmd:fs:stat-file`(PDF 自动刷新轮询文件大小和修改时间,安静请求)
 > - `cmd:fs:list-dir` payload 加 `interactive`,`cmd:fs:read-pdf` payload 加 `fresh`、response 加 `mtimeMs`;`DirFailure` 多一个 `'login-required'`
@@ -90,7 +95,7 @@
 格式:`<kind>:<domain>:<action>`
 
 - `kind`:`cmd` | `evt`
-- `domain`:`app` | `window` | `session` | `path` | `bookmark` | `template` | `settings` | `tray` | `system` | `explorer-integration`
+- `domain`:`app` | `window` | `session` | `path` | `bookmark` | `template` | `settings` | `tray` | `system` | `explorer-integration` | `fs` | `ssh` | `update`
 - `action`:具体动词,kebab-case
 
 > v1.3 起 domain 允许 kebab-case(为容纳 `explorer-integration`)。protocol.ts 校验
@@ -245,6 +250,8 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:fs:read-pdf` | 分块读取可查看的文件(PDF / 图片 / markdown) |
 | `cmd:fs:stat-file` | **(v1.4)** 查文件大小和修改时间,PDF 自动刷新轮询用 |
 | `cmd:ssh:askpass-answer` | **(v1.4)** 回答一条 `evt:ssh:askpass-prompt` |
+| `cmd:update:get-status` | **(v1.5)** 取当前更新检查状态 |
+| `cmd:update:check-now` | **(v1.5)** 立刻查一次 GitHub Releases |
 
 > v1.2 起删除:`cmd:template:list` (用 `cmd:app:get-snapshot` 拿到)、`cmd:session:restart-from-tombstone` (ADR-008 砍墓地)、`cmd:settings:detect-shells` (并入 `cmd:settings:list-shells`)、`cmd:settings:open-data-dir/open-log-dir` (并入 `cmd:system:open-data-dir/open-logs-dir`)、`cmd:system:show-context-menu` (renderer 端自绘菜单,不需要 main 端 popup)。
 
@@ -269,6 +276,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:settings:changed` | 全部 |
 | `evt:ssh:askpass-prompt` | **(v1.4)** 仅发起 SFTP 连接的窗口 |
 | `evt:ssh:askpass-closed` | **(v1.4)** 仅收到对应 prompt 的窗口 |
+| `evt:update:status-changed` | **(v1.5)** 全部本机窗口 |
 
 > v1.2 起删除:`evt:session:tombstoned` (ADR-008)、`evt:session:cwd-changed` (并入 `evt:session:state-changed` 的 changes.currentCwd 子字段,ADR-008)、`evt:template:list-updated` (重命名为 `evt:templates:updated`,代码一直是后者,文档之前不一致)、`evt:tray:menu-action` (托盘菜单 click handler 直接在 main 端执行,renderer 不参与)。
 
@@ -1234,6 +1242,39 @@ interface AskpassAnswerPayload {
 
 **Notes**:SFTP 连接在 Host 上,Link 远程窗口里转发给 Host。答案只在内存里走到 ssh 的 askpass 助手,不记录、不缓存;保存密码仍由 profile 管理
 
+### 5.9 更新检查 (v1.5)
+
+查的是 GitHub `Fanisting/ceteris` 的 latest release(跳过 draft 和 prerelease)。只报告状态和下载直链,不下载不安装;下载由 renderer 用 `cmd:system:open-external` 交给浏览器。两条命令都在 `LINK_LOCAL_ONLY_CHANNELS` 里:远程窗口里点也查本机这份安装。
+
+```typescript
+interface UpdateStatus {
+  state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'error';
+  currentVersion: string;              // app.getVersion()
+  update: {
+    version: string;                   // 去掉 v 的 tag
+    tag: string;
+    name: string;
+    htmlUrl: string;                   // 发布页
+    publishedAt: string | null;
+    downloadUrl: string;               // 本机系统和 CPU 对应安装包的直链;没有匹配时等于 htmlUrl
+    assetName: string | null;          // null = 没有匹配的文件,downloadUrl 是发布页
+  } | null;                            // 之后一次检查失败时保留
+  checkedAt: number | null;            // 上次检查结束的时间戳
+  error: 'network' | 'rate-limited' | 'http' | 'bad-response' | 'bad-version' | null;
+  autoCheck: boolean;                  // 本构建 + 当前设置下是否在定时检查
+}
+```
+
+#### `cmd:update:get-status`
+无 payload,返回 `UpdateStatus`。窗口挂载时拉一次,之后跟 `evt:update:status-changed`。
+
+#### `cmd:update:check-now`
+无 payload,立刻检查一次,返回查完后的 `UpdateStatus`。同时到达的多次调用共用一个请求。任何 channel(stable / beta / dev)都可用。
+
+**Errors**:`UpdateCheckUnavailable`(主进程没接上 UpdateChecker,只在测试装配里出现)。网络失败、GitHub 限流等不抛错,写进 `status.error`。
+
+**选哪个文件**(`src/shared/update-check.ts` 的 `selectAsset`):Windows 给 Setup exe,portable 运行时给 Portable exe;macOS 按 CPU 给 arm64 或 x64 的 dmg;Linux 以 AppImage 启动给 AppImage,否则 Debian 系给 deb、Red Hat 系给 rpm,找不到再退到 AppImage。
+
 ### 5.7 Explorer Integration (v1.3)
 
 > Win11 新菜单(MSIX + `IExplorerCommand`)与经典菜单(HKCU 注册表)的状态
@@ -1584,7 +1625,12 @@ interface AskpassClosedPayload {
 }
 ```
 
-### 6.6 Tray / 其他
+### 6.6 更新检查 (v1.5)
+
+#### `evt:update:status-changed`
+`UpdateStatus`(见 5.9)变化时广播给本机所有窗口:开始检查、查到新版本、已是最新、失败、自动检查开关变化。Link 远程窗口不收(和其它广播一样被跳过),它们用 `cmd:update:get-status` 拉。
+
+### 6.7 Tray / 其他
 
 #### `evt:tray:menu-action`
 托盘菜单的某些项,Main 做完后想通知特定窗口。例如"在 X 窗口聚焦 Y session":
@@ -1638,6 +1684,8 @@ class IPCError extends Error {
 | `PtySpawnFailed` | node-pty 启动失败 | shell 不存在 / 权限 / native 模块 |
 | `ShellNotFound` | 指定 shell 不存在 | 系统未安装 |
 | `CwdNotAccessible` | 工作目录不存在 / 无权限 | 路径已删除 / 权限被改 |
+| **更新检查** | | |
+| `UpdateCheckUnavailable` | 主进程没有 UpdateChecker | 测试装配,或 index.ts 创建失败(看 main.log 的 UpdateChecker) |
 | `InvalidDimensions` | 终端尺寸不合法 | cols/rows 越界 |
 | `InvalidName` | 名称不合法 | 超长 / 空字符串 / 含控制字符 |
 | **Path / Bookmark** | | |

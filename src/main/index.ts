@@ -17,7 +17,7 @@
  *
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
-import { app, Menu, session as electronSession } from 'electron';
+import { app, Menu, net, session as electronSession } from 'electron';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
@@ -32,6 +32,7 @@ import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
 import {
   broadcastLinkStatus,
+  broadcastUpdateStatus,
   decryptStoredPassword,
   installIpcLayer,
   sendEventToWindowId,
@@ -45,8 +46,10 @@ import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, getChannel, getLaunchExePath, isBetaBuild } from './build-type';
+import { devDebugPort } from './dev-debug-port';
 import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
+import { LATEST_RELEASE_URL, UpdateChecker, detectInstallTarget } from './update-checker';
 import { logger } from './logger';
 import type {
   BookmarksFile,
@@ -103,6 +106,25 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
   pathManager.setInvalidPaths(invalid);
 }
 
+/**
+ * Dev builds open a Chrome DevTools Protocol port on 127.0.0.1 so tools can drive the window
+ * (dev-debug-port.ts). Must run before app ready: Chromium reads the switch at startup.
+ * A bad CETERIS_DEV_DEBUG_PORT is logged and no port is opened, rather than stopping dev.
+ */
+function openDevDebugPort(): void {
+  try {
+    const port = devDebugPort(process.env);
+    if (port === null) {
+      logger.info('main', 'dev debugging port off (CETERIS_DEV_DEBUG_PORT=off)');
+      return;
+    }
+    app.commandLine.appendSwitch('remote-debugging-port', String(port));
+    logger.info('main', 'dev debugging port open on 127.0.0.1', { port });
+  } catch (err) {
+    logger.error('main', 'dev debugging port not opened', err);
+  }
+}
+
 function bootstrap(): void {
   // DEV-COEXIST(2026-05-16):dev 模式下改 app 名,让 npm run dev 与打包版
   // Ceteris.exe 互不冲突。Electron 把以下 4 类资源全部按 `productName` 派生:
@@ -117,6 +139,7 @@ function bootstrap(): void {
   // settings.json / 单实例锁。仅 installed 形态使用 "Ceteris" 原名。
   if (!app.isPackaged) {
     app.setName('Ceteris (dev)');
+    openDevDebugPort();
   } else if (isBetaBuild()) {
     // The beta gets its own data dir and single-instance lock however it is launched.
     app.setName('Ceteris Beta');
@@ -249,6 +272,30 @@ function bootstrap(): void {
     },
   );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
+
+  // ADR-018:GitHub Releases 更新检查。只提示 + 给本机系统对应的直链,不下载不安装。
+  // 定时检查只在 stable 且设置开着时跑;beta / dev 是本地测试构建,只在用户点"立即检查"时查。
+  const updateChecker = new UpdateChecker({
+    currentVersion: app.getVersion(),
+    target: detectInstallTarget(process.platform, process.arch, process.env, existsSync),
+    fetchLatest: async () => {
+      const res = await net.fetch(LATEST_RELEASE_URL, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'Ceteris-Updater',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+      const json: unknown = await res.json().catch(() => null);
+      return { status: res.status, json };
+    },
+    isAutoCheckEnabled: () =>
+      getChannel() === 'stable' && settingsManager.get().behavior.autoCheckUpdates !== false,
+    onStatus: (status) => {
+      broadcastUpdateStatus(status);
+      trayManager.setUpdateStatus(status);
+    },
+  });
 
   // M1-G:WindowManager 工厂注入 — 把 settings.windowDefaults 包成
   // initialBounds + onBeforeClose,所有 createWindow 入口共用。
@@ -478,7 +525,9 @@ function bootstrap(): void {
         linkManager,
         sftpPool,
         promptBroker,
+        updateChecker,
       });
+      updateChecker.refreshSchedule();
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
       // 原因记在 LinkServer.lastError 里由设置页展示。
@@ -519,6 +568,10 @@ function bootstrap(): void {
           platformAdapter
             .setAutoStart(e.settings.behavior.autoStart)
             .catch((err) => logger.warn('main', 'setAutoStart failed', err));
+        }
+        // ADR-018:开关自动检查更新 → 立刻起停定时器
+        if (e.changedKeys.includes('behavior.autoCheckUpdates')) {
+          updateChecker.refreshSchedule();
         }
         // M1-D:日志级别即改即生效
         if (e.changedKeys.includes('advanced.logLevel')) {

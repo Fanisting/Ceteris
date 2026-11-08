@@ -31,6 +31,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useOverlayRegistration } from '../ui-overlay-stack';
+import { usePresence } from '../motion';
 
 // ──────────────────────────────────────────────────────────────────
 // API 形状
@@ -127,6 +128,11 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
   const closeModal = useCallback(() => {
     const prev = previousActiveElementRef.current;
     previousActiveElementRef.current = null;
+    // 关闭后面板还要淡出 150ms(见 usePresence),期间 DOM 节点不卸载,焦点
+    // 会一直留在面板的按钮上,下面"只在焦点落回 body 时归还"的判断就永远不成立。
+    // 先把焦点放掉,归还逻辑与没有退场动画时完全一样。
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && panelRef.current?.contains(active)) active.blur();
     setModal(null);
     if (!prev) return;
     requestAnimationFrame(() => {
@@ -259,35 +265,44 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
     closeModal();
   };
 
+  // 退场:关闭后用最后一个 modal 的内容再渲染 150ms,播完 motion.css 的淡出再卸载。
+  // 残影带 .exiting(pointer-events: none、aria-hidden),上面的键盘监听和 overlay
+  // 栈都只看真实的 modal,所以残影不响应任何输入。
+  const { shown, exiting } = usePresence(modal);
+
   return (
     <Ctx.Provider value={api}>
       {children}
-      {modal && (
-        <div className="app-modal-backdrop" role="presentation">
+      {shown && (
+        <div
+          className={'app-modal-backdrop' + (exiting ? ' exiting' : '')}
+          role="presentation"
+          aria-hidden={exiting || undefined}
+        >
           <div
             ref={panelRef}
             className={
-              'app-modal-panel' + (modal.kind === 'confirm' && modal.danger ? ' danger' : '')
+              'app-modal-panel' + (shown.kind === 'confirm' && shown.danger ? ' danger' : '')
             }
             role="dialog"
             aria-modal="true"
-            aria-label={modal.title}
+            aria-label={shown.title}
           >
-            <div className="app-modal-title">{modal.title}</div>
-            {modal.kind === 'confirm' && (
+            <div className="app-modal-title">{shown.title}</div>
+            {shown.kind === 'confirm' && (
               <>
-                <div className="app-modal-message">{modal.message}</div>
-                {modal.preview && <pre className="app-modal-preview">{modal.preview}</pre>}
+                <div className="app-modal-message">{shown.message}</div>
+                {shown.preview && <pre className="app-modal-preview">{shown.preview}</pre>}
               </>
             )}
-            {modal.kind === 'prompt' && (
+            {shown.kind === 'prompt' && (
               <>
-                {modal.message && <div className="app-modal-message">{modal.message}</div>}
+                {shown.message && <div className="app-modal-message">{shown.message}</div>}
                 <input
-                  type={modal.inputType ?? 'text'}
+                  type={shown.inputType ?? 'text'}
                   className="app-modal-input"
                   value={promptValue}
-                  placeholder={modal.placeholder ?? ''}
+                  placeholder={shown.placeholder ?? ''}
                   onChange={(e) => setPromptValue(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -303,21 +318,21 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
             )}
             <div className="app-modal-actions">
               <button type="button" className="app-modal-button" onClick={handleCancel}>
-                {modal.kind === 'confirm'
-                  ? (modal.cancelLabel ?? '取消')
-                  : (modal.cancelLabel ?? '取消')}
+                {shown.kind === 'confirm'
+                  ? (shown.cancelLabel ?? '取消')
+                  : (shown.cancelLabel ?? '取消')}
               </button>
               <button
                 type="button"
                 className={
                   'app-modal-button app-modal-button-primary' +
-                  (modal.kind === 'confirm' && modal.danger ? ' danger' : '')
+                  (shown.kind === 'confirm' && shown.danger ? ' danger' : '')
                 }
                 onClick={handleConfirm}
               >
-                {modal.kind === 'confirm'
-                  ? (modal.confirmLabel ?? '确定')
-                  : (modal.confirmLabel ?? '确定')}
+                {shown.kind === 'confirm'
+                  ? (shown.confirmLabel ?? '确定')
+                  : (shown.confirmLabel ?? '确定')}
               </button>
             </div>
           </div>

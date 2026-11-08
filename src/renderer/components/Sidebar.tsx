@@ -33,7 +33,6 @@ import {
   CheckBold,
   ChevronRight,
   CloseBold,
-  ExpandMore,
   Terminal,
   Warning,
   Folder,
@@ -66,6 +65,7 @@ import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useModal } from './Modal';
 import { useToast } from './Toast';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
+import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import { buildSessionContextMenu } from './sessionContextMenu';
 
 /**
@@ -140,6 +140,9 @@ export function Sidebar(): JSX.Element {
   const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [managedTag, setManagedTag] = useState<string | null>(null);
+  // ADR-018: a newer release puts a dot on the settings button.
+  const { status: updateStatus } = useUpdateStatus();
+  const availableUpdate = updateStatus?.state === 'available' ? updateStatus.update : null;
   // Chosen from the title bar badge, which is the only switcher.
   const segment = state.sidebarSegment;
   useEffect(() => saveSidebarSegment(segment), [segment]);
@@ -498,9 +501,23 @@ export function Sidebar(): JSX.Element {
       <div className="sidebar-footer">
         <button
           type="button"
-          className="settings-entry"
-          onClick={() => dispatch({ type: 'view/enter-settings' })}
-          title={tx('设置', 'Settings')}
+          className={`settings-entry${availableUpdate ? ' has-update' : ''}`}
+          onClick={() =>
+            // 有新版本时直接进关于页,下载按钮就在那里(ADR-018)
+            dispatch(
+              availableUpdate
+                ? { type: 'view/enter-settings', category: 'about' }
+                : { type: 'view/enter-settings' },
+            )
+          }
+          title={
+            availableUpdate
+              ? tx(
+                  `设置(有新版本 v${availableUpdate.version})`,
+                  `Settings (v${availableUpdate.version} available)`,
+                )
+              : tx('设置', 'Settings')
+          }
           aria-label={tx('设置', 'Settings')}
         >
           <Icon name="settings" size={20} />
@@ -886,8 +903,12 @@ function PathItem({
             <Warning size={14} className="path-invalid-icon" />
           </span>
         ) : (
-          <span className="path-expand-arrow" aria-label={expanded ? '收起' : '展开'}>
-            {expanded ? <ExpandMore size={16} /> : <ChevronRight size={16} />}
+          // 同一个箭头转 90 度,而不是换成另一个图标:旋转过程说明了"展开"(motion.css)
+          <span
+            className={`path-expand-arrow${expanded ? ' expanded' : ''}`}
+            aria-label={expanded ? '收起' : '展开'}
+          >
+            <ChevronRight size={16} />
           </span>
         )}
         {renaming ? (

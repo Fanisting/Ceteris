@@ -19,6 +19,7 @@
  * 完整 schema 校验 + 版本迁移 + export/import 在 CP-4。
  */
 import { EventEmitter } from 'node:events';
+import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
@@ -142,6 +143,17 @@ const VALID_THEMES: ThemeId[] = [
   'tokyo-night-day',
   'light-pink',
   'fairyfloss',
+  // 珠光系列
+  'pearl-lapis',
+  'pearl-sapphire',
+  'pearl-rose',
+  'pearl-ember',
+  'pearl-jade',
+  'pearl-moon',
+  'pearl-frost',
+  // 梅子
+  'meizi',
+  ...BEAMER_THEME_IDS,
 ];
 
 /**

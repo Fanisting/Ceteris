@@ -8,7 +8,8 @@
  * - It opens by introducing three roles: the Coordinator, a tab that monitors and controls your
  *   Claude Code agents; Workers, the normal tabs of its folder that do the work it hands out;
  *   and the Fintuner, an agent that reads the project's chat history and finds where to save
- *   time, cost and your decisions. It ends with how to start a Fintuner.
+ *   time, cost and your decisions. The Fintuner is an agent tab too, so the tour ends by making
+ *   one the same way as the Coordinator: open an agent, right-click it, Role → Fintuner.
  * - Making a coordinator comes next: open a tab, right-click it, tick Coordinator. Each of these
  *   is detected (a folder tab exists, the tab menu is open, a coordinator exists).
  * - The intro, coordinator row, worker and start steps are acknowledged with Next, because
@@ -31,7 +32,10 @@ export type CoordinatorTourStep =
   | 'enable'
   | 'plugin'
   | 'start'
-  | 'fintuner';
+  | 'fintuner-open'
+  | 'fintuner-right-click'
+  | 'fintuner-pick'
+  | 'finish';
 
 /** The steps in order, for the progress dots. `open-tab` only appears when no tab is open. */
 export const COORDINATOR_TOUR_STEPS: readonly CoordinatorTourStep[] = [
@@ -44,7 +48,10 @@ export const COORDINATOR_TOUR_STEPS: readonly CoordinatorTourStep[] = [
   'enable',
   'plugin',
   'start',
-  'fintuner',
+  'fintuner-open',
+  'fintuner-right-click',
+  'fintuner-pick',
+  'finish',
 ];
 
 /**
@@ -86,6 +93,10 @@ export interface CoordinatorTourInput {
   pluginInstalled: boolean | null;
   /** The user pressed Next on the start step. */
   startSeen: boolean;
+  /** A tab has the Fintuner role. */
+  hasFintuner: boolean;
+  /** An agent tab opened since the Fintuner part began, ready to be given the role. */
+  hasFintunerCandidate: boolean;
 }
 
 export function coordinatorTourStep(input: CoordinatorTourInput): CoordinatorTourStep {
@@ -100,5 +111,8 @@ export function coordinatorTourStep(input: CoordinatorTourInput): CoordinatorTou
     if (!input.enabled) return 'enable';
     if (input.pluginInstalled !== true) return 'plugin';
   }
-  return input.startSeen ? 'fintuner' : 'start';
+  if (!input.startSeen) return 'start';
+  if (input.hasFintuner) return 'finish';
+  if (input.menuOpen) return 'fintuner-pick';
+  return input.hasFintunerCandidate ? 'fintuner-right-click' : 'fintuner-open';
 }

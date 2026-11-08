@@ -6,6 +6,7 @@
  */
 import { tx } from '@shared/i18n';
 import { COMMAND_CHANNELS } from '@shared/protocol';
+import { SESSION_ROLE_NAMES, WORKER_ROLE_NAME, type SessionRole } from '@shared/session-role';
 import { COORDINATOR_GUIDE_EVENT } from '@shared/tab-control';
 import type { PathTree, SessionInfo } from '@shared/types';
 import { findPathNode } from '../store';
@@ -35,6 +36,22 @@ export function buildSessionContextMenu(
     findPathNode(pathTree, session.pathId)?.path || session.originalCwd;
 
   const invoke = window.api.invoke.bind(window.api);
+  const role = session.role ?? null;
+  const roleName = role ? SESSION_ROLE_NAMES[role] : WORKER_ROLE_NAME;
+  const setRole = (next: SessionRole | null): void => {
+    invoke(COMMAND_CHANNELS.SESSION_SET_ROLE, { sessionId: session.id, role: next })
+      // ADR-024:设成 Coordinator 时通知协调者引导 (CoordinatorTour 自己判断看没看过)
+      .then(() => {
+        if (next === 'coordinator') {
+          window.dispatchEvent(
+            new CustomEvent(COORDINATOR_GUIDE_EVENT, { detail: { sessionId: session.id } }),
+          );
+        }
+      })
+      .catch((err: unknown) =>
+        toastError(`设置角色失败:${err instanceof Error ? err.message : String(err)}`),
+      );
+  };
 
   return [
     {
@@ -44,33 +61,33 @@ export function buildSessionContextMenu(
       onSelect: onRename,
     },
     {
-      // ADR-023:勾选后标签移到标签栏上方的 coordinator 行。任何窗口都能改,
-      // 它只决定标签放在哪一行,不动所有权。
-      label: tx('协调者', 'Coordinator'),
-      hint: tx(
-        '标签放到上方单独一行,在任何文件夹都看得到',
-        'Puts the tab in a row above, seen from every folder',
-      ),
-      checked: session.coordinator === true,
-      guideId: 'coordinator',
-      onSelect: () => {
-        const turningOn = session.coordinator !== true;
-        invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, {
-          sessionId: session.id,
-          coordinator: turningOn,
-        })
-          // ADR-024:勾上时通知协调者引导 (CoordinatorTour 自己判断看没看过)
-          .then(() => {
-            if (turningOn) {
-              window.dispatchEvent(
-                new CustomEvent(COORDINATOR_GUIDE_EVENT, { detail: { sessionId: session.id } }),
-              );
-            }
-          })
-          .catch((err: unknown) =>
-            toastError(`设置协调者失败:${err instanceof Error ? err.message : String(err)}`),
-          );
-      },
+      // ADR-024:角色子菜单。Worker 是普通标签;Coordinator 和 Fintuner 同级,标签改名为
+      // 角色名并移到标签栏上方一行 (改名由 main 的 SessionManager.setRole 做,所有窗口同步)。
+      // 任何窗口都能改,它只决定名字和位置,不动所有权。
+      label: tx(`角色:${roleName}`, `Role: ${roleName}`),
+      guideId: 'role',
+      submenu: [
+        {
+          label: tx(`${WORKER_ROLE_NAME}(普通标签)`, `${WORKER_ROLE_NAME} (normal tab)`),
+          hint: tx('接 Coordinator 派的活', 'Takes work from the Coordinator'),
+          checked: !role,
+          onSelect: () => setRole(null),
+        },
+        {
+          label: SESSION_ROLE_NAMES.coordinator,
+          hint: tx('盯着并指挥其他 agent', 'Monitors and controls your other agents'),
+          checked: role === 'coordinator',
+          guideId: 'role-coordinator',
+          onSelect: () => setRole('coordinator'),
+        },
+        {
+          label: SESSION_ROLE_NAMES.fintuner,
+          hint: tx('读对话历史,找省时间、提效率的办法', 'Reads the chat history for ways to save time'),
+          checked: role === 'fintuner',
+          guideId: 'role-fintuner',
+          onSelect: () => setRole('fintuner'),
+        },
+      ],
     },
     {
       label: '复制初始路径',

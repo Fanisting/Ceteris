@@ -11,6 +11,7 @@
  *
  * @对应文档章节: 软件定义书.md 第 8 章 (状态机)、第 11 章 (数据模型)
  */
+import type { SessionRole } from './session-role';
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 
@@ -272,6 +273,12 @@ export interface SessionInfo {
    * the folder's tabs, whichever folder is open (ADR-023). Lives as long as the session.
    */
   coordinator?: boolean;
+  /**
+   * The role given from the tab menu (ADR-024, @shared/session-role): 'coordinator' or
+   * 'fintuner'. Either one also sets `coordinator`, so both sit in the row above the tabs.
+   * null or absent means a Worker, a normal tab.
+   */
+  role?: SessionRole | null;
   /** 退出码 (state === 'exited' 时有值) */
   exitCode?: number;
   /** PTY 进程退出时间 (Unix ms,state === 'exited' 时有值) */

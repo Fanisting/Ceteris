@@ -85,6 +85,7 @@ import {
 } from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import { SESSION_ROLE_NAMES, type SessionRole } from '@shared/session-role';
 import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
 import {
   AGENT_PHASE_SCREEN_ROWS,
@@ -406,6 +407,11 @@ interface ManagedSession {
    * Windows Terminal hostname 等会持续刷标题,不锁住会冲掉用户的命名)。
    */
   manuallyRenamed: boolean;
+  /**
+   * ADR-024:the name and manual-rename flag the tab had before it was given a role, so
+   * clearing the role can give them back. Unset while the tab has no role.
+   */
+  nameBeforeRole?: { displayName: string; manuallyRenamed: boolean };
   /**
    * ADR-029:agent 自己用 OSC 0 设的最近一个标题(已清洗,未缩短)。AI 标题请求把它
    * 当提示发给模型;非 agent 标签恒为 null。
@@ -1056,9 +1062,51 @@ export class SessionManager extends EventEmitter {
     const managed = this.sessions.get(sessionId);
     if (!managed) return;
     if ((managed.info.coordinator ?? false) === coordinator) return;
-    managed.info.coordinator = coordinator;
-    logger.info('SessionManager', `setCoordinator sid=${sessionId} → ${coordinator}`);
-    this.emitStateChanged(managed, { coordinator });
+    // ADR-024:标记就是 Coordinator 这个角色;已有角色 (比如 Fintuner) 时 true 不改它
+    this.setRole(sessionId, coordinator ? (managed.info.role ?? 'coordinator') : null);
+  }
+
+  /**
+   * ADR-024:给标签一个角色,或清除 (null,回到 Worker)。
+   *
+   * - 有角色就设 coordinator = true (两种角色同级,都在上方一行,都能用标签控制管道),
+   *   并把标签改名为角色名 (SESSION_ROLE_NAMES),按手动改名处理,agent 的标题不会盖掉它。
+   *   第一次给角色时记下原来的名字和手动标记。
+   * - 清除时 coordinator = false;名字还是角色名 (用户没再改过) 就恢复原来的名字和标记,
+   *   改过就留着用户的名字。
+   * 幂等;不存在的 sessionId 静默,与 renameSession 一致。
+   */
+  setRole(sessionId: string, role: SessionRole | null): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    const current = managed.info.role ?? null;
+    if (current === role) return;
+    if (role) {
+      managed.nameBeforeRole ??= {
+        displayName: managed.info.displayName,
+        manuallyRenamed: managed.manuallyRenamed,
+      };
+      managed.info.role = role;
+      managed.info.coordinator = true;
+      managed.info.displayName = SESSION_ROLE_NAMES[role];
+      managed.manuallyRenamed = true;
+    } else {
+      const before = managed.nameBeforeRole;
+      const roleNames: string[] = Object.values(SESSION_ROLE_NAMES);
+      if (before && roleNames.includes(managed.info.displayName)) {
+        managed.info.displayName = before.displayName;
+        managed.manuallyRenamed = before.manuallyRenamed;
+      }
+      delete managed.nameBeforeRole;
+      managed.info.role = null;
+      managed.info.coordinator = false;
+    }
+    logger.info('SessionManager', `setRole sid=${sessionId} ${current ?? 'worker'} → ${role ?? 'worker'}`);
+    this.emitStateChanged(managed, {
+      role: managed.info.role,
+      coordinator: managed.info.coordinator,
+      displayName: managed.info.displayName,
+    });
   }
 
   /**

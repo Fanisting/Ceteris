@@ -8,7 +8,12 @@
  * @不要在这里做的事:
  * - 不要记录屏幕内容或建议文本,这里只有计数
  */
-import { EMPTY_NEXT_PROMPT_USAGE, addNextPromptUsage, type NextPromptUsage } from '@shared/next-prompt';
+import {
+  EMPTY_NEXT_PROMPT_USAGE,
+  addNextPromptUsage,
+  localDay,
+  type NextPromptUsage,
+} from '@shared/next-prompt';
 import type { JsonStore } from './persistence';
 
 export type NextPromptUsageFile = NextPromptUsage & { version: 1 };
@@ -27,8 +32,9 @@ export class NextPromptUsageTracker {
     return this.total;
   }
 
-  record(usage: unknown): void {
-    this.total = addNextPromptUsage(this.total, usage);
+  /** @param now when the call finished; decides which day of the chart it counts on */
+  record(usage: unknown, now = new Date()): void {
+    this.total = addNextPromptUsage(this.total, usage, localDay(now));
     this.store.set({ version: 1, ...this.total });
   }
 

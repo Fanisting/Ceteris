@@ -93,6 +93,7 @@ import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
 import { useTranslation } from './LanguageProvider';
 import { ThemePicker } from './ThemePicker';
+import { NextPromptCostChart, formatUsd } from './NextPromptCostChart';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
@@ -2704,14 +2705,6 @@ function AiPanel({
   const state = useAppState();
   const toast = useToast();
   const ai = state.settings.ai;
-  const provider = ai?.provider ?? null;
-  const apiKey = ai?.apiKey ?? '';
-  const baseURL = ai?.baseURL ?? '';
-  const model = ai?.model ?? '';
-  const statusRecheckEnabled = ai?.statusRecheckEnabled ?? false;
-  const statusRecheckSource = ai?.statusRecheckSource ?? 'headless';
-  const [testing, setTesting] = useState(false);
-  const [showKey, setShowKey] = useState(false);
   const nextPrompt = ai?.nextPrompt ?? { enabled: false, keySaved: false, baseURL: '', model: '' };
   const nextPromptReady = nextPromptConfigured(nextPrompt);
   const [testingNextPrompt, setTestingNextPrompt] = useState(false);
@@ -2758,209 +2751,9 @@ function AiPanel({
     }
   };
 
-  const handleTest = async (): Promise<void> => {
-    setError(null);
-    setTesting(true);
-    try {
-      const res = await window.api.invoke<undefined, { ok: boolean; message: string }>(
-        COMMAND_CHANNELS.AI_TEST_CONNECTION,
-        undefined,
-      );
-      toast.push({
-        kind: res.ok ? 'success' : 'error',
-        message: res.message || (res.ok ? tx('连接成功', 'Connected') : tx('连接失败', 'Connection failed')),
-      });
-    } catch (err) {
-      toast.push({
-        kind: 'error',
-        message: tx(`测试失败:${err instanceof Error ? err.message : String(err)}`, `Test failed: ${err instanceof Error ? err.message : String(err)}`),
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
   return (
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('AI 助手', 'AI Assistant')}</h2>
-      <p className="settings-panel-hint">
-        {tx(
-          'Ceteris 第一个 LLM 集成点。当前唯一用途是 BETA-006:active→idle 跃迁前让 LLM 看一眼 scrollback,避免 Vite 等长输出工具被误判 idle。所有 API 调用走主进程,不暴露 key 到 renderer。',
-          "Ceteris's first LLM integration. Current use: BETA-006 status recheck — let the LLM glance at the scrollback before active→idle transition, so long-running tools like Vite aren't falsely marked idle. All API calls go through the main process; the key is never exposed to the renderer.",
-        )}
-      </p>
-
-      <SettingRow label={tx('服务商', 'Provider')} hint={tx('选择后才会激活其它字段', 'Other fields activate after you pick a provider')}>
-        <select
-          className="settings-input"
-          value={provider ?? ''}
-          onChange={(e) => {
-            const v = e.target.value;
-            void updateSettings(
-              {
-                ai: { provider: v === '' ? null : (v as 'anthropic' | 'openai') },
-              },
-              setError,
-            );
-          }}
-        >
-          <option value="">{tx('未启用', 'Disabled')}</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="openai">OpenAI</option>
-        </select>
-      </SettingRow>
-
-      {provider !== null && (
-        <>
-          <SettingRow label={tx('API key', 'API key')} hint={tx('存储于本地 settings.json,导出时会带出', 'Stored locally in settings.json and included when exporting')}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type={showKey ? 'text' : 'password'}
-                className="settings-input"
-                value={apiKey}
-                placeholder={provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
-                onChange={(e) =>
-                  void updateSettings({ ai: { apiKey: e.target.value } }, setError)
-                }
-                style={{ minWidth: 280 }}
-              />
-              <button
-                type="button"
-                className="settings-button"
-                onClick={() => setShowKey((v) => !v)}
-              >
-                {showKey ? tx('隐藏', 'Hide') : tx('显示', 'Show')}
-              </button>
-            </div>
-          </SettingRow>
-
-          <SettingRow
-            label={tx('Base URL', 'Base URL')}
-            hint={tx('留空走官方默认;代理网关 / Azure OpenAI / 自托管 LLM 在此覆盖', 'Empty = official default; override here for proxy / Azure OpenAI / self-hosted LLM')}
-          >
-            <input
-              type="text"
-              className="settings-input"
-              value={baseURL}
-              placeholder={
-                provider === 'anthropic'
-                  ? 'https://api.anthropic.com'
-                  : 'https://api.openai.com/v1'
-              }
-              onChange={(e) =>
-                void updateSettings({ ai: { baseURL: e.target.value } }, setError)
-              }
-              style={{ minWidth: 320 }}
-              spellCheck={false}
-            />
-          </SettingRow>
-
-          <SettingRow label={tx('模型', 'Model')} hint={tx('留空走默认(haiku / gpt-4o-mini)', 'Empty = default (haiku / gpt-4o-mini)')}>
-            <input
-              type="text"
-              className="settings-input"
-              value={model}
-              placeholder={
-                provider === 'anthropic'
-                  ? 'claude-haiku-5-5'
-                  : 'gpt-4o-mini'
-              }
-              onChange={(e) =>
-                void updateSettings({ ai: { model: e.target.value } }, setError)
-              }
-              style={{ minWidth: 280 }}
-            />
-          </SettingRow>
-
-          <SettingRow label={tx('测试连接', 'Test connection')} hint={tx('跑一次最小 ping 请求验证 key 有效', 'Run a minimal ping to verify the key works')}>
-            <button
-              type="button"
-              className="settings-button"
-              onClick={() => void handleTest()}
-              disabled={testing || !apiKey.trim()}
-            >
-              {testing ? tx('测试中…', 'Testing…') : tx('测试连接', 'Test connection')}
-            </button>
-          </SettingRow>
-
-          <div className="settings-privacy-notice" role="note">
-            <strong>{tx('隐私提示', 'Privacy notice')}</strong> · {tx(
-              '开启"状态复核"后,Ceteris 在每次 active→idle 跃迁时会把以下数据通过 HTTPS 发送给你配置的 AI 服务商(可能是第三方,如 Kimi / DeepSeek / OpenAI / Anthropic):',
-              'When "Status recheck" is on, Ceteris sends the following over HTTPS to the AI provider you configured (may be a third party such as Kimi / DeepSeek / OpenAI / Anthropic) on each active→idle transition:',
-            )}
-            <ul>
-              <li>
-                <strong>{tx('终端尾部内容', 'Terminal tail content')}</strong> — {tx(
-                  '最近约 40 行已渲染文本(会包含你看到的命令、输出、错误信息、API 输出等)',
-                  'Last ~40 rendered lines (commands, output, error messages, API responses, etc.)',
-                )}
-              </li>
-              <li>
-                <strong>{tx('按键时间元数据', 'Keystroke timing metadata')}</strong> — {tx(
-                  '最近 ≤20 个按键的',
-                  'Up to 20 most recent keystrokes:',
-                )}
-                <em>{tx('时间戳 + 类别', 'timestamps + categories')}</em>{tx(
-                  '(char / enter / backspace / other),',
-                  ' (char / enter / backspace / other), ',
-                )}
-                <strong>{tx('不包含按键内容', 'NOT the key content')}</strong>{tx(
-                  ',不会泄露密码 / token / 命令体',
-                  ' — passwords / tokens / command bodies are never sent',
-                )}
-              </li>
-            </ul>
-            {tx(
-              '如果你正在处理敏感信息(密码、私有代码、客户数据),建议先关闭复核;纯 Anthropic / OpenAI 官方 endpoint 走他们的 API 数据策略,自托管 / 代理网关请确认你的数据流向。',
-              'If you handle sensitive material (passwords, proprietary code, customer data), disable recheck first. Official Anthropic / OpenAI endpoints follow their API data policy; for self-hosted / proxy gateways, verify where your data flows.',
-            )}
-          </div>
-
-          <SettingRow
-            label={tx('状态复核(BETA-006)', 'Status recheck (BETA-006)')}
-            hint={tx('active→idle 跃迁前让 LLM 复核;失败时回退原阈值,不阻塞', 'Let the LLM verify before active→idle transition; falls back to the threshold on error, never blocks')}
-          >
-            <label className="settings-checkbox">
-              <input
-                type="checkbox"
-                checked={statusRecheckEnabled}
-                onChange={(e) =>
-                  void updateSettings(
-                    { ai: { statusRecheckEnabled: e.target.checked } },
-                    setError,
-                  )
-                }
-                disabled={!apiKey.trim()}
-              />
-              <span>{tx('启用', 'Enable')}</span>
-            </label>
-          </SettingRow>
-
-          <SettingRow
-            label={tx('复核输入源', 'Recheck input source')}
-            hint={tx('headless=已渲染的字符矩阵(无 ANSI 噪音、无重绘残影)', 'headless=rendered character matrix (no ANSI noise, no redraw artifacts)')}
-          >
-            <select
-              className="settings-input"
-              value={statusRecheckSource}
-              onChange={(e) =>
-                void updateSettings(
-                  {
-                    ai: {
-                      statusRecheckSource: e.target.value as 'headless',
-                    },
-                  },
-                  setError,
-                )
-              }
-              disabled={!statusRecheckEnabled}
-            >
-              <option value="headless">{tx('headless (已渲染文本)', 'headless (rendered text)')}</option>
-            </select>
-          </SettingRow>
-        </>
-      )}
-      <h3 className="link-subsection-title">{tx('下一步提示建议', 'Next prompt suggestions')}</h3>
       <p className="settings-panel-hint">
         {tx(
           'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字和下面列出的常用消息会发送给这个 API(默认 OpenRouter),所以屏幕上的密钥或私密内容也会被发送。',
@@ -3053,13 +2846,16 @@ function AiPanel({
         ) : habits.length === 0 ? (
           <span className="settings-usage">{tx('还没有', 'None yet')}</span>
         ) : (
-          <ul className="next-prompt-habits">
-            {habits.map((h) => (
-              <li key={h.text}>
-                {h.text} <span className="settings-row-hint">×{h.count}</span>
-              </li>
-            ))}
-          </ul>
+          <ol className="next-prompt-habits">
+            {[...habits]
+              .sort((a, b) => b.count - a.count)
+              .map((h) => (
+                <li key={h.text}>
+                  <span className="next-prompt-habit-count">{h.count}×</span>
+                  <span>{h.text}</span>
+                </li>
+              ))}
+          </ol>
         )}
       </SettingRow>
 
@@ -3087,7 +2883,7 @@ function AiPanel({
       >
         <span className="settings-usage">
           {usage
-            ? `$${usage.costUsd.toFixed(usage.costUsd < 0.01 ? 6 : 4)} · ${usage.calls} ${tx('次', 'calls')} · ${(
+            ? `${formatUsd(usage.costUsd)} · ${usage.calls} ${tx('次', 'calls')} · ${(
                 usage.inputTokens + usage.outputTokens
               ).toLocaleString()} tokens`
             : '…'}
@@ -3106,6 +2902,12 @@ function AiPanel({
           {tx('清零', 'Reset')}
         </button>
       </SettingRow>
+
+      {usage && usage.calls > 0 && (
+        <SettingRow label={tx('每日花费', 'Daily cost')} hint={tx('把鼠标移到某一天上看当天的金额和次数', 'Hover a day to see its cost and calls')}>
+          <NextPromptCostChart usage={usage} />
+        </SettingRow>
+      )}
     </section>
   );
 }

@@ -20,7 +20,17 @@ export interface NextPromptUsage {
   costUsd: number;
   /** Calls whose provider gave no price, so costUsd is missing them. */
   unpricedCalls: number;
+  /** Per local day, keyed YYYY-MM-DD, for the daily cost chart. Only the last 30 days. */
+  daily: Record<string, NextPromptDay>;
 }
+
+export interface NextPromptDay {
+  calls: number;
+  costUsd: number;
+}
+
+/** Days kept in NextPromptUsage.daily; older days drop out on the next call. */
+export const NEXT_PROMPT_DAYS_KEPT = 30;
 
 export const EMPTY_NEXT_PROMPT_USAGE: NextPromptUsage = {
   calls: 0,
@@ -28,7 +38,34 @@ export const EMPTY_NEXT_PROMPT_USAGE: NextPromptUsage = {
   outputTokens: 0,
   costUsd: 0,
   unpricedCalls: 0,
+  daily: {},
 };
+
+/** The local calendar day as YYYY-MM-DD, so a day ends at the user's midnight, not UTC's. */
+export function localDay(date: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * The last `days` days ending today, oldest first, with zero for days without calls.
+ *
+ * @param today the day the chart ends on; days are stepped with setDate so DST is safe
+ */
+export function dailyCosts(
+  usage: NextPromptUsage,
+  today: Date,
+  days = 14,
+): Array<NextPromptDay & { day: string }> {
+  const out: Array<NextPromptDay & { day: string }> = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const day = localDay(d);
+    const hit = usage.daily?.[day];
+    out.push({ day, calls: hit?.calls ?? 0, costUsd: hit?.costUsd ?? 0 });
+  }
+  return out;
+}
 
 function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
@@ -37,11 +74,23 @@ function count(value: unknown): number {
 /**
  * Adds one response's usage field to the totals. Only OpenRouter reports a price, so
  * another provider counts as a call and its tokens with no cost.
+ *
+ * @param day localDay() of the call; it also gets the call, and days past the last
+ *   NEXT_PROMPT_DAYS_KEPT are dropped
  */
-export function addNextPromptUsage(total: NextPromptUsage, usage: unknown): NextPromptUsage {
+export function addNextPromptUsage(
+  total: NextPromptUsage,
+  usage: unknown,
+  day: string,
+): NextPromptUsage {
   const u = (typeof usage === 'object' && usage !== null ? usage : {}) as Record<string, unknown>;
   const priced = typeof u['cost'] === 'number' && Number.isFinite(u['cost']) && u['cost'] >= 0;
+  const before = total.daily?.[day] ?? { calls: 0, costUsd: 0 };
+  const daily = { ...total.daily, [day]: { calls: before.calls + 1, costUsd: before.costUsd + count(u['cost']) } };
+  // YYYY-MM-DD sorts as text in date order.
+  const kept = Object.keys(daily).sort().slice(-NEXT_PROMPT_DAYS_KEPT);
   return {
+    daily: Object.fromEntries(kept.map((k) => [k, daily[k]!])),
     calls: total.calls + 1,
     inputTokens: total.inputTokens + count(u['prompt_tokens']),
     outputTokens: total.outputTokens + count(u['completion_tokens']),

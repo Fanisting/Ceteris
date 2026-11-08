@@ -4,6 +4,7 @@ import {
   NEXT_PROMPT_DEFAULT_MODEL,
   NEXT_PROMPT_MAX_SCREEN_CHARS,
   addNextPromptUsage,
+  dailyCosts,
 } from '@shared/next-prompt';
 import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
 
@@ -113,16 +114,31 @@ describe('custom API address', () => {
 describe('cost total', () => {
   it('adds priced calls, and counts a call with no price separately', () => {
     let total = EMPTY_NEXT_PROMPT_USAGE;
-    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 });
-    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 });
-    total = addNextPromptUsage(total, undefined);
+    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 }, '2026-11-07');
+    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 }, '2026-11-08');
+    total = addNextPromptUsage(total, undefined, '2026-11-08');
     expect(total).toEqual({
       calls: 3,
       inputTokens: 150,
       outputTokens: 15,
       costUsd: 0.002,
       unpricedCalls: 2,
+      daily: { '2026-11-07': { calls: 1, costUsd: 0.002 }, '2026-11-08': { calls: 2, costUsd: 0 } },
     });
+  });
+
+  it('keeps only the last 30 days, and charts the last 14 with empty days as zero', () => {
+    let total = EMPTY_NEXT_PROMPT_USAGE;
+    for (let d = 1; d <= 31; d++) {
+      total = addNextPromptUsage(total, { cost: d }, `2026-10-${String(d).padStart(2, '0')}`);
+    }
+    expect(Object.keys(total.daily)).toHaveLength(30);
+    expect(total.daily['2026-10-01']).toBeUndefined();
+
+    const chart = dailyCosts(total, new Date(2026, 10, 2));
+    expect(chart).toHaveLength(14);
+    expect(chart[0]).toEqual({ day: '2026-10-20', calls: 1, costUsd: 20 });
+    expect(chart.at(-1)).toEqual({ day: '2026-11-02', calls: 0, costUsd: 0 });
   });
 
   it('reports usage from a response, and asks only OpenRouter for the price', async () => {

@@ -974,7 +974,7 @@ interface SessionItemProps {
   myWindowId: string;
   /** 父级传入 — 同上,避免订阅 state.selectedSessionId */
   selected: boolean;
-  /** ADR-020:agent 跑完时用户没在看;父级传入,理由同上 */
+  /** ADR-021:agent 跑完时用户没在看;父级传入,理由同上 */
   unseen: boolean;
 }
 

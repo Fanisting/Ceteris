@@ -18,7 +18,7 @@
  *   interrupt" while working, and options that start with "Yes". An agent update that
  *   rewords these falls back to the output-driven wave, never to a wrong state.
  *
- * @对应文档章节:软件定义书.md ADR-020
+ * @对应文档章节:软件定义书.md ADR-021
  */
 import { detectAgent } from './next-prompt';
 import type { AgentPhase, SessionState } from './types';

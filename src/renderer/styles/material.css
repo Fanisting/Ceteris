@@ -1685,7 +1685,7 @@ select.settings-input option {
 }
 
 /*
- * Agent and activity indicators (ADR-020). One rule: moving means the agent does not need
+ * Agent and activity indicators (ADR-021). One rule: moving means the agent does not need
  * you; still or breathing means it does.
  *   .running        wavy line: the agent is working (or a plain shell has output)
  *   .agent-blocked  breathing bar and dot in the warning colour: it waits for approval

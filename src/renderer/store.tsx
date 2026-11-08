@@ -112,7 +112,7 @@ export interface AppState {
   simpleMode: boolean;
 
   /**
-   * ADR-020:agent 跑完一轮 (agentPhase working → done) 时用户没在看的 session。
+   * ADR-021:agent 跑完一轮 (agentPhase working → done) 时用户没在看的 session。
    * Tab 和侧栏在这些 session 上显示圆点,直到用户选中它。放在 store 而不是 Tab
    * 组件里:Tab 只为当前 path 挂载,别的文件夹里跑完的 agent 也要记住。
    */
@@ -294,7 +294,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       const merged: SessionInfo = { ...existing, ...action.changes };
       const sessions = new Map(state.sessions);
       sessions.set(action.sessionId, merged);
-      // ADR-020:只有 working → done 才算"跑完了没看";启动时 null → done
+      // ADR-021:只有 working → done 才算"跑完了没看";启动时 null → done
       // (agent 刚打开、还没干活) 不亮圆点。屏幕上可见 = 选中或在分屏里。
       let unseenDoneSessionIds = state.unseenDoneSessionIds;
       const phase = action.changes.agentPhase;

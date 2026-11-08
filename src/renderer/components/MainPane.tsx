@@ -820,7 +820,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     tooltipParts.push(tx(`已退出 (exitCode=${session.exitCode ?? 0})`, `Exited (exitCode=${session.exitCode ?? 0})`));
   }
 
-  // ADR-020:agent 的 phase 优先于输出驱动的 state。停在批准提示时在菜单里
+  // ADR-021:agent 的 phase 优先于输出驱动的 state。停在批准提示时在菜单里
   // 移动光标也会有输出,不能因此又显示波浪;没有 agent 的 session 照旧按输出。
   const phase = session.agentPhase ?? null;
   const waving = phase === 'working' || (phase === null && session.state === 'active');

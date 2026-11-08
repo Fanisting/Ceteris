@@ -20,7 +20,7 @@
  * - **cwd 兜底**:启动后 5 秒未收到 OSC 1337 → 启动 5 秒间隔的进程查询
  *   (PlatformAdapter.getProcessCwd);收到第一条 OSC 后立即关掉所有 cwd
  *   timer,永不再启
- * - **agentPhase** (ADR-020):每段输出后 300ms 内从 headless 屏幕尾部读一次
+ * - **agentPhase** (ADR-021):每段输出后 300ms 内从 headless 屏幕尾部读一次
  *   agent 在做什么 (working / blocked / done,见 agent-phase.ts),进入 idle
  *   时再读一次。与 active / idle 并列,不替代它
  * - 启动模板:从 TemplatesManager 拉,空 command → 纯 shell;有 command →
@@ -218,7 +218,7 @@ function classifyInput(text: string): KeyKind {
 const INPUT_QUIET_MS = 200;
 
 /**
- * ADR-020:agentPhase 的读屏节流。一段输出后最多等这么久再读屏,连续输出时
+ * ADR-021:agentPhase 的读屏节流。一段输出后最多等这么久再读屏,连续输出时
  * 每这么久最多读一次。足够短,批准提示出现后 tab 很快变色;又足够长,
  * headless write 是异步 parse 的,等一会儿读到的屏幕才包含刚到的字节。
  */
@@ -337,7 +337,7 @@ interface ManagedSession {
   parser: Osc1337Parser;
   /** active → idle 转移计时器 */
   idleTimer: NodeJS.Timeout | null;
-  /** ADR-020:下一次读屏算 agentPhase 的计时器;null = 没有排队的读屏 */
+  /** ADR-021:下一次读屏算 agentPhase 的计时器;null = 没有排队的读屏 */
   phaseTimer: NodeJS.Timeout | null;
   /** 启动后等 OSC 1337 的宽限计时器;到点未收到则启动 cwd 轮询 */
   cwdGraceTimer: NodeJS.Timeout | null;
@@ -1392,7 +1392,7 @@ export class SessionManager extends EventEmitter {
       // 复核时 buffer 可能比 PTY 实际状态滞后几 ms,可接受 — 复核本来
       // 就在 thresholdSec 静默后触发,几 ms 误差无关紧要。
       managed.headlessTerm?.write(parsed.passthrough);
-      // ADR-020:在 quiet 窗口判断之前排队读屏。在批准菜单里按方向键产生的
+      // ADR-021:在 quiet 窗口判断之前排队读屏。在批准菜单里按方向键产生的
       // 重绘字节落在 input quiet 内,不点亮 active,但屏幕仍要重读。
       this.schedulePhaseCheck(managed);
 
@@ -1535,7 +1535,7 @@ export class SessionManager extends EventEmitter {
     this.clearTimers(managed);
     managed.pty = null;
 
-    // ADR-020:退出的进程里没有 agent 在做事,不能留着 blocked 让 tab 一直闪
+    // ADR-021:退出的进程里没有 agent 在做事,不能留着 blocked 让 tab 一直闪
     managed.info.agentPhase = null;
     this.emitStateChanged(managed, {
       state: managed.info.state,
@@ -1668,7 +1668,7 @@ export class SessionManager extends EventEmitter {
 
   /**
    * active → idle,并在同一条事件里带上重新读屏得到的 agentPhase:输出停下
-   * 正是 agent 跑完一轮或停在批准提示的时刻 (ADR-020)。
+   * 正是 agent 跑完一轮或停在批准提示的时刻 (ADR-021)。
    */
   private becomeIdle(managed: ManagedSession): void {
     managed.info.state = 'idle';
@@ -1683,7 +1683,7 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * ADR-020:排一次读屏。已有排队的读屏时不重排,所以连续输出每
+   * ADR-021:排一次读屏。已有排队的读屏时不重排,所以连续输出每
    * AGENT_PHASE_CHECK_MS 最多读一次,最后一段输出后也总会再读一次。
    */
   private schedulePhaseCheck(managed: ManagedSession): void {

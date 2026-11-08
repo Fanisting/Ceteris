@@ -70,7 +70,7 @@ export function assertNeverPathKind(_value: never): never {
 export type SessionState = 'active' | 'idle' | 'exited';
 
 /**
- * What an AI agent in a session is doing, read from its screen (ADR-020, agent-phase.ts).
+ * What an AI agent in a session is doing, read from its screen (ADR-021, agent-phase.ts).
  * Separate from SessionState: an agent at an approval prompt and one that finished are
  * both 'idle', and only this tells them apart.
  *
@@ -222,7 +222,7 @@ export interface SessionInfo {
   ownerWindowId: string | null;
   state: SessionState;
   /**
-   * The agent's phase, or null / absent when the screen shows no agent (ADR-020).
+   * The agent's phase, or null / absent when the screen shows no agent (ADR-021).
    * Absent in sessions from a main process older than this field.
    */
   agentPhase?: AgentPhase | null;

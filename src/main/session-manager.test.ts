@@ -1094,7 +1094,7 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(idleChange).toBeDefined();
   });
 
-  it('reads agentPhase from the screen and clears it on exit (ADR-020)', async () => {
+  it('reads agentPhase from the screen and clears it on exit (ADR-021)', async () => {
     const { mgr } = makeManager();
     const info = await mgr.createSession({
       pathId: '/p',

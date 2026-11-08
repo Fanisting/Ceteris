@@ -2757,8 +2757,8 @@ function AiPanel({
       <h2 className="settings-panel-title">{tx('AI 助手', 'AI Assistant')}</h2>
       <p className="settings-panel-hint">
         {tx(
-          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字和下面列出的常用消息会发送给这个 API(默认 OpenRouter),所以屏幕上的密钥或私密内容也会被发送。',
-          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen and the frequent messages listed below go to that API (OpenRouter by default), including anything private shown on screen.',
+          'Agent 停下时猜你的下一句,点击只填入不发送。屏幕末尾的文字和下面的常用消息会发给该 API。',
+          'When an agent stops, guesses your next prompt. Clicking fills it in without sending. The end of the screen and the frequent messages below go to this API.',
         )}
       </p>
 

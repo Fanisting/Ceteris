@@ -70,6 +70,17 @@ export function assertNeverPathKind(_value: never): never {
 export type SessionState = 'active' | 'idle' | 'exited';
 
 /**
+ * What an AI agent in a session is doing, read from its screen (ADR-020, agent-phase.ts).
+ * Separate from SessionState: an agent at an approval prompt and one that finished are
+ * both 'idle', and only this tells them apart.
+ *
+ * - working:the agent is running a turn
+ * - blocked:the agent waits for the user to approve a command or edit
+ * - done:the turn ended and the agent waits for the next prompt
+ */
+export type AgentPhase = 'working' | 'blocked' | 'done';
+
+/**
  * 应用整体生命周期状态 (软件定义书 8.1 节)。
  */
 export type AppLifecycleState =
@@ -210,6 +221,11 @@ export interface SessionInfo {
   /** 当前持有该 session 的 owner window;null 表示无主 */
   ownerWindowId: string | null;
   state: SessionState;
+  /**
+   * The agent's phase, or null / absent when the screen shows no agent (ADR-020).
+   * Absent in sessions from a main process older than this field.
+   */
+  agentPhase?: AgentPhase | null;
   /** 退出码 (state === 'exited' 时有值) */
   exitCode?: number;
   /** PTY 进程退出时间 (Unix ms,state === 'exited' 时有值) */

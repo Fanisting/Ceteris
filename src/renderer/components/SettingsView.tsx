@@ -90,6 +90,8 @@ import type {
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
 import { useTranslation } from './LanguageProvider';
+import { useUpdateStatus } from '../hooks/useUpdateStatus';
+import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
 
 type CategoryId =
@@ -234,7 +236,7 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
     case 'advanced':
       return <AdvancedPanel setError={setError} />;
     case 'about':
-      return <AboutPanel />;
+      return <AboutPanel setError={setError} />;
     default:
       return <></>;
   }
@@ -3147,8 +3149,50 @@ const ACKNOWLEDGEMENTS: Array<{ name: string; url: string; tone: string }> = [
   { name: '霞鹜文楷 (LXGW WenKai)', url: 'https://github.com/lxgw/LxgwWenKai', tone: '中文字体 (OFL)' },
 ];
 
-function AboutPanel(): JSX.Element {
+/**
+ * 关于页"检查更新"一行的说明文字(ADR-018)。按状态给出最有用的一句,
+ * 例如"已是最新(v0.3.0)",或失败时的原因,方便用户判断要不要手动去下载。
+ */
+function describeUpdateStatus(
+  status: UpdateStatus | null,
+  tx: (zh: string, en: string) => string,
+): string {
+  if (!status) return tx('读取中…', 'Loading…');
+  const checked = status.checkedAt
+    ? tx('上次检查 ', 'Last checked ') + new Date(status.checkedAt).toLocaleString()
+    : tx('还没检查过', 'Not checked yet');
+  switch (status.state) {
+    case 'checking':
+      return tx('正在检查 GitHub…', 'Checking GitHub…');
+    case 'available':
+      return status.update
+        ? tx(
+            `有新版本 v${status.update.version}(当前 v${status.currentVersion})。下载的是适合本机系统的安装包:${status.update.assetName ?? '发布页'}`,
+            `v${status.update.version} is available (you have v${status.currentVersion}). Download gets the file for this computer: ${status.update.assetName ?? 'release page'}`,
+          )
+        : checked;
+    case 'up-to-date':
+      return tx(`已是最新(v${status.currentVersion})。`, `Up to date (v${status.currentVersion}). `) + checked;
+    case 'error': {
+      const reason =
+        status.error === 'rate-limited'
+          ? tx('GitHub 访问次数超限,稍后会自动重试', 'GitHub rate limit reached; it retries later')
+          : status.error === 'network'
+            ? tx('连不上 GitHub,检查网络或代理', 'Could not reach GitHub; check the network or proxy')
+            : tx('GitHub 返回的内容无法识别', 'Unexpected answer from GitHub');
+      return `${reason}。${checked}`;
+    }
+    default:
+      return checked;
+  }
+}
+
+function AboutPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
+  const settings = useAppState().settings;
+  const autoCheckUpdates = settings.behavior?.autoCheckUpdates ?? true;
+  const { status: updateStatus, checkNow, openLink } = useUpdateStatus();
+  const update = updateStatus?.state === 'available' ? updateStatus.update : null;
   // build define 在 dev 模式可能未定义,做个兜底
   // (vite 实际上 dev 时也会做 string 替换,但为了万无一失)
   const commit =
@@ -3196,14 +3240,67 @@ function AboutPanel(): JSX.Element {
         </span>
       </SettingRow>
 
-      <SettingRow label={tx('检查更新', 'Check for updates')} hint={tx('V1 仅打开 GitHub Releases 页面;auto-updater 留 V1.1', 'V1 just opens the GitHub Releases page; auto-updater is V1.1')}>
-        <button
-          type="button"
-          className="settings-button"
-          onClick={() => openExternal(GITHUB_RELEASES)}
-        >
-          {tx('打开 GitHub Releases', 'Open GitHub Releases')}
-        </button>
+      <SettingRow
+        label={tx('检查更新', 'Check for updates')}
+        hint={describeUpdateStatus(updateStatus, tx)}
+      >
+        <div className="settings-update-actions">
+          {update && (
+            <button
+              type="button"
+              className="settings-button primary"
+              onClick={() => openLink(update.downloadUrl)}
+              title={update.downloadUrl}
+            >
+              {tx(`下载 v${update.version}`, `Download v${update.version}`)}
+            </button>
+          )}
+          {update && (
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => openLink(update.htmlUrl)}
+            >
+              {tx('更新说明', 'Release notes')}
+            </button>
+          )}
+          <button
+            type="button"
+            className="settings-button"
+            disabled={updateStatus?.state === 'checking'}
+            onClick={() => void checkNow()}
+          >
+            {tx('立即检查', 'Check now')}
+          </button>
+          {!update && (
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => openExternal(GITHUB_RELEASES)}
+            >
+              {tx('打开 GitHub Releases', 'Open GitHub Releases')}
+            </button>
+          )}
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('自动检查更新', 'Check for updates automatically')}
+        hint={tx(
+          '启动后和每 6 小时查一次 GitHub,有新版本时在这里和侧栏设置按钮上提示。只给下载链接,不会自动下载或安装。Beta 和开发版不自动检查',
+          'Checks GitHub at startup and every 6 hours, and shows new versions here and on the sidebar settings button. It only offers a download link and never downloads or installs by itself. Beta and dev builds do not check automatically',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={autoCheckUpdates}
+            onChange={(e) =>
+              void updateSettings({ behavior: { autoCheckUpdates: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
       </SettingRow>
 
       <SettingRow label={tx('GitHub 仓库', 'GitHub repository')}>

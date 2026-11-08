@@ -98,6 +98,7 @@
 
 * `main` 只接收合并好的功能。每个功能或修复一个分支:`feat/xxx`、`fix/xxx`、`chore/xxx`、`docs/xxx`。
 * 开发者常常同时跑几个 agent。开新分支时用独立 worktree(`git worktree add`),在 worktree 里自己跑 `npm ci`;不要 `git stash`,不要回退别人未提交的改动。
+* 功能做完并 commit 后,在自己的 worktree 跑 `npm run devq -- add --merge`:把分支排进本地 dev build 的合并队列并立即合并。脚本逐个分支检查(基于 origin/main、无新依赖、无冲突、material.css 括号平衡、ADR 编号不重复、typecheck / lint / test),失败的合并自动撤销并写明原因,合并后 dev 窗口热重载。被跳过的分支按原因修好后重新排队。不用再给协调会话发消息。`npm run devq -- list` 查看队列和结果。
 * 每个独立的功能点、修复、重构一个 commit,保证 `git bisect` 可用。
 * Commit message 用 Conventional Commits:`<type>(<scope>): <subject>`。type 取 `feat / fix / refactor / test / docs / chore / perf / ci`;subject 小写开头,50 字以内。
 * commit 前跑过 `npm run typecheck`、`npm run lint`、`npm test`,并用 prettier 格式化。

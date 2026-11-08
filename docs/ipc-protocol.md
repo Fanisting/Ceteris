@@ -6,8 +6,14 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.3 · 最后更新:2026-05-14
+文档版本:1.4 · 最后更新:2026-11-07
 
+> **v1.4 变更**(PDF 实时预览 + SFTP 交互式登录,软件定义书 ADR-017):
+> - 新增 `cmd:fs:stat-file`(PDF 自动刷新轮询文件大小和修改时间,安静请求)
+> - `cmd:fs:list-dir` payload 加 `interactive`,`cmd:fs:read-pdf` payload 加 `fresh`、response 加 `mtimeMs`;`DirFailure` 多一个 `'login-required'`
+> - 新增 `cmd:ssh:askpass-answer` 与事件 `evt:ssh:askpass-prompt` / `evt:ssh:askpass-closed`(后台 SFTP 连接的 ssh 登录提示由窗口回答)
+> - domain 白名单加 `fs`、`ssh`(此前 `cmd:fs:*` 已在代码中,文档未列)
+>
 > **v1.3 变更**(Milestone 1 收尾 + 勘误第二轮回写):
 > - domain 白名单加 `explorer-integration`(原仅 9 个 domain,接 Win11 新菜单 / 经典菜单后多一个域)
 > - 新增 Section 5.7:`cmd:explorer-integration:get-status` / `set-classic` / `set-modern` / `get-ps-commands`(4 条)
@@ -234,6 +240,11 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:system:open-data-dir` | 在 Explorer 中打开 `%APPDATA%\Ceteris` |
 | `cmd:system:open-logs-dir` | 在 Explorer 中打开日志目录 |
 | `cmd:system:open-external` | 用系统默认浏览器打开 URL(仅 http(s)/mailto) |
+| `cmd:fs:list-dir` | 列目录(本地或 SFTP),文件树用 |
+| `cmd:fs:rename` | 重命名本地文件树条目 |
+| `cmd:fs:read-pdf` | 分块读取可查看的文件(PDF / 图片 / markdown) |
+| `cmd:fs:stat-file` | **(v1.4)** 查文件大小和修改时间,PDF 自动刷新轮询用 |
+| `cmd:ssh:askpass-answer` | **(v1.4)** 回答一条 `evt:ssh:askpass-prompt` |
 
 > v1.2 起删除:`cmd:template:list` (用 `cmd:app:get-snapshot` 拿到)、`cmd:session:restart-from-tombstone` (ADR-008 砍墓地)、`cmd:settings:detect-shells` (并入 `cmd:settings:list-shells`)、`cmd:settings:open-data-dir/open-log-dir` (并入 `cmd:system:open-data-dir/open-logs-dir`)、`cmd:system:show-context-menu` (renderer 端自绘菜单,不需要 main 端 popup)。
 
@@ -256,6 +267,8 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:bookmarks:updated` | 全部 |
 | `evt:templates:updated` | 全部 |
 | `evt:settings:changed` | 全部 |
+| `evt:ssh:askpass-prompt` | **(v1.4)** 仅发起 SFTP 连接的窗口 |
+| `evt:ssh:askpass-closed` | **(v1.4)** 仅收到对应 prompt 的窗口 |
 
 > v1.2 起删除:`evt:session:tombstoned` (ADR-008)、`evt:session:cwd-changed` (并入 `evt:session:state-changed` 的 changes.currentCwd 子字段,ADR-008)、`evt:template:list-updated` (重命名为 `evt:templates:updated`,代码一直是后者,文档之前不一致)、`evt:tray:menu-action` (托盘菜单 click handler 直接在 main 端执行,renderer 不参与)。
 
@@ -1059,13 +1072,17 @@ interface ListDirPayload {
   path: string;                 // 目录绝对路径;SFTP 时可以是 ~ 开头
   sshProfileId?: string;        // 有值时通过 SFTP 列这个 profile 上的目录
   fresh?: boolean;              // 用户主动操作时为 true,跳过 SFTP 失败缓存。轮询不要设置
+  interactive?: boolean;        // (v1.4) 允许 SFTP 登录时向本窗口弹提示(密码 / Duo / 主机密钥)。
+                                // 挂载文件树、点重试、打开选择框时设置;定时轮询不要设置
 }
 type ListDirResponse =
   | { ok: true; entries: FileTreeEntry[]; truncated: boolean; path?: string }  // path: 展开 ~ 后的目录,只有 SFTP 返回
-  | { ok: false; reason: DirFailure };   // FileTreeFailure 或 'no-client' | 'auth' | 'host-key' | 'connect' | 'no-sftp'
+  | { ok: false; reason: DirFailure };   // FileTreeFailure 或 'no-client' | 'auth' | 'host-key' | 'connect' | 'no-sftp' | 'login-required'
 ```
 
 **Errors**:无。常规失败走 `reason`,不 reject
+
+**Notes**:`login-required`(v1.4)表示后台连接遇到了登录提示而这次请求不允许弹窗,连接在发出任何凭据前已断开。它像 `auth` 一样缓存到下一次 `fresh` 请求
 
 #### `cmd:fs:rename`
 ```typescript
@@ -1085,18 +1102,51 @@ type RenameEntryResponse =
 #### `cmd:fs:read-pdf`
 ```typescript
 interface ReadPdfPayload {
-  path: string;                 // 本地或远端绝对路径,必须以 .pdf 结尾
+  path: string;                 // 本地或远端绝对路径,扩展名必须是可显示的文件类型
   sshProfileId?: string;        // 有值时通过 SFTP 读
   offset: number;               // 字节偏移,从 0 开始,之后用上次的 nextOffset
+  length?: number;              // 想读的字节数,最多一块,默认一块(文本翻页用)
+  fresh?: boolean;              // (v1.4) 用户刚点击了文件:跳过 SFTP 失败缓存并允许登录提示。自动刷新不要设置
 }
 type ReadPdfResponse =
-  | { ok: true; base64: string; size: number; nextOffset: number | null }  // null 表示读完
+  | { ok: true; base64: string; size: number; nextOffset: number | null; mtimeMs: number | null }  // nextOffset null 表示读完;mtimeMs 是刷新基线,服务器不给时 null
   | { ok: false; reason: DirFailure | 'not-pdf' | 'too-large' };
 ```
 
-**Errors**:无。常规失败走 `reason`。非 .pdf 路径或非普通文件返回 `not-found`,文件头不是 `%PDF-` 返回 `not-pdf`,超过 256 MiB 返回 `too-large`
+**Errors**:无。常规失败走 `reason`。不可查看的扩展名或非普通文件返回 `not-found`,PDF 文件头不是 `%PDF-` 返回 `not-pdf`,超过 256 MiB 返回 `too-large`
 
-**Notes**:每块 1 MiB,放得进 Link 的 8 MiB 帧,慢速线路也不会超过 30 秒的命令超时
+**Notes**:每块 1 MiB,放得进 Link 的 8 MiB 帧,慢速线路也不会超过 30 秒的命令超时。txt 和 json 没有 256 MiB 上限,大文件一次只读一页
+
+#### `cmd:fs:write-text`
+```typescript
+interface WriteTextPayload {
+  path: string;                 // 已存在的 .txt 或 .json 绝对路径,不支持 SFTP
+  base64: string;               // 完整新内容,最多 4 MiB
+  expected: { mtimeMs: number; size: number } | null;  // 开始编辑时的状态,null 表示强制覆盖
+}
+type WriteTextResponse =
+  | { ok: true; mtimeMs: number; size: number }  // 下一次保存要带上的状态
+  | { ok: false; reason: FileTreeFailure | 'changed' | 'too-large' };
+```
+
+**Errors**:无。常规失败走 `reason`。`changed` 表示文件在编辑期间被其他程序改过
+
+**Notes**:写临时文件再 rename,失败时原文件不变。Link 下在 Host 上执行
+
+#### `cmd:fs:stat-file` (v1.4)
+```typescript
+interface StatFilePayload {
+  path: string;                 // 同 read-pdf 的路径门槛
+  sshProfileId?: string;
+}
+type StatFileResponse =
+  | { ok: true; size: number; mtimeMs: number | null }   // mtimeMs 在 SFTP 服务器省略 ACMODTIME 时为 null,这时只比较 size
+  | { ok: false; reason: DirFailure | 'not-pdf' | 'too-large' };
+```
+
+**Errors**:无。常规失败走 `reason`
+
+**Notes**:PDF 自动刷新每 1.5 秒(本地)/ 3 秒(远端)调一次。它永远是安静请求:不跳过 SFTP 失败缓存,不允许登录提示,所以轮询不会打扰用户;连接断了就一直返回缓存的失败原因,直到用户主动操作。Link 远程窗口里转发给 Host
 
 ---
 
@@ -1166,6 +1216,23 @@ interface ClipboardWriteTextResponse {
 Electron `clipboard` 模块,绕开所有 web 权限层 + dev/prod 行为一致。
 
 ---
+
+### 5.8 SSH 登录提示 (v1.4)
+
+#### `cmd:ssh:askpass-answer`
+回答 main 通过 `evt:ssh:askpass-prompt` 发来的一条登录提示。
+
+```typescript
+interface AskpassAnswerPayload {
+  promptId: string;             // 来自事件
+  answer: string | null;        // null = 用户取消,ssh 这次登录失败
+}
+// Response: boolean — 是否还有提示在等这个 id(迟到或重复的答案返回 false)
+```
+
+**Errors**:无
+
+**Notes**:SFTP 连接在 Host 上,Link 远程窗口里转发给 Host。答案只在内存里走到 ssh 的 askpass 助手,不记录、不缓存;保存密码仍由 profile 管理
 
 ### 5.7 Explorer Integration (v1.3)
 
@@ -1488,7 +1555,36 @@ Renderer 收到后:
 - 简单实现:替换全部设置,重渲染
 - 优化实现:按 `changedKeys` 局部应用(主题、字号等可即时切换无重渲染)
 
-### 6.5 Tray / 其他
+### 6.5 SSH 登录提示 (v1.4)
+
+#### `evt:ssh:askpass-prompt`
+后台 SFTP 连接的 ssh 在登录时要用户回答(密码 / Duo 验证码 / 主机密钥确认)。**定向**发给发起这次连接的窗口(带 `interactive` 的那次 `cmd:fs:list-dir` 或带 `fresh` 的 `cmd:fs:read-pdf` 的 windowId),不广播。Renderer 弹 modal,用 `cmd:ssh:askpass-answer` 回答。
+
+```typescript
+interface AskpassPromptPayload {
+  promptId: string;
+  profileId: string;
+  profileName: string;          // 弹窗标题用
+  host: string;
+  username: string;
+  kind: 'secret' | 'text' | 'confirm';  // secret 不回显(密码 / 密钥口令);text 回显(Duo 验证码);confirm 是 yes / no
+  prompt: string;               // ssh 给 askpass 的那一行,如 "(me@host) Passcode or option (1-3): "
+  detail: string;               // 之前打到 stderr 的说明(Duo 的选项菜单等),可能为空
+}
+```
+
+5 分钟没有回答视为取消。
+
+#### `evt:ssh:askpass-closed`
+一条提示不再需要答案(ssh 已断开或超时),收到对应 `promptId` 的窗口收起 modal。
+
+```typescript
+interface AskpassClosedPayload {
+  promptId: string;
+}
+```
+
+### 6.6 Tray / 其他
 
 #### `evt:tray:menu-action`
 托盘菜单的某些项,Main 做完后想通知特定窗口。例如"在 X 窗口聚焦 Y session":

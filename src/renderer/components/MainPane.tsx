@@ -50,7 +50,13 @@ import { PaneLayoutBar } from './PaneLayoutBar';
 import { PATH_DRAG_TYPE } from './path-drag';
 import { PdfOverlay } from './PdfOverlay';
 import { TerminalView } from './TerminalView';
-import { closePdf, folderPdfKey, prunePdfViews } from '../pdf-view-store';
+import {
+  closePdf,
+  folderPdfKey,
+  movePdfView,
+  prunePdfViews,
+  usePdfView,
+} from '../pdf-view-store';
 import { focusTerminalDom } from '../focus';
 import { Icon } from './icons';
 import { TemplateIcon } from './TemplateIcon';
@@ -98,13 +104,22 @@ export function MainPane(): JSX.Element {
   const layout = getEffectivePaneLayout(state);
   const slots = getPaneSlots(state);
 
-  // A terminal the user just opened or picked must be what they see, so a PDF that was
-  // standing in for one closes rather than covering it or waiting to reappear.
+  // A file open in a folder stays on screen when a terminal opens there, if the two fit side
+  // by side. With no room it closes: the terminal just opened must be what the user sees.
   const selectedPathId = state.selectedPathId;
-  const hasDisplayable = displayable !== null;
+  const displayableId = displayable?.id ?? null;
+  const hasEmptySlot = slots.includes(null);
+  const fitsBeside = layout === 'single' || hasEmptySlot;
   useEffect(() => {
-    if (hasDisplayable && selectedPathId) closePdf(folderPdfKey(selectedPathId));
-  }, [hasDisplayable, selectedPathId]);
+    if (!displayableId || !selectedPathId) return;
+    const key = folderPdfKey(selectedPathId);
+    if (fitsBeside) movePdfView(key, displayableId);
+    else closePdf(key);
+  }, [displayableId, selectedPathId, fitsBeside]);
+
+  // A file must not hide the only terminal while a pane next to it stands empty.
+  const hasSelectedView = usePdfView(displayableId ?? '') !== null;
+  const spareSlot = layout !== 'single' && hasSelectedView ? slots.indexOf(null) : -1;
   const myWindowId = state.myWindowId;
 
   // When the selection moves between panes without a click, such as the selected pane
@@ -289,14 +304,20 @@ export function MainPane(): JSX.Element {
                 {i === folderPdfSlot && (
                   <PdfOverlay viewKey={folderPdfKey(state.selectedPathId as string)} />
                 )}
+                {i === spareSlot && displayableId && <PdfOverlay viewKey={displayableId} />}
               </div>
             ) : s.ownerWindowId === myWindowId ? (
               <>
-                {/* The PDF covers its own pane only. Its header sits above .pane-close, so
-                    while a PDF is open the one visible x closes the PDF, not the session. */}
-                <div className="session-stage">
-                  <TerminalView session={s} />
-                  <PdfOverlay viewKey={s.id} />
+                {/* With one terminal the file sits beside it, see .session-stage-beside. In a
+                    grid it covers its own pane only. Its header sits above .pane-close, so
+                    while a file is open the one visible x closes the file, not the session. */}
+                <div
+                  className={`session-stage${layout === 'single' ? ' session-stage-beside' : ''}`}
+                >
+                  <div className="session-terminal">
+                    <TerminalView session={s} />
+                  </div>
+                  {!(s.id === displayableId && spareSlot >= 0) && <PdfOverlay viewKey={s.id} />}
                 </div>
                 {layout !== 'single' && <PaneCloseButton sessionId={s.id} />}
               </>

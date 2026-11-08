@@ -13,11 +13,7 @@
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
 import type { TagColors } from './path-tags';
-import type {
-  LinkClientStatus,
-  LinkConnectionState,
-  LinkHostStatus,
-} from './link-protocol';
+import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
 import type {
   AppSnapshot,
   Bookmark,
@@ -149,6 +145,15 @@ export const COMMAND_CHANNELS = {
   FS_RENAME: 'cmd:fs:rename',
   /** 分块读取 PDF。本地文件或 SFTP 文件,Link 下数据从 Host 分块传回 */
   FS_READ_PDF: 'cmd:fs:read-pdf',
+  /** 查文件大小和修改时间,PDF 自动刷新靠它轮询。安静请求,不弹登录提示 */
+  FS_STAT_FILE: 'cmd:fs:stat-file',
+
+  // SSH 登录提示域:后台 SFTP 连接的 ssh 需要用户回答时,renderer 用它回传答案
+  /** 回答一条 evt:ssh:askpass-prompt。answer 为 null 表示用户取消 */
+  SSH_ASKPASS_ANSWER: 'cmd:ssh:askpass-answer',
+
+  /** Saves an edited .txt or .json. Under Link it runs on the host, so the host's file changes */
+  FS_WRITE_TEXT: 'cmd:fs:write-text',
 
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */
@@ -231,6 +236,17 @@ export const EVENT_CHANNELS = {
   PATH_TREE_UPDATED: 'evt:path:tree-updated',
   BOOKMARKS_UPDATED: 'evt:bookmarks:updated',
   SSH_PROFILES_UPDATED: 'evt:ssh-profiles:updated',
+  /**
+   * 后台 SFTP 连接的 ssh 在登录时要用户回答(密码 / Duo 验证码 / 主机密钥确认)。
+   * **定向**发给发起这次连接的窗口,renderer 弹 modal,用 cmd:ssh:askpass-answer 回答。
+   * Payload:AskpassPromptPayload。
+   */
+  SSH_ASKPASS_PROMPT: 'evt:ssh:askpass-prompt',
+  /**
+   * 一条 askpass 提示不再需要答案(ssh 已断开或超时),renderer 收起对应的 modal。
+   * Payload:{ promptId: string }。
+   */
+  SSH_ASKPASS_CLOSED: 'evt:ssh:askpass-closed',
   SETTINGS_CHANGED: 'evt:settings:changed',
   TEMPLATES_UPDATED: 'evt:templates:updated',
 
@@ -486,11 +502,7 @@ export interface SendInputPayload {
  */
 export interface SendInputResponse {
   accepted: boolean;
-  reason?:
-    | 'session-not-found'
-    | 'pty-exited'
-    | 'not-owner'
-    | 'pty-write-failed';
+  reason?: 'session-not-found' | 'pty-exited' | 'not-owner' | 'pty-write-failed';
 }
 
 export interface ResizeSessionResponse {
@@ -1003,6 +1015,30 @@ export interface BookmarksUpdatedPayload {
 
 export interface SshProfilesUpdatedPayload {
   profiles: SshProfile[];
+}
+
+/**
+ * 后台 SFTP 登录时 ssh 的一个提示,等用户回答。
+ *
+ * kind 决定输入框:secret 是密码或密钥口令,不回显;text 是 Duo 验证码之类;
+ * confirm 是主机密钥的 yes/no。prompt 是 ssh 给 askpass 的那一行,detail 是
+ * 之前打到 stderr 的说明文字(比如 Duo 的选项菜单),可能为空。
+ */
+export interface AskpassPromptPayload {
+  promptId: string;
+  profileId: string;
+  profileName: string;
+  host: string;
+  username: string;
+  kind: 'secret' | 'text' | 'confirm';
+  prompt: string;
+  detail: string;
+}
+
+export interface AskpassAnswerPayload {
+  promptId: string;
+  /** null 表示用户取消,ssh 这次登录随之失败 */
+  answer: string | null;
 }
 
 export interface SettingsChangedPayload {

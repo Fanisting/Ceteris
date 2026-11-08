@@ -169,6 +169,33 @@
   min-height: 0;
 }
 
+/* TerminalView renders several siblings. Keeping them in one box lets the split below treat
+   the terminal as a single column. */
+.session-terminal {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* One terminal on screen: the file on the left, the terminal on the right. Order is set here
+   so the DOM does not change and the terminal is never rebuilt. */
+.session-stage-beside:has(> .pdf-overlay) {
+  flex-direction: row;
+}
+
+.session-stage-beside > .pdf-overlay {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  order: -1;
+  flex: 0 0 50%;
+  min-width: 0;
+  border-right: 1px solid var(--md-outline-variant, #f0f);
+}
+
 .pdf-overlay {
   position: absolute;
   inset: 0;
@@ -218,11 +245,88 @@
   color: var(--color-bg-primary, #f0f);
 }
 
-.pdf-overlay-frame {
+/* pdf.js 要求滚动容器是绝对定位的,所以多包一层 relative 的 body */
+.pdf-overlay-body {
   flex: 1 1 0;
+  position: relative;
   min-height: 0;
-  width: 100%;
+}
+
+.pdf-overlay-viewer {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background-color: var(--color-bg-secondary, #f0f);
+}
+
+/* pdf.js 自带的页间距偏大,这里按桌面密度收一点 */
+.pdf-overlay-viewer .pdfViewer .page {
+  margin: 8px auto;
   border: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 30%);
+}
+
+.pdf-overlay-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pdf-overlay-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+  cursor: pointer;
+}
+
+.pdf-overlay-tool:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.pdf-overlay-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pdf-overlay-badge-error {
+  color: var(--color-warning, #f0f);
+  cursor: pointer;
+}
+
+.pdf-overlay-badge-error:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+}
+
+.pdf-overlay-badge-spin {
+  animation: pdf-overlay-spin 1s linear infinite;
+}
+
+@keyframes pdf-overlay-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .file-view-image {
@@ -409,4 +513,98 @@
 .template-list-item.hidden-template .template-list-icon,
 .template-list-item.hidden-template .template-list-cmd {
   opacity: 0.5;
+}
+
+/* Text files */
+.text-view {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.text-view-bar,
+.text-view-pager {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 12px;
+  color: var(--color-text-muted, #f0f);
+  font-size: 12px;
+}
+
+.text-view-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-view-status.alert {
+  color: var(--color-danger, #f0f);
+}
+
+.text-view-position {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-view-btn {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  font: inherit;
+  cursor: pointer;
+}
+
+.text-view-btn:hover:not(:disabled) {
+  background-color: var(--color-bg-secondary, #f0f);
+}
+
+.text-view-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.text-view-btn.primary {
+  border-color: var(--md-primary, #f0f);
+  background-color: var(--md-primary, #f0f);
+  color: var(--color-bg-primary, #f0f);
+}
+
+.text-view-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--md-primary, #f0f);
+}
+
+.text-view-editor,
+.text-view-page {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  overflow: auto;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  font-family: Consolas, 'Cascadia Mono', 'Microsoft YaHei UI', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: none;
+}
+
+.text-view-page.loading {
+  opacity: 0.6;
 }

@@ -255,8 +255,6 @@ export class WindowManager implements IWindowManager {
         preload: resolve(__dirname, '../preload/index.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
-        // Chromium 内置 PDF 查看器需要它,PdfOverlay 靠这个显示 PDF。
-        plugins: true,
         // SEC-1 回退(2026-05-14):sandbox 暂留 false。
         //
         // SEC-1(4d245f7)曾尝试启用 sandbox=true,但运行时 preload 立刻
@@ -366,8 +364,7 @@ export class WindowManager implements IWindowManager {
     // 这是诊断 packed 模式蓝屏 / renderer 错误的唯一通道。
     win.webContents.on('before-input-event', (event, input) => {
       const isToggle =
-        input.key === 'F12' ||
-        (input.control && input.shift && input.key.toLowerCase() === 'i');
+        input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i');
       if (isToggle && input.type === 'keyDown') {
         win.webContents.toggleDevTools();
         event.preventDefault();
@@ -401,8 +398,7 @@ export class WindowManager implements IWindowManager {
     const devtoolsMode = process.env['EASYTERM_DEVTOOLS'];
     const isFirstWindow = windowNumber === 1;
     const shouldOpenDevTools =
-      devtoolsMode === 'always' ||
-      (devtoolsMode === 'first' && isFirstWindow);
+      devtoolsMode === 'always' || (devtoolsMode === 'first' && isFirstWindow);
     if (shouldOpenDevTools) {
       win.webContents.openDevTools({ mode: 'detach' });
     }
@@ -427,11 +423,7 @@ export class WindowManager implements IWindowManager {
       try {
         win.webContents.reload();
       } catch (err) {
-        logger.error(
-          'WindowManager',
-          `reload after crash failed (window ${windowNumber})`,
-          err,
-        );
+        logger.error('WindowManager', `reload after crash failed (window ${windowNumber})`, err);
       }
     });
     win.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
@@ -751,11 +743,7 @@ export class WindowManager implements IWindowManager {
       try {
         handler(windowId);
       } catch (err) {
-        logger.error(
-          'WindowManager',
-          `onClosed handler threw for virtual window ${windowId}`,
-          err,
-        );
+        logger.error('WindowManager', `onClosed handler threw for virtual window ${windowId}`, err);
       }
     }
     return true;
@@ -853,9 +841,13 @@ export class WindowManager implements IWindowManager {
  * 输入超出所有显示器并集 → 同上回退。
  * 输入合法但只在副屏 → 保留(副屏存在的话)。
  */
-function resolveInitialBounds(
-  input: CreateWindowOptions['initialBounds'],
-): { width: number; height: number; x?: number; y?: number; maximized: boolean } {
+function resolveInitialBounds(input: CreateWindowOptions['initialBounds']): {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+  maximized: boolean;
+} {
   const DEFAULT_W = 1200;
   const DEFAULT_H = 800;
 

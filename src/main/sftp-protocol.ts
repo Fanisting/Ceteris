@@ -63,6 +63,8 @@ export type SftpEntryType = 'file' | 'dir' | 'link';
 export interface SftpAttrs {
   size: number | null;
   permissions: number | null;
+  /** 修改时间 (ms)。协议第 3 版只有秒精度;服务器省略 ACMODTIME 时为 null */
+  mtimeMs: number | null;
 }
 
 export function u32(value: number): Buffer {
@@ -125,14 +127,18 @@ export class SftpReader {
     const size = flags & ATTR_SIZE ? this.u64() : null;
     if (flags & ATTR_UIDGID) this.take(8);
     const permissions = flags & ATTR_PERMISSIONS ? this.u32() : null;
-    if (flags & ATTR_ACMODTIME) this.take(8);
+    let mtimeMs: number | null = null;
+    if (flags & ATTR_ACMODTIME) {
+      this.u32(); // atime,不用
+      mtimeMs = this.u32() * 1000;
+    }
     if (flags & ATTR_EXTENDED) {
       for (let count = this.u32(); count > 0; count -= 1) {
         this.bytes();
         this.bytes();
       }
     }
-    return { size, permissions };
+    return { size, permissions, mtimeMs };
   }
 }
 

@@ -22,6 +22,7 @@ import { ToastProvider } from './components/Toast';
 import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
+import { SshAskpassBridge } from './components/SshAskpassBridge';
 
 type HandshakeState =
   | { status: 'pending' }
@@ -139,13 +140,8 @@ export function App(): JSX.Element {
 
   // handshake OK
   return (
-    <AppStateProvider
-      myWindowId={window.api.windowId}
-      myWindowNumber={window.api.windowNumber}
-    >
-      <ConnectedShell
-        appLabel={handshake.appLabel}
-      />
+    <AppStateProvider myWindowId={window.api.windowId} myWindowNumber={window.api.windowNumber}>
+      <ConnectedShell appLabel={handshake.appLabel} />
     </AppStateProvider>
   );
 }
@@ -256,40 +252,38 @@ function ConnectedShell({ appLabel }: { appLabel: string }): JSX.Element {
 
   return (
     <LanguageProvider>
-    <ToastProvider>
-      <ModalProvider>
-        <LastSessionConfirmBridge />
-        <ContextMenuProvider>
-          <div
-            className="app-root with-shell"
-            data-theme={currentTheme}
-            data-window-style={windowStyle}
-            data-simple-mode={state.simpleMode ? 'true' : 'false'}
-          >
-            <WindowChrome
-              windowStyle={windowStyle}
-              appLabel={appLabel}
-            />
-            {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
-            <LinkConnectionBanner />
-            {state.inSettingsView ? (
-              <SettingsView />
-            ) : state.simpleMode ? (
-              // BETA-027:简易页面 — 隐藏 Sidebar / Tab bar,只保留 WindowChrome
-              // + 终端区。退出简易模式的入口现在嵌在 terminal-statusbar 里(pid 之后)。
-              <div className="app-body simple-mode">
-                <MainPane />
-              </div>
-            ) : (
-              <div className="app-body">
-                <Sidebar />
-                <MainPane />
-              </div>
-            )}
-          </div>
-        </ContextMenuProvider>
-      </ModalProvider>
-    </ToastProvider>
+      <ToastProvider>
+        <ModalProvider>
+          <LastSessionConfirmBridge />
+          <SshAskpassBridge />
+          <ContextMenuProvider>
+            <div
+              className="app-root with-shell"
+              data-theme={currentTheme}
+              data-window-style={windowStyle}
+              data-simple-mode={state.simpleMode ? 'true' : 'false'}
+            >
+              <WindowChrome windowStyle={windowStyle} appLabel={appLabel} />
+              {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
+              <LinkConnectionBanner />
+              {state.inSettingsView ? (
+                <SettingsView />
+              ) : state.simpleMode ? (
+                // BETA-027:简易页面 — 隐藏 Sidebar / Tab bar,只保留 WindowChrome
+                // + 终端区。退出简易模式的入口现在嵌在 terminal-statusbar 里(pid 之后)。
+                <div className="app-body simple-mode">
+                  <MainPane />
+                </div>
+              ) : (
+                <div className="app-body">
+                  <Sidebar />
+                  <MainPane />
+                </div>
+              )}
+            </div>
+          </ContextMenuProvider>
+        </ModalProvider>
+      </ToastProvider>
     </LanguageProvider>
   );
 }

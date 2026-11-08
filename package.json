@@ -51,6 +51,7 @@
     "markdown-it": "^14.1.0",
     "node-pty": "^1.0.0",
     "openai": "^6.37.0",
+    "pdfjs-dist": "^6.5.438",
     "uuid": "^11.0.0"
   },
   "devDependencies": {

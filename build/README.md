@@ -4,18 +4,21 @@
 
 ## 文件
 
-- `icon.svg`:矢量源图,256×256。
+- `icon-source.png`:手绘的应用图标原图,1060×1060,圆角外透明。这是唯一要改的文件。
 - `icon.png`:1024×1024,Linux 与跨平台打包用。
 - `icon.ico`:16 / 24 / 32 / 48 / 64 / 128 / 256 共 7 档,exe 和 NSIS 安装器用。
+- `icon.svg`:旧的几何图标(海青底、白色 ">"),已不再使用,留作历史参考。
 
-这三个文件都由脚本生成,不要手改。Win11 右键菜单的图标(`native/context-menu/package/assets/`)由同一脚本一并生成。
+`icon.png`、`icon.ico` 与 Win11 右键菜单的图标(`native/context-menu/package/assets/`)都是从
+`icon-source.png` 缩放出来的,不要手改。
 
-## 重新生成
+## 换图标
 
-```bash
-npm run generate-icon
-```
+1. 把新原图放到 `build/icon-source.png`(正方形,圆角外透明)。
+2. 用任何能写多尺寸 ICO 的工具重新生成上面列出的文件。256 以下的帧用 32 位 DIB,
+   256 用 PNG,这是 Windows 图标的传统布局,NSIS 对全 PNG 的 ICO 支持不稳。
+3. 同步 `src/main/tray.ts` 里的 `TRAY_BITMAP_16` / `TRAY_BITMAP_32`:16 与 32px 的
+   BGRA、alpha 预乘位图,base64 编码。
 
-脚本不依赖任何 npm 包。要改设计,改 `scripts/generate-icon.cjs` 里的几何和配色,然后同步以下一处:
-
-- `src/main/tray.ts` 的 `TRAY_PIXELS`(托盘,16px 像素图)
+`scripts/generate-icon.cjs` 画的是旧几何图标,现在只在加 `--legacy` 时运行,免得
+`npm run generate-icon` 把这里的文件覆盖回去。

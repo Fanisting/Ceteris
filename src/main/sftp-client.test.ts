@@ -8,6 +8,9 @@ import { PassThrough } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildSftpArgs, SftpError, SftpPathError, SftpPool, type SftpProfile } from './sftp-client';
+import { ASKPASS_PIPE_ENV, ASKPASS_TOKEN_ENV } from './platform/askpass';
+import type { AskpassHandler } from './askpass-server';
+import type { PromptRequest } from './askpass-prompts';
 import {
   encodePacket,
   FX_STATUS,
@@ -40,10 +43,15 @@ interface FakeNode {
   content?: Buffer;
   /** 符号链接的目标路径 */
   target?: string;
+  /** 修改时间 (秒)。有值时属性里带 ACMODTIME */
+  mtime?: number;
 }
 
 function attrs(node: FakeNode): Buffer {
-  return Buffer.concat([u32(0x1 | 0x4), u64(node.content?.length ?? 0), u32(node.mode)]);
+  const base = Buffer.concat([u32(0x1 | 0x4), u64(node.content?.length ?? 0), u32(node.mode)]);
+  if (node.mtime === undefined) return base;
+  base.writeUInt32BE(0x1 | 0x4 | 0x8, 0);
+  return Buffer.concat([base, u32(node.mtime), u32(node.mtime)]);
 }
 
 /** 内存里的 SFTP 服务器,说真实的二进制协议。 */
@@ -57,6 +65,9 @@ class FakeServer extends EventEmitter {
   maxRead = Infinity;
   /** 为 true 时 READ 不回复,模拟慢下载 */
   holdReads = false;
+  /** 为 true 时 INIT 不回复,模拟 ssh 还卡在登录提示上。releaseHandshake 放行 */
+  holdHandshake = false;
+  private handshakePending = false;
   /** 为 true 时 READDIR 一直回 count=0 */
   emptyBatches = false;
   /** 大于 0 时 READ 返回这么多字节,不管请求多少 */
@@ -77,6 +88,14 @@ class FakeServer extends EventEmitter {
     return true;
   }
 
+  /** 登录完成,回 VERSION。 */
+  releaseHandshake(): void {
+    this.holdHandshake = false;
+    if (!this.handshakePending) return;
+    this.handshakePending = false;
+    this.reply(FXP.VERSION, [u32(3)]);
+  }
+
   private reply(type: number, parts: Buffer[]): void {
     this.stdout.write(encodePacket(type, parts));
   }
@@ -94,7 +113,8 @@ class FakeServer extends EventEmitter {
     const type = packet[0] as number;
     const reader = new SftpReader(packet.subarray(1));
     if (type === FXP.INIT) {
-      this.reply(FXP.VERSION, [u32(3)]);
+      if (this.holdHandshake) this.handshakePending = true;
+      else this.reply(FXP.VERSION, [u32(3)]);
       return;
     }
     const id = reader.u32();
@@ -373,8 +393,49 @@ describe('SftpPool.readChunk', () => {
     const { pool } = createPool(() => fake);
     const res = await pool.readChunk('p1', '/home/me/普通 文件.txt', 0, 5, { maxSize: 2 });
     pool.shutdown();
-    expect(res).toEqual({ chunk: Buffer.alloc(0), size: 5 });
+    expect(res).toEqual({ chunk: Buffer.alloc(0), size: 5, mtimeMs: null });
     expect(fake.requests).not.toContain(FXP.OPEN);
+  });
+
+  it('带上修改时间', async () => {
+    const fake = new FakeServer({
+      ...TREE,
+      '/home/me/t.pdf': { mode: FILE, content: Buffer.from('%PDF-'), mtime: 1_700_000_000 },
+    });
+    const { pool } = createPool(() => fake);
+    const res = await pool.readChunk('p1', '/home/me/t.pdf', 0, 5);
+    pool.shutdown();
+    expect(res.mtimeMs).toBe(1_700_000_000_000);
+  });
+});
+
+describe('SftpPool.stat', () => {
+  it('返回普通文件的大小和修改时间', async () => {
+    const fake = new FakeServer({
+      ...TREE,
+      '/home/me/t.pdf': { mode: FILE, content: Buffer.from('%PDF-'), mtime: 1_700_000_000 },
+    });
+    const { pool } = createPool(() => fake);
+    expect(await pool.stat('p1', '/home/me/t.pdf')).toEqual({
+      size: 5,
+      mtimeMs: 1_700_000_000_000,
+    });
+    expect(await pool.stat('p1', '~/普通 文件.txt')).toEqual({ size: 5, mtimeMs: null });
+    pool.shutdown();
+    expect(fake.requests.filter((t) => t === FXP.OPEN)).toEqual([]);
+  });
+
+  it('目录和不存在的路径抛路径错误', async () => {
+    const { pool } = createPool(() => new FakeServer(TREE));
+    await expect(pool.stat('p1', '/home/me/src')).rejects.toBeInstanceOf(SftpPathError);
+    await expect(pool.stat('p1', '/nope.pdf')).rejects.toBeInstanceOf(SftpPathError);
+    pool.shutdown();
+  });
+
+  it('连接失败时抛连接错误,且按缓存的原因', async () => {
+    const { pool } = createPool(() => failingServer('Permission denied\n'));
+    await expect(pool.stat('p1', '/a.pdf')).rejects.toMatchObject({ reason: 'auth' });
+    await expect(pool.stat('p1', '/a.pdf')).rejects.toMatchObject({ reason: 'auth' });
   });
 
   it('目录不能当文件读', async () => {
@@ -545,7 +606,7 @@ describe('连接失败', () => {
   it('fresh 跳过缓存:用户主动打开选择框时立即重试', async () => {
     const { pool, spawned } = createPool(() => failingServer('Permission denied\n'));
     await pool.list('p1', '~');
-    await pool.list('p1', '~', true);
+    await pool.list('p1', '~', { fresh: true });
     expect(spawned).toHaveLength(2);
   });
 
@@ -618,30 +679,7 @@ describe('连接失败', () => {
 });
 
 describe('密码登录', () => {
-  it('有 askpass 时直接运行 ssh,不经过 sshpass,密码不进命令行', async () => {
-    const spawned: Array<{ file: string; args: string[]; env: Record<string, string> }> = [];
-    const pool = new SftpPool({
-      getProfile: () => ({ ...PROFILE, authType: 'password', password: 'hunter2' }),
-      resolveExecutable: (name) => `/bin/${name}`,
-      prepareAskpass: () => '/tmp/askpass.cmd',
-      spawnProcess: (file, args, env) => {
-        spawned.push({ file, args, env });
-        return asChild(new FakeServer(TREE));
-      },
-    });
-    await pool.list('p1', '~');
-    pool.shutdown();
-    expect(spawned[0]?.file).toBe('/bin/ssh');
-    expect(spawned[0]?.args.join(' ')).not.toContain('hunter2');
-    expect(spawned[0]?.args).toContain('BatchMode=no');
-    expect(spawned[0]?.env).toMatchObject({
-      SSH_ASKPASS: '/tmp/askpass.cmd',
-      SSH_ASKPASS_REQUIRE: 'force',
-      CETERIS_SSH_PASSWORD: 'hunter2',
-    });
-  });
-
-  it('有 sshpass 时用环境变量传密码,不进命令行', async () => {
+  it('有 sshpass 且没有中继时用环境变量传密码,不进命令行', async () => {
     const spawned: Array<{ file: string; args: string[]; env: Record<string, string> }> = [];
     const pool = new SftpPool({
       getProfile: () => ({ ...PROFILE, authType: 'password', password: 'hunter2' }),
@@ -657,6 +695,286 @@ describe('密码登录', () => {
     expect(spawned[0]?.args.slice(0, 2)).toEqual(['-e', '/bin/ssh']);
     expect(spawned[0]?.args.join(' ')).not.toContain('hunter2');
     expect(spawned[0]?.env['SSHPASS']).toBe('hunter2');
+  });
+});
+
+/**
+ * askpass 中继的测试替身:register 记下处理函数,测试直接调它模拟 ssh 发来的提示。
+ */
+function createRelayPool(
+  fakes: () => FakeServer,
+  profile: SftpProfile = PROFILE,
+  pipePath: string | null = '\\\\.\\pipe\\test',
+  promptUser?: (request: PromptRequest) => Promise<string | null>,
+) {
+  const spawned: Array<{ file: string; args: string[]; env: Record<string, string> }> = [];
+  const handlers = new Map<string, AskpassHandler>();
+  const prompts: PromptRequest[] = [];
+  let answer: string | null = 'from-user';
+  let clock = 1000;
+  const pool = new SftpPool({
+    getProfile: () => profile,
+    resolveExecutable: (name) => (name === 'ssh' ? '/bin/ssh' : null),
+    askpass: {
+      helper: () => ({ command: 'C:\\app\\Ceteris.exe', env: { HELPER_MODE: '1' } }),
+      server: {
+        pipePath,
+        register: (handler) => {
+          const token = `t${handlers.size + 1}`;
+          handlers.set(token, handler);
+          return token;
+        },
+        unregister: (token) => void handlers.delete(token),
+      },
+      promptUser: (request) => {
+        prompts.push(request);
+        return promptUser ? promptUser(request) : Promise.resolve(answer);
+      },
+    },
+    spawnProcess: (file, args, env) => {
+      spawned.push({ file, args, env });
+      return asChild(fakes());
+    },
+    now: () => clock,
+  });
+  const prompt = (text: string, hint: string | null = null): Promise<string | null> => {
+    const token = spawned.at(-1)?.env[ASKPASS_TOKEN_ENV];
+    const handler = token ? handlers.get(token) : undefined;
+    if (!handler) throw new Error('no handler registered for the last ssh process');
+    return handler(text, hint);
+  };
+  return {
+    pool,
+    spawned,
+    handlers,
+    prompts,
+    prompt,
+    setAnswer: (value: string | null) => (answer = value),
+    advance: (ms: number) => (clock += ms),
+  };
+}
+
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 5));
+
+describe('askpass 中继', () => {
+  it('ssh 以 BatchMode=no 启动,环境里有助手、管道和令牌,没有密码', async () => {
+    const { pool, spawned, handlers } = createRelayPool(() => new FakeServer(TREE), {
+      ...PROFILE,
+      authType: 'password',
+      password: 'hunter2',
+    });
+    await pool.list('p1', '~');
+    const [first] = spawned;
+    expect(first?.file).toBe('/bin/ssh');
+    expect(first?.args).toContain('BatchMode=no');
+    expect(first?.args).toContain('NumberOfPasswordPrompts=1');
+    expect(first?.args.join(' ')).not.toContain('hunter2');
+    expect(JSON.stringify(first?.env)).not.toContain('hunter2');
+    expect(first?.env).toMatchObject({
+      SSH_ASKPASS: 'C:\\app\\Ceteris.exe',
+      SSH_ASKPASS_REQUIRE: 'force',
+      HELPER_MODE: '1',
+      [ASKPASS_PIPE_ENV]: '\\\\.\\pipe\\test',
+      [ASKPASS_TOKEN_ENV]: 't1',
+    });
+    expect(handlers.size).toBe(1);
+    pool.shutdown();
+    expect(handlers.size).toBe(0);
+  });
+
+  it('没有保存密码时不限制提示次数,用户敲错 Duo 验证码还能再来', async () => {
+    const { pool, spawned } = createRelayPool(() => new FakeServer(TREE));
+    await pool.list('p1', '~');
+    pool.shutdown();
+    expect(spawned[0]?.args).toContain('BatchMode=no');
+    expect(spawned[0]?.args).not.toContain('NumberOfPasswordPrompts=1');
+  });
+
+  it('管道没就绪时退回 BatchMode=yes', async () => {
+    const { pool, spawned } = createRelayPool(() => new FakeServer(TREE), PROFILE, null);
+    await pool.list('p1', '~');
+    pool.shutdown();
+    expect(spawned[0]?.args).toContain('BatchMode=yes');
+    expect(spawned[0]?.env['SSH_ASKPASS']).toBeUndefined();
+  });
+
+  it('保存的密码自动填一次,第二次问密码时后台连接断开并记为 login-required', async () => {
+    const fake = new FakeServer(TREE);
+    fake.holdHandshake = true;
+    const { pool, prompt, prompts, spawned } = createRelayPool(() => fake, {
+      ...PROFILE,
+      authType: 'password',
+      password: 'hunter2',
+    });
+    const listing = pool.list('p1', '~');
+    await flush();
+    expect(await prompt("me@example.test's password: ")).toBe('hunter2');
+    expect(await prompt("me@example.test's password: ")).toBeNull();
+    expect(await listing).toEqual({ ok: false, reason: 'login-required' });
+    expect(fake.killed).toBe(true);
+    expect(prompts).toHaveLength(0);
+    // 缓存:再来一次后台请求不再启动进程
+    expect(await pool.list('p1', '~')).toEqual({ ok: false, reason: 'login-required' });
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('后台连接遇到 Duo 提示直接断开,不弹窗;用户点重试后交互重连', async () => {
+    const fakes: FakeServer[] = [];
+    const { pool, prompt, prompts, spawned } = createRelayPool(() => {
+      const fake = new FakeServer(TREE);
+      fake.holdHandshake = true;
+      fakes.push(fake);
+      return fake;
+    });
+    const quiet = pool.list('p1', '~');
+    await flush();
+    expect(await prompt('(me@example.test) Passcode or option (1-3): ')).toBeNull();
+    expect(await quiet).toEqual({ ok: false, reason: 'login-required' });
+    expect(prompts).toHaveLength(0);
+
+    const retry = pool.list('p1', '~', { fresh: true, interactive: true, windowId: 'w1' });
+    await flush();
+    expect(spawned).toHaveLength(2);
+    const answered = prompt('(me@example.test) Passcode or option (1-3): ');
+    await flush();
+    expect(prompts[0]).toMatchObject({
+      windowId: 'w1',
+      payload: { kind: 'text', host: 'example.test', profileId: 'p1' },
+    });
+    expect(await answered).toBe('from-user');
+    fakes[1]?.releaseHandshake();
+    expect((await retry).ok).toBe(true);
+    pool.shutdown();
+  });
+
+  it('用户操作把还在登录的后台连接升级成可弹窗', async () => {
+    const fake = new FakeServer(TREE);
+    fake.holdHandshake = true;
+    const { pool, prompt, prompts, spawned } = createRelayPool(() => fake);
+    const quiet = pool.list('p1', '~');
+    const clicked = pool.list('p1', '~', { interactive: true, windowId: 'w2' });
+    await flush();
+    expect(spawned).toHaveLength(1);
+    const answered = prompt("me@example.test's password: ");
+    expect(await answered).toBe('from-user');
+    expect(prompts[0]).toMatchObject({ windowId: 'w2', payload: { kind: 'secret' } });
+    fake.releaseHandshake();
+    expect((await quiet).ok).toBe(true);
+    expect((await clicked).ok).toBe(true);
+    pool.shutdown();
+  });
+
+  it('提示里带 stderr 的说明文字和 profile 名,主机密钥问题按 confirm 弹', async () => {
+    const fake = new FakeServer(TREE);
+    fake.holdHandshake = true;
+    const { pool, prompt, prompts } = createRelayPool(() => fake, {
+      ...PROFILE,
+      name: 'PARCC',
+    });
+    const listing = pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+    await flush();
+    fake.stderr.write('Duo two-factor login\n 1. Duo Push\n');
+    await flush();
+    await prompt("The authenticity of host 'x' can't be established. (yes/no/[fingerprint])? ");
+    expect(prompts[0]?.payload).toMatchObject({
+      kind: 'confirm',
+      profileName: 'PARCC',
+      detail: 'Duo two-factor login\n 1. Duo Push',
+    });
+    fake.releaseHandshake();
+    await listing;
+    pool.shutdown();
+  });
+
+  it('用户取消时断开并记为 login-required,等下一次用户操作', async () => {
+    const fakes: FakeServer[] = [];
+    const { pool, prompt, spawned, setAnswer } = createRelayPool(() => {
+      const fake = new FakeServer(TREE);
+      fake.holdHandshake = true;
+      fakes.push(fake);
+      return fake;
+    });
+    setAnswer(null);
+    const listing = pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+    await flush();
+    expect(await prompt("me@example.test's password: ")).toBeNull();
+    expect(await listing).toEqual({ ok: false, reason: 'login-required' });
+    expect(fakes[0]?.killed).toBe(true);
+    expect(await pool.list('p1', '~', { interactive: true, windowId: 'w1' })).toEqual({
+      ok: false,
+      reason: 'login-required',
+    });
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('连接结束时中止还在等用户的提示', async () => {
+    const fake = new FakeServer(TREE);
+    fake.holdHandshake = true;
+    const { pool, prompt, prompts } = createRelayPool(() => fake);
+    void pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+    await flush();
+    void prompt("me@example.test's password: ");
+    await flush();
+    expect(prompts[0]?.signal?.aborted).toBe(false);
+    pool.shutdown();
+    expect(prompts[0]?.signal?.aborted).toBe(true);
+  });
+
+  it('问过用户的连接不做空闲关闭', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const fakes: FakeServer[] = [];
+      const make = (): FakeServer => {
+        const fake = new FakeServer(TREE);
+        fakes.push(fake);
+        return fake;
+      };
+      const plain = createRelayPool(make);
+      await plain.pool.list('p1', '~');
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      expect(fakes[0]?.killed).toBe(true);
+
+      const prompted = createRelayPool(make);
+      const held = fakes.length;
+      const listing = prompted.pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+      await vi.advanceTimersByTimeAsync(1);
+      const fake = fakes[held]!;
+      // 握手已经完成也没关系:问过用户这件事本身就让连接免于空闲关闭
+      await prompted.prompt("me@example.test's password: ");
+      await listing;
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
+      expect(fake.killed).toBe(false);
+      prompted.pool.shutdown();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('等用户期间握手不超时,回答后重新计时', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const fake = new FakeServer(TREE);
+      fake.holdHandshake = true;
+      let resolveAnswer: ((value: string | null) => void) | null = null;
+      const { pool, prompt } = createRelayPool(
+        () => fake,
+        PROFILE,
+        undefined,
+        () => new Promise((resolve) => (resolveAnswer = resolve)),
+      );
+      const listing = pool.list('p1', '~', { interactive: true, windowId: 'w1' });
+      await vi.advanceTimersByTimeAsync(1);
+      const answered = prompt("me@example.test's password: ");
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      expect(fake.killed).toBe(false);
+      resolveAnswer!('secret');
+      expect(await answered).toBe('secret');
+      await vi.advanceTimersByTimeAsync(121_000);
+      expect(fake.killed).toBe(true);
+      expect(await listing).toEqual({ ok: false, reason: 'connect' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * @file scripts/generate-icon.cjs
- * @purpose Ceteris 应用图标生成器。一份几何定义同时产出 SVG、PNG 和多尺寸 ICO。
+ * @purpose 旧的 Ceteris 几何图标生成器(海青底、白色 ">")。应用图标现在是手绘的
+ *   build/icon-source.png,见 build/README.md;这个脚本只保留作历史参考。
  *
  * 用法:
- *   npm run generate-icon
+ *   npm run generate-icon -- --legacy   (不加 --legacy 只打印说明,不写任何文件)
  *
  * 产物:
  *   build/icon.svg                     矢量源图(由本脚本写出,不要手改)
@@ -51,12 +52,26 @@ const WATER_COLOR = '#9cf1f0';
 
 /** water:水面边缘是上下交替的二次贝塞尔,control 是相对 level 的控制点偏移。 */
 const FULL = {
-  prompt: { points: [[101, 56], [151, 100], [101, 144]], width: 30 },
+  prompt: {
+    points: [
+      [101, 56],
+      [151, 100],
+      [101, 144],
+    ],
+    width: 30,
+  },
   water: { level: 188, segmentLength: 64, control: 24 },
 };
 
 const SMALL = {
-  prompt: { points: [[98, 36], [156, 84], [98, 132]], width: 42 },
+  prompt: {
+    points: [
+      [98, 36],
+      [156, 84],
+      [98, 132],
+    ],
+    width: 42,
+  },
   water: { level: 188, segmentLength: 128, control: 28 },
 };
 
@@ -294,4 +309,11 @@ function main() {
   }
 }
 
-main();
+if (process.argv.includes('--legacy')) {
+  main();
+} else {
+  console.log(
+    '[generate-icon] The app icon is now the hand-made build/icon-source.png (see build/README.md). ' +
+      'Pass --legacy to regenerate the old geometric icon anyway.',
+  );
+}

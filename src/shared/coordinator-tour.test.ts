@@ -16,6 +16,8 @@ const fresh: CoordinatorTourInput = {
   enabled: false,
   pluginInstalled: false,
   startSeen: false,
+  hasFintuner: false,
+  hasFintunerCandidate: false,
 };
 
 describe('coordinatorTourStep', () => {
@@ -41,17 +43,24 @@ describe('coordinatorTourStep', () => {
     expect(coordinatorTourStep({ ...made, enabled: true, pluginInstalled: true })).toBe('start');
   });
 
-  it('ends with the Fintuner after the user has seen how to start the coordinator', () => {
+  it('makes a Fintuner like the Coordinator: open an agent, right-click it, pick the role', () => {
     const ready = {
       ...fresh,
       hasCoordinator: true,
       rowSeen: true,
       workerSeen: true,
       enabled: true,
+      pluginInstalled: true,
+      startSeen: true,
     };
-    expect(coordinatorTourStep({ ...ready, pluginInstalled: true, startSeen: true })).toBe(
-      'fintuner',
+    expect(coordinatorTourStep(ready)).toBe('fintuner-open');
+    expect(coordinatorTourStep({ ...ready, hasFintunerCandidate: true })).toBe(
+      'fintuner-right-click',
     );
+    expect(coordinatorTourStep({ ...ready, hasFintunerCandidate: true, menuOpen: true })).toBe(
+      'fintuner-pick',
+    );
+    expect(coordinatorTourStep({ ...ready, hasFintuner: true })).toBe('finish');
   });
 
   it('skips the setting and plugin steps when the coordinator runs an agent other than Claude Code', () => {

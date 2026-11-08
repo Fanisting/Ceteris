@@ -207,6 +207,8 @@ describe('SettingsManager — initialize', () => {
     expect(settings.appearance.theme).toBe('cutie');
     expect(settings.appearance.terminalFontSize).toBe(13); // 来自默认
     expect(settings.behavior.confirmOnQuit).toBe(true); // 来自默认
+    // 老用户升级后也看一次 "右键 + 号" 首次引导
+    expect(settings.behavior.quickLaunchTipSeen).toBe(false);
     expect(settings.advanced.logLevel).toBe('INFO');
   });
 

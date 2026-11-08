@@ -425,6 +425,11 @@ export interface Settings {
     /** 右键 + 号时环绕显示的快捷启动选项,在 设置 → 行为 里编辑 */
     quickLaunch: QuickLaunchItem[];
     /**
+     * 首次使用引导 "右键 + 号快速启动 agent" 是否已看过。默认 false;
+     * 用户点 "知道了" 或第一次右键 + 号后写 true,之后不再弹。
+     */
+    quickLaunchTipSeen: boolean;
+    /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell
      * (PowerShell 7+, bash 5+, zsh, fish, Claude Code REPL)把粘贴

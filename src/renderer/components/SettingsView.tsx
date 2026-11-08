@@ -73,9 +73,10 @@ import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
 import { NEXT_PROMPT_DEFAULT_BASE_URL,
-  NEXT_PROMPT_DEFAULT_MODEL,
+  type FrequentPrompt,
   type NextPromptUsage,
   nextPromptConfigured } from '@shared/next-prompt';
+import { NextPromptModelPicker } from './NextPromptModelPicker';
 import type {
   CreateSessionResponse,
   DataAgentStats,
@@ -86,6 +87,7 @@ import type {
   DataImportResponse,
   SuggestNextPromptPayload,
   SuggestNextPromptResponse,
+  GetFrequentPromptsResponse,
 } from '@shared/protocol';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
@@ -2630,6 +2632,13 @@ function AiPanel({
       .catch((err) => console.error('[Settings] read usage failed', err));
   }, []);
   useEffect(refreshUsage, [refreshUsage]);
+  const [habits, setHabits] = useState<FrequentPrompt[] | null>(null);
+  useEffect(() => {
+    window.api
+      .invoke<undefined, GetFrequentPromptsResponse>(COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS, undefined)
+      .then((res) => setHabits(res.prompts))
+      .catch((err) => console.error('[Settings] read frequent prompts failed', err));
+  }, []);
 
   const handleTestNextPrompt = async (): Promise<void> => {
     setTestingNextPrompt(true);
@@ -2863,8 +2872,8 @@ function AiPanel({
       <h3 className="link-subsection-title">{tx('下一步提示建议', 'Next prompt suggestions')}</h3>
       <p className="settings-panel-hint">
         {tx(
-          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字会发送给 OpenRouter,所以屏幕上的密钥或私密内容也会被发送。',
-          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen goes to OpenRouter, including anything private shown there.',
+          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字和下面列出的常用消息会发送给这个 API(默认 OpenRouter),所以屏幕上的密钥或私密内容也会被发送。',
+          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen and the frequent messages listed below go to that API (OpenRouter by default), including anything private shown on screen.',
         )}
       </p>
 
@@ -2919,18 +2928,41 @@ function AiPanel({
 
       <SettingRow
         label={tx('模型', 'Model')}
-        hint={tx('留空使用默认模型,约 0.2 秒一次', 'Leave empty for the default, about 0.2s per guess')}
+        hint={tx(
+          '列表来自上面的 API 地址。小模型够用:每次只猜一句话,停下就猜一次',
+          'Listed from the API address above. A small model is enough: each guess is one line, made at every stop',
+        )}
       >
-        <input
-          className="settings-input"
-          type="text"
-          spellCheck={false}
-          placeholder={NEXT_PROMPT_DEFAULT_MODEL}
-          value={nextPrompt.model}
-          onChange={(e) =>
-            void updateSettings({ ai: { nextPrompt: { model: e.target.value } } }, setError)
+        <NextPromptModelPicker
+          model={nextPrompt.model}
+          baseURL={nextPrompt.baseURL ?? ''}
+          apiKey={nextPrompt.apiKey}
+          onChange={(value) =>
+            void updateSettings({ ai: { nextPrompt: { model: value } } }, setError)
           }
         />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('你的常用消息', 'Your frequent messages')}
+        hint={tx(
+          '从 Claude Code 和 Codex 的历史记录里找出发过 3 次以上的短消息,随每次猜测一起发送,模型合适时会原样建议',
+          'Short messages you sent to Claude Code or Codex 3 or more times, read from their history. Sent with each guess so the model can offer them word for word',
+        )}
+      >
+        {habits === null ? (
+          <span className="settings-usage">…</span>
+        ) : habits.length === 0 ? (
+          <span className="settings-usage">{tx('还没有', 'None yet')}</span>
+        ) : (
+          <ul className="next-prompt-habits">
+            {habits.map((h) => (
+              <li key={h.text}>
+                {h.text} <span className="settings-row-hint">×{h.count}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </SettingRow>
 
       <SettingRow label={tx('测试', 'Test')}>

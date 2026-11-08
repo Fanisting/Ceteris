@@ -78,6 +78,164 @@ export const NEXT_PROMPT_SYSTEM =
   'direct instruction of at most 15 words, in the language the developer writes in. ' +
   'No quotes, no explanation. If no next step is clear, reply NONE.';
 
+/** A message the developer has sent to Claude Code or Codex several times. */
+export interface FrequentPrompt {
+  text: string;
+  count: number;
+}
+
+/** Sent with every guess, so a few lines are worth their tokens and many are not. */
+export const FREQUENT_PROMPT_LIMIT = 10;
+/** Below this a message is a one off, not a habit. */
+const FREQUENT_PROMPT_MIN_COUNT = 3;
+/** Longer messages are task descriptions that will not repeat word for word. */
+const FREQUENT_PROMPT_MAX_CHARS = 100;
+/**
+ * Agent commands that leave, switch or configure the session. Frequent, but never the
+ * next message after the agent stops, so they would only push real habits off the list.
+ */
+const SESSION_COMMANDS = /^\/(exit|quit|resume|model|login|logout|config|status|help|theme|settings)\b/i;
+
+/**
+ * The messages a developer repeats, most frequent first. Case and spacing are ignored when
+ * counting; the most recent spelling is the one kept.
+ *
+ * @param prompts oldest first, as the history files store them
+ */
+export function topFrequentPrompts(
+  prompts: readonly string[],
+  limit = FREQUENT_PROMPT_LIMIT,
+): FrequentPrompt[] {
+  const seen = new Map<string, { text: string; count: number; last: number }>();
+  prompts.forEach((raw, index) => {
+    const trimmed = raw.trim();
+    // Multi line messages and pastes are one off content, not habits.
+    if (!trimmed || trimmed.includes('\n') || /\[Pasted text|\[Image #/i.test(trimmed)) return;
+    const text = trimmed.replace(/\s+/g, ' ');
+    if (text.length > FREQUENT_PROMPT_MAX_CHARS || SESSION_COMMANDS.test(text)) return;
+    const key = text.toLowerCase();
+    seen.set(key, { text, count: (seen.get(key)?.count ?? 0) + 1, last: index });
+  });
+  return [...seen.values()]
+    .filter((e) => e.count >= FREQUENT_PROMPT_MIN_COUNT)
+    .sort((a, b) => b.count - a.count || b.last - a.last)
+    .slice(0, limit)
+    .map(({ text, count }) => ({ text, count }));
+}
+
+/** The system message, with the developer's habits added when there are any. */
+export function nextPromptSystem(frequent: readonly FrequentPrompt[]): string {
+  if (frequent.length === 0) return NEXT_PROMPT_SYSTEM;
+  const lines = frequent.map((f) => `- ${f.text} (${f.count} times)`).join('\n');
+  return (
+    `${NEXT_PROMPT_SYSTEM}\n\nThis developer often sends these exact messages:\n${lines}\n` +
+    'When one of them fits what the screen shows, reply with it word for word.'
+  );
+}
+
+/**
+ * The message in one line of a history file. Claude Code writes {"display": ...} to
+ * ~/.claude/history.jsonl and Codex writes {"text": ...} to ~/.codex/history.jsonl.
+ */
+export function promptFromHistoryLine(line: string): string | null {
+  try {
+    const entry = JSON.parse(line) as Record<string, unknown>;
+    const text = entry['display'] ?? entry['text'];
+    return typeof text === 'string' ? text : null;
+  } catch {
+    // The first line of a tail read is usually cut in half.
+    return null;
+  }
+}
+
+/** One choice in the model list of the settings page. */
+export interface NextPromptModelOption {
+  id: string;
+  /** What the provider calls it, e.g. "Meta: Llama 3.1 8B Instruct". */
+  name: string;
+  /** US dollars per million tokens, undefined when the provider does not say. */
+  inputPrice?: number | undefined;
+  outputPrice?: number | undefined;
+}
+
+/**
+ * Suggested for OpenRouter, with the reason for each. A guess goes out on every idle
+ * moment, so cheap and fast matter more than clever. Shown even when the live list cannot
+ * be fetched. Ids checked against openrouter.ai/api/v1/models on 2026-11-07.
+ */
+export const RECOMMENDED_NEXT_PROMPT_MODELS: ReadonlyArray<{
+  id: string;
+  zh: string;
+  en: string;
+}> = [
+  {
+    id: NEXT_PROMPT_DEFAULT_MODEL,
+    zh: 'Llama 3.1 8B:默认,最快最便宜,约 0.16 秒',
+    en: 'Llama 3.1 8B: default, fastest and cheapest, about 0.16s',
+  },
+  {
+    id: 'mistralai/ministral-8b-2512',
+    zh: 'Ministral 3 8B:同样小而便宜,更新',
+    en: 'Ministral 3 8B: also small and cheap, newer',
+  },
+  {
+    id: 'qwen/qwen3.7-flash',
+    zh: 'Qwen3.7 Flash:便宜,中文更好',
+    en: 'Qwen3.7 Flash: cheap, better at Chinese',
+  },
+  {
+    id: 'google/gemini-2.5-flash-lite',
+    zh: 'Gemini 2.5 Flash Lite:快,读屏更准',
+    en: 'Gemini 2.5 Flash Lite: fast, reads the screen better',
+  },
+  {
+    id: 'anthropic/claude-haiku-5.5',
+    zh: 'Claude Haiku 5.5:最懂代码,价格略高',
+    en: 'Claude Haiku 5.5: best at code, costs a little more',
+  },
+];
+
+function perMillion(value: unknown): number | undefined {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n * 1_000_000 : undefined;
+}
+
+/**
+ * Reads a GET /models reply. OpenRouter gives names and prices; Ollama, LM Studio and most
+ * others give only ids, so the name falls back to the id. Cheapest first, then by name,
+ * since price matters most for a call made this often.
+ */
+export function parseModelList(body: unknown): NextPromptModelOption[] {
+  const data = (body as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data)) return [];
+  const models: NextPromptModelOption[] = [];
+  for (const item of data as Array<Record<string, unknown> | null>) {
+    const id = item?.['id'];
+    if (!item || typeof id !== 'string' || !id) continue;
+    // OpenRouter also lists image and audio models, which cannot answer in text.
+    const outputs = (item['architecture'] as { output_modalities?: unknown } | undefined)
+      ?.output_modalities;
+    if (Array.isArray(outputs) && !outputs.includes('text')) continue;
+    const pricing = (item['pricing'] ?? {}) as Record<string, unknown>;
+    const name = typeof item['name'] === 'string' && item['name'] ? item['name'] : id;
+    models.push({
+      id,
+      name,
+      inputPrice: perMillion(pricing['prompt']),
+      outputPrice: perMillion(pricing['completion']),
+    });
+  }
+  const price = (m: NextPromptModelOption): number => m.inputPrice ?? Infinity;
+  return models.sort((a, b) => price(a) - price(b) || a.name.localeCompare(b.name));
+}
+
+/** Input and output price per million tokens, "$0.050 / $0.080", or '' when unknown. */
+export function formatModelPrice(model: NextPromptModelOption): string {
+  if (model.inputPrice === undefined || model.outputPrice === undefined) return '';
+  const fmt = (n: number): string => `$${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`;
+  return `${fmt(model.inputPrice)} / ${fmt(model.outputPrice)}`;
+}
+
 export type AgentKind = 'claude' | 'codex';
 
 const CLAUDE_SCREEN = /\? for shortcuts|shift\+tab to cycle/i;

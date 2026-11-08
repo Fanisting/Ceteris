@@ -5,7 +5,7 @@ import {
   NEXT_PROMPT_MAX_SCREEN_CHARS,
   addNextPromptUsage,
 } from '@shared/next-prompt';
-import { suggestNextPrompt } from './next-prompt-client';
+import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
 
 const reply = (content: string, status = 200) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status });
@@ -132,5 +132,31 @@ describe('cost total', () => {
     expect(seen).toEqual([{ cost: 0.001 }]);
     expect(bodies[0]).toHaveProperty('usage');
     expect(bodies[1]).not.toHaveProperty('usage');
+  });
+});
+
+describe('frequent prompts and model list', () => {
+  it('tells the model the messages the user often sends', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => reply('ok'));
+    await suggestNextPrompt(CONFIG, 's', fetchImpl as never, undefined, [{ text: 'commit and push', count: 9 }]);
+    const system = JSON.parse(fetchImpl.mock.calls[0]?.[1].body as string).messages[0].content;
+    expect(system).toContain('commit and push');
+  });
+
+  it('asks the /models path of the same address, with the key when there is one', async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return new Response(JSON.stringify({ data: [{ id: 'llama3' }] }));
+    }) as unknown as typeof fetch;
+    await expect(
+      listNextPromptModels({ apiKey: '', baseURL: 'http://127.0.0.1:11434/v1', model: '' }, fetchImpl),
+    ).resolves.toEqual([{ id: 'llama3', name: 'llama3', inputPrice: undefined, outputPrice: undefined }]);
+    await listNextPromptModels(CONFIG, fetchImpl);
+    expect(calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:11434/v1/models',
+      'https://openrouter.ai/api/v1/models',
+    ]);
+    expect(calls[1]?.[1].headers).toEqual({ Authorization: 'Bearer test-key' });
   });
 });

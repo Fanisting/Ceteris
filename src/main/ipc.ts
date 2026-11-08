@@ -55,6 +55,8 @@ import {
   type SetPaneSessionsPayload,
   type SuggestNextPromptPayload,
   type SuggestNextPromptResponse,
+  type ListNextPromptModelsResponse,
+  type GetFrequentPromptsResponse,
   type ViewStateResponse,
   type ViewSwitchPayload,
   type AddSshProfilePayload,
@@ -198,7 +200,8 @@ import {
   writeBundle,
 } from './data-bundle';
 import { detectAgent } from '@shared/next-prompt';
-import { suggestNextPrompt } from './next-prompt-client';
+import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
+import { FrequentPromptReader } from './frequent-prompts';
 import type { ViewSwitcher } from './view-switcher';
 
 export interface IpcLayerDeps {
@@ -1337,6 +1340,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // Read on the machine that makes the call, so a remote view gets the Host's habits.
+  const frequentPrompts = new FrequentPromptReader();
+
   // Not local-only on purpose: a remote view sends this to the Host, whose settings
   // hold the key, so the laptop needs no key of its own.
   handleCommand(
@@ -1346,11 +1352,29 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       envelope: CommandEnvelope<SuggestNextPromptPayload>,
     ): Promise<SuggestNextPromptResponse> => {
       const config = settingsManager.get().ai.nextPrompt;
-      const suggestion = await suggestNextPrompt(config, envelope.payload.screen, fetch, (usage) =>
-        deps.nextPromptUsage?.record(usage),
+      const suggestion = await suggestNextPrompt(
+        config,
+        envelope.payload.screen,
+        fetch,
+        (usage) => deps.nextPromptUsage?.record(usage),
+        await frequentPrompts.get(),
       );
       return { suggestion };
     },
+  );
+
+  // Asks the Host for a remote view, like the suggestion itself: the list must match the
+  // address and key that the guesses will use.
+  handleCommand(
+    COMMAND_CHANNELS.AI_LIST_NEXT_PROMPT_MODELS,
+    async (): Promise<ListNextPromptModelsResponse> => ({
+      models: await listNextPromptModels(settingsManager.get().ai.nextPrompt),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS,
+    async (): Promise<GetFrequentPromptsResponse> => ({ prompts: await frequentPrompts.get() }),
   );
 
   handleCommand(

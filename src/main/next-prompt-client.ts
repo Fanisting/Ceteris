@@ -12,9 +12,12 @@ import {
   NEXT_PROMPT_DEFAULT_BASE_URL,
   NEXT_PROMPT_DEFAULT_MODEL,
   NEXT_PROMPT_MAX_SCREEN_CHARS,
-  NEXT_PROMPT_SYSTEM,
   nextPromptConfigured,
   nextPromptEndpoint,
+  nextPromptSystem,
+  parseModelList,
+  type FrequentPrompt,
+  type NextPromptModelOption,
 } from '@shared/next-prompt';
 
 const TIMEOUT_MS = 8_000;
@@ -26,19 +29,21 @@ export interface NextPromptConfig {
   model: string;
 }
 
+function authHeaders(config: NextPromptConfig): Record<string, string> {
+  const key = config.apiKey.trim();
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
 async function post(
   config: NextPromptConfig,
   screen: string,
+  frequent: readonly FrequentPrompt[],
   disableReasoning: boolean,
   fetchImpl: typeof fetch,
 ): Promise<Response> {
-  const key = config.apiKey.trim();
   return fetchImpl(nextPromptEndpoint(config.baseURL), {
     method: 'POST',
-    headers: {
-      ...(key ? { Authorization: `Bearer ${key}` } : {}),
-      'Content-Type': 'application/json',
-    },
+    headers: { ...authHeaders(config), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL,
       max_tokens: MAX_REPLY_TOKENS,
@@ -49,7 +54,7 @@ async function post(
         : {}),
       ...(disableReasoning ? { reasoning: { enabled: false } } : {}),
       messages: [
-        { role: 'system', content: NEXT_PROMPT_SYSTEM },
+        { role: 'system', content: nextPromptSystem(frequent) },
         { role: 'user', content: screen.slice(-NEXT_PROMPT_MAX_SCREEN_CHARS) },
       ],
     }),
@@ -59,6 +64,7 @@ async function post(
 
 /**
  * @param onUsage receives each successful response's usage field, for the cost total
+ * @param frequent messages the user often sends, offered to the model to reuse word for word
  * @returns text to offer, or null when the model has no useful guess
  */
 export async function suggestNextPrompt(
@@ -66,12 +72,13 @@ export async function suggestNextPrompt(
   screen: string,
   fetchImpl: typeof fetch = fetch,
   onUsage?: (usage: unknown) => void,
+  frequent: readonly FrequentPrompt[] = [],
 ): Promise<string | null> {
   if (!nextPromptConfigured(config)) throw new Error('未填写 API Key 或 API 地址');
 
-  let res = await post(config, screen, true, fetchImpl);
+  let res = await post(config, screen, frequent, true, fetchImpl);
   // Reasoning only slows this down, but some models refuse to switch it off.
-  if (res.status === 400) res = await post(config, screen, false, fetchImpl);
+  if (res.status === 400) res = await post(config, screen, frequent, false, fetchImpl);
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 200);
     throw new Error(`API 返回 ${res.status}:${detail}`);
@@ -82,4 +89,29 @@ export async function suggestNextPrompt(
   };
   onUsage?.(body.usage);
   return cleanSuggestion(body.choices?.[0]?.message?.content ?? '');
+}
+
+/**
+ * The models the configured address offers, from its GET /models. OpenRouter answers
+ * without a key; local servers such as Ollama and LM Studio answer the same way.
+ *
+ * @throws Error the address is not http, the server refused, or it did not answer in time
+ */
+export async function listNextPromptModels(
+  config: NextPromptConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<NextPromptModelOption[]> {
+  const url = nextPromptEndpoint(config.baseURL).replace(/\/chat\/completions$/i, '/models');
+  const res = await fetchImpl(url, {
+    headers: authHeaders(config),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 200);
+    throw new Error(
+      `读取模型列表失败:${url} 返回 ${res.status}:${detail}。` +
+        '可能是这个地址不提供 /models,或 API Key 不对;可以选"其他"手动填写模型名',
+    );
+  }
+  return parseModelList(await res.json());
 }

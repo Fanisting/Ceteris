@@ -25,6 +25,7 @@ import type {
   WindowInfo,
 } from './types';
 import type { DeepPartial } from './types-helpers';
+import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -179,6 +180,10 @@ export const COMMAND_CHANNELS = {
   AI_SUGGEST_NEXT_PROMPT: 'cmd:ai:suggest-next-prompt',
   AI_GET_NEXT_PROMPT_USAGE: 'cmd:ai:get-next-prompt-usage',
   AI_RESET_NEXT_PROMPT_USAGE: 'cmd:ai:reset-next-prompt-usage',
+  /** The models the next prompt API address offers, for the list in settings. */
+  AI_LIST_NEXT_PROMPT_MODELS: 'cmd:ai:list-next-prompt-models',
+  /** The repeated messages sent with each guess, shown in settings. */
+  AI_GET_FREQUENT_PROMPTS: 'cmd:ai:get-frequent-prompts',
 
   /**
    * IME-1 探针 dump — renderer 在 onData 检测到疑似 LEAK 时,把 ring buffer
@@ -1198,6 +1203,14 @@ export interface SuggestNextPromptPayload {
 
 export interface SuggestNextPromptResponse {
   suggestion: string | null;
+}
+
+export interface ListNextPromptModelsResponse {
+  models: NextPromptModelOption[];
+}
+
+export interface GetFrequentPromptsResponse {
+  prompts: FrequentPrompt[];
 }
 
 /** ViewTarget.id of the local view. Remote views use their window id. */

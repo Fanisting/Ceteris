@@ -1980,3 +1980,16 @@ select.settings-input option {
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
 }
+
+/* Next prompt model choice: the list, and the text box under it for "Other". */
+.next-prompt-model {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.next-prompt-habits {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--md-on-surface, #f0f);
+}

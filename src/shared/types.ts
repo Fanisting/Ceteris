@@ -106,7 +106,15 @@ export type ThemeId =
   | 'catppuccin-latte'
   | 'tokyo-night-day'
   | 'light-pink'
-  | 'fairyfloss';
+  | 'fairyfloss'
+  // 珠光系列浅色主题,配色见 src/renderer/styles/pearl-themes.css
+  | 'pearl-lapis'
+  | 'pearl-sapphire'
+  | 'pearl-rose'
+  | 'pearl-ember'
+  | 'pearl-jade'
+  | 'pearl-moon'
+  | 'pearl-frost';
 
 /**
  * 窗口外观风格 (M1-A 引入,Milestone 1)。

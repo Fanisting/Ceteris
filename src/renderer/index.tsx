@@ -23,6 +23,8 @@ import { App } from './App';
 import './styles/global.css';
 // 必须在 global.css 之后:Material 外观层靠加载顺序覆写同名选择器
 import './styles/material.css';
+// 必须在 material.css 之后:珠光主题要覆写 material.css 在 :root 推导的 --md-on-primary
+import './styles/pearl-themes.css';
 import './styles/file-tree.css';
 import './styles/path-tags.css';
 import './styles/quick-launch.css';

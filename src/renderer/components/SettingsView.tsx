@@ -265,6 +265,14 @@ const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; not
   { id: 'tokyo-night-day', label: 'Tokyo Night Day', tone: '浅色' },
   { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', tone: '深色' },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', tone: '浅色' },
+  // 珠光系列:配色取自小红书色板,note 是色板原名
+  { id: 'pearl-lapis', label: 'Lapis', tone: '浅色', note: '青金曜华' },
+  { id: 'pearl-sapphire', label: 'Sapphire', tone: '浅色', note: '宝蓝金脉' },
+  { id: 'pearl-rose', label: 'Rose Dew', tone: '浅色', note: '玫金晨露' },
+  { id: 'pearl-ember', label: 'Ember', tone: '浅色', note: '绯霞金露' },
+  { id: 'pearl-jade', label: 'Jade', tone: '浅色', note: '翠玉金瞳' },
+  { id: 'pearl-moon', label: 'Moonlight', tone: '浅色', note: '月白珠光' },
+  { id: 'pearl-frost', label: 'Frost', tone: '浅色', note: '银蓝霜露' },
 ];
 
 function AppearancePanel({

@@ -1,0 +1,192 @@
+/*
+ * @file pearl-themes.css
+ * @purpose 珠光系列 7 套浅色主题,配色取自小红书笔记"好看高级的配色公式(31)"的 7 组色板。
+ *
+ * @关键设计:
+ * - 每组色板是"墨底 / 主色 / 浅露 / 珠光白 / 金"五色。标签页底色用珠光白,正文用墨底,
+ *   主色作强调色(选中、焦点、按钮),金作警告和副强调。
+ * - 侧栏、悬停、选中等表面色是浅露按比例混入珠光白得到的同色相浅调,月白和霜露两组的
+ *   浅露太接近白色,改用加深一档的同色相作混色源。
+ * - 文字色在 bg-primary 和 bg-secondary 上都 >= 4.5:1,状态色 >= 3:1(按 WCAG 公式算出)。
+ *   改色值后要重新核对,src/shared/pearl-themes.test.ts 会检查。
+ * - --md-primary-text-weight / --md-error-text-weight 含义见 material.css 第 2 节末尾。
+ *
+ * @加载顺序:必须在 material.css 之后,--md-on-primary 等才能覆写 material.css 的 :root 推导值。
+ *
+ * @对应文档章节:软件定义书.md 5.1.9 节
+ */
+
+/* Lapis(青金曜华)。源色板:曜墨底 #0E1B3A, 青金石 #2A4FC0, 天青露 #7FA8E8, 珠光白 #F3F8FF, 金斑 #DFB43C */
+[data-theme='pearl-lapis'] {
+  --color-bg-primary: #f3f8ff;
+  --color-bg-secondary: #e0ebfb;
+  --color-bg-elevated: #eaf2fd;
+  --color-bg-hover: #d6e4f9;
+  --color-bg-active: #c9dbf7;
+  --color-bg-strong: #adc8f1;
+  --color-text-primary: #0e1b3a;
+  --color-text-secondary: #404c65;
+  --color-text-muted: #5e687f;
+  --color-danger: #d23a52;
+  --color-warning: #a4801b;
+  --color-success: #1f9870;
+  --color-info: #1d92a7;
+  --color-accent-secondary: #a4801b;
+  --color-accent-special: #2a4fc0;
+  --md-on-primary: #f3f8ff;
+  --md-on-error: #0e1b3a;
+  --md-primary-text-weight: 100%;
+  --md-error-text-weight: 90%;
+
+  color-scheme: light;
+}
+
+/* Sapphire(宝蓝金脉)。源色板:深蓝夜 #0A1A38, 宝石蓝 #2B6BE0, 湖蓝露 #7FC8F5, 珠光白 #F4F9FF, 金脉 #E8C24A */
+[data-theme='pearl-sapphire'] {
+  --color-bg-primary: #f4f9ff;
+  --color-bg-secondary: #e1f1fd;
+  --color-bg-elevated: #ebf5fe;
+  --color-bg-hover: #d7edfd;
+  --color-bg-active: #cae7fb;
+  --color-bg-strong: #aedcf9;
+  --color-text-primary: #0a1a38;
+  --color-text-secondary: #425068;
+  --color-text-muted: #5e6a80;
+  --color-danger: #e0405a;
+  --color-warning: #a78415;
+  --color-success: #219c68;
+  --color-info: #1d91c9;
+  --color-accent-secondary: #a78415;
+  --color-accent-special: #2b6be0;
+  --md-on-primary: #f4f9ff;
+  --md-on-error: #0a1a38;
+  --md-primary-text-weight: 90%;
+  --md-error-text-weight: 80%;
+
+  color-scheme: light;
+}
+
+/* Rose Dew(玫金晨露)。源色板:玫墨底 #3A1028, 玫宝红 #E04E7A, 藕粉露 #F7B8CB, 珠光白 #FEF8FA, 暖金 #EFC470 */
+[data-theme='pearl-rose'] {
+  --color-bg-primary: #fef8fa;
+  --color-bg-secondary: #fdeef2;
+  --color-bg-elevated: #fdf3f6;
+  --color-bg-hover: #fce8ee;
+  --color-bg-active: #fbe1e9;
+  --color-bg-strong: #fad2de;
+  --color-text-primary: #3a1028;
+  --color-text-secondary: #674558;
+  --color-text-muted: #816474;
+  --color-danger: #d8323e;
+  --color-warning: #bb7e16;
+  --color-success: #3f9a6e;
+  --color-info: #6a72d0;
+  --color-accent-secondary: #bb7e16;
+  --color-accent-special: #e04e7a;
+  --md-on-primary: #3a1028;
+  --md-on-error: #fef8fa;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 90%;
+
+  color-scheme: light;
+}
+
+/* Ember(绯霞金露)。源色板:暮褐底 #351710, 绯霞红 #E85A48, 暖橘露 #F7B98C, 珠光白 #FEF7F1, 霞金 #F0C258 */
+[data-theme='pearl-ember'] {
+  --color-bg-primary: #fef7f1;
+  --color-bg-secondary: #fdede1;
+  --color-bg-elevated: #fdf2e9;
+  --color-bg-hover: #fce8d8;
+  --color-bg-active: #fbe1cd;
+  --color-bg-strong: #fad2b4;
+  --color-text-primary: #351710;
+  --color-text-secondary: #634b44;
+  --color-text-muted: #7b655f;
+  --color-danger: #c4244e;
+  --color-warning: #b77e0d;
+  --color-success: #5d9839;
+  --color-info: #2f88a8;
+  --color-accent-secondary: #b77e0d;
+  --color-accent-special: #e85a48;
+  --md-on-primary: #351710;
+  --md-on-error: #fef7f1;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 100%;
+
+  color-scheme: light;
+}
+
+/* Jade(翠玉金瞳)。源色板:翠墨底 #0C2A22, 翡翠绿 #23B98A, 嫩翠露 #96E8C8, 珠光白 #F5FDF9, 金脉 #E5C058 */
+[data-theme='pearl-jade'] {
+  --color-bg-primary: #f5fdf9;
+  --color-bg-secondary: #e6faf1;
+  --color-bg-elevated: #edfbf5;
+  --color-bg-hover: #ddf8ed;
+  --color-bg-active: #d3f5e7;
+  --color-bg-strong: #bcf0dc;
+  --color-text-primary: #0c2a22;
+  --color-text-secondary: #3f5851;
+  --color-text-muted: #5e746d;
+  --color-danger: #e05050;
+  --color-warning: #b48617;
+  --color-success: #1fa178;
+  --color-info: #2c8fc0;
+  --color-accent-secondary: #af881b;
+  --color-accent-special: #1fa178;
+  --md-on-primary: #0c2a22;
+  --md-on-error: #0c2a22;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 80%;
+
+  color-scheme: light;
+}
+
+/* Moonlight(月白珠光)。源色板:灰墨底 #232A2E, 月华白 #DCE6EA, 淡银露 #F0F5F7, 珠光白 #FCFEFE, 柔金 #E0CC96 */
+[data-theme='pearl-moon'] {
+  --color-bg-primary: #fcfefe;
+  --color-bg-secondary: #f0f5f6;
+  --color-bg-elevated: #f6f9fa;
+  --color-bg-hover: #eaf0f2;
+  --color-bg-active: #e2e9ec;
+  --color-bg-strong: #d1dbe0;
+  --color-text-primary: #232a2e;
+  --color-text-secondary: #4c5256;
+  --color-text-muted: #686e71;
+  --color-danger: #d0504a;
+  --color-warning: #cb791e;
+  --color-success: #3e9a72;
+  --color-info: #4a86b0;
+  --color-accent-secondary: #5a7a90;
+  --color-accent-special: #b38426;
+  --md-on-primary: #232a2e;
+  --md-on-error: #232a2e;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 80%;
+
+  color-scheme: light;
+}
+
+/* Frost(银蓝霜露)。源色板:霜墨底 #16212E, 银蓝 #7AA8CC, 霜白露 #D6E8F5, 珠光白 #FBFDFF, 淡金 #DCC88E */
+[data-theme='pearl-frost'] {
+  --color-bg-primary: #fbfdff;
+  --color-bg-secondary: #eef5fa;
+  --color-bg-elevated: #f4f9fd;
+  --color-bg-hover: #e6f0f8;
+  --color-bg-active: #ddeaf5;
+  --color-bg-strong: #c9ddee;
+  --color-text-primary: #16212e;
+  --color-text-secondary: #48515c;
+  --color-text-muted: #666e77;
+  --color-danger: #d8505e;
+  --color-warning: #b08623;
+  --color-success: #3a9a7e;
+  --color-info: #2e98ae;
+  --color-accent-secondary: #a6893b;
+  --color-accent-special: #4a8bc4;
+  --md-on-primary: #16212e;
+  --md-on-error: #16212e;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 80%;
+
+  color-scheme: light;
+}

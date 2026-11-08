@@ -137,6 +137,14 @@ const VALID_THEMES: ThemeId[] = [
   'tokyo-night-day',
   'light-pink',
   'fairyfloss',
+  // 珠光系列
+  'pearl-lapis',
+  'pearl-sapphire',
+  'pearl-rose',
+  'pearl-ember',
+  'pearl-jade',
+  'pearl-moon',
+  'pearl-frost',
 ];
 
 /**

@@ -143,6 +143,15 @@ describe('WindowManager', () => {
   });
 
   describe('createWindow', () => {
+    it('不开 Chromium 插件:PDF 由 pdf.js 显示,渲染进程保持隔离', () => {
+      mgr.createWindow();
+      const prefs = MockBrowserWindow.instances[0]?.options['webPreferences'] as
+        | Record<string, unknown>
+        | undefined;
+      expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false });
+      expect(prefs?.['plugins']).toBeFalsy();
+    });
+
     it('分配单调递增的 windowNumber 从 1 开始', () => {
       const a = mgr.createWindow();
       const b = mgr.createWindow();

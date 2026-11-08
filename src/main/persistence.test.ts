@@ -138,18 +138,35 @@ describe('JsonStore', () => {
 
   describe('debounce', () => {
     it('多次 set 在 debounceMs 内合并为一次写', async () => {
-      const store = new JsonStore<SampleData>(filePath, 50);
-      store.set({ version: 1, counter: 1, items: [] });
-      store.set({ version: 1, counter: 2, items: [] });
-      store.set({ version: 1, counter: 3, items: [] });
+      // 假时钟决定 debounce 什么时候触发,写盘本身照常走真实 I/O。以前固定等 80ms,
+      // 整套测试一起跑时磁盘慢,文件还没落地就去读,报 ENOENT。
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const store = new JsonStore<SampleData>(filePath, 50);
+        store.set({ version: 1, counter: 1, items: [] });
+        store.set({ version: 1, counter: 2, items: [] });
+        store.set({ version: 1, counter: 3, items: [] });
+        // 三次 set 只留下一个待触发的写
+        expect(vi.getTimerCount()).toBe(1);
 
-      // 立即读应该没东西
-      await expect(fs.access(filePath)).rejects.toThrow();
+        // debounce 期间读应该没东西
+        vi.advanceTimersByTime(49);
+        await expect(fs.access(filePath)).rejects.toThrow();
 
-      // 等 debounce 触发
-      await new Promise((r) => setTimeout(r, 80));
-      const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
-      expect(data.counter).toBe(3);
+        // 到点触发
+        vi.advanceTimersByTime(1);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+      // 不调 flush:能写盘的只有刚才那一次 debounce
+      await vi.waitFor(
+        async () => {
+          const data = JSON.parse(await fs.readFile(filePath, 'utf8'));
+          expect(data.counter).toBe(3);
+        },
+        { timeout: 5000, interval: 10 },
+      );
     });
 
     it('flush 立即落盘,不等 debounce', async () => {

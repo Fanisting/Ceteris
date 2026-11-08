@@ -5,8 +5,8 @@
  * @关键设计:
  * - 选项和新建页相同,分模板和已检测到的 shell 两类。存 id 而不是副本,
  *   模板改名后这里自动跟随,模板被删时渲染端直接跳过。
- * - + 号在窗口左上角,所以选项在它右下方展开成一个扇形:几层同心弧,从里往外排,
- *   内层放满再放外层。全部在 + 号右侧,不会盖住左边的侧栏。
+ * - 选项在 + 号右侧展开成一个扇形,以穿过 + 号的水平线为对称轴:几层同心弧,
+ *   从里往外排,内层放满再放外层。全部在 + 号右侧,不会盖住左边的侧栏。
  *
  * @对应文档章节: 软件定义书.md 2 (鼠标优先)
  *
@@ -27,9 +27,8 @@ export const DEFAULT_QUICK_LAUNCH_ITEMS: readonly QuickLaunchItem[] = [
   { kind: 'template', id: 'codex' },
 ];
 
-/** 扇形从 + 号正右偏下 30 度开始,到正下方结束。起点压低,最上面的圆也不会盖住同一行的标签文字。 */
-const FAN_START_RAD = (30 * Math.PI) / 180;
-const FAN_END_RAD = Math.PI / 2;
+/** 扇形的半张角:从水平向右往上、往下各 45 度,上下对称。 */
+const FAN_HALF_ANGLE_RAD = Math.PI / 4;
 /** 最内层弧的半径:两个默认选项正好放在这一层。 */
 const FIRST_RING_RADIUS_PX = 80;
 /** 相邻两层弧的间距:一个圆 (42px) 加它下方的文字标签,再留一点空隙。 */
@@ -38,6 +37,8 @@ const RING_GAP_PX = 74;
 const ITEM_SPACING_PX = 78;
 const VIEWPORT_MARGIN_PX = 12;
 const ITEM_RADIUS_PX = 21;
+/** 圆下方文字标签占的高度 (见 quick-launch.css)。 */
+const LABEL_HEIGHT_PX = 20;
 
 export function quickLaunchItemKey(item: QuickLaunchItem): string {
   return `${item.kind}:${item.id}`;
@@ -74,20 +75,27 @@ export interface Point {
 }
 
 /**
- * 计算各选项圆心位置:在 anchor 右下方排成一个扇形。
+ * 计算各选项圆心位置:在 anchor 右侧排成一个扇形,以穿过 anchor 的水平线为对称轴。
  *
- * 扇形由几层同心弧组成,张角固定为 30 到 90 度。每层能放下的数量取决于它的弧长,
+ * 扇形由几层同心弧组成,张角是水平向右上下各 45 度。每层能放下的数量取决于它的弧长,
  * 内层放满再放外层,所以 8 个选项也只用三层,最远约 230px,鼠标不用走太远。
- * 同一层的圆在整段张角上均匀分布,只有一个时放在正中间。
+ * 同一层的圆在整段张角上均匀分布,只有一个时放在正右方。
+ *
+ * + 号贴近窗口顶部,外层上半部分可能超出窗口。这时整组向下平移,扇形的形状不变,
+ * 只是对称轴落在 + 号下方。默认的两个选项不需要平移。
  *
  * @param count 选项数量
  * @param anchor + 号中心,视口坐标
- * @param viewportWidth 视口宽度
- * @returns 圆心坐标,内层到外层、每层从上到下;贴窗口右边时整组向左平移,不被裁掉
+ * @param viewport 视口尺寸
+ * @returns 圆心坐标,内层到外层、每层从上到下
  */
-export function radialPositions(count: number, anchor: Point, viewportWidth: number): Point[] {
+export function radialPositions(
+  count: number,
+  anchor: Point,
+  viewport: { width: number; height: number },
+): Point[] {
   if (count <= 0) return [];
-  const span = FAN_END_RAD - FAN_START_RAD;
+  const span = FAN_HALF_ANGLE_RAD * 2;
   const points: Point[] = [];
   for (let ring = 0; points.length < count; ring += 1) {
     const radius = FIRST_RING_RADIUS_PX + ring * RING_GAP_PX;
@@ -95,25 +103,37 @@ export function radialPositions(count: number, anchor: Point, viewportWidth: num
     const capacity = Math.floor((radius * span) / ITEM_SPACING_PX) + 1;
     const inRing = Math.min(capacity, count - points.length);
     for (let i = 0; i < inRing; i += 1) {
-      const angle =
-        inRing === 1 ? FAN_START_RAD + span / 2 : FAN_START_RAD + (span * i) / (inRing - 1);
+      const angle = inRing === 1 ? 0 : -FAN_HALF_ANGLE_RAD + (span * i) / (inRing - 1);
       points.push({
         x: anchor.x + radius * Math.cos(angle),
         y: anchor.y + radius * Math.sin(angle),
       });
     }
   }
-  return keepInViewport(points, viewportWidth);
+  const reach = ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX;
+  const dx = shiftIntoRange(
+    points.map((p) => p.x),
+    reach,
+    viewport.width,
+  );
+  // 标签挂在圆下方,底边多留一个标签的高度
+  const dy = shiftIntoRange(
+    points.map((p) => p.y),
+    reach,
+    viewport.height - LABEL_HEIGHT_PX,
+  );
+  return points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
 }
 
-/** 整组水平平移,让每个圆离窗口左右边缘都至少有 VIEWPORT_MARGIN_PX。窄到放不下时居中。 */
-function keepInViewport(points: Point[], viewportWidth: number): Point[] {
-  const reach = ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX;
-  const minX = Math.min(...points.map((p) => p.x)) - reach;
-  const maxX = Math.max(...points.map((p) => p.x)) + reach;
-  let shift = 0;
-  if (maxX - minX > viewportWidth) shift = (viewportWidth - (maxX + minX)) / 2;
-  else if (maxX > viewportWidth) shift = viewportWidth - maxX;
-  else if (minX < 0) shift = -minX;
-  return points.map((p) => ({ x: p.x + shift, y: p.y }));
+/**
+ * 一组坐标需要平移多少,才能让每个圆离 0 和 size 两端都至少有 reach。
+ * 放不下时居中,而不是让一端被裁掉得更多。
+ */
+function shiftIntoRange(values: number[], reach: number, size: number): number {
+  const min = Math.min(...values) - reach;
+  const max = Math.max(...values) + reach;
+  if (max - min > size) return (size - (max + min)) / 2;
+  if (min < 0) return -min;
+  if (max > size) return size - max;
+  return 0;
 }

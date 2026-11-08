@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/components/QuickLaunchOverlay.tsx
- * @purpose 右键 + 号时,在它右下方展开一个扇形的小圆,点一下就在当前路径启动对应的
+ * @purpose 右键 + 号时,在它右侧展开一个扇形的小圆,点一下就在当前路径启动对应的
  *   agent 或 shell。可选项在 设置 → 行为 里编辑。
  *
  * @关键设计:
@@ -169,7 +169,10 @@ export function QuickLaunchOverlay({ pathId, anchor, onClose }: Props): JSX.Elem
 
   if (!ready) return null;
 
-  const positions = radialPositions(items.length, anchor, window.innerWidth);
+  const positions = radialPositions(items.length, anchor, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 
   return createPortal(
     <div

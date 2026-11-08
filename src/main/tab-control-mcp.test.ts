@@ -1,7 +1,7 @@
 /**
  * @file tab-control-mcp.test.ts
  * @purpose The ceteris-tabs plugin's MCP server (extensions/ceteris-tabs/server) against a real
- *   tab control pipe (ADR-022): the two copies of the wire format agree, a coordinator's tool
+ *   tab control pipe (ADR-024): the two copies of the wire format agree, a coordinator's tool
  *   call reaches the tab, and a tab outside Ceteris gets no tools.
  */
 import { afterEach, describe, expect, it } from 'vitest';

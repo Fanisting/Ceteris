@@ -1,7 +1,7 @@
 /**
  * @file extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs
  * @purpose MCP server that lets Claude Code in a Ceteris coordinator tab control the other tabs
- *   of its folder: list, open, close, rename, type into, read, and wait for them (Ceteris ADR-022).
+ *   of its folder: list, open, close, rename, type into, read, and wait for them (Ceteris ADR-024).
  *
  * @关键设计:
  * - No dependencies. It speaks MCP over stdio (one JSON-RPC message per line) by hand, and talks

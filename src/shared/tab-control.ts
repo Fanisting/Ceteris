@@ -2,7 +2,7 @@
  * @file src/shared/tab-control.ts
  * @purpose The wire format between Ceteris and the ceteris-tabs Claude Code plugin, which lets
  *   Claude Code in a coordinator tab list, open, close, type into and read the other tabs of its
- *   folder (ADR-022). Also the install command for that plugin.
+ *   folder (ADR-024). Also the install command for that plugin.
  *
  * @关键设计:
  * - One request per connection on a named pipe (a unix socket elsewhere): a JSON line in, a JSON
@@ -14,7 +14,7 @@
  * - CETERIS_CONTROL_NODE is the app's own executable. The plugin runs its server with it and
  *   ELECTRON_RUN_AS_NODE=1, so users need no separate Node.js.
  *
- * @对应文档章节:软件定义书.md ADR-022;docs/ipc-protocol.md "Tab control pipe"
+ * @对应文档章节:软件定义书.md ADR-024;docs/ipc-protocol.md "Tab control pipe"
  *
  * @不要在这里做的事:
  * - Do not decide who may do what here; that is tab-control-server.ts.

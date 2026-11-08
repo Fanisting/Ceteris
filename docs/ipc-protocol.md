@@ -2065,7 +2065,7 @@ async function handleSessionTabClick(sessionId: string) {
 
 ---
 
-## 附录 D:Tab control pipe(ADR-022)
+## 附录 D:Tab control pipe(ADR-024)
 
 这条通道不走 Electron IPC,是 main 与 ceteris-tabs 插件的 MCP 服务器之间的命名管道。格式定义在 `src/shared/tab-control.ts`,插件 `extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs` 里有一份相同的纯 JS 实现,`tab-control-mcp.test.ts` 检查两边一致。
 

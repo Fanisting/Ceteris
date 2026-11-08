@@ -1,6 +1,6 @@
 /**
  * @file tab-control-server.test.ts
- * @purpose Who may control which tabs over the tab control pipe (ADR-022), and what typing
+ * @purpose Who may control which tabs over the tab control pipe (ADR-024), and what typing
  *   sends to the PTY. One test per rule.
  */
 import { describe, expect, it } from 'vitest';

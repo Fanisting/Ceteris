@@ -105,7 +105,7 @@ const SPAWN_ENV_SKIP = [
   'PORTABLE_EXECUTABLE_FILE',
   'PORTABLE_EXECUTABLE_APP_FILENAME',
   ...AGENT_SESSION_ENV,
-  // Tab control (ADR-022): each tab gets its own token; never inherit a parent tab's.
+  // Tab control (ADR-024): each tab gets its own token; never inherit a parent tab's.
   ...TAB_CONTROL_ENV_NAMES,
 ];
 
@@ -533,7 +533,7 @@ export interface SessionManagerOptions {
   /** 公式图片扩展 (ADR-019):terminal-look.json 的路径,通常在数据目录 extensions/ 下 */
   terminalLookFile?: string;
   /**
-   * Tab control (ADR-022): extra env for the tab about to spawn, keyed by its future session
+   * Tab control (ADR-024): extra env for the tab about to spawn, keyed by its future session
    * id (the pipe path and the tab's token). Called once per local or SSH spawn.
    */
   controlEnv?: (sessionId: string) => Record<string, string>;
@@ -753,7 +753,7 @@ export class SessionManager extends EventEmitter {
       const gitBash = shells.find((s) => s.id === 'git-bash')?.executablePath;
       Object.assign(env, mathImagesEnv(this.terminalLookFile?.path, gitBash));
     }
-    // Tab control (ADR-022): pipe path and this tab's token. Before the template env, like
+    // Tab control (ADR-024): pipe path and this tab's token. Before the template env, like
     // the terminal hints, though a template has no reason to override them.
     if (this.controlEnv) Object.assign(env, this.controlEnv(sessionId));
     Object.assign(env, launchParams.env);
@@ -1833,7 +1833,7 @@ export class SessionManager extends EventEmitter {
    */
   /** The end of a session's screen as plain text. Empty for an unknown session. */
   /**
-   * Tab control (ADR-022): whether the program in the tab turned on bracketed paste
+   * Tab control (ADR-024): whether the program in the tab turned on bracketed paste
    * (ESC [ ? 2004 h), read from the headless mirror. Multi-line text is wrapped only then.
    */
   isBracketedPasteOn(sessionId: string): boolean {

@@ -1,6 +1,6 @@
 /**
  * @file src/main/tab-control-server.ts
- * @purpose The pipe the ceteris-tabs Claude Code plugin talks to (ADR-022). Claude Code in a
+ * @purpose The pipe the ceteris-tabs Claude Code plugin talks to (ADR-024). Claude Code in a
  *   coordinator tab can list, open, close, rename, type into and read the other tabs of the
  *   folder it runs in. Any other tab is refused.
  *
@@ -22,7 +22,7 @@
  * - Pipe name has the pid and a random part, like askpass-server.ts, so stable and beta never
  *   share a pipe and other users cannot guess it.
  *
- * @对应文档章节:软件定义书.md ADR-022;docs/ipc-protocol.md "Tab control pipe"
+ * @对应文档章节:软件定义书.md ADR-024;docs/ipc-protocol.md "Tab control pipe"
  *
  * @不要在这里做的事:
  * - Do not mark or unmark coordinators here; only the user does that, from the tab menu.

@@ -260,7 +260,7 @@ function bootstrap(): void {
     },
   });
   const templatesManager = new TemplatesManager(templatesStore);
-  // Tab control (ADR-022). Built after sessionManager, which it drives; the env hook below
+  // Tab control (ADR-024). Built after sessionManager, which it drives; the env hook below
   // reads it late, and a tab spawned before the pipe listens just gets no control env.
   let tabControl: TabControlServer | null = null;
   const sessionManager = new SessionManager(

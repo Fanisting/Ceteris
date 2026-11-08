@@ -3,11 +3,11 @@
 > 你的终端会话不应该因为关掉窗口就死掉。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/Fanisting/ceteris/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com/Fanisting/ceteris/releases)
 [![状态](https://img.shields.io/badge/状态-Alpha-orange)](#路线图)
 [![English](https://img.shields.io/badge/English-README.md-blue)](README.md)
 
-一个**以路径为中心、对 AI agent 友好**的 Windows 终端管理器。为同时运行多个长时间任务(包括 Claude Code、Codex、OpenCode 等 AI 编码助手)、需要在多个工作目录之间频繁切换、又不愿意因为关错窗口前功尽弃的开发者打造。
+一个**以路径为中心、对 AI agent 友好**的终端管理器,支持 Windows、macOS 和 Linux。为同时运行多个长时间任务(包括 Claude Code、Codex、OpenCode 等 AI 编码助手)、需要在多个工作目录之间频繁切换、又不愿意因为关错窗口前功尽弃的开发者打造。
 
 > **Fork 说明**:Ceteris 是 Liyue-Cheng 的 [Marina](https://github.com/Liyue-Cheng/marina) 的 fork,Marina 的前身是 EasyTerm。
 
@@ -74,6 +74,8 @@ Ceteris 支持两套窗口风格 — **Windows**(控制按钮在右,方形)与 *
 | CWD 跟踪(漂移 ⚠ 提示) | ❌ | ❌ | ✅ | ✅ | ✅ |
 | 多窗口共享 session 池 | ❌ | ❌ | ❌ | ❌ | ✅ |
 | 关闭窗口不影响 session | ❌ | ❌ | ✅ | ❌ | ✅ |
+| 远程路径书签 | ❌ | ❌ | ❌ | ❌ | ✅ |
+| 一键启动远程 tmux | ❌ | ❌ | ❌ | ❌ | ✅ |
 | 为 AI agent 工作流设计 | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Windows 原生优先 | ✅ | ✅ | ❌ | ❌ | ✅ |
 | 鼠标优先(不强制快捷键) | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -88,6 +90,7 @@ Ceteris 的起源是同时跑多个 Claude Code / Codex / OpenCode 时频繁迷�
 - 一个 agent 在 `~/projects/backend` 改 auth 模块
 - 一个 agent 在 `~/scripts` 跑长 migration
 - 一个 agent 在 `D:\client-work\report-tool` 修 flaky test
+- 一个 agent 在 `prod:~/repo` 挂在远程 tmux 里
 - ...而你已经忘了哪个是哪个
 
 Ceteris 给你:
@@ -95,7 +98,9 @@ Ceteris 给你:
 - **持久侧栏** — 所有 agent 按所在 path 分组
 - **状态指示** — 一眼看出谁还在干活、谁空闲了
 - **CWD 跟踪** — agent 在 session 里 cd 了,tab 上自动出 ⚠,悬停看真实 cwd
-- **启动模板** — `claude` / `codex` / `opencode` 内置;支持自定义模板,环境变量带遮罩(防止 API key 被旁人扫到)
+- **SSH 路径书签**:保存远程配置,把远程工作目录和本地路径放在一起
+- **远程 tmux 启动**:在远程主机上新建或接入 tmux,tmux 退出后回到远程 shell
+- **启动模板**:内置 Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor 和 Aider;支持自定义模板,环境变量带遮罩(防止 API key 被旁人扫到)
 - **Session 不灭** — 不小心关掉窗口,agent 继续跑;重开窗口接着用
 
 ## 快速开始
@@ -104,9 +109,21 @@ Ceteris 给你:
 
 ### 安装
 
-1. 从 [Releases](https://github.com/Fanisting/ceteris/releases) 下载最新安装包
-2. 跑 `Ceteris-Setup-x.y.z.exe`
-3. 从开始菜单或桌面启动
+从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.3.0)下载适合你系统的文件:
+
+| 系统 | 下载 |
+|---|---|
+| Windows 10/11(x64) | [Ceteris-Setup-0.3.0-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-Setup-0.3.0-x64.exe) |
+| macOS,Apple 芯片 | [Ceteris-0.3.0-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-arm64.dmg) |
+| macOS,Intel 芯片 | [Ceteris-0.3.0-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-x64.dmg) |
+| Linux(x64),任意发行版 | [Ceteris-0.3.0-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-x86_64.AppImage) |
+| Ubuntu 或 Debian(x64) | [Ceteris-0.3.0-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.3.0/Ceteris-0.3.0-amd64.deb) |
+
+- **Windows**:运行安装程序,然后从开始菜单或桌面启动。安装程序还没有代码签名,SmartScreen 可能拦截:点**更多信息**,再点**仍要运行**。
+- **macOS**:打开 `.dmg`,把 Ceteris 拖进"应用程序"。应用还没有签名,第一次打开时请右键点它,选**打开**。
+- **Linux**:运行 `chmod +x Ceteris-0.3.0-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.3.0-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
+
+Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 issue](https://github.com/Fanisting/ceteris/issues)。
 
 ### 第一次跑
 
@@ -115,6 +132,7 @@ Ceteris 给你:
 - 或者直接从资源管理器拖一个文件夹到侧栏(或终端区)
 - 双击文件夹,在该目录开终端
 - 点 tab bar 的 `+` 选模板(Claude Code / Codex / Shell …)
+- 远程工作:在设置里添加 SSH 配置,收藏一个远程路径(如 `~/repo`),再从路径视图普通连接或用 tmux 连接
 
 ### 试试"魔法"
 
@@ -122,8 +140,10 @@ Ceteris 给你:
 
 1. 在不同路径开 2-3 个 session
 2. 关掉窗口(右上角 ×)
-3. 看系统托盘 — Ceteris 还活着
-4. 点托盘图标 — 重开窗口,所有 session 还在原位
+3. 看系统托盘:Ceteris 还活着
+4. 点托盘图标:重开窗口,所有 session 还在原位
+
+在 macOS 上 Ceteris 改为留在 Dock 里。在 Linux 上它是普通桌面应用,关闭最后一个窗口时如果还有 session 在跑,会先询问。
 
 就这样。这就是产品。
 
@@ -142,9 +162,13 @@ Ceteris 给你:
 
 ### V1(当前 alpha)
 
-- ✅ **路径管理**:一个文件夹列表,支持重命名和标签筛选;开过终端的文件夹自动加入并保留。
+- ✅ **支持 Windows、macOS 和 Linux**:macOS 上关闭窗口后应用留在 Dock;Linux 上作为普通桌面应用运行([ADR-013](docs/软件定义书.md#adr-013))
+- ✅ **路径管理**:一个文件夹列表,支持重命名;开过终端的文件夹自动加入并保留
+- ✅ **标签**:彩色标签以圆点显示在文件夹上,可按一个或多个标签筛选
+- ✅ **远程路径**:SSH 配置、远程书签,侧栏标签同时显示配置名和远程路径
 - ✅ **Session 生命周期**:`active / idle / exited` 三态;**已退出 session 无时限保留**,用户手动右键关闭才销毁(ADR-008)
-- ✅ **启动模板**:内置(Shell / Claude Code / Codex / OpenCode)+ 自定义
+- ✅ **启动模板**:内置 Shell、Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor、Aider,Windows 上另有 Admin Shell,也可以自定义;右键标签栏的 **+** 弹出快捷启动圈
+- ✅ **SSH tmux 模式**:每次启动时新建或接入 tmux,tmux 会话名由目录推导,tmux 退出后回到 shell
 - ✅ **多窗口**:任意数量平等窗口;关窗即托盘模式;跨窗口 session 可见
 - ✅ **Ceteris Link(远程挂载)**:在另一台 Windows 机器上打开这台机器正在跑的终端标签页。同一批 session、同一份 scrollback、同一个正在跑的 agent;会话始终留在原机器运行。端到端加密(X25519 + AES-256-GCM),预共享令牌**从不上线路**。见 [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD 跟踪**:OSC 1337 hook 注入 PowerShell + cmd.exe
@@ -155,7 +179,11 @@ Ceteris 给你:
 - ✅ **拖文件夹到终端区**:直接在该路径开新 session
 - ✅ **多行粘贴防护**:粘贴含换行时弹确认,防止误粘脚本被立即执行
 - ✅ **终端搜索**(Ctrl+F)显示命中数
-- ✅ **持久日志**:`%APPDATA%\Ceteris\logs\`
+- ✅ **文件面板**:浏览当前文件夹(本地,或 SSH 会话经 SFTP),在终端旁打开 PDF、图片和 markdown,文件一变就自动刷新
+- ✅ **编辑 txt 和 json**:直接修改保存,未保存的内容在断线重连后仍在;超过 2 MB 的文件分段只读,秒开
+- ✅ **Material Design 3 外观**:窗口、菜单、对话框和设置统一风格
+- ✅ **中英文界面**:默认跟随系统语言
+- ✅ **持久日志**:在应用数据目录下(Windows 为 `%APPDATA%\Ceteris\logs\`)
 
 ### V1.1 计划
 
@@ -169,17 +197,10 @@ Ceteris 给你:
 - 标签页拖拽改顺序
 - 标签页拖出 = 拆分到新窗口
 
-### V1.6(规划中 — beta 反馈回合)
+### 以后
 
-- **Linux 支持**(Ubuntu 22.04 GNOME 为 Tier 1;Fedora / CentOS Stream 9 / RHEL 9 为 Tier 2,走 `.rpm` + AppImage)。**不复刻 Windows 托盘心智**:GNOME 自 3.x 起官方移除 system tray,Ceteris 在 Linux 上作为普通桌面 app 运行(`lifecycleModel: 'no-persistence'`),关闭最后一个窗口且仍有非 exited session 时弹同一个跨平台二次确认 modal。文件管理器集成走 freedesktop 标准(`.desktop` + `Categories=TerminalEmulator` + gsettings + update-alternatives),**不写 Nautilus 扩展**。详见 [ADR-013](docs/软件定义书.md#adr-013) 与 [BETA-003](docs/beta反馈工单库-20260515.md#beta-003--linux-支持方案-a无托盘普通桌面-app)。
-- i18n(中文 + 英文)
-- AI 助手设置页(LLM 状态复核的基础)
-
-### V2.0(社区 / 长期)
-
-- macOS 支持(`lifecycleModel: 'dock-resident'`,原生 HIG)
 - WSL session 集成
-- (候选)daemon 架构 — 拆 Electron 主进程为后台 daemon + UI 观察窗,让 session 跨 UI 崩溃 / 升级存活。**未承诺**,等到崩溃/升级丢 session 成为高频反馈时再立项评估
+- (候选)daemon 架构:把 Electron 主进程拆成后台 daemon 和 UI 观察窗,让 session 在三个平台上都能跨 UI 崩溃和升级存活。**未承诺**,等到崩溃或升级丢 session 成为高频反馈时再评估。
 
 ## 架构(简述)
 
@@ -199,7 +220,7 @@ Ceteris 基于 **Electron 31 + TypeScript + React 18 + node-pty + xterm.js** 构
 ## 从源码构建
 
 ```bash
-# 前置:Node.js 20+,Windows 10/11
+# 前置:Node.js 20+,Windows 10/11、macOS 或 Linux
 git clone https://github.com/Fanisting/ceteris.git
 cd ceteris
 npm install
@@ -210,18 +231,18 @@ npm test         # 跑后端测试
 
 ## Help Wanted
 
-Ceteris 由我一个人构建维护。**架构已经为跨平台准备好** — 见 [`src/main/platform/`](src/main/platform/) 与 `PlatformAdapter.lifecycleModel` 字段。Linux 支持由作者本人在 v1.6 实施;macOS 等仍开放给社区贡献:
+Ceteris 由我一个人构建维护。**架构从设计上就是跨平台的**(见 [`src/main/platform/`](src/main/platform/) 与 `PlatformAdapter.lifecycleModel` 字段),Windows、macOS 和 Linux 版本都已发布。欢迎贡献,尤其是:
 
 ### 高优先级
 
-- [ ] **macOS 支持** — 实现 `src/main/platform/macos.ts`,`lifecycleModel: 'dock-resident'`。Electron `window-all-closed` darwin 默认分支已贴合 macOS HIG(app 留在 Dock);跨平台 `<LastSessionConfirm />` modal 在 `Cmd+Q` / App Menu Quit 且仍有非 exited session 时触发。
+- [ ] **macOS 和 Linux 测试**:这两个版本是新的,日常使用远少于 Windows
 - [ ] **WSL session 集成**
 
 ### 中优先级
 
 - [ ] Fish / Nushell shell hook
 - [ ] 标签页拖拽
-- [ ] 更多主题(7 套对我够用,但欢迎加)
+- [ ] 更多主题(现有 17 套,但欢迎加)
 - [ ] 中英以外的 i18n
 
 ### 低优先级
@@ -249,18 +270,18 @@ Ceteris 由我一个人构建维护。**架构已经为跨平台准备好** — 
 - ❌ **不是终端模拟器替代品** — 我们和大家一样用 xterm.js
 - ❌ **不是 tmux 竞品** — tmux 是 TUI,Ceteris 是 GUI,目标用户不同
 - ❌ **不是项目管理工具** — 没有 kanban,没有团队功能,没有 workspace 概念
-- ❌ **不是 SSH 客户端** — 只跑本地 session
-- ❌ **不是文件编辑器** — 想编辑就在 session 里 `code .`
+- ❌ **不是完整的 SSH 客户端套件**:Ceteris 支持以路径为中心的 SSH 会话,但不打算取代带端口转发、文件传输和主机管理的专业 SSH 工具
+- ❌ **不是代码编辑器**:txt 和 json 可以直接改,改代码请在 session 里 `code .`
 - ❌ **不是"把一切都瓦片化"的极客工具** — 如果你喜欢在终端管理器里用 vim 快捷键,你会觉得 Ceteris 的鼠标优先很烦。这是设计,不是 bug。
 
 ## 路线图
 
 | 阶段 | 内容 | 时间 |
 |-------|------|------|
-| Phase 1 | V1:内部使用,只 Windows | 进行中 |
+| Phase 1 | V1:在 Windows、macOS 和 Linux 上日常使用 | 进行中 |
 | Phase 2 | 开源、打磨 | V1 稳定后 |
 | Phase 3 | V1.x:状态识别 / 通知 / Explorer 集成 | 发布后 |
-| Phase 4 | V2.0:跨平台(社区驱动) | TBD |
+| Phase 4 | V2.0:WSL 集成,候选 daemon 架构 | TBD |
 
 这是个个人项目,业余时间做。没有公司,没有 SLA,没有承诺时间。能解决你的问题最好,不能就 fork。
 

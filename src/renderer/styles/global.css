@@ -3451,3 +3451,11 @@ button:focus-visible,
   overflow-x: auto;
   user-select: text;
 }
+
+/* 扩展分类:命令块与"在新终端里输入命令"按钮上下排列 */
+.settings-code-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}

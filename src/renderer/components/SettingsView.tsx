@@ -93,6 +93,7 @@ import { useTranslation } from './LanguageProvider';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
+import { LATEX_MATH_INSTALL_LINES, latexMathInstallLine } from '@shared/claude-math-images';
 
 type CategoryId =
   | 'appearance'
@@ -2988,17 +2989,60 @@ function AiPanel({
 // 扩展分类 (ADR-018):可选功能,默认关,只影响打开之后新建的终端
 // ──────────────────────────────────────────────────────────────────
 
-/** 安装仓库里打过补丁的 latex-math 插件的命令,用户在 shell 里跑一次。 */
-const LATEX_MATH_INSTALL =
-  'claude plugin marketplace add Fanisting/ceteris\nclaude plugin install latex-math@ceteris';
-
 function ExtensionsPanel({
   setError,
 }: {
   setError: (msg: string | null) => void;
 }): JSX.Element {
   const { tx } = useTranslation();
-  const enabled = useAppState().settings.extensions?.claudeMathImages ?? false;
+  const state = useAppState();
+  const dispatch = useAppDispatch();
+  const toast = useToast();
+  const enabled = state.settings.extensions?.claudeMathImages ?? false;
+  const [preparing, setPreparing] = useState(false);
+
+  /**
+   * 开一个新终端,把安装命令敲进去但不按 Enter:用户检查后按 Enter 才执行,
+   * 这一下就是同意。shell 与 SessionManager.pickShell 同规则(默认 shell,
+   * 否则检测到的第一个),这样才知道两条命令之间用 `;` 还是 `&&`。
+   */
+  const handlePrepareInstall = async (): Promise<void> => {
+    setError(null);
+    setPreparing(true);
+    try {
+      const { shells } = await window.api.invoke<unknown, ListShellsResponse>(
+        COMMAND_CHANNELS.SETTINGS_LIST_SHELLS,
+        {},
+      );
+      const preferred = state.settings.shell?.defaultShellId ?? '';
+      const shell = shells.find((s) => s.id === preferred) ?? shells[0];
+      if (!shell) throw new Error(tx('没有检测到可用的 shell', 'No shell was detected'));
+      const dims = state.lastTerminalDims;
+      const created = await window.api.invoke<unknown, CreateSessionResponse>(
+        COMMAND_CHANNELS.SESSION_CREATE,
+        { templateId: 'shell', shellId: shell.id, cols: dims.cols, rows: dims.rows },
+      );
+      await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
+        sessionId: created.session.id,
+        data: latexMathInstallLine(shell.id),
+      });
+      dispatch({ type: 'view/exit-settings' });
+      dispatch({ type: 'view/select-path', pathId: created.session.pathId });
+      dispatch({ type: 'view/select-session', sessionId: created.session.id });
+      toast.push({
+        kind: 'success',
+        message: tx(
+          '安装命令已经输入到新终端,检查后按 Enter 执行。',
+          'The install command is typed into a new terminal. Check it, then press Enter to run it.',
+        ),
+        durationMs: 8000,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreparing(false);
+    }
+  };
 
   return (
     <section className="settings-panel">
@@ -3031,9 +3075,23 @@ function ExtensionsPanel({
             'The latex-math Claude Code plugin typesets the formulas (it needs TeX Live, ImageMagick and Git Bash). Run these two commands once in a terminal, then start a new Claude Code session. If you installed the original latex-math@claude-latex-math, disable it first.',
           )}
         >
-          <pre className="settings-code-block">
-            <code>{LATEX_MATH_INSTALL}</code>
-          </pre>
+          <div className="settings-code-stack">
+            <pre className="settings-code-block">
+              <code>{LATEX_MATH_INSTALL_LINES}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing}
+              onClick={() => void handlePrepareInstall()}
+              title={tx(
+                '打开一个新终端并输入这两条命令,不会自动执行',
+                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type them in a new terminal')}
+            </button>
+          </div>
         </SettingRow>
       )}
     </section>

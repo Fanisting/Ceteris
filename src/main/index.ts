@@ -46,7 +46,7 @@ import { AskpassServer } from './askpass-server';
 import { TabControlServer } from './tab-control-server';
 import { AgentTitler } from './agent-titler';
 import { suggestAgentTitle } from './agent-title-client';
-import { nextPromptConfigured } from '@shared/next-prompt';
+import { NEXT_PROMPT_DEFAULT_MODEL, nextPromptConfigured } from '@shared/next-prompt';
 import type { SessionStateChangedPayload } from '@shared/protocol';
 import { PromptBroker } from './askpass-prompts';
 import { AIClient } from './ai-client';
@@ -357,13 +357,17 @@ function bootstrap(): void {
       const { tabTitles, nextPrompt } = settingsManager.get().ai;
       return tabTitles.enabled && nextPromptConfigured(nextPrompt) ? tabTitles : null;
     },
-    suggest: (request) =>
-      suggestAgentTitle(
-        { ...settingsManager.get().ai.nextPrompt, apiKey: secretStore.getNextPromptKey() },
-        request,
-        fetch,
-        (usage) => nextPromptUsage.record(usage),
-      ),
+    suggest: (request) => {
+      const config = {
+        ...settingsManager.get().ai.nextPrompt,
+        apiKey: secretStore.getNextPromptKey(),
+      };
+      // Counted per model in the cost chart, like next prompt guesses (ipc.ts)
+      const model = config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL;
+      return suggestAgentTitle(config, request, fetch, (usage) =>
+        nextPromptUsage.record(usage, model),
+      );
+    },
   }).start();
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
 

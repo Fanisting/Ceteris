@@ -1947,4 +1947,34 @@ select.settings-input option {
   to {
     opacity: 0;
   }
+
+/* ── Dev reload button (WindowChrome.tsx, dev builds only) ──────────
+ * Centred over the whole title bar whatever the window style, and outside the drag region
+ * so the click reaches it. Dashed outline so it never reads as part of the product. */
+.app-titlebar {
+  position: relative;
+}
+
+.titlebar-dev-reload {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px dashed var(--md-outline, #f0f);
+  border-radius: var(--md-shape-full, 999px);
+  background-color: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-dev-reload:hover {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
 }

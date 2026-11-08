@@ -46,6 +46,7 @@ import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, getChannel, getLaunchExePath, isBetaBuild } from './build-type';
+import { devDebugPort } from './dev-debug-port';
 import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
 import { LATEST_RELEASE_URL, UpdateChecker, detectInstallTarget } from './update-checker';
@@ -105,6 +106,25 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
   pathManager.setInvalidPaths(invalid);
 }
 
+/**
+ * Dev builds open a Chrome DevTools Protocol port on 127.0.0.1 so tools can drive the window
+ * (dev-debug-port.ts). Must run before app ready: Chromium reads the switch at startup.
+ * A bad CETERIS_DEV_DEBUG_PORT is logged and no port is opened, rather than stopping dev.
+ */
+function openDevDebugPort(): void {
+  try {
+    const port = devDebugPort(process.env);
+    if (port === null) {
+      logger.info('main', 'dev debugging port off (CETERIS_DEV_DEBUG_PORT=off)');
+      return;
+    }
+    app.commandLine.appendSwitch('remote-debugging-port', String(port));
+    logger.info('main', 'dev debugging port open on 127.0.0.1', { port });
+  } catch (err) {
+    logger.error('main', 'dev debugging port not opened', err);
+  }
+}
+
 function bootstrap(): void {
   // DEV-COEXIST(2026-05-16):dev 模式下改 app 名,让 npm run dev 与打包版
   // Ceteris.exe 互不冲突。Electron 把以下 4 类资源全部按 `productName` 派生:
@@ -119,6 +139,7 @@ function bootstrap(): void {
   // settings.json / 单实例锁。仅 installed 形态使用 "Ceteris" 原名。
   if (!app.isPackaged) {
     app.setName('Ceteris (dev)');
+    openDevDebugPort();
   } else if (isBetaBuild()) {
     // The beta gets its own data dir and single-instance lock however it is launched.
     app.setName('Ceteris Beta');

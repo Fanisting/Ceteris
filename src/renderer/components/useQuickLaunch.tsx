@@ -1,7 +1,6 @@
 /**
  * @file src/renderer/components/useQuickLaunch.tsx
- * @purpose 快捷启动选项的解析和启动,供右键 + 号的扇形(QuickLaunchOverlay)和标签栏末尾的
- *   幽灵标签(GhostTab)共用。
+ * @purpose 快捷启动选项的解析和启动,供标签栏末尾的幽灵标签(GhostTab)使用。
  *
  * @关键设计:
  * - 选项来自 设置 → 行为 的 quickLaunch 列表,存的是模板或 shell 的 id;这里按当前路径

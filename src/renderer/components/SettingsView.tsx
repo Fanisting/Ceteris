@@ -1130,7 +1130,7 @@ function BehaviorPanel({
 
       <SettingRow
         label={tx('快捷启动', 'Quick launch')}
-        hint={tx('显示在标签栏末尾的虚线标签里,点一下即启动;右键 + 时也会环绕显示', 'Shown in the dashed tab at the end of the tab bar, one click to start; also shown around + when you right-click it')}
+        hint={tx('显示在标签栏末尾的虚线标签里,点一下即启动', 'Shown in the dashed tab at the end of the tab bar, one click to start')}
       >
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}

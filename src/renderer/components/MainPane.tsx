@@ -34,7 +34,6 @@ import {
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
-import type { Point } from '@shared/quick-launch';
 import type { SessionInfo, Template } from '@shared/types';
 import {
   findMyOwnedSessionId,
@@ -68,7 +67,6 @@ import {
   shellIcon,
   type DetectedShell,
 } from './launch-options';
-import { QuickLaunchOverlay } from './QuickLaunchOverlay';
 import { GhostTab } from './GhostTab';
 import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
@@ -594,15 +592,6 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   const state = useAppState();
   const dispatch = useAppDispatch();
 
-  const [quickLaunchAnchor, setQuickLaunchAnchor] = useState<Point | null>(null);
-
-  const handleBlankTabContextMenu = (e: MouseEvent<HTMLButtonElement>): void => {
-    e.preventDefault();
-    const icon = e.currentTarget.querySelector('.tab-blank-icon') ?? e.currentTarget;
-    const rect = icon.getBoundingClientRect();
-    setQuickLaunchAnchor({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-  };
-
   const handleClickBlankTab = (): void => {
     // 已经显示 EmptyPathState → 取消选中真正的 session,确保新建页保持当前态。
     // 多数情况下 selectedSessionId 已经是非 mine 的 session id,这里只是让
@@ -639,7 +628,6 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
             type="button"
             className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
             onClick={handleClickBlankTab}
-            onContextMenu={handleBlankTabContextMenu}
             title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
             aria-label={tx('新建终端', 'New terminal')}
           >
@@ -647,13 +635,6 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           </button>
         </GhostTab>
       </div>
-      {quickLaunchAnchor && state.selectedPathId && (
-        <QuickLaunchOverlay
-          pathId={state.selectedPathId}
-          anchor={quickLaunchAnchor}
-          onClose={() => setQuickLaunchAnchor(null)}
-        />
-      )}
     </div>
   );
 }

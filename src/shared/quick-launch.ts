@@ -27,15 +27,13 @@ export const DEFAULT_QUICK_LAUNCH_ITEMS: readonly QuickLaunchItem[] = [
   { kind: 'template', id: 'codex' },
 ];
 
-/** 扇形的半张角:从水平向右往上、往下各 45 度,上下对称。 */
-const FAN_HALF_ANGLE_RAD = Math.PI / 4;
-/** 最内层弧的半径:两个默认选项正好放在这一层。 */
+/** 最内层弧的半径。 */
 const FIRST_RING_RADIUS_PX = 80;
 /** 相邻两层弧的间距:一个圆 (42px) 加它下方的文字标签,再留一点空隙。 */
 const RING_GAP_PX = 74;
-/** 同一层上相邻两圆圆心的最小间距,要容得下一个文字标签 (标签最宽 76px,见 quick-launch.css)。 */
-const ITEM_SPACING_PX = 78;
-const VIEWPORT_MARGIN_PX = 12;
+/** 同一层上相邻两圆的竖直间距:一个圆加它下方的标签,两圆不会碰到。 */
+const ROW_SPACING_PX = 70;
+const VIEWPORT_MARGIN_PX = 4;
 const ITEM_RADIUS_PX = 21;
 /** 圆下方文字标签占的高度 (见 quick-launch.css)。 */
 const LABEL_HEIGHT_PX = 20;
@@ -77,17 +75,17 @@ export interface Point {
 /**
  * 计算各选项圆心位置:在 anchor 右侧排成一个扇形,以穿过 anchor 的水平线为对称轴。
  *
- * 扇形由几层同心弧组成,张角是水平向右上下各 45 度。每层能放下的数量取决于它的弧长,
- * 内层放满再放外层,所以 8 个选项也只用三层,最远约 230px,鼠标不用走太远。
- * 同一层的圆在整段张角上均匀分布,只有一个时放在正右方。
+ * 扇形由几层同心弧组成,圆心都在以 anchor 为圆心的弧上。第 k 层最多放 k + 2 个,
+ * 内层放满再放外层,同一层的圆竖直方向等距、上下对称,所以越往外越宽,像一把扇子。
  *
- * + 号贴近窗口顶部,外层上半部分可能超出窗口。这时整组向下平移,扇形的形状不变,
- * 只是对称轴落在 + 号下方。默认的两个选项不需要平移。
+ * 对称轴永远是 anchor 所在的水平线,不会为了放进窗口而上下平移。+ 号贴近窗口顶部,
+ * 上方只有几十像素,所以每层的高度受 anchor 上方 (和下方) 的空间限制:放不下时
+ * 这一层少放几个,多出来的排到外层,扇形变扁、向右伸得更远。
  *
  * @param count 选项数量
  * @param anchor + 号中心,视口坐标
  * @param viewport 视口尺寸
- * @returns 圆心坐标,内层到外层、每层从上到下
+ * @returns 圆心坐标,内层到外层、每层从上到下;贴窗口右边时整组向左平移
  */
 export function radialPositions(
   count: number,
@@ -95,34 +93,31 @@ export function radialPositions(
   viewport: { width: number; height: number },
 ): Point[] {
   if (count <= 0) return [];
-  const span = FAN_HALF_ANGLE_RAD * 2;
+  // anchor 上下两侧能让圆心偏离对称轴多远,取较小的一侧,保证对称
+  const room = Math.max(
+    0,
+    Math.min(
+      anchor.y - ITEM_RADIUS_PX - VIEWPORT_MARGIN_PX,
+      viewport.height - anchor.y - ITEM_RADIUS_PX - LABEL_HEIGHT_PX - VIEWPORT_MARGIN_PX,
+    ),
+  );
+  // 一层里上下对称地放 m 个,最远的偏离 (m - 1) / 2 个间距
+  const tallest = Math.floor((2 * room) / ROW_SPACING_PX) + 1;
   const points: Point[] = [];
   for (let ring = 0; points.length < count; ring += 1) {
     const radius = FIRST_RING_RADIUS_PX + ring * RING_GAP_PX;
-    // 弧长 = 半径 × 张角,相邻两圆至少隔 ITEM_SPACING_PX
-    const capacity = Math.floor((radius * span) / ITEM_SPACING_PX) + 1;
-    const inRing = Math.min(capacity, count - points.length);
+    const inRing = Math.min(ring + 2, tallest, count - points.length);
     for (let i = 0; i < inRing; i += 1) {
-      const angle = inRing === 1 ? 0 : -FAN_HALF_ANGLE_RAD + (span * i) / (inRing - 1);
-      points.push({
-        x: anchor.x + radius * Math.cos(angle),
-        y: anchor.y + radius * Math.sin(angle),
-      });
+      const dy = (i - (inRing - 1) / 2) * ROW_SPACING_PX;
+      points.push({ x: anchor.x + Math.sqrt(radius * radius - dy * dy), y: anchor.y + dy });
     }
   }
-  const reach = ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX;
   const dx = shiftIntoRange(
     points.map((p) => p.x),
-    reach,
+    ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX,
     viewport.width,
   );
-  // 标签挂在圆下方,底边多留一个标签的高度
-  const dy = shiftIntoRange(
-    points.map((p) => p.y),
-    reach,
-    viewport.height - LABEL_HEIGHT_PX,
-  );
-  return points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+  return points.map((p) => ({ x: p.x + dx, y: p.y }));
 }
 
 /**

@@ -117,24 +117,26 @@ describe('radialPositions', () => {
     }
   });
 
-  it('8 个选项也在 + 号 230px 以内,鼠标不用走太远', () => {
+  it('8 个选项在空间够时也在 + 号 230px 以内,鼠标不用走太远', () => {
     for (const p of radialPositions(8, anchor, viewport)) {
       expect(Math.hypot(p.x - anchor.x, p.y - anchor.y)).toBeLessThanOrEqual(230);
     }
   });
 
-  it('默认两个选项在窗口顶部的 + 号旁也不需要平移', () => {
-    const top = { x: 450, y: 90 };
-    const [upper, lower] = radialPositions(2, top, viewport);
-    expect(near(upper!.y + lower!.y, 2 * top.y)).toBe(true);
+  // 真实窗口里 + 号中心离顶部约 60px
+  const top = { x: 300, y: 60 };
+
+  it.each(all)('%i 个选项在贴窗口顶部的 + 号旁仍以它为轴上下对称,并留在窗口内', (count) => {
+    const points = radialPositions(count, top, viewport);
+    for (const p of points) {
+      expect(p.y - 21).toBeGreaterThanOrEqual(0);
+      const mirror = 2 * top.y - p.y;
+      expect(points.some((q) => near(q.x, p.x) && near(q.y, mirror))).toBe(true);
+    }
   });
 
-  it.each([
-    ['贴窗口顶部', { x: 450, y: 90 }],
-    ['贴窗口右边', { x: 1150, y: 400 }],
-  ])('%s时整组平移,留在视口内', (_name, at) => {
-    for (const p of radialPositions(8, at, viewport)) {
-      expect(p.y - 21).toBeGreaterThanOrEqual(0);
+  it('贴窗口右边时整组左移,留在视口内', () => {
+    for (const p of radialPositions(8, { x: 1150, y: 400 }, viewport)) {
       expect(p.x + 21).toBeLessThanOrEqual(viewport.width);
     }
   });

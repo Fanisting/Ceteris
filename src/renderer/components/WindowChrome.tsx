@@ -13,6 +13,7 @@
  *   主进程已 `frame: false`,这里要负责:
  *   - 提供 -webkit-app-region: drag 拖动区
  *   - 显示应用标题 + 视图切换按钮(版本号在 设置 → 关于);点应用名有个小彩蛋,见 TitlebarAppName
+ *   - 设置里打开小石子时,窗口按钮旁边多一个 16px 的小石子(ADR-027),见 TitlebarPebble
  *   - dev 构建在标题栏正中多一个重新加载按钮,见 DevReloadButton
  *   - 监听 evt:window:max-state-changed 切按钮图标 / app-root 圆角
  *
@@ -28,6 +29,7 @@ import {
 import type { WindowStyle } from '@shared/types';
 import { ViewSwitchButton } from './ViewSwitchButton';
 import { TitlebarAppName } from './TitlebarAppName';
+import { TitlebarPebble } from './TitlebarPebble';
 import { Close, Sync, WindowMaximize, WindowMinimize, WindowRestore } from './material-symbols';
 import { focusTerminalDom } from '../focus';
 import { useAppState } from '../store';
@@ -148,6 +150,7 @@ export function WindowChrome({ windowStyle, appLabel, isDev }: Props): JSX.Eleme
       </div>
       <div className="titlebar-spacer titlebar-drag" />
       {isDev && <DevReloadButton />}
+      <TitlebarPebble />
       <div className="titlebar-controls" aria-label="窗口控制(Windows 风格)">
         <button
           type="button"
@@ -268,6 +271,7 @@ function MacosTitlebar({
       </div>
       <div className="titlebar-spacer titlebar-drag" />
       {devReload}
+      <TitlebarPebble />
     </div>
   );
 }

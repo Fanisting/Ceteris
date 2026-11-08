@@ -478,6 +478,47 @@ function AppearancePanel({
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
+
+      {/* ADR-027:小庆祝与标题栏小石子 */}
+      <SettingRow
+        label={tx('小庆祝', 'Little celebrations')}
+        hint={tx(
+          'agent 跑完而你在看别处时,它的圆点上飞出几颗小星星,样式随主题;不抢焦点、不出声',
+          'When an agent finishes while you look elsewhere, a few sparkles pop off its dot, styled by the theme. No focus change, no sound',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={a?.celebrations ?? true}
+            onChange={(e) =>
+              void updateSettings({ appearance: { celebrations: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {(a?.celebrations ?? true) && (
+        <SettingRow
+          label={tx('标题栏小石子', 'Title bar pebble')}
+          hint={tx(
+            '窗口按钮旁的小圆团:都空闲时打盹,agent 干活时睁眼,跑完时笑一下',
+            'A small blob beside the window buttons: dozes when all is idle, watches while agents work, smiles when one finishes',
+          )}
+        >
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={a?.pebble ?? false}
+              onChange={(e) =>
+                void updateSettings({ appearance: { pebble: e.target.checked } }, setError)
+              }
+            />
+            <span>{tx('启用', 'Enable')}</span>
+          </label>
+        </SettingRow>
+      )}
     </section>
   );
 }

@@ -63,6 +63,7 @@ import {
 import { focusTerminalDom } from '../focus';
 import { Icon } from './icons';
 import { AgentWave } from './AgentWave';
+import { CelebrationBurst } from './CelebrationBurst';
 import { TemplateIcon } from './TemplateIcon';
 import { useContextMenuApi } from './ContextMenu';
 import { useToast } from './Toast';
@@ -1044,6 +1045,8 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
   const waving = phase === 'working' || (phase === null && session.state === 'active');
   const blocked = phase === 'blocked';
   const unseen = state.unseenDoneSessionIds.has(session.id);
+  // ADR-027:圆点刚亮起时撒一次小星星,锚在圆点上。
+  const agentDotRef = useRef<HTMLSpanElement>(null);
   if (blocked) tooltipParts.push(tx('等待你批准', 'Waiting for your approval'));
   else if (unseen) tooltipParts.push(tx('已完成,等你查看', 'Finished, your turn'));
 
@@ -1070,7 +1073,15 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
         work={session.agentWork ?? null}
         pace={session.agentPace ?? null}
       />
-      {(blocked || unseen) && <span className="tab-agent-dot" aria-hidden="true" />}
+      {(blocked || unseen) && (
+        <span ref={agentDotRef} className="tab-agent-dot" aria-hidden="true" />
+      )}
+      <CelebrationBurst
+        play={unseen && !blocked}
+        anchorRef={agentDotRef}
+        enabled={state.settings.appearance?.celebrations ?? true}
+        themeId={state.settings.appearance?.theme}
+      />
       {folderLabel && <span className="tab-folder">{folderLabel}</span>}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (

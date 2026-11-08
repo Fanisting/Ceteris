@@ -12,7 +12,7 @@
 
 ### 变更
 
-- **安装体积从 367 MB 降到 250 MB,Windows 安装器从 105 MB 降到 80 MB。** 只给界面用的包(`pdfjs-dist`、`katex`、`markdown-it`、界面的 xterm 包等)挪到 `devDependencies`:Vite 已把它们打进 `out/renderer`,不必再复制一份进 `app.asar`。其中 `pdfjs-dist` 顺带的 38 MB `@napi-rs/canvas` 只在 Node 里画 PDF 时才用。Chromium 语言包只留 en-US、zh-CN、zh-TW;Windows 包去掉 node-pty 给 Mac、Linux 和 ARM 的文件。
+- **安装体积从 367 MB 降到 250 MB,Windows 安装器从 105 MB 降到 80 MB。** 只给界面用的包(`pdfjs-dist`、`katex`、`markdown-it`、界面的 xterm 包等)挪到 `devDependencies`:Vite 已把它们打进 `out/renderer`,不必再复制一份进 `app.asar`。其中 `pdfjs-dist` 顺带的 38 MB `@napi-rs/canvas` 只在 Node 里画 PDF 时才用。Windows 和 Linux 的 Chromium 语言包只留 en-US、zh-CN、zh-TW(Mac 的语言包在 Electron 框架里,体积不变)。Windows 包去掉 node-pty 给 Mac、Linux 和 ARM 的文件,Linux 包去掉 node-pty 给 Windows 和 Mac 的文件。
 
 ## [0.4.0] — 2026-11-08
 

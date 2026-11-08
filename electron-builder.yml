@@ -119,6 +119,14 @@ portable:
 
 # macOS / Linux 占位 (V2.0 由社区贡献者启用)
 mac:
+  # On Mac this list keeps folders named Contents/Resources/<name>.lproj, and Electron
+  # names them en, zh_CN, zh_TW. The Windows names above match none of them, which
+  # deleted every .lproj: the app then declares no localizations and Chromium reports
+  # en-US, so a Chinese Mac on "follow system" got English.
+  electronLanguages:
+    - en
+    - zh_CN
+    - zh_TW
   target:
     - target: dmg
       arch: [x64, arm64]

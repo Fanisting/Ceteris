@@ -3460,7 +3460,7 @@ button:focus-visible,
   gap: 8px;
 }
 
-/* ADR-019 `name:` 命令列表 */
+/* ADR-020 `name:` 命令列表 */
 .colon-commands {
   display: flex;
   flex-direction: column;

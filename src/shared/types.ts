@@ -487,7 +487,7 @@ export interface Settings {
      */
     claudeMathImages: boolean;
     /**
-     * `name:` 命令 (ADR-019):在 Claude Code / Codex 终端里,单词开头敲已保存的名称
+     * `name:` 命令 (ADR-020):在 Claude Code / Codex 终端里,单词开头敲已保存的名称
      * 加冒号,Ceteris 把它换成对应命令(默认 `/name`),不按 Enter。规则见
      * shared/colon-commands.ts。
      */

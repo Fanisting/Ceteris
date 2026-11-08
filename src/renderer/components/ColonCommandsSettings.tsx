@@ -1,6 +1,6 @@
 /**
  * @file ColonCommandsSettings.tsx
- * @purpose The list editor for the `name:` commands extension (ADR-019) in Settings →
+ * @purpose The list editor for the `name:` commands extension (ADR-020) in Settings →
  *          Extensions: shows each saved `name:` → command pair, removes one with ×, adds one
  *          from two inputs.
  *

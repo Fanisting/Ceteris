@@ -96,7 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // 只给主动打开的用户。
   extensions: {
     claudeMathImages: false,
-    // ADR-019:`name:` 命令默认关,列表先放两个 CLI 都有的斜杠命令。
+    // ADR-020:`name:` 命令默认关,列表先放两个 CLI 都有的斜杠命令。
     colonCommands: {
       enabled: false,
       commands: DEFAULT_COLON_COMMANDS.map((c) => ({ ...c })),

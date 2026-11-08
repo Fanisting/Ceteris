@@ -617,7 +617,7 @@ const SSH_STARTUP_DA_FILTER_MS = 5000;
 
 /** Lines from the end of the buffer used to guess the next prompt. */
 const SUGGEST_SCREEN_LINES = 60;
-/** Screen lines read to tell whether Claude Code or Codex owns the input (ADR-019). */
+/** Screen lines read to tell whether Claude Code or Codex owns the input (ADR-020). */
 const COLON_SCREEN_LINES = 40;
 
 interface TerminalViewProps {
@@ -692,7 +692,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     appState.settings.advanced?.terminalRenderer ?? 'auto';
   // 公式图片扩展 (ADR-019),运行时开关,不重建 xterm
   const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
-  // `name:` 命令扩展 (ADR-019)。onData 闭包只在 mount 时建一次,所以读 ref 拿最新列表。
+  // `name:` 命令扩展 (ADR-020)。onData 闭包只在 mount 时建一次,所以读 ref 拿最新列表。
   const colonCommands = appState.settings.extensions?.colonCommands;
   const colonCommandsRef = useRef(colonCommands);
   colonCommandsRef.current = colonCommands;
@@ -1661,7 +1661,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     const sshDaFilterUntil =
       session.pathId.startsWith('ssh:') ? Date.now() + SSH_STARTUP_DA_FILTER_MS : 0;
 
-    // `name:` 命令 (ADR-019):跟踪当前输入行,在 Claude Code / Codex 里把已保存的
+    // `name:` 命令 (ADR-020):跟踪当前输入行,在 Claude Code / Codex 里把已保存的
     // `name:` 换成命令。只有冒号刚敲在已知名称后面时才读屏幕判断是不是 agent。
     const colonTracker = new ColonTracker();
     const resolveColonCommand = (name: string): string | null => {

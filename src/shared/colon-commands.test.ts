@@ -1,6 +1,6 @@
 /**
  * @file colon-commands.test.ts
- * @purpose Rules of the `name:` commands extension (ADR-019): list validation and the
+ * @purpose Rules of the `name:` commands extension (ADR-020): list validation and the
  *          input-line tracker that turns `name:` into the saved command.
  */
 import { describe, expect, it } from 'vitest';

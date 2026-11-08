@@ -1,6 +1,6 @@
 /**
  * @file colon-commands.ts
- * @purpose The "`name:` commands" extension (ADR-019): in a Claude Code or Codex terminal,
+ * @purpose The "`name:` commands" extension (ADR-020): in a Claude Code or Codex terminal,
  *          typing a saved name followed by a colon turns it into that CLI's slash command,
  *          so `compact:` becomes `/compact`. This module holds the list rules and a tracker
  *          that follows what the user typed on the current input line.
@@ -16,7 +16,7 @@
  * - Replies the terminal sends for the program (DA, XTVERSION, colour queries, focus
  *   reports) also arrive as input. They are not keys, so they leave the line alone.
  *
- * @对应文档章节:软件定义书.md ADR-019
+ * @对应文档章节:软件定义书.md ADR-020
  *
  * @不要在这里做的事:
  * - Do not decide whether the session runs an agent; the caller passes that in the resolver.

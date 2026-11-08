@@ -1,0 +1,204 @@
+/* Folder pebbles: the second layout of the sidebar folder list (Sidebar.tsx, layout 'block').
+ * Each pebble is as wide as its name and they wrap like words, packed close, so nothing
+ * lines up in columns. A click opens that folder's sessions under a back row (layout
+ * 'open'). The list layout's rules are untouched. */
+
+.sidebar-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 4px;
+  margin: 2px 0 0;
+  padding: 0 2px;
+  list-style: none;
+}
+
+.path-block {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.path-block-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  background-color: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface, #f0f);
+  cursor: pointer;
+  transition:
+    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    transform var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+/* Four pebble outlines, picked per folder from its id (pebbleShape in Sidebar.tsx). Uneven
+ * corner radii and slight padding differences make the row read as stones, not chips. */
+.pebble-shape-0 > .path-block-card {
+  border-radius: 14px 11px 13px 10px / 12px 14px 11px 13px;
+}
+
+.pebble-shape-1 > .path-block-card {
+  padding: 0 12px 0 9px;
+  border-radius: 11px 15px 10px 14px / 14px 11px 13px 12px;
+}
+
+.pebble-shape-2 > .path-block-card {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 12px 10px 14px 13px / 11px 13px 12px 14px;
+}
+
+.pebble-shape-3 > .path-block-card {
+  height: 28px;
+  padding: 0 9px 0 12px;
+  border-radius: 15px 12px 11px 14px / 13px 12px 15px 11px;
+}
+
+.path-block-card:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--md-on-surface, #f0f) 10%,
+    var(--md-surface-container-high, #f0f)
+  );
+  transform: translateY(-1px);
+}
+
+.path-block-card:focus-visible {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: 1px;
+}
+
+.path-block.selected > .path-block-card {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+/* The pebble holding the session on screen: a ring that follows the pebble's own uneven
+ * outline. An inset shadow, not a border, so the pebble keeps its size and the row does
+ * not reflow when the chosen session moves to another folder. */
+.path-block.chosen > .path-block-card {
+  box-shadow: inset 0 0 0 1.5px var(--md-primary, #f0f);
+}
+
+.path-block.invalid > .path-block-card {
+  opacity: 0.55;
+}
+
+.path-block-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.path-block-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.path-block-card .path-name-rename-input {
+  width: 96px;
+  font-size: 12px;
+}
+
+/* One dot per session, coloured like the session rows. */
+.path-block-sessions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.path-block-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.path-block-dot.agent-blocked {
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+.path-block-more {
+  margin-left: 1px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 10px;
+  line-height: 12px;
+}
+
+/* ── An opened folder: back row, then the same session rows as the list layout ── */
+
+.path-open-folder-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px 0 2px;
+  border-radius: var(--md-shape-full, 999px);
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+  font-size: 13px;
+}
+
+.path-open-folder-head .path-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: inherit;
+}
+
+.path-open-folder-head .path-open-terminal {
+  opacity: 1;
+}
+
+.path-open-folder.invalid > .path-open-folder-head {
+  opacity: 0.55;
+}
+
+.path-open-folder-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.path-open-folder-back:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.path-open-folder-back svg {
+  display: block;
+}
+
+.path-open-folder .session-list {
+  margin-top: 2px;
+}
+
+.path-open-folder-empty {
+  padding: 8px 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path-block-dot.agent-blocked {
+    animation: none !important;
+  }
+
+  .path-block-card:hover {
+    transform: none;
+  }
+}

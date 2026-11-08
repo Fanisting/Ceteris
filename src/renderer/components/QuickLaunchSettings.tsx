@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/components/QuickLaunchSettings.tsx
- * @purpose 设置 → 行为 里的快捷启动编辑器。勾选右键 + 号时要显示的选项,
+ * @purpose 设置 → 行为 里的快捷启动编辑器。勾选要放进标签栏末尾幽灵标签的选项,
  *   候选项与新建页相同:启动模板和检测到的 shell。
  *
  * @关键设计:

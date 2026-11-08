@@ -186,6 +186,7 @@ function makeStubSettingsManager(
     ai: {
       provider: null,
       nextPrompt: { enabled: false, keySaved: false, baseURL: '', model: '' },
+      tabTitles: { enabled: false, guide: '', maxChars: 24 },
       apiKey: '',
       baseURL: '',
       model: '',
@@ -2566,5 +2567,56 @@ describe('SessionManagerError', () => {
     expect(err.code).toBe('SessionNotFound');
     expect(err.message).toContain('SessionNotFound');
     expect(err.details).toEqual({ sid: 'abc' });
+  });
+});
+
+describe('SessionManager — agent tab titles (ADR-029)', () => {
+  const claude: Template = {
+    id: 'claude-code',
+    name: 'Claude Code',
+    icon: 'C',
+    isBuiltin: true,
+    command: 'claude',
+    args: [],
+    env: {},
+    shellFirst: false,
+    postExitAction: 'keep_shell',
+  };
+
+  async function startClaude(settings = makeStubSettingsManager()) {
+    const { mgr } = makeManager({ templates: [claude], settings });
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'claude-code',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    return { mgr, settings, id: info.id, pty: FakePty.instances[0]! };
+  }
+
+  it('shortens the title an agent sets and drops its spinner', async () => {
+    const { mgr, id, pty } = await startClaude();
+    pty.emitData('\x1b]0;✳ Refactor the session manager idle timer\x07');
+    expect(mgr.get(id)!.displayName).toBe('Refactor the session…');
+    expect(mgr.getAgentOscTitle(id)).toBe('✳ Refactor the session manager idle timer');
+  });
+
+  it('keeps a model title over later agent titles while AI titles are on', async () => {
+    const { mgr, settings, id, pty } = await startClaude();
+    settings.get().ai.tabTitles.enabled = true;
+    mgr.setAiTitle(id, 'Idle timer');
+    pty.emitData('\x1b]0;✳ Something else\x07');
+    expect(mgr.get(id)!.displayName).toBe('Idle timer');
+    settings.get().ai.tabTitles.enabled = false;
+    pty.emitData('\x1b]0;✳ Something else\x07');
+    expect(mgr.get(id)!.displayName).toBe('Something else');
+  });
+
+  it('never puts a model title over a name the user chose', async () => {
+    const { mgr, id } = await startClaude();
+    mgr.renameSession(id, 'mine');
+    mgr.setAiTitle(id, 'Idle timer');
+    expect(mgr.get(id)!.displayName).toBe('mine');
   });
 });

@@ -75,6 +75,13 @@ import { NEXT_PROMPT_DEFAULT_BASE_URL,
   type FrequentPrompt,
   type NextPromptUsage,
   nextPromptConfigured } from '@shared/next-prompt';
+import {
+  AGENT_TITLE_DEFAULT_GUIDE,
+  AGENT_TITLE_DEFAULT_MAX_CHARS,
+  AGENT_TITLE_MAX_GUIDE_CHARS,
+  AGENT_TITLE_MAX_MAX_CHARS,
+  AGENT_TITLE_MIN_MAX_CHARS,
+} from '@shared/agent-title';
 import { NextPromptModelPicker } from './NextPromptModelPicker';
 import { OpenRouterAccount } from './OpenRouterAccount';
 import type {
@@ -1225,7 +1232,7 @@ function BehaviorPanel({
 
       <SettingRow
         label={tx('快捷启动', 'Quick launch')}
-        hint={tx('右键标签栏的 + 时显示这些选项', 'Shown around the + button when you right-click it')}
+        hint={tx('显示在标签栏末尾的虚线标签里,点一下即启动', 'Shown in the dashed tab at the end of the tab bar, one click to start')}
       >
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}
@@ -2757,8 +2764,8 @@ function AiPanel({
       <h2 className="settings-panel-title">{tx('AI 助手', 'AI Assistant')}</h2>
       <p className="settings-panel-hint">
         {tx(
-          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字和下面列出的常用消息会发送给这个 API(默认 OpenRouter),所以屏幕上的密钥或私密内容也会被发送。',
-          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen and the frequent messages listed below go to that API (OpenRouter by default), including anything private shown on screen.',
+          'Agent 停下时猜你的下一句,点击只填入不发送。屏幕末尾的文字和下面的常用消息会发给该 API。',
+          'When an agent stops, guesses your next prompt. Clicking fills it in without sending. The end of the screen and the frequent messages below go to this API.',
         )}
       </p>
 
@@ -2909,7 +2916,100 @@ function AiPanel({
           <NextPromptCostChart usage={usage} />
         </SettingRow>
       )}
+
+      <AgentTitleSettings ready={nextPromptReady} setError={setError} />
     </section>
+  );
+}
+
+/**
+ * ADR-029:标签标题。agent 自己的标题总是按长度缩短;开启后,每跑完一轮由上面
+ * 同一个 API 和模型按用户的规则写标题。花费计入上面的累计花费。
+ */
+function AgentTitleSettings({
+  ready,
+  setError,
+}: {
+  ready: boolean;
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const state = useAppState();
+  const titles = state.settings.ai?.tabTitles ?? {
+    enabled: false,
+    guide: '',
+    maxChars: AGENT_TITLE_DEFAULT_MAX_CHARS,
+  };
+  return (
+    <>
+      <h3 className="link-subsection-title">{tx('标签标题', 'Tab titles')}</h3>
+      <p className="settings-panel-hint">
+        {tx(
+          'agent 标签(Claude Code、Codex、OpenCode、Gemini、Copilot、Cursor、Aider)的名字。agent 自己设的标题总会去掉转圈符号并截到下面的长度。开启 AI 标题后,每跑完一轮,上面的 API 读屏幕末尾,按你的规则写一个标题;任务没变时保留原标题。手动改过名的标签不受影响。',
+          'Names for agent tabs (Claude Code, Codex, OpenCode, Gemini, Copilot, Cursor, Aider). The title an agent sets itself always loses its spinner and is cut to the length below. With AI titles on, the API above reads the end of the screen after each finished turn and writes a title by your rules, keeping the old one while the task is the same. Tabs you renamed yourself are left alone.',
+        )}
+      </p>
+
+      <SettingRow label={tx('AI 标题', 'AI titles')}>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={titles.enabled}
+            onChange={(e) =>
+              void updateSettings({ ai: { tabTitles: { enabled: e.target.checked } } }, setError)
+            }
+            disabled={!ready && !titles.enabled}
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('最长字数', 'Longest title')}
+        hint={tx(
+          `${AGENT_TITLE_MIN_MAX_CHARS} 到 ${AGENT_TITLE_MAX_MAX_CHARS} 个字符,更长的在词边界截断并加 …`,
+          `${AGENT_TITLE_MIN_MAX_CHARS} to ${AGENT_TITLE_MAX_MAX_CHARS} characters; longer titles are cut at a word and end with …`,
+        )}
+      >
+        <input
+          className="settings-input"
+          type="number"
+          min={AGENT_TITLE_MIN_MAX_CHARS}
+          max={AGENT_TITLE_MAX_MAX_CHARS}
+          step={1}
+          value={titles.maxChars}
+          style={{ width: 80 }}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (!Number.isInteger(n)) return;
+            if (n < AGENT_TITLE_MIN_MAX_CHARS || n > AGENT_TITLE_MAX_MAX_CHARS) return;
+            void updateSettings({ ai: { tabTitles: { maxChars: n } } }, setError);
+          }}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('标题规则', 'Title rules')}
+        hint={tx(
+          '发给模型的说明,写你想要的标题样子。留空使用灰色的默认规则',
+          'Instructions sent to the model: describe the titles you want. Leave empty for the default shown in grey',
+        )}
+      >
+        <textarea
+          className="settings-input"
+          rows={4}
+          maxLength={AGENT_TITLE_MAX_GUIDE_CHARS}
+          spellCheck={false}
+          placeholder={AGENT_TITLE_DEFAULT_GUIDE}
+          value={titles.guide}
+          style={{ minWidth: 320, resize: 'vertical' }}
+          onChange={(e) =>
+            void updateSettings({ ai: { tabTitles: { guide: e.target.value } } }, setError)
+          }
+          disabled={!titles.enabled}
+        />
+      </SettingRow>
+    </>
   );
 }
 

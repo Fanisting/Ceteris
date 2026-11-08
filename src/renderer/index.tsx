@@ -29,13 +29,19 @@ import './styles/pearl-themes.css';
 import './styles/beamer-themes.css';
 // 必须在 material.css 之后:梅子主题同样覆写 --md-* 角色
 import './styles/meizi-theme.css';
+// 必须在 material.css 之后:Legado MD3 主题块同样覆写 --md-* 角色
+import './styles/legado-themes.css';
 import './styles/file-tree.css';
+// Rendered .md files use the OnePage reading look (MIT, credited in README)
+import './styles/markdown-onepage.css';
 import './styles/path-tags.css';
+import './styles/folder-blocks.css';
 import './styles/quick-launch.css';
 import './styles/theme-picker.css';
 import './styles/coordinator-bar.css';
 import './styles/celebrations.css';
-import './styles/coordinator-guide.css';
+import './styles/coordinator-tour.css';
+import './styles/ghost-tab.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
 import { initCustomThemes } from './custom-themes';

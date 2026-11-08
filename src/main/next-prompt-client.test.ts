@@ -3,8 +3,9 @@ import {
   EMPTY_NEXT_PROMPT_USAGE,
   NEXT_PROMPT_DEFAULT_MODEL,
   NEXT_PROMPT_MAX_SCREEN_CHARS,
+  OTHER_MODELS,
   addNextPromptUsage,
-  dailyCosts,
+  dailyCostChart,
 } from '@shared/next-prompt';
 import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
 
@@ -114,31 +115,47 @@ describe('custom API address', () => {
 describe('cost total', () => {
   it('adds priced calls, and counts a call with no price separately', () => {
     let total = EMPTY_NEXT_PROMPT_USAGE;
-    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 }, '2026-11-07');
-    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 }, '2026-11-08');
-    total = addNextPromptUsage(total, undefined, '2026-11-08');
-    expect(total).toEqual({
+    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 }, '2026-11-08', 'a');
+    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 }, '2026-11-08', 'b');
+    total = addNextPromptUsage(total, undefined, '2026-11-08', 'a');
+    expect(total).toMatchObject({
       calls: 3,
       inputTokens: 150,
       outputTokens: 15,
       costUsd: 0.002,
       unpricedCalls: 2,
-      daily: { '2026-11-07': { calls: 1, costUsd: 0.002 }, '2026-11-08': { calls: 2, costUsd: 0 } },
+    });
+    expect(total.daily['2026-11-08']).toEqual({
+      calls: 3,
+      costUsd: 0.002,
+      models: { a: { calls: 2, costUsd: 0.002 }, b: { calls: 1, costUsd: 0 } },
     });
   });
 
   it('keeps only the last 30 days, and charts the last 14 with empty days as zero', () => {
     let total = EMPTY_NEXT_PROMPT_USAGE;
     for (let d = 1; d <= 31; d++) {
-      total = addNextPromptUsage(total, { cost: d }, `2026-10-${String(d).padStart(2, '0')}`);
+      total = addNextPromptUsage(total, { cost: d }, `2026-10-${String(d).padStart(2, '0')}`, 'a');
     }
     expect(Object.keys(total.daily)).toHaveLength(30);
     expect(total.daily['2026-10-01']).toBeUndefined();
 
-    const chart = dailyCosts(total, new Date(2026, 10, 2));
-    expect(chart).toHaveLength(14);
-    expect(chart[0]).toEqual({ day: '2026-10-20', calls: 1, costUsd: 20 });
-    expect(chart.at(-1)).toEqual({ day: '2026-11-02', calls: 0, costUsd: 0 });
+    const chart = dailyCostChart(total, new Date(2026, 10, 2));
+    expect(chart.days).toHaveLength(14);
+    expect(chart.days[0]).toMatchObject({ day: '2026-10-20', costUsd: 20 });
+    expect(chart.days.at(-1)).toMatchObject({ day: '2026-11-02', costUsd: 0 });
+  });
+
+  it('stacks each day by model in first seen order, folding models past the limit into other', () => {
+    let total = EMPTY_NEXT_PROMPT_USAGE;
+    total = addNextPromptUsage(total, { cost: 1 }, '2026-11-01', 'a');
+    total = addNextPromptUsage(total, { cost: 3 }, '2026-11-02', 'b');
+    total = addNextPromptUsage(total, { cost: 2 }, '2026-11-02', 'c');
+    total = addNextPromptUsage(total, { cost: 5 }, '2026-11-02', 'd');
+
+    const chart = dailyCostChart(total, new Date(2026, 10, 2), 14, 2);
+    expect(chart.series).toEqual(['a', 'd', OTHER_MODELS]);
+    expect(chart.days.at(-1)!.parts.map((p) => p.costUsd)).toEqual([0, 5, 5]);
   });
 
   it('reports usage from a response, and asks only OpenRouter for the price', async () => {

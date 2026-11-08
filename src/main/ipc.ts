@@ -21,7 +21,11 @@
  * - cmd:session:create / close / claim / release / focus-owner / send-input / resize
  * - 所有 evt:* 广播
  */
-import { EMPTY_NEXT_PROMPT_USAGE, type NextPromptUsage } from '@shared/next-prompt';
+import {
+  EMPTY_NEXT_PROMPT_USAGE,
+  NEXT_PROMPT_DEFAULT_MODEL,
+  type NextPromptUsage,
+} from '@shared/next-prompt';
 import type { NextPromptUsageTracker } from './next-prompt-usage';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
@@ -175,6 +179,8 @@ import type { KnownHostsManager } from './known-hosts-manager';
 import { parseSshConfig } from './ssh-config-parser';
 import { detectSshAgent } from './ssh-agent';
 import type {
+  CreateFilePayload,
+  CreateFileResponse,
   ListDirPayload,
   ListDirResponse,
   ReadPdfPayload,
@@ -186,7 +192,7 @@ import type {
   WriteTextPayload,
   WriteTextResponse,
 } from '@shared/file-tree';
-import { listDirectory, renameEntry } from './file-tree';
+import { createFile, listDirectory, renameEntry } from './file-tree';
 import { writeTextFile } from './text-writer';
 import type { CustomThemeStore } from './custom-theme-store';
 import type { CustomTheme, TemplateValues } from '@shared/custom-themes';
@@ -1387,6 +1393,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   handleCommand(
+    COMMAND_CHANNELS.FS_CREATE_FILE,
+    (_e, envelope: CommandEnvelope<CreateFilePayload>): Promise<CreateFileResponse> =>
+      createFile(envelope.payload.dirPath, envelope.payload.name),
+  );
+
+  handleCommand(
     COMMAND_CHANNELS.FS_WRITE_TEXT,
     (_e, envelope: CommandEnvelope<WriteTextPayload>): Promise<WriteTextResponse> =>
       writeTextFile(envelope.payload),
@@ -1496,7 +1508,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         config,
         envelope.payload.screen,
         fetch,
-        (usage) => deps.nextPromptUsage?.record(usage),
+        (usage) => deps.nextPromptUsage?.record(usage, config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL),
         await frequentPrompts.get(),
       );
       return { suggestion };

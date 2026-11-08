@@ -86,6 +86,7 @@ describe('必须转发到 Host 的命令', () => {
     // 文件树的路径是 Host 的路径。若在 Client 本地执行,可能改到本机同路径的文件。
     COMMAND_CHANNELS.FS_LIST_DIR,
     COMMAND_CHANNELS.FS_RENAME,
+    COMMAND_CHANNELS.FS_CREATE_FILE,
     COMMAND_CHANNELS.FS_READ_PDF,
     COMMAND_CHANNELS.FS_STAT_FILE,
     // SFTP 连接在 Host 上,登录提示的答案也要回到 Host

@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { listDirectory, renameEntry } from './file-tree';
+import { createFile, listDirectory, renameEntry } from './file-tree';
 
 vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -153,5 +153,18 @@ describe('renameEntry', () => {
 
   it('拒绝相对的源路径', async () => {
     expect(await renameEntry('a.txt', 'b.txt')).toEqual({ ok: false, reason: 'invalid-name' });
+  });
+});
+
+describe('createFile', () => {
+  it('makes an empty file and never empties one that exists', async () => {
+    for (const name of ['a.txt', 'b.md', 'c.json', 'd.tex']) {
+      expect(await createFile(root, name)).toEqual({ ok: true, path: join(root, name) });
+      expect(await fs.readFile(join(root, name), 'utf8')).toBe('');
+    }
+    await fs.writeFile(join(root, 'a.txt'), 'keep');
+    expect(await createFile(root, 'a.txt')).toEqual({ ok: false, reason: 'exists' });
+    expect(await fs.readFile(join(root, 'a.txt'), 'utf8')).toBe('keep');
+    expect(await createFile(root, '../x.txt')).toEqual({ ok: false, reason: 'invalid-name' });
   });
 });

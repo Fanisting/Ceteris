@@ -32,9 +32,12 @@ export class NextPromptUsageTracker {
     return this.total;
   }
 
-  /** @param now when the call finished; decides which day of the chart it counts on */
-  record(usage: unknown, now = new Date()): void {
-    this.total = addNextPromptUsage(this.total, usage, localDay(now));
+  /**
+   * @param model the model id the call used, so the daily chart can split cost by model
+   * @param now when the call finished; decides which day of the chart it counts on
+   */
+  record(usage: unknown, model: string, now = new Date()): void {
+    this.total = addNextPromptUsage(this.total, usage, localDay(now), model);
     this.store.set({ version: 1, ...this.total });
   }
 

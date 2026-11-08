@@ -44,6 +44,10 @@ import { getPlatformAdapter } from './platform';
 import { SftpPool } from './sftp-client';
 import { AskpassServer } from './askpass-server';
 import { TabControlServer } from './tab-control-server';
+import { AgentTitler } from './agent-titler';
+import { suggestAgentTitle } from './agent-title-client';
+import { NEXT_PROMPT_DEFAULT_MODEL, nextPromptConfigured } from '@shared/next-prompt';
+import type { SessionStateChangedPayload } from '@shared/protocol';
 import { PromptBroker } from './askpass-prompts';
 import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
@@ -335,6 +339,36 @@ function bootstrap(): void {
   sessionManager.on('sessionDestroyed', (e: { sessionId: string }) =>
     tabControlServer.service.revoke(e.sessionId),
   );
+  // ADR-029:agent 标签每跑完一轮,用 next prompt 的 API 和模型写一个短标题
+  new AgentTitler({
+    onSessionChanged: (fn) =>
+      void sessionManager.on('sessionStateChanged', (p: SessionStateChangedPayload) =>
+        fn(p.sessionId, p.full),
+      ),
+    onSessionDestroyed: (fn) =>
+      void sessionManager.on('sessionDestroyed', (p: { sessionId: string }) => fn(p.sessionId)),
+    getScreenTail: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
+    getLastEnterAt: (sessionId) => sessionManager.getLastEnterAt(sessionId),
+    currentTitle: (sessionId) => sessionManager.get(sessionId)?.displayName ?? '',
+    isManuallyRenamed: (sessionId) => sessionManager.isManuallyRenamed(sessionId),
+    getAgentOscTitle: (sessionId) => sessionManager.getAgentOscTitle(sessionId),
+    setAiTitle: (sessionId, title) => sessionManager.setAiTitle(sessionId, title),
+    titleSettings: () => {
+      const { tabTitles, nextPrompt } = settingsManager.get().ai;
+      return tabTitles.enabled && nextPromptConfigured(nextPrompt) ? tabTitles : null;
+    },
+    suggest: (request) => {
+      const config = {
+        ...settingsManager.get().ai.nextPrompt,
+        apiKey: secretStore.getNextPromptKey(),
+      };
+      // Counted per model in the cost chart, like next prompt guesses (ipc.ts)
+      const model = config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL;
+      return suggestAgentTitle(config, request, fetch, (usage) =>
+        nextPromptUsage.record(usage, model),
+      );
+    },
+  }).start();
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
 
   // ADR-026:用户主题文件夹,文件保存后立刻推给所有窗口

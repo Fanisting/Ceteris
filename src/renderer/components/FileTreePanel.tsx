@@ -1,7 +1,7 @@
 /**
  * @file src/renderer/components/FileTreePanel.tsx
- * @purpose 侧栏底部的文件树面板,显示当前选中 session 所在目录。本地目录支持重命名,
- *   SSH session 通过 SFTP 只读浏览。点击 PDF、图片或 markdown 在终端区域打开。
+ * @purpose 侧栏底部的文件树面板,显示当前选中 session 所在目录。本地目录支持重命名和
+ *   新建空文件,SSH session 通过 SFTP 只读浏览。点击 PDF、图片或 markdown 在终端区域打开。
  *
  * @关键设计:
  * - 根目录变化时靠 key 重新挂载 FileTreeBody,旧目录的异步结果随卸载丢弃。
@@ -15,6 +15,9 @@
  * - 只用鼠标触发重命名,不加 F2:应用内功能键在 13.2 永远不做列表里。
  * - 置顶文件夹 (file-tree-pins.ts) 以小方块显示在标题下面。点一下文件树临时切到
  *   那个文件夹,再点一下或 session 的目录变了就回到 session 的目录。
+ * - New file comes from the header + button or the right-click menu, never a shortcut. The
+ *   name is typed in a row inside the target folder, so the user sees where it will land.
+ *   A new file the viewer can show opens at once, so a .txt or .json is ready to type into.
  *
  * @对应文档章节: 软件定义书.md 13.2、14.6
  *
@@ -45,6 +48,8 @@ import {
   type LastRowClick,
   type ListDirPayload,
   type ListDirResponse,
+  type CreateFilePayload,
+  type CreateFileResponse,
   type RenameEntryPayload,
   type RenameEntryResponse,
 } from '@shared/file-tree';
@@ -67,7 +72,7 @@ import {
 } from '../file-tree-pins';
 import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
-import { ChevronRight, Draft, Folder, FolderOpen } from './material-symbols';
+import { Add, ChevronRight, Draft, Folder, FolderOpen } from './material-symbols';
 import { useToast } from './Toast';
 
 const POLL_INTERVAL_MS = 3000;
@@ -84,6 +89,8 @@ interface FileTreeBodyProps {
   pdfViewKey: string | null;
   /** 有值时是 SFTP 浏览,只读 */
   sshProfileId: string | undefined;
+  /** Goes up by one each time the header + button is pressed */
+  newFileRequest: number;
 }
 
 const expandedByRoot = new Map<string, ReadonlySet<string>>();
@@ -106,6 +113,7 @@ export function FileTreePanel(): JSX.Element {
   const root = session ? resolveFileTreeRoot(session, node) : (node?.path ?? null);
   const sessionSshProfileId = node?.kind === 'ssh' ? node.sshProfileId : undefined;
   const { height, handleProps } = useResizableHeight();
+  const [newFileRequest, setNewFileRequest] = useState(0);
   const pins = useFolderPins();
   const menu = useContextMenuApi();
   // 点过的置顶只在 session 目录不变时有效,cd 或切 session 后自动回到 session 的目录
@@ -155,6 +163,17 @@ export function FileTreePanel(): JSX.Element {
           <span className="file-tree-header-label">
             {shownRoot ? folderLabel(shownRoot) : t('fileTree.title')}
           </span>
+          {shownRoot && !sshProfileId && (
+            <button
+              type="button"
+              className="file-tree-header-btn"
+              title={t('fileTree.newFile')}
+              aria-label={t('fileTree.newFile')}
+              onClick={() => setNewFileRequest((n) => n + 1)}
+            >
+              <Add size={16} />
+            </button>
+          )}
         </div>
         {pins.length > 0 && (
           <div className="file-tree-pins" role="toolbar" aria-label={t('fileTree.pins')}>
@@ -185,6 +204,7 @@ export function FileTreePanel(): JSX.Element {
             root={shownRoot}
             pdfViewKey={pdfViewKey(state)}
             sshProfileId={sshProfileId}
+            newFileRequest={newFileRequest}
           />
         ) : (
           <p className="file-tree-hint">{t('fileTree.empty.noSession')}</p>
@@ -269,7 +289,12 @@ function useResizableHeight(): {
   return { height, handleProps: { onPointerDown, onDoubleClick } };
 }
 
-function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyProps): JSX.Element {
+function FileTreeBody({
+  root,
+  pdfViewKey: pdfKey,
+  sshProfileId,
+  newFileRequest,
+}: FileTreeBodyProps): JSX.Element {
   const expansionKey = `${sshProfileId ?? ''}|${root}`;
   const { t } = useTranslation();
   const toast = useToast();
@@ -282,6 +307,9 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
   const [selected, setSelected] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
+  /** The folder showing the new file name row, or null */
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
+  const [createText, setCreateText] = useState('');
 
   const expandedRef = useRef(expanded);
   // 回车提交后输入框卸载可能再触发 blur,用 ref 保证同一次重命名只提交一遍
@@ -293,6 +321,10 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
   const mountedRef = useRef(false);
   // 每个目录只采用最新一次请求的结果,否则改名前发出的轮询会把旧名字写回来
   const loadSeqRef = useRef(new Map<string, number>());
+  // Same guard as renamingRef: Enter, then the blur from unmounting, must create only once
+  const creatingRef = useRef<string | null>(null);
+  // The + press already handled, so a remount after cd does not open a new row
+  const handledNewFileRef = useRef(newFileRequest);
 
   const setExpanded = useCallback(
     (next: ReadonlySet<string>): void => {
@@ -463,6 +495,64 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
     if (newName && newName !== row.entry.name) await applyRename(row, newName);
   };
 
+  const beginCreate = (dir: string): void => {
+    clearRenameTimer();
+    endRename();
+    if (dir !== root && !expandedRef.current.has(dir)) {
+      setExpanded(new Set(expandedRef.current).add(dir));
+      void loadDir(dir);
+    }
+    creatingRef.current = dir;
+    setCreateText('');
+    setCreatingIn(dir);
+  };
+
+  const endCreate = (): void => {
+    creatingRef.current = null;
+    setCreatingIn(null);
+  };
+
+  const commitCreate = async (dir: string): Promise<void> => {
+    if (creatingRef.current !== dir) return;
+    endCreate();
+    const name = createText.trim();
+    if (!name) {
+      focusTerminalDom();
+      return;
+    }
+    const res = await window.api
+      .invoke<CreateFilePayload, CreateFileResponse>(COMMAND_CHANNELS.FS_CREATE_FILE, {
+        dirPath: dir,
+        name,
+      })
+      .catch((): CreateFileResponse => ({ ok: false, reason: 'unknown' }));
+    if (!mountedRef.current) return;
+    if (!res.ok) {
+      toast.push({ kind: 'error', message: t(`fileTree.create.error.${res.reason}`, { name }) });
+      focusTerminalDom();
+      return;
+    }
+    setSelected(res.path);
+    await loadDir(dir);
+    if (fileViewKind(name) && pdfKey) {
+      void openPdf(pdfKey, { name, path: res.path });
+      return;
+    }
+    focusTerminalDom();
+  };
+
+  /** A folder row gets the file inside it; a file row gets it beside itself. */
+  const createTargetOf = (row: FileTreeRow | undefined): string =>
+    !row ? root : row.entry.isDirectory ? row.entry.path : row.parentPath;
+
+  useEffect(() => {
+    if (newFileRequest === handledNewFileRef.current) return;
+    handledNewFileRef.current = newFileRequest;
+    beginCreate(createTargetOf(rows.find((r) => r.entry.path === selected)));
+    // Only a new press opens the row; a change of selection or rows must not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newFileRequest]);
+
   const handleRowClick = (e: MouseEvent<HTMLDivElement>, row: FileTreeRow): void => {
     const { entry } = row;
     clearRenameTimer();
@@ -511,18 +601,67 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
         onSelect: () => togglePin(pin),
       });
     }
-    // 远端文件树只读,不能改名
+    // 远端文件树只读,不能新建或改名
     if (!sshProfileId) {
-      items.push({ label: t('fileTree.rename'), onSelect: () => beginRename(row.entry) });
+      items.push(
+        { label: t('fileTree.newFile'), onSelect: () => beginCreate(createTargetOf(row)) },
+        { label: t('fileTree.rename'), onSelect: () => beginRename(row.entry) },
+      );
     }
     if (items.length > 0) menu.open({ x: e.clientX, y: e.clientY, items });
   };
+
+  /** Right-click below the rows: a new file in the top folder. */
+  const handleBlankContextMenu = (e: MouseEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    if (sshProfileId) return;
+    menu.open({
+      x: e.clientX,
+      y: e.clientY,
+      items: [{ label: t('fileTree.newFile'), onSelect: () => beginCreate(root) }],
+    });
+  };
+
+  const newFileRow = (dir: string, depth: number): JSX.Element | null =>
+    creatingIn !== dir ? null : (
+      <div className="file-tree-row" style={{ paddingLeft: `${6 + depth * INDENT_PX}px` }}>
+        <span className="file-tree-chevron placeholder" />
+        <Draft size={14} className="file-tree-icon" />
+        <input
+          autoFocus
+          type="text"
+          className="path-name-rename-input"
+          aria-label={t('fileTree.newFile')}
+          placeholder={t('fileTree.newFile.placeholder')}
+          value={createText}
+          onChange={(e) => setCreateText(e.target.value)}
+          onBlur={() => {
+            // Same rule as rename: switching windows must not create a half typed name
+            if (document.hasFocus()) void commitCreate(dir);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void commitCreate(dir);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              endCreate();
+              focusTerminalDom();
+            }
+          }}
+        />
+      </div>
+    );
 
   const rootState = dirs.get(root);
   const rootHint = !rootState && sshProfileId ? t('fileTree.connecting') : hintFor(rootState);
 
   return (
-    <div className="file-tree-list" role="tree">
+    <div className="file-tree-list" role="tree" onContextMenu={handleBlankContextMenu}>
+      {newFileRow(root, 0)}
       {rootHint && <p className="file-tree-hint">{rootHint}</p>}
       {sshProfileId && rootState && 'failure' in rootState && (
         <button
@@ -593,6 +732,7 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
                 <span className="file-tree-name">{entry.name}</span>
               )}
             </div>
+            {isExpanded && newFileRow(entry.path, depth + 1)}
             {hint && (
               <p
                 className="file-tree-hint nested"

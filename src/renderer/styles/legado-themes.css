@@ -1,0 +1,723 @@
+/*
+ * @file legado-themes.css
+ * @purpose Legado MD3 主题系列:配色取自 HapeLee/legado-with-MD3(阅读 3.0 的 Material 3 重制版)
+ *   app/src/main/java/io/legado/app/ui/theme/colorScheme/*ColorScheme.kt,11 套配色各有浅色和深色。
+ *
+ * @致谢:Legado MD3 主题使用 legado-with-MD3 的配色方案,https://github.com/HapeLee/legado-with-MD3
+ *   (GPL-3.0,Legado 的分支)。这里只取色值,README 的致谢一节也有记载。
+ *
+ * @关键设计:
+ * - 由生成脚本从 Kotlin 源文件写出,色值不手调。MD3 角色到 Ceteris token 的对应关系按 Legado
+ *   自己给组件上色的方式(ThemeColorSchemeOverride.kt、ThemeComponents.kt、ui/widget/components):
+ *   · 外框(侧栏、标题栏、设置页外层)= background:Legado 的页面底色,顶栏和底栏也是它,不加色调。
+ *   · 标签页和终端 = surfaceContainerLow:Legado 的卡片底色(cardContainer),内容放在卡片里。
+ *   · 菜单、对话框、搜索条 = surfaceContainer:Legado 的 AppAlertDialog 和悬浮底栏。
+ *   · 选中行、选中 chip = secondaryContainer / onSecondaryContainer:同 SelectionItemCard、ToggleChip。
+ *   · 悬停底 = surfaceContainerHigh(Legado 输入框底色),按下和开关轨道 = surfaceContainerHighest。
+ *   · 正文 onSurface,次要文字 onSurfaceVariant,描边 outline / outlineVariant(SplicedColumnGroup 的卡片边框)。
+ *   · 标签页指示条、主按钮、焦点 = primary。
+ * - MD3 色板没有的颜色(warning / success / info)用固定色相按本主题底色调到 4.5:1。
+ *   --color-text-muted 先取 outline,不够 4.5:1 时向 onSurfaceVariant 混合。
+ * - --md-*-text-weight 含义见 material.css 第 2 节末尾,只在需要时写。
+ * - 唯一偏离源色板的地方:Elink 的选中灰 #808080 上白字只有 3.95:1,这两套把选中底按正文色调到
+ *   4.5:1,文字改用 onSurface。
+ * - 不收 Transparent 配色:它要配背景图才成立。
+ *
+ * @加载顺序:必须在 material.css 之后,这里的 --md-* 才能覆写 material.css 的推导值。
+ *
+ * 终端配色和 MD3 原始色板在 src/shared/legado-themes.ts,src/shared/legado-themes.test.ts
+ * 核对两边一致和对比度。
+ *
+ * @对应文档章节:软件定义书.md 5.1.9 节
+ */
+
+/* Clear Sky (Sora, 晴空) */
+[data-theme='legado-md3-sora'] {
+  --color-bg-primary: #f2f3fa;
+  --color-bg-secondary: #f8f9ff;
+  --color-bg-elevated: #e7e8ee;
+  --color-bg-hover: #e7e8ee;
+  --color-bg-active: #e1e2e9;
+  --color-bg-strong: #c3c6cf;
+  --color-text-primary: #191c20;
+  --color-text-secondary: #43474e;
+  --color-text-muted: #676b73;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #545f71;
+  --color-accent-special: #3b608f;
+  --md-primary: #3b608f;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #d8e3f8;
+  --md-on-secondary-container: #3d4758;
+  --md-surface-container-high: #ededf4;
+  --md-surface-container-highest: #e1e2e9;
+  --md-outline: #73777f;
+  --md-outline-variant: #c3c6cf;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #2e3035;
+  --md-inverse-on-surface: #f0f0f7;
+
+  color-scheme: light;
+}
+
+/* Clear Sky Dark (Sora dark, 晴空) */
+[data-theme='legado-md3-sora-dark'] {
+  --color-bg-primary: #191c20;
+  --color-bg-secondary: #111318;
+  --color-bg-elevated: #282a2f;
+  --color-bg-hover: #282a2f;
+  --color-bg-active: #32353a;
+  --color-bg-strong: #43474e;
+  --color-text-primary: #e1e2e9;
+  --color-text-secondary: #c3c6cf;
+  --color-text-muted: #8d9199;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #bcc7dc;
+  --color-accent-special: #a5c9fe;
+  --md-primary: #a5c9fe;
+  --md-on-primary: #00315d;
+  --md-secondary-container: #3d4758;
+  --md-on-secondary-container: #d8e3f8;
+  --md-surface-container-high: #1d2024;
+  --md-surface-container-highest: #32353a;
+  --md-outline: #8d9199;
+  --md-outline-variant: #43474e;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e1e2e9;
+  --md-inverse-on-surface: #2e3035;
+}
+
+/* Grassland (GR, 草野) */
+[data-theme='legado-md3-gr'] {
+  --color-bg-primary: #f3f4e9;
+  --color-bg-secondary: #f9faef;
+  --color-bg-elevated: #e8e9de;
+  --color-bg-hover: #e8e9de;
+  --color-bg-active: #e2e3d8;
+  --color-bg-strong: #c5c8ba;
+  --color-text-primary: #1a1c16;
+  --color-text-secondary: #44483d;
+  --color-text-muted: #696d60;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #586249;
+  --color-accent-special: #4c662b;
+  --md-primary: #4c662b;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #dce7c8;
+  --md-on-secondary-container: #404a33;
+  --md-surface-container-high: #eeefe3;
+  --md-surface-container-highest: #e2e3d8;
+  --md-outline: #75796c;
+  --md-outline-variant: #c5c8ba;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #2f312a;
+  --md-inverse-on-surface: #f1f2e6;
+
+  color-scheme: light;
+}
+
+/* Grassland Dark (GR dark, 草野) */
+[data-theme='legado-md3-gr-dark'] {
+  --color-bg-primary: #1a1c16;
+  --color-bg-secondary: #12140e;
+  --color-bg-elevated: #282b24;
+  --color-bg-hover: #282b24;
+  --color-bg-active: #33362e;
+  --color-bg-strong: #44483d;
+  --color-text-primary: #e2e3d8;
+  --color-text-secondary: #c5c8ba;
+  --color-text-muted: #8f9285;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #bfcbad;
+  --color-accent-special: #b1d18a;
+  --md-primary: #b1d18a;
+  --md-on-primary: #1f3701;
+  --md-secondary-container: #404a33;
+  --md-on-secondary-container: #dce7c8;
+  --md-surface-container-high: #1e201a;
+  --md-surface-container-highest: #33362e;
+  --md-outline: #8f9285;
+  --md-outline-variant: #44483d;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e2e3d8;
+  --md-inverse-on-surface: #2f312a;
+}
+
+/* Lemon (Lemon, 柠檬) */
+[data-theme='legado-md3-lemon'] {
+  --color-bg-primary: #faf3e5;
+  --color-bg-secondary: #fff9ee;
+  --color-bg-elevated: #eee8da;
+  --color-bg-hover: #eee8da;
+  --color-bg-active: #e8e2d4;
+  --color-bg-strong: #cdc6b4;
+  --color-text-primary: #1e1b13;
+  --color-text-secondary: #4b4739;
+  --color-text-muted: #706b5c;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #665e40;
+  --color-accent-special: #6d5e0f;
+  --md-primary: #6d5e0f;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #eee2bc;
+  --md-on-secondary-container: #4e472a;
+  --md-surface-container-high: #f4eddf;
+  --md-surface-container-highest: #e8e2d4;
+  --md-outline: #7c7767;
+  --md-outline-variant: #cdc6b4;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #333027;
+  --md-inverse-on-surface: #f7f0e2;
+
+  color-scheme: light;
+}
+
+/* Lemon Dark (Lemon dark, 柠檬) */
+[data-theme='legado-md3-lemon-dark'] {
+  --color-bg-primary: #1e1b13;
+  --color-bg-secondary: #15130b;
+  --color-bg-elevated: #2d2a21;
+  --color-bg-hover: #2d2a21;
+  --color-bg-active: #38352b;
+  --color-bg-strong: #4b4739;
+  --color-text-primary: #e8e2d4;
+  --color-text-secondary: #cdc6b4;
+  --color-text-muted: #969080;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #d1c6a1;
+  --color-accent-special: #dbc66e;
+  --md-primary: #dbc66e;
+  --md-on-primary: #3a3000;
+  --md-secondary-container: #4e472a;
+  --md-on-secondary-container: #eee2bc;
+  --md-surface-container-high: #222017;
+  --md-surface-container-highest: #38352b;
+  --md-outline: #969080;
+  --md-outline-variant: #4b4739;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e8e2d4;
+  --md-inverse-on-surface: #333027;
+}
+
+/* Black & White (WH, 黑白) */
+[data-theme='legado-md3-wh'] {
+  --color-bg-primary: #f7f3f2;
+  --color-bg-secondary: #fafafa;
+  --color-bg-elevated: #ebe7e7;
+  --color-bg-hover: #ebe7e7;
+  --color-bg-active: #e5e2e1;
+  --color-bg-strong: #c4c7c7;
+  --color-text-primary: #1c1b1b;
+  --color-text-secondary: #444748;
+  --color-text-muted: #686c6c;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #5f5e5e;
+  --color-accent-special: #5c5c5c;
+  --md-primary: #5c5c5c;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #e2dfde;
+  --md-on-secondary-container: #636262;
+  --md-surface-container-high: #f1edec;
+  --md-surface-container-highest: #e5e2e1;
+  --md-outline: #747878;
+  --md-outline-variant: #c4c7c7;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #313030;
+  --md-inverse-on-surface: #f4f0ef;
+
+  color-scheme: light;
+}
+
+/* Black & White Dark (WH dark, 黑白) */
+[data-theme='legado-md3-wh-dark'] {
+  --color-bg-primary: #1c1b1b;
+  --color-bg-secondary: #141313;
+  --color-bg-elevated: #2a2a2a;
+  --color-bg-hover: #2a2a2a;
+  --color-bg-active: #353434;
+  --color-bg-strong: #444748;
+  --color-text-primary: #e5e2e1;
+  --color-text-secondary: #c4c7c7;
+  --color-text-muted: #8e918f;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #c8c6c5;
+  --color-accent-special: #c7c6c6;
+  --md-primary: #c7c6c6;
+  --md-on-primary: #303031;
+  --md-secondary-container: #474746;
+  --md-on-secondary-container: #b7b5b4;
+  --md-surface-container-high: #201f1f;
+  --md-surface-container-highest: #353434;
+  --md-outline: #8e918f;
+  --md-outline-variant: #444748;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e5e2e1;
+  --md-inverse-on-surface: #313030;
+}
+
+/* E-ink (Elink, 电子书) */
+[data-theme='legado-md3-elink'] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-hover: #ffffff;
+  --color-bg-active: #ffffff;
+  --color-bg-strong: #000000;
+  --color-text-primary: #000000;
+  --color-text-secondary: #000000;
+  --color-text-muted: #000000;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #000000;
+  --color-accent-special: #000000;
+  --md-primary: #000000;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #808080;
+  --md-on-secondary-container: #000000;
+  --md-surface-container-high: #ffffff;
+  --md-surface-container-highest: #ffffff;
+  --md-outline: #000000;
+  --md-outline-variant: #000000;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #313030;
+  --md-inverse-on-surface: #ffffff;
+
+  color-scheme: light;
+}
+
+/* E-ink Dark (Elink dark, 电子书) */
+[data-theme='legado-md3-elink-dark'] {
+  --color-bg-primary: #1c1b1b;
+  --color-bg-secondary: #000000;
+  --color-bg-elevated: #2a2a2a;
+  --color-bg-hover: #2a2a2a;
+  --color-bg-active: #353434;
+  --color-bg-strong: #444846;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #c4c7c5;
+  --color-text-muted: #8e918f;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #ffffff;
+  --color-accent-special: #ffffff;
+  --md-primary: #ffffff;
+  --md-on-primary: #000000;
+  --md-secondary-container: #757575;
+  --md-on-secondary-container: #ffffff;
+  --md-surface-container-high: #000000;
+  --md-surface-container-highest: #353434;
+  --md-outline: #8e918f;
+  --md-outline-variant: #444846;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e5e2e1;
+  --md-inverse-on-surface: #313030;
+}
+
+/* August (August, 八月) */
+[data-theme='legado-md3-august'] {
+  --color-bg-primary: #fff1ed;
+  --color-bg-secondary: #fff8f6;
+  --color-bg-elevated: #f7e4e0;
+  --color-bg-hover: #f7e4e0;
+  --color-bg-active: #f1dfda;
+  --color-bg-strong: #d8c2bc;
+  --color-text-primary: #231917;
+  --color-text-secondary: #53433f;
+  --color-text-muted: #796762;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #77574d;
+  --color-accent-special: #8f4c37;
+  --md-primary: #8f4c37;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #ffdbd1;
+  --md-on-secondary-container: #5d4037;
+  --md-surface-container-high: #fceae5;
+  --md-surface-container-highest: #f1dfda;
+  --md-outline: #85736e;
+  --md-outline-variant: #d8c2bc;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #392e2b;
+  --md-inverse-on-surface: #ffede8;
+
+  color-scheme: light;
+}
+
+/* August Dark (August dark, 八月) */
+[data-theme='legado-md3-august-dark'] {
+  --color-bg-primary: #231917;
+  --color-bg-secondary: #1a110f;
+  --color-bg-elevated: #322825;
+  --color-bg-hover: #322825;
+  --color-bg-active: #3d322f;
+  --color-bg-strong: #53433f;
+  --color-text-primary: #f1dfda;
+  --color-text-secondary: #d8c2bc;
+  --color-text-muted: #a08c87;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #e7bdb2;
+  --color-accent-special: #ffb59f;
+  --md-primary: #ffb59f;
+  --md-on-primary: #561f0e;
+  --md-secondary-container: #5d4037;
+  --md-on-secondary-container: #ffdbd1;
+  --md-surface-container-high: #271d1b;
+  --md-surface-container-highest: #3d322f;
+  --md-outline: #a08c87;
+  --md-outline-variant: #53433f;
+  --md-on-error: #690005;
+  --md-inverse-surface: #f1dfda;
+  --md-inverse-on-surface: #392e2b;
+}
+
+/* New Wave (Carlotta, 新浪潮) */
+[data-theme='legado-md3-carlotta'] {
+  --color-bg-primary: #fff0f2;
+  --color-bg-secondary: #fff8f8;
+  --color-bg-elevated: #f4e4e7;
+  --color-bg-hover: #f4e4e7;
+  --color-bg-active: #efdfe2;
+  --color-bg-strong: #d5c2c6;
+  --color-text-primary: #22191c;
+  --color-text-secondary: #514347;
+  --color-text-muted: #77676b;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #74565f;
+  --color-accent-special: #8b4a62;
+  --md-primary: #8b4a62;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #ffd9e3;
+  --md-on-secondary-container: #5a3f48;
+  --md-surface-container-high: #faeaed;
+  --md-surface-container-highest: #efdfe2;
+  --md-outline: #837377;
+  --md-outline-variant: #d5c2c6;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #372e30;
+  --md-inverse-on-surface: #fdedf0;
+
+  color-scheme: light;
+}
+
+/* New Wave Dark (Carlotta dark, 新浪潮) */
+[data-theme='legado-md3-carlotta-dark'] {
+  --color-bg-primary: #22191c;
+  --color-bg-secondary: #191114;
+  --color-bg-elevated: #31282a;
+  --color-bg-hover: #31282a;
+  --color-bg-active: #3c3235;
+  --color-bg-strong: #514347;
+  --color-text-primary: #efdfe2;
+  --color-text-secondary: #d5c2c6;
+  --color-text-muted: #9e8c90;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #e2bdc7;
+  --color-accent-special: #ffb0ca;
+  --md-primary: #ffb0ca;
+  --md-on-primary: #541d33;
+  --md-secondary-container: #5a3f48;
+  --md-on-secondary-container: #ffd9e3;
+  --md-surface-container-high: #261d20;
+  --md-surface-container-highest: #3c3235;
+  --md-outline: #9e8c90;
+  --md-outline-variant: #514347;
+  --md-on-error: #690005;
+  --md-inverse-surface: #efdfe2;
+  --md-inverse-on-surface: #372e30;
+}
+
+/* Spring (Koharu, 春) */
+[data-theme='legado-md3-koharu'] {
+  --color-bg-primary: #fff0f0;
+  --color-bg-secondary: #fff8f7;
+  --color-bg-elevated: #f6e4e4;
+  --color-bg-hover: #f6e4e4;
+  --color-bg-active: #f0dede;
+  --color-bg-strong: #d7c1c1;
+  --color-text-primary: #221919;
+  --color-text-secondary: #524343;
+  --color-text-muted: #786767;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #765657;
+  --color-accent-special: #8f4a4d;
+  --md-primary: #8f4a4d;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #ffdada;
+  --md-on-secondary-container: #2c1516;
+  --md-surface-container-high: #fceae9;
+  --md-surface-container-highest: #f0dede;
+  --md-outline: #857373;
+  --md-outline-variant: #d7c1c1;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #382e2e;
+  --md-inverse-on-surface: #ffedec;
+
+  color-scheme: light;
+}
+
+/* Spring Dark (Koharu dark, 春) */
+[data-theme='legado-md3-koharu-dark'] {
+  --color-bg-primary: #221919;
+  --color-bg-secondary: #1a1111;
+  --color-bg-elevated: #322828;
+  --color-bg-hover: #322828;
+  --color-bg-active: #3d3232;
+  --color-bg-strong: #524343;
+  --color-text-primary: #f0dede;
+  --color-text-secondary: #d7c1c1;
+  --color-text-muted: #9f8c8c;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #e6bdbd;
+  --color-accent-special: #ffb3b4;
+  --md-primary: #ffb3b4;
+  --md-on-primary: #561d22;
+  --md-secondary-container: #5d3f40;
+  --md-on-secondary-container: #ffdada;
+  --md-surface-container-high: #271d1d;
+  --md-surface-container-highest: #3d3232;
+  --md-outline: #9f8c8c;
+  --md-outline-variant: #524343;
+  --md-on-error: #690005;
+  --md-inverse-surface: #f0dede;
+  --md-inverse-on-surface: #382e2e;
+}
+
+/* Millennium (Yuuka, 千禧年) */
+[data-theme='legado-md3-yuuka'] {
+  --color-bg-primary: #f5f2fa;
+  --color-bg-secondary: #fbf8ff;
+  --color-bg-elevated: #eae7ef;
+  --color-bg-hover: #eae7ef;
+  --color-bg-active: #e4e1e9;
+  --color-bg-strong: #c7c5d0;
+  --color-text-primary: #1b1b21;
+  --color-text-secondary: #46464f;
+  --color-text-muted: #6b6a74;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #5c5d72;
+  --color-accent-special: #565992;
+  --md-primary: #565992;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #e1e0f9;
+  --md-on-secondary-container: #444559;
+  --md-surface-container-high: #f0ecf4;
+  --md-surface-container-highest: #e4e1e9;
+  --md-outline: #777680;
+  --md-outline-variant: #c7c5d0;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #303036;
+  --md-inverse-on-surface: #f2eff7;
+
+  color-scheme: light;
+}
+
+/* Millennium Dark (Yuuka dark, 千禧年) */
+[data-theme='legado-md3-yuuka-dark'] {
+  --color-bg-primary: #1b1b21;
+  --color-bg-secondary: #131318;
+  --color-bg-elevated: #2a292f;
+  --color-bg-hover: #2a292f;
+  --color-bg-active: #34343a;
+  --color-bg-strong: #46464f;
+  --color-text-primary: #e4e1e9;
+  --color-text-secondary: #c7c5d0;
+  --color-text-muted: #918f9a;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #c5c4dd;
+  --color-accent-special: #bfc2ff;
+  --md-primary: #bfc2ff;
+  --md-on-primary: #272b60;
+  --md-secondary-container: #444559;
+  --md-on-secondary-container: #e1e0f9;
+  --md-surface-container-high: #1f1f25;
+  --md-surface-container-highest: #34343a;
+  --md-outline: #918f9a;
+  --md-outline-variant: #46464f;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e4e1e9;
+  --md-inverse-on-surface: #303036;
+}
+
+/* Hidden Sea (Phoebe, 隐海修会) */
+[data-theme='legado-md3-phoebe'] {
+  --color-bg-primary: #f9f3e5;
+  --color-bg-secondary: #fff9ec;
+  --color-bg-elevated: #eee8da;
+  --color-bg-hover: #eee8da;
+  --color-bg-active: #e8e2d4;
+  --color-bg-strong: #ccc6b4;
+  --color-text-primary: #1e1c13;
+  --color-text-secondary: #4a4739;
+  --color-text-muted: #706b5c;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #475d92;
+  --color-accent-special: #6b5e10;
+  --md-primary: #6b5e10;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #d9e2ff;
+  --md-on-secondary-container: #2f4578;
+  --md-surface-container-high: #f4eddf;
+  --md-surface-container-highest: #e8e2d4;
+  --md-outline: #7c7768;
+  --md-outline-variant: #ccc6b4;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #333027;
+  --md-inverse-on-surface: #f6f0e2;
+
+  color-scheme: light;
+}
+
+/* Hidden Sea Dark (Phoebe dark, 隐海修会) */
+[data-theme='legado-md3-phoebe-dark'] {
+  --color-bg-primary: #1e1c13;
+  --color-bg-secondary: #15130c;
+  --color-bg-elevated: #2c2a21;
+  --color-bg-hover: #2c2a21;
+  --color-bg-active: #37352b;
+  --color-bg-strong: #4a4739;
+  --color-text-primary: #e8e2d4;
+  --color-text-secondary: #ccc6b4;
+  --color-text-muted: #969180;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #b1c5ff;
+  --color-accent-special: #d9c76f;
+  --md-primary: #d9c76f;
+  --md-on-primary: #383000;
+  --md-secondary-container: #2f4578;
+  --md-on-secondary-container: #d9e2ff;
+  --md-surface-container-high: #222017;
+  --md-surface-container-highest: #37352b;
+  --md-outline: #969180;
+  --md-outline-variant: #4a4739;
+  --md-on-error: #690005;
+  --md-inverse-surface: #e8e2d4;
+  --md-inverse-on-surface: #333027;
+}
+
+/* Band (Mujika, 乐队) */
+[data-theme='legado-md3-mujika'] {
+  --color-bg-primary: #fff0f1;
+  --color-bg-secondary: #fff8f7;
+  --color-bg-elevated: #f5e4e6;
+  --color-bg-hover: #f5e4e6;
+  --color-bg-active: #efdee0;
+  --color-bg-strong: #d6c2c4;
+  --color-text-primary: #22191b;
+  --color-text-secondary: #524345;
+  --color-text-muted: #786769;
+  --color-danger: #ba1a1a;
+  --color-warning: #7a5900;
+  --color-success: #1f6c35;
+  --color-info: #2a5db0;
+  --color-accent-secondary: #75565c;
+  --color-accent-special: #8e4958;
+  --md-primary: #8e4958;
+  --md-on-primary: #ffffff;
+  --md-secondary-container: #ffd9df;
+  --md-on-secondary-container: #5c3f44;
+  --md-surface-container-high: #fbeaeb;
+  --md-surface-container-highest: #efdee0;
+  --md-outline: #847375;
+  --md-outline-variant: #d6c2c4;
+  --md-on-error: #ffffff;
+  --md-inverse-surface: #382e2f;
+  --md-inverse-on-surface: #feedee;
+
+  color-scheme: light;
+}
+
+/* Band Dark (Mujika dark, 乐队) */
+[data-theme='legado-md3-mujika-dark'] {
+  --color-bg-primary: #22191b;
+  --color-bg-secondary: #191113;
+  --color-bg-elevated: #312829;
+  --color-bg-hover: #312829;
+  --color-bg-active: #3c3234;
+  --color-bg-strong: #524345;
+  --color-text-primary: #efdee0;
+  --color-text-secondary: #d6c2c4;
+  --color-text-muted: #9f8c8f;
+  --color-danger: #ffb4ab;
+  --color-warning: #e9c46a;
+  --color-success: #8bd6a3;
+  --color-info: #a8c8ff;
+  --color-accent-secondary: #e4bdc3;
+  --color-accent-special: #ffb1c0;
+  --md-primary: #ffb1c0;
+  --md-on-primary: #551d2b;
+  --md-secondary-container: #5c3f44;
+  --md-on-secondary-container: #ffd9df;
+  --md-surface-container-high: #261d1f;
+  --md-surface-container-highest: #3c3234;
+  --md-outline: #9f8c8f;
+  --md-outline-variant: #524345;
+  --md-on-error: #690005;
+  --md-inverse-surface: #efdee0;
+  --md-inverse-on-surface: #382e2f;
+}
+
+/* 页面里的卡片和按钮用 surfaceContainer,同 Legado 的 ToggleChip、悬浮底栏和对话框:浅色比页面深一级,
+   深色比页面亮一级。material.css 给它们的是外框色,在这套分工下会比页面还浅。
+   hover 规则带 :hover:not(:disabled),特异性更高,不受影响。 */
+[data-theme^='legado-md3-'] .template-button,
+[data-theme^='legado-md3-'] .settings-theme-list,
+[data-theme^='legado-md3-'] .template-list-item {
+  background-color: var(--md-surface-container-high, #f0f);
+}

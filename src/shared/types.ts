@@ -16,6 +16,7 @@ import type { TagColors } from './path-tags';
 
 import type { BeamerThemeId } from './beamer-themes';
 import type { CustomThemeId } from './custom-themes';
+import type { LegadoThemeId } from './legado-themes';
 
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
@@ -144,7 +145,9 @@ export type BuiltinThemeId =
   // 梅子,配色见 src/renderer/styles/meizi-theme.css
   | 'meizi'
   // 取自 LaTeX Beamer 模板配色,清单见 beamer-themes.ts
-  | BeamerThemeId;
+  | BeamerThemeId
+  // 取自 legado-with-MD3 的 MD3 配色,清单见 legado-themes.ts
+  | LegadoThemeId;
 
 /**
  * 窗口外观风格 (M1-A 引入,Milestone 1)。
@@ -620,6 +623,18 @@ export interface Settings {
       baseURL: string;
       /** Empty uses NEXT_PROMPT_DEFAULT_MODEL */
       model: string;
+    };
+    /**
+     * ADR-029: short tab titles for agent tabs. The agent's own title is always shortened
+     * to maxChars; with enabled on and an API connected (nextPrompt above), a model also
+     * writes a title after each finished turn, following guide.
+     */
+    tabTitles: {
+      enabled: boolean;
+      /** The user's rules for titles, sent to the model. Empty uses the default guide. */
+      guide: string;
+      /** Longest title in characters, 8 to 60 */
+      maxChars: number;
     };
     /** BETA-006:active→idle 跃迁前调 LLM 复核,默认关。开启需 apiKey 非空。 */
     statusRecheckEnabled: boolean;

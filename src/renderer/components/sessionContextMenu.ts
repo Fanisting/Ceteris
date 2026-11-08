@@ -52,15 +52,20 @@ export function buildSessionContextMenu(
         'Puts the tab in a row above, seen from every folder',
       ),
       checked: session.coordinator === true,
+      guideId: 'coordinator',
       onSelect: () => {
         const turningOn = session.coordinator !== true;
         invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, {
           sessionId: session.id,
           coordinator: turningOn,
         })
-          // ADR-024:第一次勾上时打开协调者引导 (CoordinatorGuide 自己判断看没看过)
+          // ADR-024:勾上时通知协调者引导 (CoordinatorTour 自己判断看没看过)
           .then(() => {
-            if (turningOn) window.dispatchEvent(new Event(COORDINATOR_GUIDE_EVENT));
+            if (turningOn) {
+              window.dispatchEvent(
+                new CustomEvent(COORDINATOR_GUIDE_EVENT, { detail: { sessionId: session.id } }),
+              );
+            }
           })
           .catch((err: unknown) =>
             toastError(`设置协调者失败:${err instanceof Error ? err.message : String(err)}`),

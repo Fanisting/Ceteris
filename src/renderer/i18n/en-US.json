@@ -52,6 +52,13 @@
   "fileTree.rename.error.not-found": "The item no longer exists",
   "fileTree.rename.error.denied": "Could not rename: it may be in use, or you do not have permission",
   "fileTree.rename.error.unknown": "Rename failed. See the log for details",
+  "fileTree.newFile": "New file",
+  "fileTree.newFile.placeholder": "Name, such as notes.txt",
+  "fileTree.create.error.invalid-name": "\"{name}\" is not a valid file name",
+  "fileTree.create.error.exists": "An item named \"{name}\" already exists",
+  "fileTree.create.error.not-found": "The folder no longer exists",
+  "fileTree.create.error.denied": "Could not create the file: you may not have permission here",
+  "fileTree.create.error.unknown": "Could not create the file. See the log for details",
 
   "settings.title": "Settings",
   "settings.close": "Close settings",

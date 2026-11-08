@@ -1,6 +1,6 @@
 /**
  * @file src/main/file-tree.ts
- * @purpose 侧栏文件树的文件系统操作:列目录、重命名条目。
+ * @purpose 侧栏文件树的文件系统操作:列目录、重命名条目、新建空文件。
  *
  * @关键设计:
  * - 按需列单层目录,不递归,所以 node_modules 这样的大目录只有被展开时才有开销。
@@ -10,7 +10,7 @@
  * @对应文档章节: 软件定义书.md 14.6
  *
  * @不要在这里做的事:
- * - 不要提供删除、移动、写文件 (内置文件编辑器在 13.2 永远不做列表里)
+ * - 不要提供删除、移动。写已有文件的内容是 text-writer.ts 的职责
  * - 不要访问 SSH 路径,那是 sftp-client.ts 的职责,这里只碰本机文件系统
  *
  * @常见问题排查:
@@ -24,6 +24,7 @@ import {
   isValidEntryName,
   sortEntries,
   type FileTreeEntry,
+  type CreateFileResponse,
   type FileTreeFailure,
   type ListDirResponse,
   type RenameEntryResponse,
@@ -32,6 +33,7 @@ import { logger } from './logger';
 
 function failureReason(err: unknown): FileTreeFailure {
   const code = (err as NodeJS.ErrnoException | null)?.code;
+  if (code === 'EEXIST') return 'exists';
   if (code === 'ENOENT' || code === 'ENOTDIR') return 'not-found';
   if (code === 'EACCES' || code === 'EPERM' || code === 'EBUSY') return 'denied';
   return 'unknown';
@@ -132,6 +134,31 @@ export async function renameEntry(
     return { ok: true, path: targetPath };
   } catch (err) {
     logger.warn('FileTree', `renameEntry failed: path="${sourcePath}" newName="${newName}"`, err);
+    return { ok: false, reason: failureReason(err) };
+  }
+}
+
+/**
+ * Makes an empty file in a folder, for the file tree's New file item.
+ *
+ * @param dirPath folder absolute path
+ * @param name file name without a path; the same rules as a rename
+ * @returns the new file's path
+ *
+ * @副作用: 改动磁盘。The 'wx' flag makes the open fail when the name is taken, so an
+ *   existing file is never emptied, and there is no gap between a check and the write.
+ */
+export async function createFile(dirPath: string, name: string): Promise<CreateFileResponse> {
+  if (!isAbsolute(dirPath) || !isValidEntryName(name)) {
+    return { ok: false, reason: 'invalid-name' };
+  }
+  const targetPath = join(dirPath, name);
+  try {
+    await fs.writeFile(targetPath, '', { flag: 'wx' });
+    logger.info('FileTree', `created: "${targetPath}"`);
+    return { ok: true, path: targetPath };
+  } catch (err) {
+    logger.warn('FileTree', `createFile failed: dir="${dirPath}" name="${name}"`, err);
     return { ok: false, reason: failureReason(err) };
   }
 }

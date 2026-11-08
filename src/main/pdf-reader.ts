@@ -24,6 +24,7 @@ import { promises as fs } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import {
   fileViewKind,
+  isEditableTextFile,
   PDF_MAX_BYTES,
   type ReadPdfResponse,
   type StatFileResponse,
@@ -158,8 +159,9 @@ export async function readRemotePdfChunk(
     );
     if (isTooLarge(path, size)) return { ok: false, reason: 'too-large' };
     // Paging through text must not cost a second round trip per page for an unused header.
+    // Markdown pages the same way once the user switches it to the editor.
     const head =
-      offset === 0 || kind === 'text'
+      offset === 0 || isEditableTextFile(path)
         ? chunk
         : (await pool.readChunk(profileId, path, 0, HEADER_WINDOW_BYTES)).chunk;
     return toResponse(path, chunk, head, size, offset, mtimeMs);

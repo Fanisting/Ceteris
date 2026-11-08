@@ -12,9 +12,10 @@
  * - 拖 Explorer 文件夹到 .sidebar-bookmarks-dropzone (CP-2 完成标志):
  *   先校验 file:// path 是否存在且是目录,然后调 cmd:bookmark:add
  * - The list shows local folders or SSH folders, chosen from the title bar badge.
- * - Folders show as rows or as blocks, switched from the Folders header. Rows fold open in
- *   place. Blocks are a grid; a click opens that folder's sessions with a back button, so
- *   the grid stays compact however many sessions a folder has. Both layouts are PathItem,
+ * - Folders show as rows or as pebbles, switched from the Folders header. Rows fold open in
+ *   place. Pebbles are packed like words, as wide as their names, not a grid; a click opens
+ *   that folder's sessions with a back button, so they stay compact however many sessions
+ *   a folder has. Both layouts are PathItem,
  *   so the context menu, rename, tags and the terminal button behave the same.
  * - 设置入口固定在底部 (CP-2 占位,CP-4 接入完整设置)
  *
@@ -642,8 +643,18 @@ interface TagDotActions {
 /** Most dots a row shows, so a heavily tagged folder keeps room for its name. */
 const MAX_ROW_DOTS = 5;
 
-/** Most session dots a block shows before it writes +N. */
-const MAX_BLOCK_SESSION_DOTS = 8;
+/** Most session dots a pebble shows before it writes +N; few, so pebbles stay small. */
+const MAX_BLOCK_SESSION_DOTS = 5;
+
+/** How many pebble outlines folder-blocks.css defines (.pebble-shape-0 to -3). */
+const PEBBLE_SHAPES = 4;
+
+/** A stable outline for a folder's pebble, so it keeps its shape across renders and restarts. */
+function pebbleShape(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(h) % PEBBLE_SHAPES;
+}
 
 /**
  * A session's dot colour (ADR-021): warning while an agent waits at an approval prompt, the
@@ -684,7 +695,7 @@ function FolderList({
   };
 
   const [layout, setLayout] = useState<FolderLayout>(() => readFolderLayoutFromStorage());
-  // Blocks layout: the folder whose sessions are shown in place of the grid.
+  // Pebbles layout: the folder whose sessions are shown in place of the pebbles.
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const toggleLayout = (): void => {
     const next: FolderLayout = layout === 'list' ? 'blocks' : 'list';
@@ -703,13 +714,13 @@ function FolderList({
       setOpenFolderId((open) => (open === null ? null : selectedPathId));
     }
   }, [selectedPathId]);
-  // A folder removed from the list, or hidden by a filter, falls back to the grid.
+  // A folder removed from the list, or hidden by a filter, falls back to the pebbles.
   const openFolder =
     layout === 'blocks' && openFolderId !== null
       ? folders.find((p) => p.id === openFolderId)
       : undefined;
   const layoutLabel =
-    layout === 'list' ? tx('以块显示', 'Show as blocks') : tx('以列表显示', 'Show as list');
+    layout === 'list' ? tx('以石子显示', 'Show as pebbles') : tx('以列表显示', 'Show as list');
 
   return (
     <section className={`sidebar-category${empty ? ' empty' : ''}`}>
@@ -828,8 +839,8 @@ function RowTagDots({
 /**
  * One folder, in one of three layouts that share the menu, rename, tags and terminal button:
  * - 'row': the list layout; a click selects, a second click folds the sessions in or out.
- * - 'block': a card in the blocks grid; a click selects the folder and calls onOpen.
- * - 'open': the blocks layout with this folder opened, a back row over its sessions.
+ * - 'block': a pebble; a click selects the folder and calls onOpen.
+ * - 'open': the pebbles layout with this folder opened, a back row over its sessions.
  */
 function PathItem({
   node,
@@ -845,9 +856,9 @@ function PathItem({
   /** ADR-023:设了就只列这类 session,并且总是展开,一眼看到全部 */
   statusFilter: SessionStatusFilter | null;
   layout: 'row' | 'block' | 'open';
-  /** 'block' only: show this folder's sessions in place of the grid. */
+  /** 'block' only: show this folder's sessions in place of the pebbles. */
   onOpen?: () => void;
-  /** 'open' only: go back to the grid. */
+  /** 'open' only: go back to the pebbles. */
   onBack?: () => void;
 } & TagDotActions): JSX.Element {
   const state = useAppState();
@@ -1133,8 +1144,14 @@ function PathItem({
     };
     // 每个 session 一个小圆点,颜色与 session 行一致;太多时画前几个再写 +N
     const shownDots = sessions.slice(0, MAX_BLOCK_SESSION_DOTS);
+    // A pebble is as wide as its name and they wrap like words, so nothing lines up in
+    // columns. The outline is one of a few shapes picked from the id, stable across renders.
     return (
-      <li className={`path-block${selected ? ' selected' : ''}${node.invalid ? ' invalid' : ''}`}>
+      <li
+        className={`path-block pebble-shape-${pebbleShape(node.id)}${selected ? ' selected' : ''}${
+          node.invalid ? ' invalid' : ''
+        }`}
+      >
         {tagEditor}
         <div
           className="path-block-card"
@@ -1153,15 +1170,9 @@ function PathItem({
           onContextMenu={handleContextMenu}
           title={pathTitle}
         >
-          <div className="path-block-head">
-            {node.invalid ? (
-              <Warning size={14} className="path-block-icon path-invalid-icon" />
-            ) : (
-              <Folder size={14} className="path-block-icon" />
-            )}
-            {renaming ? renameInput : <span className="path-block-name">{displayName}</span>}
-          </div>
-          <div className="path-block-foot">
+          {node.invalid && <Warning size={12} className="path-block-icon path-invalid-icon" />}
+          {renaming ? renameInput : <span className="path-block-name">{displayName}</span>}
+          {shownDots.length > 0 && !renaming && (
             <span
               className="path-block-sessions"
               aria-label={tx(`${sessions.length} 个终端`, `${sessions.length} terminals`)}
@@ -1181,9 +1192,7 @@ function PathItem({
                 <span className="path-block-more">+{sessions.length - shownDots.length}</span>
               )}
             </span>
-            {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
-            {!renaming && openTerminalButton}
-          </div>
+          )}
         </div>
       </li>
     );

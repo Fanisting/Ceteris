@@ -59,6 +59,7 @@ import {
 } from '../pdf-view-store';
 import { focusTerminalDom } from '../focus';
 import { Icon } from './icons';
+import { AgentWave } from './AgentWave';
 import { TemplateIcon } from './TemplateIcon';
 import { useContextMenuApi } from './ContextMenu';
 import { useToast } from './Toast';
@@ -846,6 +847,12 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
       onContextMenu={handleContextMenu}
       title={tooltipParts.join('\n')}
     >
+      <AgentWave
+        running={waving}
+        selected={selected}
+        work={session.agentWork ?? null}
+        pace={session.agentPace ?? null}
+      />
       {(blocked || unseen) && <span className="tab-agent-dot" aria-hidden="true" />}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (

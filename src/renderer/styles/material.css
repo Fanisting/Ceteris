@@ -1692,56 +1692,39 @@ select.settings-input option {
  *   .agent-unseen   dot that pings twice: it finished while you were elsewhere
  */
 
-/* MD3 wavy activity indicator, drawn with a mask so it follows the theme colour. It exists
-   on every tab so the stop can animate: the wave flattens into a line, then fades. */
-.tab::before {
-  content: '';
+/* The wavy line itself is an SVG drawn by AgentWave.tsx: its shape follows the kind of work
+   (generating, waiting, tool) and its speed the token rate. Here only placement, colour and
+   the fade at the end; the flattening before the fade happens in the component. */
+.tab-wave {
   position: absolute;
   left: 10px;
-  right: 10px;
   bottom: 0;
-  height: 6px;
-  background-color: var(--md-primary, #f0f);
+  overflow: visible;
   opacity: 0;
-  transform: scaleY(0.25);
-  transform-origin: 50% 100%;
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='6'%3E%3Cpath d='M0 3Q4 0.4 8 3T16 3' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
-  mask-repeat: repeat-x;
-  mask-size: 16px 6px;
   pointer-events: none;
-  animation: tab-wave 650ms linear infinite;
-
-  /* Paused when hidden so idle tabs do not repaint; a stopping wave freezes as it flattens. */
-  animation-play-state: paused;
-  transition:
-    transform 500ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 400ms ease 900ms;
+  transition: opacity 400ms ease;
 }
 
-.tab.running::before {
+.tab-wave.visible {
   opacity: 1;
-  transform: scaleY(1);
-  animation-play-state: running;
-  transition:
-    transform 250ms ease,
-    opacity 100ms ease;
+  transition: opacity 100ms ease;
 }
 
 /* The selected tab gets its underline back at once, so its wave must not fade on top. */
-.tab.selected:not(.running)::before,
-.tab-blank::before {
-  opacity: 0;
+.tab-wave.instant {
   transition: none;
+}
+
+.tab-wave path {
+  fill: none;
+  stroke: var(--md-primary, #f0f);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tab.running.selected::after {
   content: none;
-}
-
-@keyframes tab-wave {
-  to {
-    mask-position: 16px 0;
-  }
 }
 
 .tab-agent-dot {
@@ -1812,7 +1795,6 @@ select.settings-input option {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab::before,
   .tab-agent-dot,
   .tab-agent-dot::after,
   .tab.agent-blocked::after,

@@ -5,7 +5,8 @@
  * @关键设计:
  * - 选项和新建页相同,分模板和已检测到的 shell 两类。存 id 而不是副本,
  *   模板改名后这里自动跟随,模板被删时渲染端直接跳过。
- * - + 号在窗口顶部,所以选项排在它下方的一段弧上。数量多时加大半径,不让圆互相重叠。
+ * - 选项在 + 号右侧展开成一个扇形,以穿过 + 号的水平线为对称轴:几层同心弧,
+ *   从里往外排,内层放满再放外层。全部在 + 号右侧,不会盖住左边的侧栏。
  *
  * @对应文档章节: 软件定义书.md 2 (鼠标优先)
  *
@@ -26,13 +27,16 @@ export const DEFAULT_QUICK_LAUNCH_ITEMS: readonly QuickLaunchItem[] = [
   { kind: 'template', id: 'codex' },
 ];
 
-const MIN_RADIUS_PX = 64;
-/** 相邻两圆圆心的最小间距,要容得下一个文字标签 (标签最宽 76px,见 quick-launch.css)。 */
-const ITEM_SPACING_PX = 78;
-/** 弧的最大张角:140 度,两端离 + 号的高度差仍大于圆的半径。 */
-const MAX_ARC_RAD = (140 * Math.PI) / 180;
-const VIEWPORT_MARGIN_PX = 12;
+/** 最内层弧的半径。 */
+const FIRST_RING_RADIUS_PX = 80;
+/** 相邻两层弧的间距:一个圆 (42px) 加它下方的文字标签,再留一点空隙。 */
+const RING_GAP_PX = 74;
+/** 同一层上相邻两圆的竖直间距:一个圆加它下方的标签,两圆不会碰到。 */
+const ROW_SPACING_PX = 70;
+const VIEWPORT_MARGIN_PX = 4;
 const ITEM_RADIUS_PX = 21;
+/** 圆下方文字标签占的高度 (见 quick-launch.css)。 */
+const LABEL_HEIGHT_PX = 20;
 
 export function quickLaunchItemKey(item: QuickLaunchItem): string {
   return `${item.kind}:${item.id}`;
@@ -69,36 +73,62 @@ export interface Point {
 }
 
 /**
- * 计算各选项圆心位置,在 anchor 下方排成一段弧。
+ * 计算各选项圆心位置:在 anchor 右侧排成一个扇形,以穿过 anchor 的水平线为对称轴。
  *
- * 弧不能铺满半圆:半圆两端和 + 号同高,圆会盖住标签文字和侧栏。
- * 数量多时加大半径,而不是把弧拉得更开。
+ * 扇形由几层同心弧组成,圆心都在以 anchor 为圆心的弧上。第 k 层最多放 k + 2 个,
+ * 内层放满再放外层,同一层的圆竖直方向等距、上下对称,所以越往外越宽,像一把扇子。
+ *
+ * 对称轴永远是 anchor 所在的水平线,不会为了放进窗口而上下平移。+ 号贴近窗口顶部,
+ * 上方只有几十像素,所以每层的高度受 anchor 上方 (和下方) 的空间限制:放不下时
+ * 这一层少放几个,多出来的排到外层,扇形变扁、向右伸得更远。
  *
  * @param count 选项数量
  * @param anchor + 号中心,视口坐标
- * @param viewportWidth 视口宽度
- * @returns 圆心坐标,从左到右排列;整组向内平移,保证贴窗口边缘时也不被裁掉
+ * @param viewport 视口尺寸
+ * @returns 圆心坐标,内层到外层、每层从上到下;贴窗口右边时整组向左平移
  */
-export function radialPositions(count: number, anchor: Point, viewportWidth: number): Point[] {
+export function radialPositions(
+  count: number,
+  anchor: Point,
+  viewport: { width: number; height: number },
+): Point[] {
   if (count <= 0) return [];
-  // 弧长 = 半径 × 夹角,每段弧长至少要有 ITEM_SPACING_PX
-  const radius = Math.max(MIN_RADIUS_PX, (ITEM_SPACING_PX * (count - 1)) / MAX_ARC_RAD);
-  const step = ITEM_SPACING_PX / radius;
-  const arc = step * (count - 1);
-  const halfWidth = radius * Math.sin(arc / 2);
-  const centerX = clampCenterX(anchor.x, halfWidth, viewportWidth);
-  return Array.from({ length: count }, (_, i) => {
-    const angle = Math.PI / 2 + arc / 2 - step * i;
-    return {
-      x: centerX + radius * Math.cos(angle),
-      y: anchor.y + radius * Math.sin(angle),
-    };
-  });
+  // anchor 上下两侧能让圆心偏离对称轴多远,取较小的一侧,保证对称
+  const room = Math.max(
+    0,
+    Math.min(
+      anchor.y - ITEM_RADIUS_PX - VIEWPORT_MARGIN_PX,
+      viewport.height - anchor.y - ITEM_RADIUS_PX - LABEL_HEIGHT_PX - VIEWPORT_MARGIN_PX,
+    ),
+  );
+  // 一层里上下对称地放 m 个,最远的偏离 (m - 1) / 2 个间距
+  const tallest = Math.floor((2 * room) / ROW_SPACING_PX) + 1;
+  const points: Point[] = [];
+  for (let ring = 0; points.length < count; ring += 1) {
+    const radius = FIRST_RING_RADIUS_PX + ring * RING_GAP_PX;
+    const inRing = Math.min(ring + 2, tallest, count - points.length);
+    for (let i = 0; i < inRing; i += 1) {
+      const dy = (i - (inRing - 1) / 2) * ROW_SPACING_PX;
+      points.push({ x: anchor.x + Math.sqrt(radius * radius - dy * dy), y: anchor.y + dy });
+    }
+  }
+  const dx = shiftIntoRange(
+    points.map((p) => p.x),
+    ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX,
+    viewport.width,
+  );
+  return points.map((p) => ({ x: p.x + dx, y: p.y }));
 }
 
-function clampCenterX(x: number, halfWidth: number, viewportWidth: number): number {
-  const reach = halfWidth + ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX;
-  // 窗口窄到放不下时居中,而不是让 min 大于 max
-  if (reach * 2 > viewportWidth) return viewportWidth / 2;
-  return Math.min(Math.max(x, reach), viewportWidth - reach);
+/**
+ * 一组坐标需要平移多少,才能让每个圆离 0 和 size 两端都至少有 reach。
+ * 放不下时居中,而不是让一端被裁掉得更多。
+ */
+function shiftIntoRange(values: number[], reach: number, size: number): number {
+  const min = Math.min(...values) - reach;
+  const max = Math.max(...values) + reach;
+  if (max - min > size) return (size - (max + min)) / 2;
+  if (min < 0) return -min;
+  if (max > size) return size - max;
+  return 0;
 }

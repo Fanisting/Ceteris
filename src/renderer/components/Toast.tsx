@@ -33,6 +33,13 @@ export interface ToastInput {
   message: string;
   /** 显示时长 ms;不传走默认(error 8s,其余 4s) */
   durationMs?: number;
+  /** 消息右侧的文字按钮;点了先执行 onClick 再关掉这条 toast */
+  actions?: ToastAction[];
+}
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
 }
 
 interface Toast extends ToastInput {
@@ -155,6 +162,24 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
               )}
             </span>
             <span className="toast-message">{t.message}</span>
+            {t.actions && t.actions.length > 0 && (
+              <span className="toast-actions">
+                {t.actions.map((a) => (
+                  <button
+                    key={a.label}
+                    type="button"
+                    className="toast-action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      a.onClick();
+                      dismiss(t.id);
+                    }}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </span>
+            )}
             <button
               type="button"
               className="toast-close"

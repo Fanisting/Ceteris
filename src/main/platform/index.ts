@@ -87,6 +87,9 @@ export interface PlatformAdapter {
    *   - cmd: 用 /K 起 shell + 命令
    *   - bash: 在 rcfile 后追加 -c "..."
    * 命令不存在 / 报错由 shell 自然吐到 PTY 字节流 (不弹对话框)。
+   *
+   * `exitAfter=true` 时命令跑完 shell 就退出,退出码沿用命令的退出码
+   * (新建页的 agent 升级终端靠它在升级成功后自动关闭)。
    */
   /**
    * 给后台 SFTP 连接的 ssh 一个 SSH_ASKPASS 助手,它把登录提示经命名管道交回 Ceteris
@@ -100,7 +103,7 @@ export interface PlatformAdapter {
   buildShellLaunchParams(
     shell: ShellInfo,
     hookFilePath: string,
-    commandToRun?: { command: string; args: string[] },
+    commandToRun?: { command: string; args: string[]; exitAfter?: boolean },
   ): { args: string[]; env: Record<string, string> };
 
   /** 注册 / 注销文件管理器右键集成 (V1.2 启用) */

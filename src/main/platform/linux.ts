@@ -145,7 +145,7 @@ export class LinuxAdapter implements PlatformAdapter {
   buildShellLaunchParams(
     shell: ShellInfo,
     hookFilePath: string,
-    commandToRun?: { command: string; args: string[] },
+    commandToRun?: { command: string; args: string[]; exitAfter?: boolean },
   ): { args: string[]; env: Record<string, string> } {
     const env: Record<string, string> = {};
     let args: string[] = [];
@@ -155,7 +155,7 @@ export class LinuxAdapter implements PlatformAdapter {
         // bash 系:--rcfile 指向 hook,hook 自身 source 用户 .bashrc
         if (commandToRun) {
           const cmdLine = shellJoin([commandToRun.command, ...commandToRun.args]);
-          args = ['--rcfile', hookFilePath, '-i', '-c', `${cmdLine}; exec bash -i`];
+          args = ['--rcfile', hookFilePath, '-i', '-c', commandToRun.exitAfter ? cmdLine : `${cmdLine}; exec bash -i`];
         } else {
           args = ['--rcfile', hookFilePath, '-i'];
         }
@@ -166,7 +166,7 @@ export class LinuxAdapter implements PlatformAdapter {
         env['ZDOTDIR'] = dirname(hookFilePath);
         if (commandToRun) {
           const cmdLine = shellJoin([commandToRun.command, ...commandToRun.args]);
-          args = ['-i', '-c', `${cmdLine}; exec zsh -i`];
+          args = ['-i', '-c', commandToRun.exitAfter ? cmdLine : `${cmdLine}; exec zsh -i`];
         } else {
           args = ['-i'];
         }
@@ -178,7 +178,7 @@ export class LinuxAdapter implements PlatformAdapter {
         env['XDG_CONFIG_HOME'] = dirname(dirname(hookFilePath));
         if (commandToRun) {
           const cmdLine = shellJoin([commandToRun.command, ...commandToRun.args]);
-          args = ['-i', '-c', `${cmdLine}; exec fish -i`];
+          args = ['-i', '-c', commandToRun.exitAfter ? cmdLine : `${cmdLine}; exec fish -i`];
         } else {
           args = ['-i'];
         }

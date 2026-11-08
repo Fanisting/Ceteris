@@ -22,6 +22,7 @@ import { ToastProvider } from './components/Toast';
 import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
+import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
 
 type HandshakeState =
@@ -256,6 +257,7 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
         <ModalProvider>
           <LastSessionConfirmBridge />
           <SshAskpassBridge />
+          <AgentUpdateNoticeBridge />
           <ContextMenuProvider>
             <div
               className="app-root with-shell"

@@ -325,6 +325,8 @@ export function defaultHookFileResolver(shellId: string): string {
 
 interface ManagedSession {
   info: SessionInfo;
+  /** 一次性命令 session (agent 升级):PTY 以退出码 0 结束时自动销毁 */
+  closeOnCleanExit?: boolean;
   /** PTY 实例,exited 状态下置为 null */
   pty: IPty | null;
   /** evt:session:output 单调序号,从 0 开始,每次 emit 后 ++ */
@@ -457,6 +459,13 @@ export interface CreateSessionInput {
    * 命中失败 (id 不存在) 时回退到 pickShell 默认逻辑。
    */
   shellIdOverride?: string;
+  /**
+   * 用一条一次性命令代替模板的 command/args (shell 与 hook 仍按 templateId)。
+   * 新建页的 agent 升级点用它在可见终端里跑 `claude update` 之类的命令。
+   * `closeOnSuccess=true` 时命令跑完 shell 即退出;退出码 0 自动关闭 session,
+   * 非 0 留下 exited 状态的 tab,用户能看到报错。
+   */
+  commandOverride?: { name: string; command: string; args: string[]; closeOnSuccess?: boolean };
 }
 
 export class SessionManagerError extends Error {
@@ -588,7 +597,17 @@ export class SessionManager extends EventEmitter {
    */
   async createSession(input: CreateSessionInput): Promise<SessionInfo> {
     this.lastLaunchWarning = null;
-    const template = this.templatesManager.resolve(input.templateId);
+    const resolved = this.templatesManager.resolve(input.templateId);
+    const template = input.commandOverride
+      ? {
+          ...resolved,
+          name: input.commandOverride.name,
+          command: input.commandOverride.command,
+          args: input.commandOverride.args,
+          env: {},
+          postExitAction: 'keep_shell' as const,
+        }
+      : resolved;
     const dims = validateDimensions(input.cols, input.rows);
     const shells = await this.getShells();
     if (shells.length === 0) {
@@ -684,7 +703,11 @@ export class SessionManager extends EventEmitter {
           shell,
           hookFile,
           template.command
-            ? { command: template.command, args: template.args }
+            ? {
+                command: template.command,
+                args: template.args,
+                ...(input.commandOverride?.closeOnSuccess ? { exitAfter: true } : {}),
+              }
             : undefined,
         );
 
@@ -805,6 +828,7 @@ export class SessionManager extends EventEmitter {
     const managed: ManagedSession = {
       info,
       pty,
+      ...(input.commandOverride?.closeOnSuccess ? { closeOnCleanExit: true } : {}),
       outputSeq: 0,
       disposables,
       scrollbackLastSeq: -1,
@@ -1560,6 +1584,12 @@ export class SessionManager extends EventEmitter {
       agentPace: null,
     });
     void oldState; // 留给将来加日志用
+
+    // Agent 升级这类一次性命令:成功就关掉 tab;失败留着,让用户看报错
+    if (managed.closeOnCleanExit && exitCode === 0) {
+      logger.info('SessionManager', `one-off command finished, closing sessionId=${managed.info.id}`);
+      this.destroySession(managed, 'pty-exited');
+    }
   }
 
   private destroySession(

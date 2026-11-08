@@ -130,6 +130,21 @@ export const COMMAND_CHANNELS = {
   TEMPLATE_DELETE: 'cmd:template:delete',
   TEMPLATE_SET_DEFAULT: 'cmd:template:set-default',
 
+  // Agent CLI 版本 (新建页的状态点)
+  /** 查本机各 agent CLI 的已装版本和最新版本 */
+  AGENT_LIST_VERSIONS: 'cmd:agent:list-versions',
+  /** 在新终端里跑某个 agent 的升级命令 */
+  AGENT_UPGRADE: 'cmd:agent:upgrade',
+  /** 立即做一次后台检查 (设置页"立即检查"),按设置弹通知 / 安排自动升级 */
+  AGENT_CHECK_NOW: 'cmd:agent:check-now',
+  /** 通知上的按钮:立即升级 / 跳过此版本 / 升级 (见 AgentNoticeActionPayload) */
+  AGENT_NOTICE_ACTION: 'cmd:agent:notice-action',
+  /**
+   * 窗口的通知监听已挂上。自动升级只在至少一个窗口报到后才开始倒计时,
+   * 保证"先通知再升级"的通知真的有人收到 (窗口还在加载时发的事件会丢)。
+   */
+  AGENT_NOTICES_READY: 'cmd:agent:notices-ready',
+
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
   SYSTEM_OPEN_DATA_DIR: 'cmd:system:open-data-dir',
@@ -286,6 +301,8 @@ export const EVENT_CHANNELS = {
   VIEW_STATE_CHANGED: 'evt:view:state-changed',
   /** UpdateStatus 变化(开始检查 / 查到新版本 / 失败 / 开关变化),广播给本机所有窗口 */
   UPDATE_STATUS_CHANGED: 'evt:update:status-changed',
+  /** agent 版本通知 (有新版本 / 即将自动升级 / 等 agent 关掉 / 升级完成 / 升级失败) */
+  AGENT_UPDATE_NOTICE: 'evt:agent:update-notice',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];
@@ -835,6 +852,87 @@ export interface ShellListItem {
 
 export interface ListShellsResponse {
   shells: ShellListItem[];
+}
+
+/**
+ * 新建页 agent 按钮上的状态点。
+ *
+ * - missing:PATH 上找不到该命令
+ * - current:已装版本不低于 registry 最新版
+ * - outdated:registry 有更新版本
+ * - installed:已装,但查不到最新版 (离线 / 无 registry / 版本号解析失败)
+ */
+export type AgentVersionStatus = 'missing' | 'current' | 'outdated' | 'installed';
+
+export interface AgentVersionInfo {
+  /** 对应的内置模板 id (claude-code / codex / ...) */
+  templateId: string;
+  status: AgentVersionStatus;
+  installed?: string;
+  latest?: string;
+  /** 升级命令的可读形式,例如 "bun add -g @google/gemini-cli@latest";缺省表示认不出安装方式,不给升级按钮 */
+  upgradeCommand?: string;
+  /** 从安装位置推出的安装方式;'self' 表示认不出,用 agent 自带的升级命令 */
+  installMethod?: AgentInstallMethod;
+  /** PATH 上真正会运行的那份 */
+  path?: string;
+  /** PATH 上其余几份 (不会运行),用于提示重复安装 */
+  otherCopies?: string[];
+}
+
+export type AgentInstallMethod =
+  | 'npm'
+  | 'pnpm'
+  | 'bun'
+  | 'brew'
+  | 'winget'
+  | 'scoop'
+  | 'pipx'
+  | 'uv'
+  | 'self';
+
+export interface ListAgentVersionsPayload {
+  /** true 时跳过缓存重新检查 */
+  force?: boolean;
+}
+
+export interface ListAgentVersionsResponse {
+  agents: AgentVersionInfo[];
+}
+
+/**
+ * main 发给所有窗口的 agent 版本通知,renderer 用 toast 显示。
+ *
+ * - available:有新版本 (自动升级关着时),每个版本只发一次
+ * - scheduled:delayMs 后自动升级,用户可以立即升级或跳过此版本
+ * - waiting:该 agent 有终端开着,关掉后再升级
+ * - done / failed:后台升级结束;失败时 sessionId 指向留着报错的终端
+ */
+export interface AgentUpdateNotice {
+  kind: 'available' | 'scheduled' | 'waiting' | 'done' | 'failed';
+  templateId: string;
+  /** agent 显示名 (Codex 等) */
+  name: string;
+  from?: string;
+  to?: string;
+  delayMs?: number;
+  exitCode?: number;
+  sessionId?: string;
+  pathId?: string;
+}
+
+export interface AgentNoticeActionPayload {
+  templateId: string;
+  /** now:跳过倒计时立即升级;skip:跳过这个版本;update:从"有新版本"通知手动升级 */
+  action: 'now' | 'skip' | 'update';
+}
+
+export interface UpgradeAgentPayload {
+  templateId: string;
+  /** 升级终端开在哪个本地路径下 */
+  pathId: string;
+  cols: number;
+  rows: number;
 }
 
 export interface GetAutoStartResponse {

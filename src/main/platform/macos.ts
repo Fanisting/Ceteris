@@ -74,7 +74,7 @@ export class MacOSAdapter implements PlatformAdapter {
   buildShellLaunchParams(
     shell: ShellInfo,
     hookFilePath: string,
-    commandToRun?: { command: string; args: string[] },
+    commandToRun?: { command: string; args: string[]; exitAfter?: boolean },
   ): { args: string[]; env: Record<string, string> } {
     if (shell.id !== 'zsh') {
       return this.posix.buildShellLaunchParams(shell, hookFilePath, commandToRun);

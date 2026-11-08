@@ -201,6 +201,8 @@ function makeStubSettingsManager(
       quickLaunchTipSeen: true,
       bracketedPaste: true,
       autoCheckUpdates: true,
+      autoCheckAgents: true,
+      autoUpdateAgents: false,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {
@@ -1299,6 +1301,27 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(after.exitCode).toBe(42);
     expect(after.exitedAt).toBeGreaterThan(0);
     expect(mgr.count()).toBe(1); // 仍在 sessions Map
+  });
+
+  it('closeOnSuccess 的一次性命令:退出码 0 自动销毁,非 0 留下 exited tab', async () => {
+    const { mgr } = makeManager();
+    const destroyed = vi.fn();
+    mgr.on('sessionDestroyed', destroyed);
+    const override = { name: 'X update', command: 'x', args: ['update'], closeOnSuccess: true };
+    const ok = await mgr.createSession({
+      pathId: '/p', templateId: 'shell', ownerWindowId: 'w', cols: 80, rows: 24,
+      commandOverride: override,
+    });
+    FakePty.instances[0]!.emitExit(0);
+    expect(mgr.get(ok.id)).toBeNull();
+    expect(destroyed).toHaveBeenCalledWith({ sessionId: ok.id, reason: 'pty-exited' });
+
+    const failed = await mgr.createSession({
+      pathId: '/p', templateId: 'shell', ownerWindowId: 'w', cols: 80, rows: 24,
+      commandOverride: override,
+    });
+    FakePty.instances[1]!.emitExit(1);
+    expect(mgr.get(failed.id)?.state).toBe('exited');
   });
 
   it('exited session 不可再回到 active (markActive guard)', async () => {

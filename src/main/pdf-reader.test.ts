@@ -292,6 +292,20 @@ describe('statViewFile', () => {
     expect(await statViewFile(join(dir, 'no.pdf'))).toEqual({ ok: false, reason: 'not-found' });
   });
 
+  it('被锁住或没有权限时报 denied,不当成文件没了', async () => {
+    // LaTeX 重编时 Windows 上会短暂锁住 PDF (EBUSY);轮询看到的必须和"被删除"区分开
+    const path = await writePdf('a.pdf', 10);
+    const stat = vi.spyOn(fs, 'stat');
+    try {
+      for (const code of ['EBUSY', 'EACCES', 'EPERM']) {
+        stat.mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+        expect(await statViewFile(path)).toEqual({ ok: false, reason: 'denied' });
+      }
+    } finally {
+      stat.mockRestore();
+    }
+  });
+
   it('超过上限时报 too-large', async () => {
     const path = join(dir, 'big.pdf');
     const handle = await fs.open(path, 'w');

@@ -95,6 +95,7 @@ import {
   type TokenRate,
 } from '@shared/agent-phase';
 import { CHANNELS } from '@shared/channel';
+import { clampTitleLength, isAgentTemplate, shortenAgentTitle } from '@shared/agent-title';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
 // Ceteris launched from that shell would misidentify itself as a portable build.
@@ -405,6 +406,16 @@ interface ManagedSession {
    * Windows Terminal hostname 等会持续刷标题,不锁住会冲掉用户的命名)。
    */
   manuallyRenamed: boolean;
+  /**
+   * ADR-029:agent 自己用 OSC 0 设的最近一个标题(已清洗,未缩短)。AI 标题请求把它
+   * 当提示发给模型;非 agent 标签恒为 null。
+   */
+  agentOscTitle: string | null;
+  /**
+   * ADR-029:displayName 当前是模型写的标题。设置里"标签标题"开着时,之后 agent
+   * 自己的 OSC 标题不再覆盖它;关掉后 OSC 标题照常接管。
+   */
+  aiTitled: boolean;
   /**
    * PER-2 / F1:IPC 聚合缓冲 — 8ms 窗口内积累的 sessionOutput,timer 到点
    * 一次性 emit。降低高速 PTY 输出场景下 IPC 消息数,缓解 renderer 反压。
@@ -902,6 +913,8 @@ export class SessionManager extends EventEmitter {
       lastInputAt: 0,
       recentKeys: [],
       manuallyRenamed: false,
+      agentOscTitle: null,
+      aiTitled: false,
       pendingEmit: null,
       pendingEmitTimer: null,
       // BETA-006 v2 + CURSOR-1:headless 镜像,scrollback 行数对齐 renderer
@@ -983,6 +996,40 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.manuallyRenamed = true;
+    if (managed.info.displayName === trimmed) return;
+    managed.info.displayName = trimmed;
+    this.emitStateChanged(managed, { displayName: trimmed });
+  }
+
+  /** ADR-029:用户是否手动改过这个标签的名字;未知 session 返回 true(不要去动它)。 */
+  isManuallyRenamed(sessionId: string): boolean {
+    return this.sessions.get(sessionId)?.manuallyRenamed ?? true;
+  }
+
+  /**
+   * ADR-029:用户最近一次按回车的时间(ms),从没按过为 0。读不了屏的 agent
+   * 用"按过回车、输出停下"判断一轮结束。
+   */
+  getLastEnterAt(sessionId: string): number {
+    return this.sessions.get(sessionId)?.lastEnterAt ?? 0;
+  }
+
+  /** ADR-029:agent 自己最近设的标题,没有时 null。 */
+  getAgentOscTitle(sessionId: string): string | null {
+    return this.sessions.get(sessionId)?.agentOscTitle ?? null;
+  }
+
+  /**
+   * ADR-029:把模型写的标题设为 displayName。与 renameSession 不同,不置
+   * manuallyRenamed:用户之后仍可手动改名,手动名永远优先。手动改过名的
+   * session、未知 session、空标题都静默跳过。
+   */
+  setAiTitle(sessionId: string, title: string): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || managed.manuallyRenamed) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    managed.aiTitled = true;
     if (managed.info.displayName === trimmed) return;
     managed.info.displayName = trimmed;
     this.emitStateChanged(managed, { displayName: trimmed });
@@ -1943,9 +1990,18 @@ export class SessionManager extends EventEmitter {
    */
   private handleOscTitle(managed: ManagedSession, rawTitle: string): void {
     if (managed.manuallyRenamed) return;
-    const cleaned = sanitizeTitle(rawTitle);
+    let cleaned = sanitizeTitle(rawTitle);
     if (!cleaned) return;
     if (looksLikeShellStartupGarbage(cleaned)) return;
+    // ADR-029:agent 标签的标题去掉转圈符号、截到设置里的长度;模型标题在
+    // "标签标题"开着时优先,agent 自己的标题只留作下次请求的提示。
+    if (isAgentSession(managed.info)) {
+      managed.agentOscTitle = cleaned;
+      const titles = this.settingsManager.get().ai?.tabTitles;
+      if (titles?.enabled && managed.aiTitled) return;
+      cleaned = shortenAgentTitle(cleaned, clampTitleLength(titles?.maxChars));
+      if (!cleaned) return;
+    }
     if (cleaned === managed.info.displayName) return;
     managed.info.displayName = cleaned;
     this.emitStateChanged(managed, { displayName: cleaned });
@@ -2379,6 +2435,15 @@ if [ -n "$target" ]; then
 fi
 new_session
 `;
+
+/**
+ * ADR-029:这个 session 跑的是 agent:内置 agent 模板(Claude Code / Codex /
+ * OpenCode / Gemini / Copilot / Cursor / Aider),或者读屏已经认出 agent 阶段
+ * (在普通 shell 里手动启动的 Claude Code / Codex)。
+ */
+function isAgentSession(info: SessionInfo): boolean {
+  return isAgentTemplate(info.templateId) || (info.agentPhase ?? null) !== null;
+}
 
 /**
  * OSC 标题"启动垃圾"识别(TIT-1):

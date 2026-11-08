@@ -33,6 +33,7 @@ import './styles/file-tree.css';
 import './styles/path-tags.css';
 import './styles/quick-launch.css';
 import './styles/theme-picker.css';
+import './styles/coordinator-bar.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
 

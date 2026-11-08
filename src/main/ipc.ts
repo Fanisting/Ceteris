@@ -69,6 +69,7 @@ import {
   type ClipboardWriteTextPayload,
   type ClipboardWriteTextResponse,
   type CloseSessionPayload,
+  type SetCoordinatorPayload,
   type CommandEnvelope,
   type CreateSessionPayload,
   type CreateSessionResponse,
@@ -744,6 +745,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.SESSION_RENAME,
     (_e, envelope: CommandEnvelope<{ sessionId: string; newDisplayName: string }>): void => {
       sessionManager.renameSession(envelope.payload.sessionId, envelope.payload.newDisplayName);
+    },
+  );
+
+  // ADR-023
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_COORDINATOR,
+    (_e, envelope: CommandEnvelope<SetCoordinatorPayload>): void => {
+      sessionManager.setCoordinator(envelope.payload.sessionId, envelope.payload.coordinator);
     },
   );
 

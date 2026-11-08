@@ -23,11 +23,22 @@ import { App } from './App';
 import './styles/global.css';
 // 必须在 global.css 之后:Material 外观层靠加载顺序覆写同名选择器
 import './styles/material.css';
+// 必须在 material.css 之后:珠光主题要覆写 material.css 在 :root 推导的 --md-on-primary
+import './styles/pearl-themes.css';
+// 必须在 material.css 之后:Beamer 主题块要覆写它在 :root 推导的 --md-* 角色
+import './styles/beamer-themes.css';
+// 必须在 material.css 之后:梅子主题同样覆写 --md-* 角色
+import './styles/meizi-theme.css';
 import './styles/file-tree.css';
 import './styles/path-tags.css';
 import './styles/quick-launch.css';
+import './styles/theme-picker.css';
+import './styles/coordinator-bar.css';
+import './styles/celebrations.css';
+import './styles/coordinator-guide.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
+import { initCustomThemes } from './custom-themes';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -37,4 +48,6 @@ if (!rootEl) {
   );
 }
 
+// 用户主题(ADR-026):在首次渲染前开始拉取,样式元素追加在上面所有样式表之后
+initCustomThemes();
 createRoot(rootEl).render(<App />);

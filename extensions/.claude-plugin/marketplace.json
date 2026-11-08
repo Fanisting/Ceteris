@@ -1,0 +1,26 @@
+{
+  "name": "ceteris",
+  "owner": {
+    "name": "Fanisting",
+    "url": "https://github.com/Fanisting"
+  },
+  "plugins": [
+    {
+      "name": "latex-math",
+      "source": "./claude-latex-math",
+      "description": "LaTeX math in Claude Code replies as typeset images, with Ceteris support (Settings, Extensions, Claude Code formula images)",
+      "category": "productivity",
+      "tags": ["latex", "math", "ceteris", "terminal"]
+    },
+    {
+      "name": "ceteris-tabs",
+      "source": "./ceteris-tabs",
+      "description": "Coordinator tabs in Ceteris control the other tabs of their folder (Settings, Extensions, Coordinator tab control)",
+      "category": "productivity",
+      "tags": ["ceteris", "terminal", "tabs", "multi-agent"]
+    }
+  ],
+  "metadata": {
+    "description": "Claude Code plugins that ship with Ceteris. Ceteris installs this folder with its app, so it can be added as a local marketplace."
+  }
+}

@@ -174,7 +174,7 @@ Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown f
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
 - ✅ **Ceteris Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD tracking**: OSC 1337 hooks for PowerShell and cmd.exe
-- ✅ **17 themes**: Ceteris Dark (default), Ceteris Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal
+- ✅ **30 themes**: Ceteris Dark (default), Ceteris Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal, 7 Pearl themes from colour palettes (Lapis, Sapphire, Rose Dew, Ember, Jade, Moonlight, Frost), and 6 from LaTeX Beamer templates (Metropolis, Metropolis Dark, Madrid, CambridgeUS, AnnArbor, Spruce)
 - ✅ **Window style**: Windows or macOS (sets title-bar layout — not theme colors)
 - ✅ **Settings**: live-applied, no save button; export/import config (with secrets-redaction option)
 - ✅ **System tray**: persistent menu with running-sessions submenu; honest quit confirmation

@@ -20,6 +20,9 @@
  * - **cwd 兜底**:启动后 5 秒未收到 OSC 1337 → 启动 5 秒间隔的进程查询
  *   (PlatformAdapter.getProcessCwd);收到第一条 OSC 后立即关掉所有 cwd
  *   timer,永不再启
+ * - **agentPhase** (ADR-021):每段输出后 300ms 内从 headless 屏幕尾部读一次
+ *   agent 在做什么 (working / blocked / done,见 agent-phase.ts),进入 idle
+ *   时再读一次。与 active / idle 并列,不替代它
  * - 启动模板:从 TemplatesManager 拉,空 command → 纯 shell;有 command →
  *   通过 PlatformAdapter.buildShellLaunchParams 让 hook 之后再 exec command
  * - spawn 函数可注入 (PtySpawnFn) 便于测试;PlatformAdapter 也可注入
@@ -47,7 +50,7 @@ import type {
   SessionOutputPayload,
   SessionStateChangedPayload,
 } from '@shared/protocol';
-import type { SessionInfo, Template, Settings } from '@shared/types';
+import type { AgentWork, SessionInfo, Template, Settings } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import type { TemplatesManager } from './templates-manager';
@@ -69,6 +72,8 @@ import xtermSerialize from '@xterm/addon-serialize';
 const { SerializeAddon } = xtermSerialize;
 type SerializeAddon = InstanceType<typeof SerializeAddon>;
 import { Osc1337Parser } from './osc1337-parser';
+import { PlaceholderFilter } from './placeholder-filter';
+import { TerminalLookFile, mathImagesEnv, type TerminalLook } from './claude-math-images';
 import { pathRefFromId } from './path-manager';
 import { windowsRemotePath } from '@shared/remote-path';
 import { getPlatformAdapter, type PlatformAdapter, type ShellInfo } from './platform';
@@ -80,6 +85,15 @@ import {
 } from './pty-utils';
 import { logger } from './logger';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
+import {
+  AGENT_PHASE_SCREEN_ROWS,
+  classifyWork,
+  detectAgentPhase,
+  readWorkSignals,
+  updateTokenRate,
+  type TokenRate,
+} from '@shared/agent-phase';
 import { CHANNELS } from '@shared/channel';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
@@ -91,6 +105,8 @@ const SPAWN_ENV_SKIP = [
   'PORTABLE_EXECUTABLE_FILE',
   'PORTABLE_EXECUTABLE_APP_FILENAME',
   ...AGENT_SESSION_ENV,
+  // Tab control (ADR-024): each tab gets its own token; never inherit a parent tab's.
+  ...TAB_CONTROL_ENV_NAMES,
 ];
 
 /**
@@ -214,6 +230,13 @@ function classifyInput(text: string): KeyKind {
 const INPUT_QUIET_MS = 200;
 
 /**
+ * ADR-021:agentPhase 的读屏节流。一段输出后最多等这么久再读屏,连续输出时
+ * 每这么久最多读一次。足够短,批准提示出现后 tab 很快变色;又足够长,
+ * headless write 是异步 parse 的,等一会儿读到的屏幕才包含刚到的字节。
+ */
+const AGENT_PHASE_CHECK_MS = 300;
+
+/**
  * spawn 工厂,与 node-pty 的 spawn 兼容。测试中用 mock 替换。
  */
 export type PtySpawnFn = (
@@ -227,6 +250,8 @@ export type PtySpawnFn = (
     env: Record<string, string>;
     /** 强制走 ConPTY (Win10 1809+ 默认 true,显式开避免 winpty fallback 闪窗) */
     useConpty?: boolean;
+    /** 用 node-pty 自带的 conpty.dll + OpenConsole.exe,而不是系统 conhost */
+    useConptyDll?: boolean;
   },
 ) => IPty;
 
@@ -307,6 +332,8 @@ export function defaultHookFileResolver(shellId: string): string {
 
 interface ManagedSession {
   info: SessionInfo;
+  /** 一次性命令 session (agent 升级):PTY 以退出码 0 结束时自动销毁 */
+  closeOnCleanExit?: boolean;
   /** PTY 实例,exited 状态下置为 null */
   pty: IPty | null;
   /** evt:session:output 单调序号,从 0 开始,每次 emit 后 ++ */
@@ -324,8 +351,14 @@ interface ManagedSession {
   scrollbackLastSeq: number;
   /** OSC 1337 解析器 (每 session 一份,持有未完结 stash) */
   parser: Osc1337Parser;
+  /** 公式图片扩展打开时:把 Claude Code 图片占位格变成空格 (每 session 一份,跨 chunk 记状态);关时 null */
+  placeholderFilter: PlaceholderFilter | null;
   /** active → idle 转移计时器 */
   idleTimer: NodeJS.Timeout | null;
+  /** ADR-021:下一次读屏算 agentPhase 的计时器;null = 没有排队的读屏 */
+  phaseTimer: NodeJS.Timeout | null;
+  /** ADR-021:spinner 上 token 计数的平滑速率,决定波浪快慢;不在 working 时为 null */
+  tokenRate: TokenRate | null;
   /** 启动后等 OSC 1337 的宽限计时器;到点未收到则启动 cwd 轮询 */
   cwdGraceTimer: NodeJS.Timeout | null;
   /** cwd 兜底轮询计时器 */
@@ -435,6 +468,13 @@ export interface CreateSessionInput {
    * 命中失败 (id 不存在) 时回退到 pickShell 默认逻辑。
    */
   shellIdOverride?: string;
+  /**
+   * 用一条一次性命令代替模板的 command/args (shell 与 hook 仍按 templateId)。
+   * 新建页的 agent 升级点用它在可见终端里跑 `claude update` 之类的命令。
+   * `closeOnSuccess=true` 时命令跑完 shell 即退出;退出码 0 自动关闭 session,
+   * 非 0 留下 exited 状态的 tab,用户能看到报错。
+   */
+  commandOverride?: { name: string; command: string; args: string[]; closeOnSuccess?: boolean };
 }
 
 export class SessionManagerError extends Error {
@@ -499,6 +539,13 @@ export interface SessionManagerOptions {
   appVersion?: string;
   /** tmux -L name on remote hosts, so builds cannot attach to each other's sessions. */
   tmuxSocket?: string;
+  /** 公式图片扩展 (ADR-019):terminal-look.json 的路径,通常在数据目录 extensions/ 下 */
+  terminalLookFile?: string;
+  /**
+   * Tab control (ADR-024): extra env for the tab about to spawn, keyed by its future session
+   * id (the pipe path and the tab's token). Called once per local or SSH spawn.
+   */
+  controlEnv?: (sessionId: string) => Record<string, string>;
 }
 
 export class SessionManager extends EventEmitter {
@@ -519,6 +566,26 @@ export class SessionManager extends EventEmitter {
    * ipc 层在 createSession resolve 后立即读取并清空,传给 renderer 弹 toast。
    */
   lastLaunchWarning: string | null = null;
+
+  /**
+   * 公式图片扩展 (ADR-019):renderer 报告的终端颜色与格子宽高比写在这个文件里,
+   * 扩展打开时新 session 拿到它的路径 (LATEX_MATH_LOOK_FILE),插件每次画图现读。
+   * undefined = 未配置 (测试场景)。
+   */
+  private readonly terminalLookFile: TerminalLookFile | undefined;
+  private readonly controlEnv: ((sessionId: string) => Record<string, string>) | undefined;
+
+  /** 记下 renderer 量到的终端外观;已在跑的 Claude Code 下次画图就用上。 */
+  setTerminalLook(look: TerminalLook): void {
+    this.terminalLookFile?.update(look).catch((err: unknown) => {
+      logger.warn(
+        'SessionManager',
+        `could not write terminal look file ${this.terminalLookFile?.path}: ` +
+          `${err instanceof Error ? err.message : String(err)}. Formula images keep the plugin's ` +
+          'own colour guess. Check that the data folder is writable.',
+      );
+    });
+  }
 
   /**
    * 缓存 detectShells 结果。首次 createSession 时填充,后续复用。
@@ -552,6 +619,10 @@ export class SessionManager extends EventEmitter {
     this.emitBatchMs = options.emitBatchMs ?? EMIT_BATCH_MS;
     this.appVersion = options.appVersion ?? '';
     this.tmuxSocket = options.tmuxSocket;
+    this.terminalLookFile = options.terminalLookFile
+      ? new TerminalLookFile(options.terminalLookFile)
+      : undefined;
+    this.controlEnv = options.controlEnv;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -566,7 +637,17 @@ export class SessionManager extends EventEmitter {
    */
   async createSession(input: CreateSessionInput): Promise<SessionInfo> {
     this.lastLaunchWarning = null;
-    const template = this.templatesManager.resolve(input.templateId);
+    const resolved = this.templatesManager.resolve(input.templateId);
+    const template = input.commandOverride
+      ? {
+          ...resolved,
+          name: input.commandOverride.name,
+          command: input.commandOverride.command,
+          args: input.commandOverride.args,
+          env: {},
+          postExitAction: 'keep_shell' as const,
+        }
+      : resolved;
     const dims = validateDimensions(input.cols, input.rows);
     const shells = await this.getShells();
     if (shells.length === 0) {
@@ -662,10 +743,16 @@ export class SessionManager extends EventEmitter {
           shell,
           hookFile,
           template.command
-            ? { command: template.command, args: template.args }
+            ? {
+                command: template.command,
+                args: template.args,
+                ...(input.commandOverride?.closeOnSuccess ? { exitAfter: true } : {}),
+              }
             : undefined,
         );
 
+    // Chosen before spawn so the tab's control token (ADR-022) can name it in the env.
+    const sessionId = randomUUID();
     const env = buildSpawnEnv(process.env, SPAWN_ENV_SKIP);
     // BETA-001:Windows 上 process.env.PATH 是启动时的快照,装新软件后不会自动
     // 刷新。每次 spawn 前从注册表合并最新 PATH 覆写过去,确保新装的 python.exe /
@@ -683,6 +770,15 @@ export class SessionManager extends EventEmitter {
       programName: 'Ceteris',
       appVersion: this.appVersion,
     });
+    // 公式图片扩展 (ADR-019):spawn 时读一次,之后这个 session 一直按这个值走。
+    const mathImages = this.settingsManager.get().extensions?.claudeMathImages === true;
+    if (mathImages) {
+      const gitBash = shells.find((s) => s.id === 'git-bash')?.executablePath;
+      Object.assign(env, mathImagesEnv(this.terminalLookFile?.path, gitBash));
+    }
+    // Tab control (ADR-024): pipe path and this tab's token. Before the template env, like
+    // the terminal hints, though a template has no reason to override them.
+    if (this.controlEnv) Object.assign(env, this.controlEnv(sessionId));
     Object.assign(env, launchParams.env);
     Object.assign(env, template.env);
     // BETA-ENV-1:Windows 上必做的最后一道防御 —— 补齐 canonical SystemRoot
@@ -747,6 +843,11 @@ export class SessionManager extends EventEmitter {
         // 下 node-pty fallback 到 winpty(winpty 会闪 conhost 窗口,
         // 用户报告 "新建 shell 时有一闪而过的新建窗口")。
         useConpty: true,
+        // 公式图片扩展 (ADR-019):系统 conhost 自己抢答 DA1 (CSI c),比终端对
+        // XTVERSION 的回复先到;Claude Code 把 DA1 当"回复已到齐",认定终端不画图。
+        // node-pty 自带的 ConPTY 1.23 把 DA1 交给终端答,顺序就对了。
+        // 只在扩展打开时用;非 Windows 平台 node-pty 忽略这个选项。
+        useConptyDll: mathImages,
       });
     } catch (err) {
       throw new SessionManagerError(
@@ -761,7 +862,6 @@ export class SessionManager extends EventEmitter {
       );
     }
 
-    const sessionId = randomUUID();
     const info: SessionInfo = {
       id: sessionId,
       pathId: sessionPathId,
@@ -783,11 +883,15 @@ export class SessionManager extends EventEmitter {
     const managed: ManagedSession = {
       info,
       pty,
+      ...(input.commandOverride?.closeOnSuccess ? { closeOnCleanExit: true } : {}),
       outputSeq: 0,
       disposables,
       scrollbackLastSeq: -1,
       parser: new Osc1337Parser(),
+      placeholderFilter: mathImages ? new PlaceholderFilter() : null,
       idleTimer: null,
+      phaseTimer: null,
+      tokenRate: null,
       cwdGraceTimer: null,
       cwdPollTimer: null,
       oscReceived: false,
@@ -894,6 +998,20 @@ export class SessionManager extends EventEmitter {
     const managed = this.sessions.get(sessionId);
     if (!managed) return;
     managed.manuallyRenamed = false;
+  }
+
+  /**
+   * ADR-023:标记或取消 coordinator。所有窗口经 sessionStateChanged 同步,把它的
+   * 标签放进标签栏上方的 coordinator 行。幂等;不存在的 sessionId 静默,与
+   * renameSession 一致。exited 的 session 也能改,用户可能想把它移出那一行。
+   */
+  setCoordinator(sessionId: string, coordinator: boolean): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    if ((managed.info.coordinator ?? false) === coordinator) return;
+    managed.info.coordinator = coordinator;
+    logger.info('SessionManager', `setCoordinator sid=${sessionId} → ${coordinator}`);
+    this.emitStateChanged(managed, { coordinator });
   }
 
   /**
@@ -1345,6 +1463,11 @@ export class SessionManager extends EventEmitter {
     if (!this.sessions.has(managed.info.id) || !managed.pty) return;
     const bytes = Buffer.from(data, 'utf8');
     const parsed = managed.parser.parse(bytes);
+    // Claude Code 内联图片底下的占位格 (U+2800 + 组合符) 变空格,见 placeholder-filter.ts。
+    // 放在 emit / headless 之前,live 输出与 scrollback 回放看到的是同一份字节。
+    if (managed.placeholderFilter) {
+      parsed.passthrough = managed.placeholderFilter.filter(parsed.passthrough);
+    }
 
     // 处理 OSC 事件
     for (const ev of parsed.events) {
@@ -1378,6 +1501,9 @@ export class SessionManager extends EventEmitter {
       // 复核时 buffer 可能比 PTY 实际状态滞后几 ms,可接受 — 复核本来
       // 就在 thresholdSec 静默后触发,几 ms 误差无关紧要。
       managed.headlessTerm?.write(parsed.passthrough);
+      // ADR-021:在 quiet 窗口判断之前排队读屏。在批准菜单里按方向键产生的
+      // 重绘字节落在 input quiet 内,不点亮 active,但屏幕仍要重读。
+      this.schedulePhaseCheck(managed);
 
       // 状态机:有输出 → active,重置 idle 计时器。
       // 跳过 markActive 的三种 quiet 窗口(scrollback / sessionOutput 仍正常,
@@ -1518,13 +1644,27 @@ export class SessionManager extends EventEmitter {
     this.clearTimers(managed);
     managed.pty = null;
 
+    // ADR-021:退出的进程里没有 agent 在做事,不能留着 blocked 让 tab 一直闪
+    managed.info.agentPhase = null;
+    managed.info.agentWork = null;
+    managed.info.agentPace = null;
+    managed.tokenRate = null;
     this.emitStateChanged(managed, {
       state: managed.info.state,
       exitCode: managed.info.exitCode,
       exitedAt: managed.info.exitedAt,
       pid: -1,
+      agentPhase: null,
+      agentWork: null,
+      agentPace: null,
     });
     void oldState; // 留给将来加日志用
+
+    // Agent 升级这类一次性命令:成功就关掉 tab;失败留着,让用户看报错
+    if (managed.closeOnCleanExit && exitCode === 0) {
+      logger.info('SessionManager', `one-off command finished, closing sessionId=${managed.info.id}`);
+      this.destroySession(managed, 'pty-exited');
+    }
   }
 
   private destroySession(
@@ -1633,24 +1773,78 @@ export class SessionManager extends EventEmitter {
               if (managed.info.state === 'active') this.scheduleIdleCheck(managed);
               return;
             }
-            if (managed.info.state === 'active') {
-              managed.info.state = 'idle';
-              this.emitStateChanged(managed, { state: 'idle' });
-            }
+            if (managed.info.state === 'active') this.becomeIdle(managed);
           })
           .catch((err) => {
             logger.warn('SessionManager', 'BETA-006 LLM recheck failed, fallback', err);
-            if (managed.info.state === 'active') {
-              managed.info.state = 'idle';
-              this.emitStateChanged(managed, { state: 'idle' });
-            }
+            if (managed.info.state === 'active') this.becomeIdle(managed);
           });
         return;
       }
       // 默认路径:直接转 idle
-      managed.info.state = 'idle';
-      this.emitStateChanged(managed, { state: 'idle' });
+      this.becomeIdle(managed);
     }, ms);
+  }
+
+  /**
+   * active → idle,并在同一条事件里带上重新读屏得到的 agentPhase:输出停下
+   * 正是 agent 跑完一轮或停在批准提示的时刻 (ADR-021)。
+   */
+  private becomeIdle(managed: ManagedSession): void {
+    managed.info.state = 'idle';
+    this.emitStateChanged(managed, { state: 'idle', ...this.readAgentActivity(managed) });
+  }
+
+  /**
+   * ADR-021:排一次读屏。已有排队的读屏时不重排,所以连续输出每
+   * AGENT_PHASE_CHECK_MS 最多读一次,最后一段输出后也总会再读一次。
+   */
+  private schedulePhaseCheck(managed: ManagedSession): void {
+    if (managed.phaseTimer) return;
+    managed.phaseTimer = setTimeout(() => {
+      managed.phaseTimer = null;
+      this.updateAgentPhase(managed);
+    }, AGENT_PHASE_CHECK_MS);
+  }
+
+  /** Reads the screen and broadcasts the agent fields that changed. */
+  private updateAgentPhase(managed: ManagedSession): void {
+    if (!this.sessions.has(managed.info.id) || managed.info.state === 'exited') return;
+    const changes = this.readAgentActivity(managed);
+    if (Object.keys(changes).length > 0) this.emitStateChanged(managed, changes);
+  }
+
+  /**
+   * Reads phase, work kind and pace from the screen, stores them on the session and
+   * returns only the fields that changed. Work and pace are null outside 'working'.
+   */
+  private readAgentActivity(
+    managed: ManagedSession,
+  ): Partial<Pick<SessionInfo, 'agentPhase' | 'agentWork' | 'agentPace'>> {
+    const screen = this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS);
+    const phase = detectAgentPhase(managed.info.templateId, screen, managed.info.state);
+    let work: AgentWork | null = null;
+    let pace: number | null = null;
+    if (phase === 'working') {
+      const signals = readWorkSignals(screen);
+      managed.tokenRate = updateTokenRate(managed.tokenRate, signals.tokens, Date.now());
+      ({ work, pace } = classifyWork(signals, managed.tokenRate));
+    } else {
+      managed.tokenRate = null;
+    }
+    const changes: Partial<Pick<SessionInfo, 'agentPhase' | 'agentWork' | 'agentPace'>> = {};
+    if (phase !== (managed.info.agentPhase ?? null)) {
+      changes.agentPhase = managed.info.agentPhase = phase;
+      logger.info('SessionManager', `agentPhase sid=${managed.info.id} → ${phase ?? 'none'}`);
+    }
+    if (work !== (managed.info.agentWork ?? null)) {
+      changes.agentWork = managed.info.agentWork = work;
+      logger.debug('SessionManager', `agentWork sid=${managed.info.id} → ${work ?? 'none'}`);
+    }
+    if (pace !== (managed.info.agentPace ?? null)) {
+      changes.agentPace = managed.info.agentPace = pace;
+    }
+    return changes;
   }
 
   /**
@@ -1668,6 +1862,14 @@ export class SessionManager extends EventEmitter {
    * ANSI 转义,自然干净。
    */
   /** The end of a session's screen as plain text. Empty for an unknown session. */
+  /**
+   * Tab control (ADR-024): whether the program in the tab turned on bracketed paste
+   * (ESC [ ? 2004 h), read from the headless mirror. Multi-line text is wrapped only then.
+   */
+  isBracketedPasteOn(sessionId: string): boolean {
+    return this.sessions.get(sessionId)?.headlessTerm?.modes.bracketedPasteMode === true;
+  }
+
   getScreenTail(sessionId: string, maxRows: number): string {
     const managed = this.sessions.get(sessionId);
     return managed ? this.getHeadlessTail(managed, maxRows) : '';
@@ -1792,6 +1994,10 @@ export class SessionManager extends EventEmitter {
     if (managed.idleTimer) {
       clearTimeout(managed.idleTimer);
       managed.idleTimer = null;
+    }
+    if (managed.phaseTimer) {
+      clearTimeout(managed.phaseTimer);
+      managed.phaseTimer = null;
     }
     if (managed.cwdGraceTimer) {
       clearTimeout(managed.cwdGraceTimer);

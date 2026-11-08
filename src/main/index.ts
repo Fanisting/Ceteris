@@ -17,8 +17,8 @@
  *
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
-import { app, Menu, net, session as electronSession } from 'electron';
-import { existsSync, statSync } from 'node:fs';
+import { app, Menu, net, safeStorage, session as electronSession } from 'electron';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
 import { TrayManager } from './tray';
@@ -30,8 +30,10 @@ import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
+import { SecretStore, type SecretsFile } from './secret-store';
 import {
   broadcastLinkStatus,
+  broadcastCustomThemes,
   broadcastUpdateStatus,
   decryptStoredPassword,
   installIpcLayer,
@@ -41,16 +43,18 @@ import { LinkManager } from './link/link-manager';
 import { getPlatformAdapter } from './platform';
 import { SftpPool } from './sftp-client';
 import { AskpassServer } from './askpass-server';
+import { TabControlServer } from './tab-control-server';
 import { PromptBroker } from './askpass-prompts';
 import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
 import { parseOpenHere, parseSimpleMode } from './argv-utils';
 import { getBuildType, getChannel, getLaunchExePath, isBetaBuild } from './build-type';
-import { devDebugPort } from './dev-debug-port';
+import { devDebugPort, parseDevToolsActivePort } from './dev-debug-port';
 import { CHANNELS } from '@shared/channel';
 import { ViewSwitcher } from './view-switcher';
 import { LATEST_RELEASE_URL, UpdateChecker, detectInstallTarget } from './update-checker';
 import { logger } from './logger';
+import { CustomThemeStore } from './custom-theme-store';
 import type {
   BookmarksFile,
   RecentFile,
@@ -110,6 +114,7 @@ async function scanInvalidPathsAsync(pathManager: PathManager): Promise<void> {
  * Dev builds open a Chrome DevTools Protocol port on 127.0.0.1 so tools can drive the window
  * (dev-debug-port.ts). Must run before app ready: Chromium reads the switch at startup.
  * A bad CETERIS_DEV_DEBUG_PORT is logged and no port is opened, rather than stopping dev.
+ * Once the app is ready, logDevDebugPort reports which port Chromium really opened.
  */
 function openDevDebugPort(): void {
   try {
@@ -119,10 +124,37 @@ function openDevDebugPort(): void {
       return;
     }
     app.commandLine.appendSwitch('remote-debugging-port', String(port));
-    logger.info('main', 'dev debugging port open on 127.0.0.1', { port });
+    const startedAt = Date.now();
+    void app.whenReady().then(() => logDevDebugPort(port, startedAt));
   } catch (err) {
     logger.error('main', 'dev debugging port not opened', err);
   }
+}
+
+/**
+ * Logs the port from DevToolsActivePort, which Chromium writes once the port is open. It goes
+ * in the sessionData folder (set to <userData>/session-data in bootstrap), not in userData. A file older than this launch is left over from an earlier run, which means the port
+ * did not open: usually a fixed CETERIS_DEV_DEBUG_PORT that another dev copy already holds.
+ */
+function logDevDebugPort(requested: number, startedAt: number, attempt = 0): void {
+  const file = join(app.getPath('sessionData'), 'DevToolsActivePort');
+  const fresh = existsSync(file) && statSync(file).mtimeMs >= startedAt - 2000;
+  const port = fresh ? parseDevToolsActivePort(readFileSync(file, 'utf8')) : null;
+  if (port !== null) {
+    logger.info('main', 'dev debugging port open on 127.0.0.1', { port, file });
+    return;
+  }
+  if (attempt < 20) {
+    setTimeout(() => logDevDebugPort(requested, startedAt, attempt + 1), 250);
+    return;
+  }
+  logger.warn('main', 'dev debugging port did not open', {
+    requested,
+    hint:
+      requested === 0
+        ? 'Chromium wrote no DevToolsActivePort file'
+        : `port ${requested} is probably held by another dev copy; unset CETERIS_DEV_DEBUG_PORT to get any free port`,
+  });
 }
 
 function bootstrap(): void {
@@ -220,6 +252,10 @@ function bootstrap(): void {
   const nextPromptUsage = new NextPromptUsageTracker(
     new JsonStore<NextPromptUsageFile>(join(dataDir, 'next-prompt-usage.json')),
   );
+  const secretStore = new SecretStore(
+    new JsonStore<SecretsFile>(join(dataDir, 'secrets.json')),
+    safeStorage,
+  );
 
   const channel = CHANNELS[getChannel()];
   logger.info('main', 'channel profile', { ...channel });
@@ -259,6 +295,9 @@ function bootstrap(): void {
     },
   });
   const templatesManager = new TemplatesManager(templatesStore);
+  // Tab control (ADR-024). Built after sessionManager, which it drives; the env hook below
+  // reads it late, and a tab spawned before the pipe listens just gets no control env.
+  let tabControl: TabControlServer | null = null;
   const sessionManager = new SessionManager(
     windowManager,
     pathManager,
@@ -269,9 +308,37 @@ function bootstrap(): void {
       // 用户在 .bashrc / Profile.ps1 里可以拿这个版本号做条件判断。
       appVersion: app.getVersion(),
       tmuxSocket: channel.tmuxSocket,
+      // 公式图片扩展 (ADR-019):插件现读的终端颜色 / 格子宽高比
+      terminalLookFile: join(dataDir, 'extensions', 'terminal-look.json'),
+      controlEnv: (sessionId) => tabControl?.envFor(sessionId) ?? {},
     },
   );
+  tabControl = new TabControlServer(
+    {
+      enabled: () => settingsManager.get().extensions?.tabControl === true,
+      list: () => sessionManager.list(),
+      get: (sessionId) => sessionManager.get(sessionId),
+      templates: () => templatesManager.list(),
+      // No owner window: the window showing the coordinator keeps showing it.
+      create: (input) => sessionManager.createSession({ ...input, ownerWindowId: '' }),
+      close: (sessionId) => sessionManager.closeSession(sessionId),
+      rename: (sessionId, name) => sessionManager.renameSession(sessionId, name),
+      write: (sessionId, text) =>
+        sessionManager.sendInput(sessionId, Buffer.from(text, 'utf8').toString('base64')).accepted,
+      screenTail: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
+      bracketedPaste: (sessionId) => sessionManager.isBracketedPasteOn(sessionId),
+    },
+    // The plugin runs its MCP server with this executable and ELECTRON_RUN_AS_NODE=1.
+    process.execPath,
+  );
+  const tabControlServer = tabControl;
+  sessionManager.on('sessionDestroyed', (e: { sessionId: string }) =>
+    tabControlServer.service.revoke(e.sessionId),
+  );
   const trayManager = new TrayManager(windowManager, sessionManager, settingsManager);
+
+  // ADR-026:用户主题文件夹,文件保存后立刻推给所有窗口
+  const customThemes = new CustomThemeStore(join(dataDir, 'themes'), broadcastCustomThemes);
 
   // ADR-018:GitHub Releases 更新检查。只提示 + 给本机系统对应的直链,不下载不安装。
   // 定时检查只在 stable 且设置开着时跑;beta / dev 是本地测试构建,只在用户点"立即检查"时查。
@@ -443,8 +510,11 @@ function bootstrap(): void {
       // 生产 (file://) 不需要。
       // worker-src:pdf.js 在 Web Worker 里解析 PDF,worker 脚本打包在应用里,
       // dev 时 Vite 用 blob: 包一层。img-src blob: 给图片查看。
+      // 'wasm-unsafe-eval':@xterm/addon-image 用 WebAssembly 解 base64 图片数据;
+      // 只放行 WebAssembly 编译,不放行 JS eval / new Function。缺它时内联图片
+      // 的 OSC 1337 handler 抛 CompileError,整个终端的写入循环随之卡死。
       const cspProd =
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
         "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; " +
         "worker-src 'self' blob:";
       const cspDev =
@@ -470,12 +540,29 @@ function bootstrap(): void {
       logger.setLevel(settingsManager.get().advanced.logLevel === 'DEBUG' ? 'debug' : 'info');
       const { bookmarksSource } = await pathManager.initialize();
       await nextPromptUsage.initialize();
+      await secretStore.initialize();
+      // ADR-025: move a key pasted in an older version out of settings.json, then rewrite
+      // both settings.json and its .bak so no plain text copy stays on disk.
+      const legacyKey = settingsManager.takeLegacyNextPromptKey();
+      if (legacyKey) {
+        secretStore.setNextPromptKey(legacyKey);
+        await secretStore.flush();
+        settingsManager.update({ ai: { nextPrompt: { keySaved: true } } });
+        await settingsManager.rewriteBothCopies();
+        logger.info('main', 'moved the next prompt key from settings.json to secrets.json');
+      }
+      // The flag mirrors the store: a secrets.json from another PC cannot be decrypted here.
+      settingsManager.update({ ai: { nextPrompt: { keySaved: secretStore.hasNextPromptKey() } } });
       logger.info('main', `bookmarks loaded from: ${bookmarksSource}`);
       const sshProfilesSrc = await sshProfileManager.initialize();
       logger.info('main', `ssh profiles loaded from: ${sshProfilesSrc}`);
       await knownHostsManager.initialize();
       const tmplSrc = await templatesManager.initialize();
       logger.info('main', `templates loaded from: ${tmplSrc}`);
+      // Before any window opens, so every tab gets its control env. Takes milliseconds.
+      await tabControlServer.start().catch((err: unknown) => {
+        logger.error('main', 'tab control pipe failed to start; coordinator control disabled', err);
+      });
 
       // BETA-031:AI 助手客户端,settings 读取走 SettingsManager.get() 闭包,
       // 用户改 key / provider 即刻生效;BETA-006 用同实例做状态复核。
@@ -513,6 +600,9 @@ function bootstrap(): void {
       });
 
       installIpcLayer({
+        secretStore,
+        // Without it the usage handlers fall back to zeros and no call is ever counted.
+        nextPromptUsage,
         windowManager,
         viewSwitcher,
         pathManager,
@@ -526,8 +616,11 @@ function bootstrap(): void {
         sftpPool,
         promptBroker,
         updateChecker,
+        customThemes,
       });
       updateChecker.refreshSchedule();
+      // 主题文件夹读取失败不影响启动,内置主题照常可用
+      customThemes.start().catch((err) => logger.warn('themes', 'custom theme store start failed', err));
 
       // 按持久化的设置决定要不要开始监听。失败(端口占用 / 地址不存在)不抛错,
       // 原因记在 LinkServer.lastError 里由设置页展示。
@@ -749,6 +842,7 @@ function bootstrap(): void {
     sessionManager.shutdown();
     sftpPool.shutdown();
     void askpassServer.stop();
+    void tabControlServer.stop();
     // 先关 Link:停止监听并断开所有连接,让对端立刻知道我们要走了,
     // 而不是等它们的心跳超时(最长 50 秒)才发现。
     if (linkManagerRef) {
@@ -764,6 +858,7 @@ function bootstrap(): void {
         settingsManager.flush(),
         pathManager.flush(),
         nextPromptUsage.flush(),
+        secretStore.flush(),
         sshProfileManager.flush(),
         knownHostsManager.flush(),
         templatesManager.flush(),

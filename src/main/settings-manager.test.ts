@@ -16,6 +16,7 @@ import {
   validateSettings,
   stripUnknownLegacyFields,
 } from './settings-manager';
+import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import type { Settings } from '@shared/types';
 import type { JsonStore } from './persistence';
 
@@ -125,6 +126,11 @@ describe('validateSettings', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     (bad.appearance as { theme: string }).theme = 'nonexistent';
     expect(() => validateSettings(bad)).toThrowError(/InvalidSettings/);
+    // 用户主题只看 id 格式,文件是否存在由 renderer 回退处理
+    (bad.appearance as { theme: string }).theme = 'custom:Bad Name';
+    expect(() => validateSettings(bad)).toThrowError(/InvalidSettings/);
+    (bad.appearance as { theme: string }).theme = 'custom:my-theme';
+    expect(() => validateSettings(bad)).not.toThrow();
   });
 
   it('quickLaunch 默认是 Claude Code 和 Codex', () => {
@@ -207,6 +213,8 @@ describe('SettingsManager — initialize', () => {
     expect(settings.appearance.theme).toBe('cutie');
     expect(settings.appearance.terminalFontSize).toBe(13); // 来自默认
     expect(settings.behavior.confirmOnQuit).toBe(true); // 来自默认
+    // 老用户升级后也看一次 "右键 + 号" 首次引导
+    expect(settings.behavior.quickLaunchTipSeen).toBe(false);
     expect(settings.advanced.logLevel).toBe('INFO');
   });
 
@@ -275,6 +283,7 @@ describe('SettingsManager — update', () => {
     'business',
     'ubuntu',
     'windows-terminal',
+    ...BEAMER_THEME_IDS,
   ] as const)('合法主题 %s 通过校验', async (theme) => {
     const { mgr } = makeManager();
     await mgr.initialize();
@@ -343,5 +352,37 @@ describe('stripUnknownLegacyFields: advanced.enableRemote', () => {
     const raw = { advanced: { enableRemote: false, logLevel: 'DEBUG' } };
     expect(stripUnknownLegacyFields(raw)).toEqual({ advanced: { logLevel: 'DEBUG' } });
     expect(raw.advanced.enableRemote).toBe(false);
+  });
+});
+
+describe('next prompt key moved out of settings.json (ADR-025)', () => {
+  it('hands an old plain text key over once and leaves no copy in settings.json or .bak', async () => {
+    const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { JsonStore: RealStore } = await import('./persistence');
+    const dir = await mkdtemp(join(tmpdir(), 'ceteris-test-'));
+    try {
+      const file = join(dir, 'settings.json');
+      const old = structuredClone(DEFAULT_SETTINGS) as unknown as {
+        ai: { nextPrompt: Record<string, unknown> };
+      };
+      old.ai.nextPrompt['apiKey'] = 'sk-or-plain';
+      delete old.ai.nextPrompt['keySaved'];
+      await writeFile(file, JSON.stringify(old));
+
+      const mgr = new SettingsManager(new RealStore<Settings>(file, 0));
+      await mgr.initialize();
+      expect(mgr.takeLegacyNextPromptKey()).toBe('sk-or-plain');
+      expect(mgr.takeLegacyNextPromptKey()).toBe('');
+      expect(mgr.get().ai.nextPrompt).not.toHaveProperty('apiKey');
+
+      mgr.update({ ai: { nextPrompt: { keySaved: true } } });
+      await mgr.rewriteBothCopies();
+      expect(await readFile(file, 'utf8')).not.toContain('sk-or-plain');
+      expect(await readFile(`${file}.bak`, 'utf8')).not.toContain('sk-or-plain');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

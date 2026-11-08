@@ -14,6 +14,9 @@
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 
+import type { BeamerThemeId } from './beamer-themes';
+import type { CustomThemeId } from './custom-themes';
+
 // ──────────────────────────────────────────────────────────────────
 // 枚举 / 字面量
 // ──────────────────────────────────────────────────────────────────
@@ -70,6 +73,26 @@ export function assertNeverPathKind(_value: never): never {
 export type SessionState = 'active' | 'idle' | 'exited';
 
 /**
+ * What an AI agent in a session is doing, read from its screen (ADR-021, agent-phase.ts).
+ * Separate from SessionState: an agent at an approval prompt and one that finished are
+ * both 'idle', and only this tells them apart.
+ *
+ * - working:the agent is running a turn
+ * - blocked:the agent waits for the user to approve a command or edit
+ * - done:the turn ended and the agent waits for the next prompt
+ */
+export type AgentPhase = 'working' | 'blocked' | 'done';
+
+/**
+ * What kind of work a working agent is doing, which picks the wave's shape (ADR-021).
+ *
+ * - generating:the model is producing tokens (thinking or writing)
+ * - tool:a tool is running, such as a shell command
+ * - waiting:the turn is on but nothing is generated, such as hooks or the API starting up
+ */
+export type AgentWork = 'generating' | 'tool' | 'waiting';
+
+/**
  * 应用整体生命周期状态 (软件定义书 8.1 节)。
  */
 export type AppLifecycleState =
@@ -84,9 +107,12 @@ export type AppLifecycleState =
 export type PostExitAction = 'close_session' | 'keep_shell' | 'hold';
 
 /**
- * 主题 ID (软件定义书 5.1.9)。
+ * 主题 ID (软件定义书 5.1.9):内置主题,或用户主题文件 `custom:<slug>`(ADR-026)。
  */
-export type ThemeId =
+export type ThemeId = BuiltinThemeId | CustomThemeId;
+
+/** 随应用发布的主题。只有它们在 TerminalView 的 XTERM_THEMES 里有固定配色。 */
+export type BuiltinThemeId =
   // Material Design 3 主题,默认主题。配色由海青种子色 #006a6a 生成
   | 'ceteris-dark'
   | 'ceteris-light'
@@ -106,7 +132,19 @@ export type ThemeId =
   | 'catppuccin-latte'
   | 'tokyo-night-day'
   | 'light-pink'
-  | 'fairyfloss';
+  | 'fairyfloss'
+  // 珠光系列浅色主题,配色见 src/renderer/styles/pearl-themes.css
+  | 'pearl-lapis'
+  | 'pearl-sapphire'
+  | 'pearl-rose'
+  | 'pearl-ember'
+  | 'pearl-jade'
+  | 'pearl-moon'
+  | 'pearl-frost'
+  // 梅子,配色见 src/renderer/styles/meizi-theme.css
+  | 'meizi'
+  // 取自 LaTeX Beamer 模板配色,清单见 beamer-themes.ts
+  | BeamerThemeId;
 
 /**
  * 窗口外观风格 (M1-A 引入,Milestone 1)。
@@ -210,6 +248,20 @@ export interface SessionInfo {
   /** 当前持有该 session 的 owner window;null 表示无主 */
   ownerWindowId: string | null;
   state: SessionState;
+  /**
+   * The agent's phase, or null / absent when the screen shows no agent (ADR-021).
+   * Absent in sessions from a main process older than this field.
+   */
+  agentPhase?: AgentPhase | null;
+  /** While agentPhase is 'working': the kind of work, or null when the screen does not say. */
+  agentWork?: AgentWork | null;
+  /** While generating: how fast, 0.25 to 1 in quarter steps, from the token counter. */
+  agentPace?: number | null;
+  /**
+   * The user marked this session as a coordinator: its tab sits in a row of its own above
+   * the folder's tabs, whichever folder is open (ADR-023). Lives as long as the session.
+   */
+  coordinator?: boolean;
   /** 退出码 (state === 'exited' 时有值) */
   exitCode?: number;
   /** PTY 进程退出时间 (Unix ms,state === 'exited' 时有值) */
@@ -366,6 +418,16 @@ export interface Settings {
      * 与 simpleMode 正交:simpleMode 优先(它连 Sidebar 一起藏)。
      */
     hideTopTabBar: boolean;
+    /**
+     * ADR-027:agent 跑完一轮时的小庆祝(圆点上飞出几颗小星星,样式随主题)。
+     * 默认开;关掉后标题栏小石子也一起不显示。
+     */
+    celebrations: boolean;
+    /**
+     * ADR-027:标题栏里 16px 的小石子。全部空闲时打盹,agent 干活时睁眼,
+     * 跑完时笑两秒。它一直可见,所以默认关;celebrations 关时也不显示。
+     */
+    pebble: boolean;
   };
 
   /**
@@ -396,6 +458,11 @@ export interface Settings {
     /** 右键 + 号时环绕显示的快捷启动选项,在 设置 → 行为 里编辑 */
     quickLaunch: QuickLaunchItem[];
     /**
+     * 首次使用引导 "右键 + 号快速启动 agent" 是否已看过。默认 false;
+     * 用户点 "知道了" 或第一次右键 + 号后写 true,之后不再弹。
+     */
+    quickLaunchTipSeen: boolean;
+    /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell
      * (PowerShell 7+, bash 5+, zsh, fish, Claude Code REPL)把粘贴
@@ -413,6 +480,16 @@ export interface Settings {
      * Ceteris never downloads or installs by itself; it shows a direct download link.
      */
     autoCheckUpdates: boolean;
+    /**
+     * 后台检查 agent CLI (Claude Code / Codex ...) 有没有新版本:启动后和每 6 小时一次,
+     * 有新版本时弹一条通知。默认 true。只在 stable 渠道自动跑。
+     */
+    autoCheckAgents: boolean;
+    /**
+     * 发现新版本后自动升级 agent。升级前先弹通知倒计时,用户可以"立即升级"或"跳过此版本";
+     * 该 agent 有终端开着时等它关掉再升级。默认 false。需要 autoCheckAgents 开着。
+     */
+    autoUpdateAgents: boolean;
   };
 
   systemIntegration: {
@@ -475,6 +552,37 @@ export interface Settings {
   };
 
   /**
+   * 可选扩展。每项默认关,用户在 设置 → 扩展 里打开;只影响打开之后新建的终端。
+   */
+  extensions: {
+    /**
+     * Claude Code 公式图片 (ADR-019):终端按 iTerm2 内联图片协议画图,XTVERSION
+     * 回 "iTerm2 3.5.0",Windows 上 PTY 改用 node-pty 自带的 ConPTY,Claude Code
+     * 图片占位格画成空白,并把主题色与格子宽高比传给 latex-math 插件
+     * (LATEX_MATH_* 环境变量)。需要另装仓库里 extensions/claude-latex-math 插件。
+     */
+    claudeMathImages: boolean;
+    /**
+     * Codex 公式渲染 (ADR-022):在终端里找以文本形式出现的 LaTeX (`$$...$$`、`\(...\)`、
+     * `\[...\]`),用 KaTeX 在原处画出来。Codex 没有渲染钩子,所以由 Ceteris 在显示层做;
+     * 设置页按钮可以把"公式写进行内代码"这条指示加进 ~/.codex/AGENTS.md。
+     */
+    terminalMath: boolean;
+    /**
+     * Coordinator tab control (ADR-024): Claude Code in a coordinator tab may list, open,
+     * close, type into and read the other tabs of its folder through the ceteris-tabs
+     * plugin (extensions/ceteris-tabs). Checked on every request, so it applies at once.
+     */
+    tabControl: boolean;
+    /**
+     * Whether the user closed the coordinator guide with Got it (ADR-024). Default false, and
+     * older settings files get false too, so everyone sees the guide once after the update:
+     * on the next launch, and again the first time they tick Coordinator until they close it.
+     */
+    tabControlGuideSeen: boolean;
+  };
+
+  /**
    * BETA-031 AI 助手 — 第一个 LLM 集成点。默认全 disabled,用户在设置页主动
    * 开启并填 API key 才生效。当前唯一 consumer 是 BETA-006(active→idle 跃迁
    * LLM 复核,避免 Vite 等长输出工具被误判 idle)。
@@ -503,7 +611,11 @@ export interface Settings {
      */
     nextPrompt: {
       enabled: boolean;
-      apiKey: string;
+      /**
+       * An OpenRouter key is saved, encrypted, in secrets.json (ADR-025). Set only by the
+       * main process. The key itself never appears in settings.
+       */
+      keySaved: boolean;
       /** Any OpenAI compatible API. Empty uses OpenRouter. */
       baseURL: string;
       /** Empty uses NEXT_PROMPT_DEFAULT_MODEL */

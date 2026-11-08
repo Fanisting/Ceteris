@@ -1,0 +1,92 @@
+/*
+ * @file meizi-theme.css
+ * @purpose 梅子(Meizi)浅色主题,配色取自一张阅读器截图:米色纸面、墨色正文、两种梅粉和一种棕。
+ *
+ * @关键设计:
+ * - 源色:纸面 #F3EBDE,正文 #3D3D35,浅梅粉 #FFD9E6,深梅粉 #8B4A61,棕 #73595C。
+ * - 用户给的分工:纸面作主底色;棕画线条和描边;深梅粉作加深的底色(外框由它淡淡混入纸面得到,
+ *   选中、按钮、焦点直接用它);浅梅粉作普通的粉(悬停、选中底、次级容器、终端选区);
+ *   滚动条用深梅粉;正文色保持源色。
+ * - --color-bg-elevated 在大部分组件里画 1px 描边,所以取棕与纸面的混色;--color-bg-strong 画
+ *   复选框、单选框和表格线,取棕本色。
+ * - 次要文字直接用棕,在纸面和外框上都 >= 4.5:1。src/shared/meizi-theme.test.ts 核对对比度。
+ * - --md-primary-text-weight / --md-error-text-weight 含义见 material.css 第 2 节末尾。
+ *
+ * @加载顺序:必须在 material.css 之后,这里的 --md-* 才能覆写 material.css 的推导值。
+ *
+ * 终端配色在 src/shared/meizi-theme.ts。
+ *
+ * @对应文档章节:软件定义书.md 5.1.9 节
+ */
+
+[data-theme='meizi'] {
+  --color-bg-primary: #f3ebde;
+  --color-bg-secondary: #e8d9d0;
+  --color-bg-elevated: #c0b1aa;
+  --color-bg-hover: #f9dbe2;
+  --color-bg-active: #ffd9e6;
+  --color-bg-strong: #73595c;
+  --color-text-primary: #3d3d35;
+  --color-text-secondary: #4f4842;
+  --color-text-muted: #73595c;
+  --color-danger: #ad3044;
+  --color-warning: #85651a;
+  --color-success: #3a7243;
+  --color-info: #3d5f94;
+  --color-accent-secondary: #73595c;
+  --color-accent-special: #8b4a61;
+  --md-primary: #8b4a61;
+  --md-on-primary: #f3ebde;
+  --md-secondary-container: #ffd9e6;
+  --md-on-secondary-container: #3d3d35;
+  --md-surface-container-high: #f8f2e9;
+  --md-surface-container-highest: #ffd9e6;
+  --md-outline: #73595c;
+  --md-outline-variant: #c0b1aa;
+  --md-on-error: #f3ebde;
+  --md-inverse-surface: #3d3d35;
+  --md-inverse-on-surface: #f3ebde;
+  --md-elevation-1: 0 1px 2px rgb(115 89 92 / 20%), 0 1px 3px 1px rgb(115 89 92 / 10%);
+  --md-elevation-2: 0 1px 2px rgb(115 89 92 / 20%), 0 3px 8px 2px rgb(115 89 92 / 12%);
+  --md-elevation-3: 0 4px 10px 3px rgb(115 89 92 / 14%), 0 1px 3px rgb(115 89 92 / 22%);
+  --md-primary-text-weight: 100%;
+  --md-error-text-weight: 80%;
+
+  color-scheme: light;
+}
+
+/* 设置页快捷键表里的按键标签以 bg-strong(棕)为底,文字改用纸面色才看得清 */
+[data-theme='meizi'] .settings-keybindings-table kbd {
+  color: #f3ebde;
+}
+
+/* 滚动条:深梅粉。global.css 的滑块读 bg-active / bg-strong,那两个在本主题是浅粉和棕,
+   所以这里按选择器直接覆写。选择器多一个属性选择器,特异性高于 global.css。 */
+[data-theme='meizi'] .terminal-host .xterm-viewport::-webkit-scrollbar-thumb,
+[data-theme='meizi'] .sidebar-bookmarks-dropzone::-webkit-scrollbar-thumb,
+[data-theme='meizi'] .tab-bar::-webkit-scrollbar-thumb,
+[data-theme='meizi'] .settings-detail::-webkit-scrollbar-thumb,
+[data-theme='meizi'] .settings-nav::-webkit-scrollbar-thumb,
+[data-theme='meizi'] .settings-input::-webkit-scrollbar-thumb {
+  background-color: #8b4a61;
+}
+
+[data-theme='meizi'] .terminal-host .xterm-viewport::-webkit-scrollbar-thumb:hover,
+[data-theme='meizi'] .sidebar-bookmarks-dropzone::-webkit-scrollbar-thumb:hover,
+[data-theme='meizi'] .tab-bar::-webkit-scrollbar-thumb:hover,
+[data-theme='meizi'] .settings-detail::-webkit-scrollbar-thumb:hover,
+[data-theme='meizi'] .settings-nav::-webkit-scrollbar-thumb:hover,
+[data-theme='meizi'] .settings-input::-webkit-scrollbar-thumb:hover {
+  background-color: #73394d;
+}
+
+/* 文件树滚动条平时隐藏,悬停面板时才出现(见 file-tree.css),这里只换颜色 */
+[data-theme='meizi'] .file-tree-panel:hover .file-tree-list::-webkit-scrollbar-thumb,
+[data-theme='meizi'] .file-tree-list:focus-within::-webkit-scrollbar-thumb {
+  background-color: #8b4a61;
+}
+
+[data-theme='meizi'] .file-tree-panel .file-tree-list::-webkit-scrollbar-thumb:hover,
+[data-theme='meizi'] .file-tree-panel .file-tree-list::-webkit-scrollbar-thumb:active {
+  background-color: #73394d;
+}

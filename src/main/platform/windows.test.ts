@@ -36,6 +36,32 @@ describe('WindowsAdapter — WSL shell support', () => {
     expect(wsl?.paths.some((p) => p.toLowerCase().endsWith('\\system32\\wsl.exe'))).toBe(true);
   });
 
+  it('buildShellLaunchParams exitAfter:shell 跑完命令就退出,不留交互', () => {
+    const adapter = new WindowsAdapter();
+    const cmd = { command: 'claude', args: ['update'], exitAfter: true };
+    const pwsh = adapter.buildShellLaunchParams(
+      { id: 'pwsh', displayName: 'PowerShell 7', executablePath: 'pwsh.exe' },
+      'C:/hook.ps1',
+      cmd,
+    );
+    expect(pwsh.args).not.toContain('-NoExit');
+    // 命令不存在时 $LASTEXITCODE 未设置,必须靠 $? 才能以非 0 退出
+    expect(pwsh.args[1]).toContain("& 'claude' 'update'; if ($?) { exit 0 }");
+    expect(pwsh.args[1]).toMatch(/else \{ exit 1 \}$/);
+    const cmdExe = adapter.buildShellLaunchParams(
+      { id: 'cmd', displayName: 'Command Prompt', executablePath: 'cmd.exe' },
+      'C:/hook.cmd',
+      cmd,
+    );
+    expect(cmdExe.args[0]).toBe('/C');
+    const bash = adapter.buildShellLaunchParams(
+      { id: 'git-bash', displayName: 'Git Bash', executablePath: 'bash.exe' },
+      'C:/hook.sh',
+      cmd,
+    );
+    expect(bash.args.at(-1)).not.toContain('exec bash');
+  });
+
   it('buildShellLaunchParams(wsl) 无命令时不传参数(走发行版默认 shell)', () => {
     const adapter = new WindowsAdapter();
     const result = adapter.buildShellLaunchParams(

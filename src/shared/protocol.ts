@@ -25,6 +25,7 @@ import type {
   WindowInfo,
 } from './types';
 import type { DeepPartial } from './types-helpers';
+import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -67,6 +68,15 @@ export const COMMAND_CHANNELS = {
   SESSION_EXPORT_SCROLLBACK: 'cmd:session:export-scrollback',
   /** BETA-028:清空 main 端的 scrollback ring buffer(配合 term.clear() 使用) */
   SESSION_CLEAR_SCROLLBACK: 'cmd:session:clear-scrollback',
+  /**
+   * 公式图片扩展 (ADR-019):renderer 报告终端的前景 / 背景色与格子宽高比,
+   * main 写进之后新 session 的 LATEX_MATH_* 环境变量。payload 见 claude-math-images.ts。
+   */
+  EXTENSIONS_REPORT_TERMINAL_LOOK: 'cmd:extensions:report-terminal-look',
+  /** 公式图片扩展:随 Ceteris 一起安装的插件 marketplace 目录,设置页拿它拼安装命令 */
+  EXTENSIONS_GET_MARKETPLACE_DIR: 'cmd:extensions:get-marketplace-dir',
+  /** 协调者控制 (ADR-024):Claude Code 是否已装 ceteris-tabs 插件,协调者引导用它打勾 */
+  EXTENSIONS_TAB_CONTROL_STATUS: 'cmd:extensions:tab-control-status',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**
@@ -75,6 +85,8 @@ export const COMMAND_CHANNELS = {
    * 的任务进度标题重新生效。
    */
   SESSION_CLEAR_MANUAL_RENAME: 'cmd:session:clear-manual-rename',
+  /** ADR-023:标记或取消 coordinator,其标签显示在标签栏上方单独一行 */
+  SESSION_SET_COORDINATOR: 'cmd:session:set-coordinator',
   /**
    * 右键 Tab → "在新窗口中打开"。原子地把 session 从调用方窗口释放,
    * 创建新窗口并把所有权直接转给新窗口,新窗口启动时从 URL ?selectSessionId
@@ -130,6 +142,21 @@ export const COMMAND_CHANNELS = {
   TEMPLATE_DELETE: 'cmd:template:delete',
   TEMPLATE_SET_DEFAULT: 'cmd:template:set-default',
 
+  // Agent CLI 版本 (新建页的状态点)
+  /** 查本机各 agent CLI 的已装版本和最新版本 */
+  AGENT_LIST_VERSIONS: 'cmd:agent:list-versions',
+  /** 在新终端里跑某个 agent 的升级命令 */
+  AGENT_UPGRADE: 'cmd:agent:upgrade',
+  /** 立即做一次后台检查 (设置页"立即检查"),按设置弹通知 / 安排自动升级 */
+  AGENT_CHECK_NOW: 'cmd:agent:check-now',
+  /** 通知上的按钮:立即升级 / 跳过此版本 / 升级 (见 AgentNoticeActionPayload) */
+  AGENT_NOTICE_ACTION: 'cmd:agent:notice-action',
+  /**
+   * 窗口的通知监听已挂上。自动升级只在至少一个窗口报到后才开始倒计时,
+   * 保证"先通知再升级"的通知真的有人收到 (窗口还在加载时发的事件会丢)。
+   */
+  AGENT_NOTICES_READY: 'cmd:agent:notices-ready',
+
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
   SYSTEM_OPEN_DATA_DIR: 'cmd:system:open-data-dir',
@@ -179,6 +206,15 @@ export const COMMAND_CHANNELS = {
   AI_SUGGEST_NEXT_PROMPT: 'cmd:ai:suggest-next-prompt',
   AI_GET_NEXT_PROMPT_USAGE: 'cmd:ai:get-next-prompt-usage',
   AI_RESET_NEXT_PROMPT_USAGE: 'cmd:ai:reset-next-prompt-usage',
+  /** The models the next prompt API address offers, for the list in settings. */
+  AI_LIST_NEXT_PROMPT_MODELS: 'cmd:ai:list-next-prompt-models',
+  /** The repeated messages sent with each guess, shown in settings. */
+  AI_GET_FREQUENT_PROMPTS: 'cmd:ai:get-frequent-prompts',
+  /** Sign in to OpenRouter in the browser and save the new key encrypted (ADR-025). */
+  AI_CONNECT_OPENROUTER: 'cmd:ai:connect-openrouter',
+  AI_CANCEL_OPENROUTER_CONNECT: 'cmd:ai:cancel-openrouter-connect',
+  /** Forget the saved OpenRouter key on this PC. */
+  AI_DISCONNECT_OPENROUTER: 'cmd:ai:disconnect-openrouter',
 
   /**
    * IME-1 探针 dump — renderer 在 onData 检测到疑似 LEAK 时,把 ring buffer
@@ -214,6 +250,16 @@ export const COMMAND_CHANNELS = {
   UPDATE_GET_STATUS: 'cmd:update:get-status',
   /** 立刻查一次 GitHub Releases,返回查完后的 UpdateStatus。任何 channel 都可用 */
   UPDATE_CHECK_NOW: 'cmd:update:check-now',
+
+  // 用户主题域(ADR-026)。主题文件在本机数据目录,所以都在 LINK_LOCAL_ONLY_CHANNELS 里。
+  /** 当前所有用户主题(CustomTheme[]),窗口挂载时拉一次 */
+  THEME_LIST_CUSTOM: 'cmd:theme:list-custom',
+  /** 用模板新建一个主题文件并用系统默认编辑器打开。payload: TemplateValues */
+  THEME_CREATE_CUSTOM: 'cmd:theme:create-custom',
+  /** 打开主题文件夹 */
+  THEME_OPEN_FOLDER: 'cmd:theme:open-folder',
+  /** 用系统默认编辑器打开一个主题文件。payload: { id } */
+  THEME_OPEN_FILE: 'cmd:theme:open-file',
 } as const;
 
 export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHANNELS];
@@ -286,6 +332,10 @@ export const EVENT_CHANNELS = {
   VIEW_STATE_CHANGED: 'evt:view:state-changed',
   /** UpdateStatus 变化(开始检查 / 查到新版本 / 失败 / 开关变化),广播给本机所有窗口 */
   UPDATE_STATUS_CHANGED: 'evt:update:status-changed',
+  /** agent 版本通知 (有新版本 / 即将自动升级 / 等 agent 关掉 / 升级完成 / 升级失败) */
+  AGENT_UPDATE_NOTICE: 'evt:agent:update-notice',
+  /** 主题文件夹里的文件变了,payload 是新的 CustomTheme[](ADR-026)。只发本机窗口 */
+  CUSTOM_THEMES_UPDATED: 'evt:theme:custom-updated',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];
@@ -417,6 +467,11 @@ export interface CreateSessionResponse {
 export interface RenameSessionPayload {
   sessionId: string;
   newDisplayName: string;
+}
+
+export interface SetCoordinatorPayload {
+  sessionId: string;
+  coordinator: boolean;
 }
 
 export interface CloseSessionPayload {
@@ -837,6 +892,87 @@ export interface ListShellsResponse {
   shells: ShellListItem[];
 }
 
+/**
+ * 新建页 agent 按钮上的状态点。
+ *
+ * - missing:PATH 上找不到该命令
+ * - current:已装版本不低于 registry 最新版
+ * - outdated:registry 有更新版本
+ * - installed:已装,但查不到最新版 (离线 / 无 registry / 版本号解析失败)
+ */
+export type AgentVersionStatus = 'missing' | 'current' | 'outdated' | 'installed';
+
+export interface AgentVersionInfo {
+  /** 对应的内置模板 id (claude-code / codex / ...) */
+  templateId: string;
+  status: AgentVersionStatus;
+  installed?: string;
+  latest?: string;
+  /** 升级命令的可读形式,例如 "bun add -g @google/gemini-cli@latest";缺省表示认不出安装方式,不给升级按钮 */
+  upgradeCommand?: string;
+  /** 从安装位置推出的安装方式;'self' 表示认不出,用 agent 自带的升级命令 */
+  installMethod?: AgentInstallMethod;
+  /** PATH 上真正会运行的那份 */
+  path?: string;
+  /** PATH 上其余几份 (不会运行),用于提示重复安装 */
+  otherCopies?: string[];
+}
+
+export type AgentInstallMethod =
+  | 'npm'
+  | 'pnpm'
+  | 'bun'
+  | 'brew'
+  | 'winget'
+  | 'scoop'
+  | 'pipx'
+  | 'uv'
+  | 'self';
+
+export interface ListAgentVersionsPayload {
+  /** true 时跳过缓存重新检查 */
+  force?: boolean;
+}
+
+export interface ListAgentVersionsResponse {
+  agents: AgentVersionInfo[];
+}
+
+/**
+ * main 发给所有窗口的 agent 版本通知,renderer 用 toast 显示。
+ *
+ * - available:有新版本 (自动升级关着时),每个版本只发一次
+ * - scheduled:delayMs 后自动升级,用户可以立即升级或跳过此版本
+ * - waiting:该 agent 有终端开着,关掉后再升级
+ * - done / failed:后台升级结束;失败时 sessionId 指向留着报错的终端
+ */
+export interface AgentUpdateNotice {
+  kind: 'available' | 'scheduled' | 'waiting' | 'done' | 'failed';
+  templateId: string;
+  /** agent 显示名 (Codex 等) */
+  name: string;
+  from?: string;
+  to?: string;
+  delayMs?: number;
+  exitCode?: number;
+  sessionId?: string;
+  pathId?: string;
+}
+
+export interface AgentNoticeActionPayload {
+  templateId: string;
+  /** now:跳过倒计时立即升级;skip:跳过这个版本;update:从"有新版本"通知手动升级 */
+  action: 'now' | 'skip' | 'update';
+}
+
+export interface UpgradeAgentPayload {
+  templateId: string;
+  /** 升级终端开在哪个本地路径下 */
+  pathId: string;
+  cols: number;
+  rows: number;
+}
+
 export interface GetAutoStartResponse {
   enabled: boolean;
 }
@@ -1198,6 +1334,19 @@ export interface SuggestNextPromptPayload {
 
 export interface SuggestNextPromptResponse {
   suggestion: string | null;
+}
+
+export interface ListNextPromptModelsResponse {
+  models: NextPromptModelOption[];
+}
+
+export interface ConnectOpenRouterResponse {
+  /** false when the user cancelled; real failures throw instead. */
+  connected: boolean;
+}
+
+export interface GetFrequentPromptsResponse {
+  prompts: FrequentPrompt[];
 }
 
 /** ViewTarget.id of the local view. Remote views use their window id. */

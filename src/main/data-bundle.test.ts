@@ -30,7 +30,7 @@ function archive(): SettingsArchiveV1 {
       ai: {
         apiKey: SECRET,
         statusRecheckEnabled: true,
-        nextPrompt: { enabled: true, apiKey: SECRET, model: 'm' },
+        nextPrompt: { enabled: true, keySaved: true, model: 'm' },
       },
       link: {
         hostEnabled: true,
@@ -234,7 +234,7 @@ describe('secrets in settings', () => {
   it('turns off features that would have no key on the new PC', () => {
     const current = archive().settings;
     current.ai.apiKey = '';
-    current.ai.nextPrompt.apiKey = '';
+    current.ai.nextPrompt.keySaved = false;
     const merged = withLocalSecrets(archive(), current);
     expect(merged.settings.ai.statusRecheckEnabled).toBe(false);
     expect(merged.settings.ai.nextPrompt.enabled).toBe(false);

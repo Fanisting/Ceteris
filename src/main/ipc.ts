@@ -27,8 +27,10 @@ import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
-import { getAppLabel, getBuildType, getLaunchExePath } from './build-type';
+import { getAppLabel, getBuildType, getChannel, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
+import { createAgentVersionChecker, findAgentSpec, type AgentVersionChecker } from './agent-versions';
+import { AgentAutoUpdater } from './agent-auto-update';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -55,6 +57,9 @@ import {
   type SetPaneSessionsPayload,
   type SuggestNextPromptPayload,
   type SuggestNextPromptResponse,
+  type ListNextPromptModelsResponse,
+  type GetFrequentPromptsResponse,
+  type ConnectOpenRouterResponse,
   type ViewStateResponse,
   type ViewSwitchPayload,
   type AddSshProfilePayload,
@@ -67,6 +72,7 @@ import {
   type ClipboardWriteTextPayload,
   type ClipboardWriteTextResponse,
   type CloseSessionPayload,
+  type SetCoordinatorPayload,
   type CommandEnvelope,
   type CreateSessionPayload,
   type CreateSessionResponse,
@@ -91,6 +97,11 @@ import {
   type ImportSettingsResponse,
   type KnownHostsRefreshResponse,
   type ListShellsResponse,
+  type ListAgentVersionsPayload,
+  type AgentNoticeActionPayload,
+  type AgentUpdateNotice,
+  type ListAgentVersionsResponse,
+  type UpgradeAgentPayload,
   type ListSshProfilesResponse,
   type SshAgentStatusResponse,
   type SshConfigListResponse,
@@ -151,7 +162,7 @@ import {
   type LinkStatusChangedPayload,
   type LinkStatusResponse,
 } from '@shared/protocol';
-import type { AppSnapshot, Settings, Template, ThemeId } from '@shared/types';
+import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -177,6 +188,8 @@ import type {
 } from '@shared/file-tree';
 import { listDirectory, renameEntry } from './file-tree';
 import { writeTextFile } from './text-writer';
+import type { CustomThemeStore } from './custom-theme-store';
+import type { CustomTheme, TemplateValues } from '@shared/custom-themes';
 import { isAppPageUrl } from './ipc-sender';
 import { readPdfChunk, readRemotePdfChunk, statRemoteViewFile, statViewFile } from './pdf-reader';
 import type { SftpPool } from './sftp-client';
@@ -198,12 +211,23 @@ import {
   writeBundle,
 } from './data-bundle';
 import { detectAgent } from '@shared/next-prompt';
-import { suggestNextPrompt } from './next-prompt-client';
+import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
+import { FrequentPromptReader } from './frequent-prompts';
+import { ConnectCancelled, cancelOpenRouterConnect, connectOpenRouter } from './openrouter-connect';
+import type { SecretStore } from './secret-store';
 import type { ViewSwitcher } from './view-switcher';
+import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
+import {
+  TAB_CONTROL_PLUGIN_ID,
+  isClaudePluginInstalled,
+  type TabControlStatus,
+} from '@shared/tab-control';
 
 export interface IpcLayerDeps {
   /** Optional like aiClient, so tests need not build it. */
   nextPromptUsage?: NextPromptUsageTracker;
+  /** Encrypted API keys (ADR-025). Optional so tests need not build it. */
+  secretStore?: SecretStore;
   windowManager: WindowManager;
   pathManager: PathManager;
   settingsManager: SettingsManager;
@@ -230,6 +254,8 @@ export interface IpcLayerDeps {
    * 返回 idle,cmd:update:check-now 抛 UpdateCheckUnavailable。
    */
   updateChecker?: UpdateChecker;
+  /** 用户主题文件夹(ADR-026)。可选:单测不带它,此时列表为空,其余主题命令抛错 */
+  customThemes?: CustomThemeStore;
 }
 
 let installed = false;
@@ -248,6 +274,8 @@ let linkSettingsManager: SettingsManager | null = null;
 /**
  * 注册全部 IPC handler 与事件桥接。整个应用只能调用一次。
  */
+/** 后台升级最多等这么久;卡住 (例如在等密码) 也不能一直占着升级队列 */
+const UPGRADE_TIMEOUT_MS = 15 * 60_000;
 export function installIpcLayer(deps: IpcLayerDeps): void {
   if (installed) throw new Error('[ipc] installIpcLayer() already called');
   installed = true;
@@ -360,6 +388,19 @@ export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
  */
 export function broadcastUpdateStatus(status: UpdateStatus): void {
   broadcastEvent<UpdateStatus>(EVENT_CHANNELS.UPDATE_STATUS_CHANGED, status);
+}
+
+/**
+ * 把新的用户主题列表推给本机所有窗口(ADR-026)。
+ *
+ * 不走 broadcastEvent:那条会跳过远程窗口(它们的数据来自 Host),而主题跟随本机,
+ * 远程窗口也要用本机的主题文件。也不发给虚拟窗口,对端用它自己的主题。
+ */
+export function broadcastCustomThemes(themes: CustomTheme[]): void {
+  const envelope = wrapEvent(themes);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(EVENT_CHANNELS.CUSTOM_THEMES_UPDATED, envelope);
+  }
 }
 
 /**
@@ -737,6 +778,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // ADR-023
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_COORDINATOR,
+    (_e, envelope: CommandEnvelope<SetCoordinatorPayload>): void => {
+      sessionManager.setCoordinator(envelope.payload.sessionId, envelope.payload.coordinator);
+    },
+  );
+
   // STM-3:清除手动重命名标记
   handleCommand(
     COMMAND_CHANNELS.SESSION_CLEAR_MANUAL_RENAME,
@@ -789,6 +838,46 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     (_e, envelope: CommandEnvelope<{ sessionId: string }>): void => {
       // BETA-028:工具栏"清屏"按钮配合 term.clear() 使用
       sessionManager.clearScrollback(envelope.payload.sessionId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_REPORT_TERMINAL_LOOK,
+    (_e, envelope: CommandEnvelope<unknown>): void => {
+      // 公式图片扩展 (ADR-019):不合法的报告直接丢掉,不进子进程环境变量。
+      const look = parseTerminalLook(envelope.payload);
+      if (look) sessionManager.setTerminalLook(look);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR,
+    (): { dir: string } => ({
+      // 公式图片扩展 (ADR-019):安装版在 resources/extensions,dev 在仓库的 extensions/
+      dir: bundledMarketplaceDir({
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+      }),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_TAB_CONTROL_STATUS,
+    async (): Promise<TabControlStatus> => {
+      // 协调者引导 (ADR-024):读 Claude Code 自己的插件登记表。CLAUDE_CONFIG_DIR 是
+      // Claude Code 认的配置目录覆盖;没设就是 ~/.claude。文件不存在 (没装过任何插件)、
+      // 读不了或不是 JSON 都当没装,引导就继续显示安装那一步。
+      const configDir = process.env.CLAUDE_CONFIG_DIR || joinPath(homedir(), '.claude');
+      const file = joinPath(configDir, 'plugins', 'installed_plugins.json');
+      try {
+        const registry: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
+        return { pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID) };
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') logger.warn('ipc', `tab control status: cannot read ${file}`, err);
+        return { pluginInstalled: false };
+      }
     },
   );
 
@@ -1187,7 +1276,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SETTINGS_UPDATE,
     (_e, envelope: CommandEnvelope<UpdateSettingsPayload>): void => {
-      settingsManager.update(envelope.payload.partial);
+      // keySaved mirrors SecretStore and only main may change it (ADR-025).
+      const partial = envelope.payload.partial;
+      if (partial?.ai?.nextPrompt && 'keySaved' in partial.ai.nextPrompt) {
+        delete partial.ai.nextPrompt.keySaved;
+      }
+      settingsManager.update(partial);
     },
   );
 
@@ -1337,6 +1431,58 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // Read on the machine that makes the call, so a remote view gets the Host's habits.
+  const frequentPrompts = new FrequentPromptReader();
+  const nextPromptConfig = () => ({
+    ...settingsManager.get().ai.nextPrompt,
+    apiKey: deps.secretStore?.getNextPromptKey() ?? '',
+  });
+  const refuseRemote = (windowId: string | undefined): void => {
+    if (windowId && windowManager.isWindowRemote(windowId)) {
+      throw new Error(
+        '远程视图里不能连接或断开 OpenRouter:key 保存在主机上。请在主机的 Ceteris 设置里操作',
+      );
+    }
+  };
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_CONNECT_OPENROUTER,
+    async (
+      _e,
+      envelope: CommandEnvelope<undefined>,
+    ): Promise<ConnectOpenRouterResponse> => {
+      refuseRemote(envelope.windowId);
+      if (!deps.secretStore) throw new Error('SecretStore 未初始化,无法保存 key');
+      try {
+        const key = await connectOpenRouter((url) => shell.openExternal(url));
+        deps.secretStore.setNextPromptKey(key);
+        settingsManager.update({ ai: { nextPrompt: { keySaved: true } } });
+        return { connected: true };
+      } catch (err) {
+        if (err instanceof ConnectCancelled) return { connected: false };
+        throw err;
+      }
+    },
+  );
+
+  handleCommand(COMMAND_CHANNELS.AI_CANCEL_OPENROUTER_CONNECT, (): void => {
+    cancelOpenRouterConnect();
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_DISCONNECT_OPENROUTER,
+    (_e, envelope: CommandEnvelope<undefined>): void => {
+      refuseRemote(envelope.windowId);
+      deps.secretStore?.setNextPromptKey('');
+      const { baseURL } = settingsManager.get().ai.nextPrompt;
+      // Without a key OpenRouter guesses can only fail, so stop asking.
+      settingsManager.update({
+        ai: { nextPrompt: { keySaved: false, ...(baseURL.trim() ? {} : { enabled: false }) } },
+      });
+      logger.info('ipc', 'next prompt OpenRouter key forgotten');
+    },
+  );
+
   // Not local-only on purpose: a remote view sends this to the Host, whose settings
   // hold the key, so the laptop needs no key of its own.
   handleCommand(
@@ -1345,12 +1491,30 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       _e,
       envelope: CommandEnvelope<SuggestNextPromptPayload>,
     ): Promise<SuggestNextPromptResponse> => {
-      const config = settingsManager.get().ai.nextPrompt;
-      const suggestion = await suggestNextPrompt(config, envelope.payload.screen, fetch, (usage) =>
-        deps.nextPromptUsage?.record(usage),
+      const config = nextPromptConfig();
+      const suggestion = await suggestNextPrompt(
+        config,
+        envelope.payload.screen,
+        fetch,
+        (usage) => deps.nextPromptUsage?.record(usage),
+        await frequentPrompts.get(),
       );
       return { suggestion };
     },
+  );
+
+  // Asks the Host for a remote view, like the suggestion itself: the list must match the
+  // address and key that the guesses will use.
+  handleCommand(
+    COMMAND_CHANNELS.AI_LIST_NEXT_PROMPT_MODELS,
+    async (): Promise<ListNextPromptModelsResponse> => ({
+      models: await listNextPromptModels(nextPromptConfig()),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS,
+    async (): Promise<GetFrequentPromptsResponse> => ({ prompts: await frequentPrompts.get() }),
   );
 
   handleCommand(
@@ -1458,6 +1622,61 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         );
       }
       return deps.updateChecker.checkNow('manual');
+    },
+  );
+
+  // ADR-026:用户主题文件。打开文件用系统默认程序;.css 没有关联程序时
+  // shell.openPath 返回错误文本,此时退而在资源管理器里选中该文件。
+  const requireThemes = (): CustomThemeStore => {
+    if (!deps.customThemes) {
+      throw makeIpcError(
+        'CustomThemesUnavailable',
+        '[ipc] custom theme store is not wired in this process. Possible causes: a test ' +
+          'harness without customThemes, or index.ts failed to start it (see main.log for themes).',
+      );
+    }
+    return deps.customThemes;
+  };
+  const openThemeFile = async (path: string): Promise<void> => {
+    const err = await shell.openPath(path);
+    if (err) {
+      logger.warn('themes', `openPath failed for ${path}: ${err}; showing it in the folder`);
+      shell.showItemInFolder(path);
+    }
+  };
+  handleCommand(
+    COMMAND_CHANNELS.THEME_LIST_CUSTOM,
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<CustomTheme[]> =>
+      (await deps.customThemes?.list()) ?? [],
+  );
+  handleCommand(
+    COMMAND_CHANNELS.THEME_CREATE_CUSTOM,
+    async (_e, envelope: CommandEnvelope<TemplateValues>): Promise<{ id: string }> => {
+      const store = requireThemes();
+      const { id, path } = await store.create(envelope.payload);
+      broadcastCustomThemes(await store.list());
+      await openThemeFile(path);
+      return { id };
+    },
+  );
+  handleCommand(
+    COMMAND_CHANNELS.THEME_OPEN_FOLDER,
+    async (_e, _envelope: CommandEnvelope<undefined>): Promise<void> => {
+      await shell.openPath(requireThemes().dir);
+    },
+  );
+  handleCommand(
+    COMMAND_CHANNELS.THEME_OPEN_FILE,
+    async (_e, envelope: CommandEnvelope<{ id: string }>): Promise<void> => {
+      const path = requireThemes().pathOf(envelope.payload.id);
+      if (!path) {
+        throw makeIpcError(
+          'ThemeNotFound',
+          `[ipc] no theme file for id="${envelope.payload.id}". Possible causes: the file was ` +
+            'renamed or deleted after the menu was drawn.',
+        );
+      }
+      await openThemeFile(path);
     },
   );
 
@@ -1576,6 +1795,179 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   const parentWindow = (e: IpcMainInvokeEvent): BrowserWindow =>
     (BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow())!;
+
+  // 新建页 agent 状态点。checker 懒创建,第一次打开新建页时才跑 --version / 联网。
+  let agentChecker: AgentVersionChecker | null = null;
+  const getAgentChecker = (): AgentVersionChecker =>
+    (agentChecker ??= createAgentVersionChecker(getPlatformAdapter()));
+
+  /**
+   * 开一个跑升级命令的终端。成功自动关闭,失败留着显示报错 (closeOnSuccess)。
+   * 返回的 exited 在终端退出时 resolve 退出码;UPGRADE_TIMEOUT_MS 内没退出 resolve null。
+   *
+   * @param ownerWindowId 新建页点状态点时是发起窗口;后台自动升级传 '' (无主终端,
+   *   不抢任何窗口的当前 tab,失败时用户可以从通知里打开它)
+   * @throws UpgradeUnknown 认不出安装方式;TemplateNotFound 不是内置 agent
+   */
+  const startAgentUpgrade = async (
+    templateId: string,
+    pathId: string,
+    ownerWindowId: string,
+    cols: number,
+    rows: number,
+  ): Promise<{ session: SessionInfo; exited: Promise<number | null> }> => {
+    // 升级命令由 main 按安装位置推出,renderer 传不进任意命令
+    if (!findAgentSpec(templateId)) {
+      throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
+    }
+    const plan = await getAgentChecker().upgradeFor(templateId);
+    if (!plan) {
+      throw makeIpcError(
+        'UpgradeUnknown',
+        `cannot tell how templateId="${templateId}" was installed. ` +
+          `Possible causes: (1) it is not on PATH, (2) it was installed by a method Ceteris does not recognise. ` +
+          `Update it the way it was installed.`,
+      );
+    }
+    const name = templatesManager.resolve(templateId).name;
+    const session = await sessionManager.createSession({
+      pathId,
+      templateId: 'shell',
+      ownerWindowId,
+      cols,
+      rows,
+      commandOverride: {
+        name: `${name} update`,
+        command: plan.command,
+        args: plan.args,
+        closeOnSuccess: true,
+      },
+    });
+    getAgentChecker().invalidate(templateId);
+    logger.info(
+      'ipc',
+      `agent upgrade started: template=${templateId} session=${session.id} via=${plan.method}`,
+    );
+    const exited = new Promise<number | null>((resolveExit) => {
+      // 升级结束再清一次缓存:升级期间打开的新建页可能缓存了旧版本号。
+      // sessionExited 在销毁 tab 之前发出,所以新建页重新拉取时已是新版本。
+      const onExit = (p: SessionExitedPayload): void => {
+        if (p.sessionId !== session.id) return;
+        getAgentChecker().invalidate(templateId);
+        logger.info('ipc', `agent upgrade finished: template=${templateId} exitCode=${p.exitCode}`);
+        finish(p.exitCode);
+      };
+      // 用户在升级跑完前手动关掉终端
+      const onDestroyed = (p: { sessionId: string }): void => {
+        if (p.sessionId === session.id) finish(null);
+      };
+      // 卡住的升级 (比如在等密码) 不能永远占着队列;终端本身留着,用户能看到
+      const timer = setTimeout(() => {
+        logger.warn(
+          'ipc',
+          `agent upgrade still running after ${UPGRADE_TIMEOUT_MS / 60_000} min: session=${session.id}`,
+        );
+        finish(null);
+      }, UPGRADE_TIMEOUT_MS);
+      timer.unref?.();
+      function finish(code: number | null): void {
+        clearTimeout(timer);
+        sessionManager.off('sessionExited', onExit);
+        sessionManager.off('sessionDestroyed', onDestroyed);
+        resolveExit(code);
+      }
+      sessionManager.on('sessionExited', onExit);
+      sessionManager.on('sessionDestroyed', onDestroyed);
+    });
+    return { session, exited };
+  };
+
+  /** 已经挂上 agent 通知监听的窗口 (见 AGENT_NOTICES_READY) */
+  const noticeReadyWindows = new Set<string>();
+
+  // 后台检查 + 先通知后自动升级 (见 agent-auto-update.ts)
+  const agentAutoUpdater = new AgentAutoUpdater({
+    list: (force) => getAgentChecker().list(force),
+    nameOf: (templateId) => templatesManager.resolve(templateId).name,
+    // stable 和 beta 常同时开着;只让 stable 自己跑,免得两边一起升级同一个全局包
+    isAutoCheckEnabled: () =>
+      getChannel() === 'stable' && settingsManager.get().behavior.autoCheckAgents !== false,
+    isAutoUpdateEnabled: () => settingsManager.get().behavior.autoUpdateAgents === true,
+    isAgentRunning: (templateId) =>
+      sessionManager.list().some((s) => s.templateId === templateId && s.state !== 'exited'),
+    // 只算已挂上通知监听的窗口:刚创建、还在加载的窗口收不到通知
+    hasWindow: () => noticeReadyWindows.size > 0,
+    startUpgrade: async (templateId) => {
+      const { session, exited } = await startAgentUpgrade(templateId, homedir(), '', 120, 30);
+      return { exitCode: await exited, sessionId: session.id, pathId: session.pathId };
+    },
+    notify: (notice) =>
+      broadcastEvent<AgentUpdateNotice>(EVENT_CHANNELS.AGENT_UPDATE_NOTICE, notice),
+  });
+  const onAgentSessionsChanged = (): void => agentAutoUpdater.onSessionsChanged();
+  sessionManager.on('sessionExited', onAgentSessionsChanged);
+  sessionManager.on('sessionDestroyed', onAgentSessionsChanged);
+  windowManager.onWindowClosed((windowId) => {
+    noticeReadyWindows.delete(windowId);
+  });
+  settingsManager.on('settingsChanged', (e: { changedKeys: string[] }) => {
+    if (
+      e.changedKeys.some(
+        (k) => k === 'behavior.autoCheckAgents' || k === 'behavior.autoUpdateAgents',
+      )
+    ) {
+      agentAutoUpdater.refreshSchedule();
+    }
+  });
+  agentAutoUpdater.refreshSchedule();
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
+    async (
+      _e,
+      envelope: CommandEnvelope<ListAgentVersionsPayload | undefined>,
+    ): Promise<ListAgentVersionsResponse> => {
+      return { agents: await getAgentChecker().list(envelope.payload?.force === true) };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_UPGRADE,
+    async (_e, envelope: CommandEnvelope<UpgradeAgentPayload>): Promise<CreateSessionResponse> => {
+      const { templateId, pathId, cols, rows } = envelope.payload;
+      if (pathRefFromId(pathId).kind === 'ssh') {
+        throw makeIpcError('InvalidPayload', `agent upgrade runs on local paths only, got pathId="${pathId}"`);
+      }
+      const oldTreeJson = JSON.stringify(pathManager.getTree());
+      const { session } = await startAgentUpgrade(templateId, pathId, envelope.windowId, cols, rows);
+      return { session, pathTreeChanged: JSON.stringify(pathManager.getTree()) !== oldTreeJson };
+    },
+  );
+
+  // 窗口的通知监听挂上了:纯托盘期间搁置的升级现在可以通知并开始倒计时
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_NOTICES_READY,
+    (_e, envelope: CommandEnvelope<undefined>): void => {
+      noticeReadyWindows.add(envelope.windowId);
+      agentAutoUpdater.poke();
+    },
+  );
+
+  // 设置页"立即检查":任何渠道都能手动查,结果走通知
+  handleCommand(COMMAND_CHANNELS.AGENT_CHECK_NOW, async (): Promise<void> => {
+    await agentAutoUpdater.checkNow();
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_NOTICE_ACTION,
+    (_e, envelope: CommandEnvelope<AgentNoticeActionPayload>): void => {
+      const { templateId, action } = envelope.payload;
+      if (!findAgentSpec(templateId) || !['now', 'skip', 'update'].includes(action)) {
+        throw makeIpcError('InvalidPayload', `templateId="${templateId}" action="${action}"`);
+      }
+      agentAutoUpdater.act(templateId, action);
+    },
+  );
 
   handleCommand(
     COMMAND_CHANNELS.DATA_MEASURE_AGENTS,

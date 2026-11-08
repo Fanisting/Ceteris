@@ -29,8 +29,11 @@ import {
 } from 'react';
 import {
   COMMAND_CHANNELS,
+  type AgentVersionInfo,
   type CreateSessionResponse,
+  type ListAgentVersionsResponse,
   type ListShellsResponse,
+  type UpgradeAgentPayload,
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
@@ -59,6 +62,8 @@ import {
 } from '../pdf-view-store';
 import { focusTerminalDom } from '../focus';
 import { Icon } from './icons';
+import { AgentWave } from './AgentWave';
+import { CelebrationBurst } from './CelebrationBurst';
 import { TemplateIcon } from './TemplateIcon';
 import { useContextMenuApi } from './ContextMenu';
 import { useToast } from './Toast';
@@ -69,6 +74,7 @@ import {
   type DetectedShell,
 } from './launch-options';
 import { QuickLaunchOverlay } from './QuickLaunchOverlay';
+import { markQuickLaunchTipSeen, QuickLaunchTip } from './QuickLaunchTip';
 import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
@@ -426,6 +432,51 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
     };
   }, [isSshPath]);
 
+  // Agent 状态点只对本机路径有意义:SSH / WSL 里的 agent 是另一套安装。
+  const showAgentDots = !isSshPath && !isWslPath;
+  const [agentVersions, setAgentVersions] = useState<Map<string, AgentVersionInfo>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    if (!showAgentDots) return;
+    let cancelled = false;
+    window.api
+      .invoke<unknown, ListAgentVersionsResponse>(COMMAND_CHANNELS.AGENT_LIST_VERSIONS, {})
+      .then((res) => {
+        if (!cancelled) setAgentVersions(new Map(res.agents.map((a) => [a.templateId, a])));
+      })
+      .catch((err) => {
+        // 查不到就不显示点,按钮照常可用
+        console.warn('[EmptyPathState] list-agent-versions failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAgentDots]);
+
+  const handleUpgrade = async (templateId: string): Promise<void> => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const dims = state.lastTerminalDims;
+      const res = await window.api.invoke<UpgradeAgentPayload, CreateSessionResponse>(
+        COMMAND_CHANNELS.AGENT_UPGRADE,
+        { templateId, pathId, cols: dims.cols, rows: dims.rows },
+      );
+      dispatch({ type: 'view/select-session', sessionId: res.session.id });
+      focusTerminalDom();
+    } catch (err) {
+      console.error('[MainPane] agent upgrade failed', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.push({
+        kind: 'error',
+        message: tx(`启动升级失败:${msg}`, `Failed to start the update: ${msg}`),
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleCreate = async (
     templateId: string,
     shellId?: string,
@@ -466,8 +517,22 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   };
 
   const templates = state.templates.filter((t) => !t.hidden);
+  const shellTemplates = templates.filter((t) => SHELL_TEMPLATE_IDS.has(t.id));
+  const agentTemplates = templates.filter((t) => !SHELL_TEMPLATE_IDS.has(t.id));
   const visibleShells = shells ? filterShellsForWslPath(shells, wslDistroName) : null;
   const wslShellId = isWslPath ? visibleShells?.[0]?.id : undefined;
+  // WSL 路径要等 WSL shell 检测出来,模板才有地方跑
+  const canLaunchTemplates = isSshPath || !isWslPath || !!wslShellId;
+  const renderTemplate = (t: Template): JSX.Element => (
+    <TemplateLaunchButton
+      key={t.id}
+      template={t}
+      creating={creating}
+      onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
+      version={showAgentDots ? agentVersions.get(t.id) : undefined}
+      onUpgrade={() => void handleUpgrade(t.id)}
+    />
+  );
 
   return (
     <>
@@ -507,15 +572,17 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
                 </span>
                 <span className="template-label">tmux</span>
               </button>
+              {shellTemplates.map(renderTemplate)}
             </div>
           </div>
         )}
 
-        {!isSshPath && visibleShells && visibleShells.length > 0 && (
+        {!isSshPath &&
+          ((visibleShells?.length ?? 0) > 0 || (canLaunchTemplates && shellTemplates.length > 0)) && (
           <div className="empty-section">
-            <div className="empty-section-title">{tx('检测到的 Shell', 'Detected shells')}</div>
+            <div className="empty-section-title">Shell</div>
             <div className="empty-button-grid">
-              {visibleShells.map((s) => (
+              {(visibleShells ?? []).map((s) => (
                 <button
                   key={s.id}
                   type="button"
@@ -530,41 +597,45 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
                   <span className="template-label">{s.displayName}</span>
                 </button>
               ))}
+              {canLaunchTemplates && shellTemplates.map(renderTemplate)}
             </div>
           </div>
         )}
 
-        <div className="empty-section">
-          <div className="empty-section-title">{tx('启动模板', 'Launch templates')}</div>
-          <div className="empty-button-grid">
-            {(isSshPath || !isWslPath || wslShellId) && templates.map((t) => (
-              <TemplateLaunchButton
-                key={t.id}
-                template={t}
-                creating={creating}
-                onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
-              />
-            ))}
+        {agentTemplates.length > 0 && (
+          <div className="empty-section">
+            <div className="empty-section-title">Agents</div>
+            <div className="empty-button-grid">
+              {canLaunchTemplates && agentTemplates.map(renderTemplate)}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   );
 }
 
+/** 内置的纯 shell 模板归到 Shell 区;其余模板 (含自定义) 归到 Agents 区。 */
+const SHELL_TEMPLATE_IDS = new Set(['shell', 'admin-shell']);
+
 function TemplateLaunchButton({
   template,
   creating,
   onLaunch,
+  version,
+  onUpgrade,
 }: {
   template: Template;
   creating: boolean;
   onLaunch: () => void;
+  /** 有值时在卡片右侧显示状态点 */
+  version?: AgentVersionInfo | undefined;
+  onUpgrade?: () => void;
 }): JSX.Element {
-  return (
+  const button = (
     <button
       type="button"
-      className="template-button"
+      className={`template-button${version ? ' has-dot' : ''}`}
       onClick={onLaunch}
       disabled={creating}
       title={template.command ? `${template.name} — 启动命令: ${template.command}` : template.name}
@@ -574,6 +645,89 @@ function TemplateLaunchButton({
       </span>
       <span className="template-label">{template.name}</span>
     </button>
+  );
+  if (!version) return button;
+  return (
+    <div className="template-button-wrap">
+      {button}
+      <AgentVersionDot info={version} disabled={creating} onUpgrade={onUpgrade} />
+    </div>
+  );
+}
+
+/**
+ * Agent 卡片右侧的状态点:
+ * - 绿:已是最新
+ * - 黄:有新版本,点它在新终端里跑升级命令
+ * - 灰:已装,但查不到最新版 (离线 / 无 registry);点它同样跑升级命令
+ * - 空心:PATH 上没找到
+ */
+function AgentVersionDot({
+  info,
+  disabled,
+  onUpgrade,
+}: {
+  info: AgentVersionInfo;
+  disabled: boolean;
+  onUpgrade?: (() => void) | undefined;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const cmd = info.upgradeCommand ?? '';
+  const lines: string[] = [];
+  switch (info.status) {
+    case 'current':
+      lines.push(tx(`${info.installed ?? ''} 已是最新`, `${info.installed ?? ''} is up to date`));
+      break;
+    case 'outdated':
+      lines.push(`${tx('有新版本', 'Update available')}: ${info.installed} → ${info.latest}`);
+      break;
+    case 'installed':
+      lines.push(
+        `${tx('已安装', 'Installed')} ${info.installed ?? ''}`,
+        tx('查不到最新版本', 'Latest version unknown'),
+      );
+      break;
+    default:
+      lines.push(tx('PATH 上没找到这个命令', 'Not found on PATH'));
+  }
+  if (info.path) {
+    const method = info.installMethod && info.installMethod !== 'self' ? info.installMethod : null;
+    lines.push(method ? tx(`用 ${method} 安装:${info.path}`, `Installed with ${method}: ${info.path}`) : info.path);
+  }
+  for (const other of info.otherCopies ?? []) {
+    lines.push(tx(`PATH 上另有一份 (不会运行):${other}`, `Another copy on PATH (not used): ${other}`));
+  }
+  if (info.status === 'outdated' || info.status === 'installed') {
+    if (cmd) {
+      lines.push(tx(`点击运行:${cmd}`, `Click to run: ${cmd}`));
+      // 系统包管理器的版本常比 npm / PyPI 晚几天,升级后点可能仍是黄色
+      if (info.status === 'outdated' && ['brew', 'winget', 'scoop'].includes(info.installMethod ?? '')) {
+        lines.push(
+          tx(
+            `${info.installMethod} 可能还没收录 ${info.latest}`,
+            `${info.installMethod} may not have ${info.latest} yet`,
+          ),
+        );
+      }
+    } else {
+      lines.push(tx('认不出安装方式,请用安装时的方式升级', "Can't tell how it was installed; update it the way you installed it"));
+    }
+  }
+  const title = lines.join('\n');
+  const clickable =
+    (info.status === 'outdated' || info.status === 'installed') && !!cmd && !!onUpgrade;
+  if (!clickable) {
+    return <span className={`agent-dot ${info.status}`} title={title} aria-label={title} />;
+  }
+  return (
+    <button
+      type="button"
+      className={`agent-dot ${info.status}`}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onUpgrade}
+    />
   );
 }
 
@@ -594,9 +748,14 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   const dispatch = useAppDispatch();
 
   const [quickLaunchAnchor, setQuickLaunchAnchor] = useState<Point | null>(null);
+  const blankTabRef = useRef<HTMLButtonElement>(null);
+  // settings 还没从 main 拿到时 behavior 可能是 undefined:那时不弹,免得闪一下。
+  const showQuickLaunchTip = state.settings.behavior?.quickLaunchTipSeen === false;
 
   const handleBlankTabContextMenu = (e: MouseEvent<HTMLButtonElement>): void => {
     e.preventDefault();
+    // 用户已经会用了,首次引导就没必要再留着。
+    if (showQuickLaunchTip) markQuickLaunchTipSeen();
     const icon = e.currentTarget.querySelector('.tab-blank-icon') ?? e.currentTarget;
     const rect = icon.getBoundingClientRect();
     setQuickLaunchAnchor({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
@@ -612,6 +771,13 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
+  // ADR-023:coordinator 来自所有文件夹,按创建顺序排在上面一行,不会因为新开
+  // 终端而挪位置;下面一行只剩本文件夹的其余标签,同一个 session 不出现两次。
+  const coordinators = [...state.sessions.values()]
+    .filter((s) => s.coordinator)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const folderTabs = sessions.filter((s) => !s.coordinator);
+
   // CP-3 勘误 #5:**彻底**移除"灰显抽到最右边"的分组逻辑。
   // 直接按 path.sessionIds 顺序渲染所有 tab — 不分组、不重排。
   // 灰显 / orphan / mine 的视觉差由 Tab 自己根据 ownerWindowId 决定 variant,
@@ -621,10 +787,10 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   // 用户当前持有/查看其他 session 时点击即切换到 EmptyPathState,这与 Chrome
   // 的 new-tab 行为一致(不在被点之前消耗资源);自动选中只在已无 displayable
   // 时才发生(showBlankTab=true)。
-  return (
+  const tabBar = (
     <div className="tab-bar">
       <div className="tab-list">
-        {sessions.map((s) => (
+        {folderTabs.map((s) => (
           <Tab
             key={s.id}
             session={s}
@@ -633,16 +799,23 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
           />
         ))}
         <button
+          ref={blankTabRef}
           type="button"
           className={`tab tab-blank${showBlankTab ? ' selected' : ''}`}
           onClick={handleClickBlankTab}
           onContextMenu={handleBlankTabContextMenu}
-          title={tx('新建终端:选择 Shell 或模板', 'New terminal: pick a shell or template')}
+          title={tx(
+            '新建终端:选择 Shell 或模板。右键快速启动 agent',
+            'New terminal: pick a shell or template. Right click to start an agent quickly',
+          )}
           aria-label={tx('新建终端', 'New terminal')}
         >
           <span className="tab-blank-icon" aria-hidden="true"><Icon name="plus" size={18} /></span>
         </button>
       </div>
+      {showQuickLaunchTip && !quickLaunchAnchor && (
+        <QuickLaunchTip anchorRef={blankTabRef} layoutKey={sessions.map((s) => s.id).join(',')} />
+      )}
       {quickLaunchAnchor && state.selectedPathId && (
         <QuickLaunchOverlay
           pathId={state.selectedPathId}
@@ -652,15 +825,48 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
       )}
     </div>
   );
+  if (coordinators.length === 0) return tabBar;
+  return (
+    <>
+      <div
+        className="tab-bar coordinator-bar"
+        role="group"
+        aria-label={tx('协调者', 'Coordinators')}
+      >
+        <div className="tab-list">
+          {coordinators.map((s) => {
+            const node = findPathNode(state.pathTree, s.pathId);
+            return (
+              <Tab
+                key={s.id}
+                session={s}
+                myWindowId={state.myWindowId}
+                selected={s.id === selectedSessionId}
+                folderLabel={node ? node.displayName ?? lastPathSegment(node.path) : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+      {tabBar}
+    </>
+  );
+}
+
+/** The last segment of a path, or the path itself when it has none, such as a root. */
+function lastPathSegment(path: string): string {
+  return path.match(/[^/\\]+$/)?.[0] ?? path;
 }
 
 interface TabProps {
   session: SessionInfo;
   myWindowId: string;
   selected: boolean;
+  /** ADR-023:coordinator 行里的标签显示所属文件夹,同名的 agent 才分得清 */
+  folderLabel?: string | undefined;
 }
 
-function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
+function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -720,6 +926,15 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     });
   };
 
+  // ADR-023:coordinator 标签可能属于别的文件夹,选中它时侧栏和下面一行跟着切到
+  // 那个文件夹。select-path 会先自动选一个本窗口的 session,紧接着的
+  // select-session 再改成被点的这个。
+  const selectOwnFolder = (): void => {
+    if (session.pathId !== state.selectedPathId) {
+      dispatch({ type: 'view/select-path', pathId: session.pathId });
+    }
+  };
+
   const handleClick = (e: MouseEvent<HTMLButtonElement>): void => {
     e.preventDefault();
     if (variant === 'other') {
@@ -732,6 +947,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
         )
         .then((res) => {
           if (!res.transferred) return;
+          selectOwnFolder();
           dispatch({ type: 'view/select-session', sessionId: session.id });
           focusTerminalDom();
         })
@@ -743,6 +959,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
       // claim 失败 (race: SessionAlreadyOwned/NotFound,几乎不会发生)
       // 时再 dispatch 回滚到之前持有状态。
       const prevOwnedId = findMyOwnedSessionId(state);
+      selectOwnFolder();
       if (prevOwnedId && prevOwnedId !== session.id) {
         dispatch({
           type: 'sessions/owner-changed',
@@ -784,6 +1001,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     }
     // 本窗口持有 (mine):仅切换 view (新模型下其实 myTabs 至多 1 个,
     // 多数场景这就是当前 selected — no-op,但保留分支以防 race)
+    selectOwnFolder();
     dispatch({ type: 'view/select-session', sessionId: session.id });
     // FOC-2:Tab click 后 button 默认接管 :focus,把焦点送回 xterm,
     // 让用户敲键立即生效。orphan 接管分支已在前文 dispatch 后落到
@@ -812,6 +1030,7 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
   } else {
     tooltipParts.push(session.displayName);
   }
+  if (folderLabel) tooltipParts.push(session.originalCwd);
   if (cwdDrifted) {
     tooltipParts.push(tx(`当前目录 → ${session.currentCwd}`, `Current dir → ${session.currentCwd}`));
     tooltipParts.push(tx(`(原: ${session.originalCwd})`, `(orig: ${session.originalCwd})`));
@@ -819,6 +1038,17 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
   if (session.state === 'exited') {
     tooltipParts.push(tx(`已退出 (exitCode=${session.exitCode ?? 0})`, `Exited (exitCode=${session.exitCode ?? 0})`));
   }
+
+  // ADR-021:agent 的 phase 优先于输出驱动的 state。停在批准提示时在菜单里
+  // 移动光标也会有输出,不能因此又显示波浪;没有 agent 的 session 照旧按输出。
+  const phase = session.agentPhase ?? null;
+  const waving = phase === 'working' || (phase === null && session.state === 'active');
+  const blocked = phase === 'blocked';
+  const unseen = state.unseenDoneSessionIds.has(session.id);
+  // ADR-027:圆点刚亮起时撒一次小星星,锚在圆点上。
+  const agentDotRef = useRef<HTMLSpanElement>(null);
+  if (blocked) tooltipParts.push(tx('等待你批准', 'Waiting for your approval'));
+  else if (unseen) tooltipParts.push(tx('已完成,等你查看', 'Finished, your turn'));
 
   return (
     <button
@@ -829,12 +1059,30 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
         (variant === 'other' ? ' owned-by-other' : '') +
         (variant === 'orphan' ? ' orphan' : '') +
         (session.state === 'exited' ? ' exited' : '') +
-        (session.state === 'active' ? ' running' : '')
+        (waving ? ' running' : '') +
+        (blocked ? ' agent-blocked' : '') +
+        (unseen && !blocked ? ' agent-unseen' : '')
       }
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       title={tooltipParts.join('\n')}
     >
+      <AgentWave
+        running={waving}
+        selected={selected}
+        work={session.agentWork ?? null}
+        pace={session.agentPace ?? null}
+      />
+      {(blocked || unseen) && (
+        <span ref={agentDotRef} className="tab-agent-dot" aria-hidden="true" />
+      )}
+      <CelebrationBurst
+        play={unseen && !blocked}
+        anchorRef={agentDotRef}
+        enabled={state.settings.appearance?.celebrations ?? true}
+        themeId={state.settings.appearance?.theme}
+      />
+      {folderLabel && <span className="tab-folder">{folderLabel}</span>}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (
         <span className="tab-cwd-drift" aria-label={tx('当前目录已变', 'Current directory changed')}>

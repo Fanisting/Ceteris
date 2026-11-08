@@ -14,6 +14,9 @@
   "fileTree.title": "Files",
   "fileTree.toggle": "Show or hide the file tree",
   "fileTree.retry": "Try again",
+  "fileTree.pin": "Pin to top",
+  "fileTree.unpin": "Unpin",
+  "fileTree.pins": "Pinned folders",
   "fileTree.rename": "Rename",
   "fileTree.resize": "Drag to resize. Double-click to reset.",
   "fileTree.empty.noSession": "Select a session to see its folder",
@@ -59,6 +62,7 @@
   "settings.category.remote": "Remote",
   "settings.category.systemIntegration": "System Integration",
   "settings.category.ai": "AI Assistant",
+  "settings.category.extensions": "Extensions",
   "settings.category.advanced": "Advanced",
   "settings.category.about": "About",
 

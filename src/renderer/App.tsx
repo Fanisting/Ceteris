@@ -16,13 +16,16 @@ import { Sidebar } from './components/Sidebar';
 import { MainPane } from './components/MainPane';
 import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
+import { CoordinatorGuide } from './components/CoordinatorGuide';
 import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
 import { ToastProvider } from './components/Toast';
 import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
+import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
+import { resolveThemeId, useCustomThemes } from './custom-themes';
 
 type HandshakeState =
   | { status: 'pending' }
@@ -151,7 +154,9 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
   const state = useAppState();
   const dispatch = useAppDispatch();
 
-  const currentTheme = state.settings.appearance?.theme ?? 'light-pink';
+  // 用户主题文件被删或改名时回退到默认主题 (ADR-026);订阅列表让文件变化时重算
+  useCustomThemes();
+  const currentTheme = resolveThemeId(state.settings.appearance?.theme ?? 'light-pink');
   const windowStyle = state.settings.appearance?.windowStyle ?? 'windows';
   const uiZoom = state.settings.appearance?.uiZoom ?? 1;
   const uiFontFamily = state.settings.appearance?.uiFontFamily ?? '';
@@ -256,6 +261,7 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
         <ModalProvider>
           <LastSessionConfirmBridge />
           <SshAskpassBridge />
+          <AgentUpdateNoticeBridge />
           <ContextMenuProvider>
             <div
               className="app-root with-shell"
@@ -266,6 +272,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               <WindowChrome windowStyle={windowStyle} appLabel={appLabel} isDev={isDev} />
               {/* Ceteris Link:仅远程窗口且连接非正常时才渲染,其余情况恒为 null */}
               <LinkConnectionBanner />
+              {/* ADR-024:协调者引导,没看过时启动或第一次勾协调者时出现;专注模式不显示 */}
+              {!state.simpleMode && <CoordinatorGuide />}
               {state.inSettingsView ? (
                 <SettingsView />
               ) : state.simpleMode ? (

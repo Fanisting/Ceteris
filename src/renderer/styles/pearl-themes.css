@@ -1,0 +1,270 @@
+/*
+ * @file pearl-themes.css
+ * @purpose 珠光系列 7 套浅色主题,配色取自小红书笔记"好看高级的配色公式(31)"的 7 组色板。
+ *
+ * @关键设计:
+ * - 每组色板是"墨底 / 主色 / 浅露 / 珠光白 / 金"五色。标签页底色用珠光白,正文用墨底,
+ *   主色作强调色(选中、焦点、按钮),金作警告和副强调。
+ * - 层次:外框(标题栏 + 侧栏)是浅露混入珠光白再压一点墨底的宝石色调,标签页是浮在上面的
+ *   珠光白卡片;侧栏里的卡片和菜单用更浅的一档。外框左上角铺一层主色微光、左下角一层金色微光,
+ *   呼应色板原图里的光感。月白和霜露两组的浅露太接近白色,改用加深一档的同色相作混色源。
+ * - 选中、悬停和描边由主色混出,次要文字由墨底加两成主色淡化得到,阴影用墨底着色,
+ *   不用中性灰和纯黑。
+ * - 文字色在标签页、外框和微光最浓处都 >= 4.5:1,状态色在标签页和外框上 >= 3:1(按 WCAG
+ *   公式算出)。改色值后要重新核对,src/shared/pearl-themes.test.ts 会检查前两种底色。
+ * - --md-primary-text-weight / --md-error-text-weight 含义见 material.css 第 2 节末尾。
+ *
+ * @加载顺序:必须在 material.css 之后,这里的 --md-* 和外框规则才能覆写 material.css。
+ *
+ * @对应文档章节:软件定义书.md 5.1.9 节
+ */
+
+/* Lapis(青金曜华)。源色板:曜墨底 #0E1B3A, 青金石 #2A4FC0, 天青露 #7FA8E8, 珠光白 #F3F8FF, 金斑 #DFB43C */
+[data-theme='pearl-lapis'] {
+  --color-bg-primary: #f3f8ff;
+  --color-bg-secondary: #bccfed;
+  --color-bg-elevated: #e5eefc;
+  --color-bg-hover: #adc2e9;
+  --color-bg-active: #cbd6f2;
+  --color-bg-strong: #5d84d8;
+  --color-text-primary: #0e1b3a;
+  --color-text-secondary: #182a5a;
+  --color-text-muted: #384872;
+  --color-danger: #d23850;
+  --color-warning: #8c6d17;
+  --color-success: #1a815f;
+  --color-info: #197e8f;
+  --color-accent-secondary: #8c6d17;
+  --color-accent-special: #2a4fc0;
+  --md-surface-container-high: #e5eefc;
+  --md-secondary-container: #bfccef;
+  --md-on-secondary-container: #0e1b3a;
+  --md-outline-variant: #c7d3f1;
+  --md-elevation-1: 0 1px 2px rgb(14 27 58 / 16%), 0 1px 3px 1px rgb(14 27 58 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(14 27 58 / 16%), 0 3px 8px 2px rgb(14 27 58 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(14 27 58 / 12%), 0 1px 3px rgb(14 27 58 / 18%);
+  --pearl-glow-a: #2a4fc029;
+  --pearl-glow-b: #dfb43c38;
+  --md-on-primary: #f3f8ff;
+  --md-on-error: #0e1b3a;
+  --md-primary-text-weight: 90%;
+  --md-error-text-weight: 70%;
+
+  color-scheme: light;
+}
+
+/* Sapphire(宝蓝金脉)。源色板:深蓝夜 #0A1A38, 宝石蓝 #2B6BE0, 湖蓝露 #7FC8F5, 珠光白 #F4F9FF, 金脉 #E8C24A */
+[data-theme='pearl-sapphire'] {
+  --color-bg-primary: #f4f9ff;
+  --color-bg-secondary: #bcdbf1;
+  --color-bg-elevated: #e6f3fe;
+  --color-bg-hover: #aed0ef;
+  --color-bg-active: #ccddf9;
+  --color-bg-strong: #5da3ed;
+  --color-text-primary: #0a1a38;
+  --color-text-secondary: #1a3463;
+  --color-text-muted: #3a517a;
+  --color-danger: #df3752;
+  --color-warning: #937413;
+  --color-success: #1d895c;
+  --color-info: #1a81b2;
+  --color-accent-secondary: #937413;
+  --color-accent-special: #2b6be0;
+  --md-surface-container-high: #e6f3fe;
+  --md-secondary-container: #c0d4f7;
+  --md-on-secondary-container: #0a1a38;
+  --md-outline-variant: #c8daf8;
+  --md-elevation-1: 0 1px 2px rgb(10 26 56 / 16%), 0 1px 3px 1px rgb(10 26 56 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(10 26 56 / 16%), 0 3px 8px 2px rgb(10 26 56 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(10 26 56 / 12%), 0 1px 3px rgb(10 26 56 / 18%);
+  --pearl-glow-a: #2b6be029;
+  --pearl-glow-b: #e8c24a38;
+  --md-on-primary: #f4f9ff;
+  --md-on-error: #0a1a38;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 70%;
+
+  color-scheme: light;
+}
+
+/* Rose Dew(玫金晨露)。源色板:玫墨底 #3A1028, 玫宝红 #E04E7A, 藕粉露 #F7B8CB, 珠光白 #FEF8FA, 暖金 #EFC470 */
+[data-theme='pearl-rose'] {
+  --color-bg-primary: #fef8fa;
+  --color-bg-secondary: #f1d4dd;
+  --color-bg-elevated: #fdf0f4;
+  --color-bg-hover: #efc7d3;
+  --color-bg-active: #f8d6e0;
+  --color-bg-strong: #ee8eab;
+  --color-text-primary: #3a1028;
+  --color-text-secondary: #62223e;
+  --color-text-muted: #7a435b;
+  --color-danger: #d8323e;
+  --color-warning: #a67013;
+  --color-success: #388a62;
+  --color-info: #6a72d0;
+  --color-accent-secondary: #a67013;
+  --color-accent-special: #dd3f6f;
+  --md-surface-container-high: #fdf0f4;
+  --md-secondary-container: #f6ccd9;
+  --md-on-secondary-container: #3a1028;
+  --md-outline-variant: #f7d3de;
+  --md-elevation-1: 0 1px 2px rgb(58 16 40 / 16%), 0 1px 3px 1px rgb(58 16 40 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(58 16 40 / 16%), 0 3px 8px 2px rgb(58 16 40 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(58 16 40 / 12%), 0 1px 3px rgb(58 16 40 / 18%);
+  --pearl-glow-a: #e04e7a29;
+  --pearl-glow-b: #efc47038;
+  --md-on-primary: #3a1028;
+  --md-on-error: #fef8fa;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 70%;
+
+  color-scheme: light;
+}
+
+/* Ember(绯霞金露)。源色板:暮褐底 #351710, 绯霞红 #E85A48, 暖橘露 #F7B98C, 珠光白 #FEF7F1, 霞金 #F0C258 */
+[data-theme='pearl-ember'] {
+  --color-bg-primary: #fef7f1;
+  --color-bg-secondary: #f1d4c0;
+  --color-bg-elevated: #fdf0e5;
+  --color-bg-hover: #f0c8b4;
+  --color-bg-active: #fad8cf;
+  --color-bg-strong: #f19371;
+  --color-text-primary: #351710;
+  --color-text-secondary: #5e281e;
+  --color-text-muted: #76473e;
+  --color-danger: #c4244e;
+  --color-warning: #a4710c;
+  --color-success: #538733;
+  --color-info: #2d83a2;
+  --color-accent-secondary: #a4710c;
+  --color-accent-special: #e43b26;
+  --md-surface-container-high: #fdf0e5;
+  --md-secondary-container: #f8cec5;
+  --md-on-secondary-container: #351710;
+  --md-outline-variant: #f9d4cc;
+  --md-elevation-1: 0 1px 2px rgb(53 23 16 / 16%), 0 1px 3px 1px rgb(53 23 16 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(53 23 16 / 16%), 0 3px 8px 2px rgb(53 23 16 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(53 23 16 / 12%), 0 1px 3px rgb(53 23 16 / 18%);
+  --pearl-glow-a: #e85a4829;
+  --pearl-glow-b: #f0c25838;
+  --md-on-primary: #351710;
+  --md-on-error: #fef7f1;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 80%;
+
+  color-scheme: light;
+}
+
+/* Jade(翠玉金瞳)。源色板:翠墨底 #0C2A22, 翡翠绿 #23B98A, 嫩翠露 #96E8C8, 珠光白 #F5FDF9, 金脉 #E5C058 */
+[data-theme='pearl-jade'] {
+  --color-bg-primary: #f5fdf9;
+  --color-bg-secondary: #c5ebdb;
+  --color-bg-elevated: #eafaf3;
+  --color-bg-hover: #b5e6d3;
+  --color-bg-active: #cbefe3;
+  --color-bg-strong: #68d5af;
+  --color-text-primary: #0c2a22;
+  --color-text-secondary: #114939;
+  --color-text-muted: #336456;
+  --color-danger: #e04e4e;
+  --color-warning: #a57a15;
+  --color-success: #1c926d;
+  --color-info: #2a89b8;
+  --color-accent-secondary: #a07c19;
+  --color-accent-special: #1c926d;
+  --md-surface-container-high: #eafaf3;
+  --md-secondary-container: #beebdc;
+  --md-on-secondary-container: #0c2a22;
+  --md-outline-variant: #c7eee1;
+  --md-elevation-1: 0 1px 2px rgb(12 42 34 / 16%), 0 1px 3px 1px rgb(12 42 34 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(12 42 34 / 16%), 0 3px 8px 2px rgb(12 42 34 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(12 42 34 / 12%), 0 1px 3px rgb(12 42 34 / 18%);
+  --pearl-glow-a: #23b98a29;
+  --pearl-glow-b: #e5c05838;
+  --md-on-primary: #0c2a22;
+  --md-on-error: #0c2a22;
+  --md-primary-text-weight: 60%;
+  --md-error-text-weight: 70%;
+
+  color-scheme: light;
+}
+
+/* Moonlight(月白珠光)。源色板:灰墨底 #232A2E, 月华白 #DCE6EA, 淡银露 #F0F5F7, 珠光白 #FCFEFE, 柔金 #E0CC96 */
+[data-theme='pearl-moon'] {
+  --color-bg-primary: #fcfefe;
+  --color-bg-secondary: #d6dee1;
+  --color-bg-elevated: #f3f7f8;
+  --color-bg-hover: #d5d7cf;
+  --color-bg-active: #f2e9d4;
+  --color-bg-strong: #bcb18b;
+  --color-text-primary: #232a2e;
+  --color-text-secondary: #232a2e;
+  --color-text-muted: #5b5644;
+  --color-danger: #d0504a;
+  --color-warning: #b56c1a;
+  --color-success: #388b67;
+  --color-info: #4883ac;
+  --color-accent-secondary: #5a7a90;
+  --color-accent-special: #a07622;
+  --md-surface-container-high: #f3f7f8;
+  --md-secondary-container: #eee2c7;
+  --md-on-secondary-container: #232a2e;
+  --md-outline-variant: #f1e7cf;
+  --md-elevation-1: 0 1px 2px rgb(35 42 46 / 16%), 0 1px 3px 1px rgb(35 42 46 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(35 42 46 / 16%), 0 3px 8px 2px rgb(35 42 46 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(35 42 46 / 12%), 0 1px 3px rgb(35 42 46 / 18%);
+  --pearl-glow-a: #c8942a29;
+  --pearl-glow-b: #7f9db038;
+  --md-on-primary: #232a2e;
+  --md-on-error: #232a2e;
+  --md-primary-text-weight: 60%;
+  --md-error-text-weight: 70%;
+
+  color-scheme: light;
+}
+
+/* Frost(银蓝霜露)。源色板:霜墨底 #16212E, 银蓝 #7AA8CC, 霜白露 #D6E8F5, 珠光白 #FBFDFF, 淡金 #DCC88E */
+[data-theme='pearl-frost'] {
+  --color-bg-primary: #fbfdff;
+  --color-bg-secondary: #d0dee9;
+  --color-bg-elevated: #f1f7fc;
+  --color-bg-hover: #c3d6e5;
+  --color-bg-active: #d8e6f3;
+  --color-bg-strong: #82b0d6;
+  --color-text-primary: #16212e;
+  --color-text-secondary: #253c53;
+  --color-text-muted: #44586b;
+  --color-danger: #d74c5a;
+  --color-warning: #9d771f;
+  --color-success: #348b72;
+  --color-info: #2a889c;
+  --color-accent-secondary: #937a34;
+  --color-accent-special: #3d81bc;
+  --md-surface-container-high: #f1f7fc;
+  --md-secondary-container: #cddff0;
+  --md-on-secondary-container: #16212e;
+  --md-outline-variant: #d4e4f2;
+  --md-elevation-1: 0 1px 2px rgb(22 33 46 / 16%), 0 1px 3px 1px rgb(22 33 46 / 8%);
+  --md-elevation-2: 0 1px 2px rgb(22 33 46 / 16%), 0 3px 8px 2px rgb(22 33 46 / 10%);
+  --md-elevation-3: 0 4px 10px 3px rgb(22 33 46 / 12%), 0 1px 3px rgb(22 33 46 / 18%);
+  --pearl-glow-a: #4a8bc429;
+  --pearl-glow-b: #dcc88e38;
+  --md-on-primary: #16212e;
+  --md-on-error: #16212e;
+  --md-primary-text-weight: 70%;
+  --md-error-text-weight: 70%;
+
+  color-scheme: light;
+}
+
+/* 外框微光:画在 .app-root 上,.app-body 改透明让它透出来。选择器比 material.css 第 3 节的
+   外框规则多一个属性选择器,所以加载顺序之外特异性也更高。 */
+.app-root.with-shell[data-theme^='pearl-'] {
+  background-image:
+    radial-gradient(120% 60% at 0% 0%, var(--pearl-glow-a, transparent), transparent 70%),
+    radial-gradient(80% 50% at 0% 100%, var(--pearl-glow-b, transparent), transparent 70%);
+}
+
+[data-theme^='pearl-'] .app-body {
+  background-color: transparent;
+}

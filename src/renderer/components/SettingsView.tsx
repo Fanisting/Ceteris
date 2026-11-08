@@ -55,7 +55,6 @@ import type {
   StartupBehavior,
   Template,
   TerminalRightClick,
-  ThemeId,
   WindowStyle,
 } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
@@ -73,9 +72,11 @@ import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
 import { NEXT_PROMPT_DEFAULT_BASE_URL,
-  NEXT_PROMPT_DEFAULT_MODEL,
+  type FrequentPrompt,
   type NextPromptUsage,
   nextPromptConfigured } from '@shared/next-prompt';
+import { NextPromptModelPicker } from './NextPromptModelPicker';
+import { OpenRouterAccount } from './OpenRouterAccount';
 import type {
   CreateSessionResponse,
   DataAgentStats,
@@ -86,13 +87,20 @@ import type {
   DataImportResponse,
   SuggestNextPromptPayload,
   SuggestNextPromptResponse,
+  GetFrequentPromptsResponse,
 } from '@shared/protocol';
 import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
+import { useTypeIntoNewTerminal } from './type-into-terminal';
 import { useTranslation } from './LanguageProvider';
+import { ThemePicker } from './ThemePicker';
+import { NextPromptCostChart, formatUsd } from './NextPromptCostChart';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
+import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
+import { tabControlInstallLine, tabControlInstallLines } from '@shared/tab-control';
+import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
   | 'appearance'
@@ -102,6 +110,7 @@ type CategoryId =
   | 'remote'
   | 'system-integration'
   | 'ai'
+  | 'extensions'
   | 'advanced'
   | 'about';
 
@@ -121,6 +130,7 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
   { id: 'system-integration', iconName: 'systemIntegration', titleKey: 'settings.category.systemIntegration' },
   { id: 'ai', iconName: 'ai', titleKey: 'settings.category.ai' },
+  { id: 'extensions', iconName: 'extensions', titleKey: 'settings.category.extensions' },
   { id: 'advanced', iconName: 'advanced', titleKey: 'settings.category.advanced' },
   { id: 'about', iconName: 'about', titleKey: 'settings.category.about' },
 ];
@@ -233,6 +243,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
       return <SystemIntegrationPanel setError={setError} />;
     case 'ai':
       return <AiPanel setError={setError} />;
+    case 'extensions':
+      return <ExtensionsPanel setError={setError} />;
     case 'advanced':
       return <AdvancedPanel setError={setError} />;
     case 'about':
@@ -245,27 +257,6 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
 // ──────────────────────────────────────────────────────────────────
 // 外观分类
 // ──────────────────────────────────────────────────────────────────
-
-const THEMES: Array<{ id: ThemeId; label: string; tone: '深色' | '浅色'; note?: string }> = [
-  { id: 'ceteris-dark', label: 'Ceteris Dark', tone: '深色', note: '默认' },
-  { id: 'ceteris-light', label: 'Ceteris Light', tone: '浅色' },
-  { id: 'rose-pine', label: 'Rose Pine', tone: '深色' },
-  { id: 'rose-pine-dawn', label: 'Rose Pine Dawn', tone: '浅色' },
-  { id: 'rose-pine-moon', label: 'Rose Pine Moon', tone: '深色' },
-  { id: 'cutie', label: 'Cutie', tone: '浅色', note: 'Kawaii' },
-  { id: 'light-pink', label: 'Light Pink', tone: '浅色', note: 'Kawaii' },
-  { id: 'fairyfloss', label: 'Fairyfloss', tone: '深色', note: 'Kawaii' },
-  { id: 'business', label: 'Business', tone: '深色' },
-  { id: 'ubuntu', label: 'Ubuntu', tone: '深色' },
-  { id: 'windows-terminal', label: 'Windows Terminal', tone: '深色' },
-  // BETA-033 起新增的 4 个流行深色主题
-  { id: 'one-dark-pro', label: 'One Dark Pro', tone: '深色' },
-  { id: 'dracula', label: 'Dracula', tone: '深色' },
-  { id: 'tokyo-night', label: 'Tokyo Night', tone: '深色' },
-  { id: 'tokyo-night-day', label: 'Tokyo Night Day', tone: '浅色' },
-  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', tone: '深色' },
-  { id: 'catppuccin-latte', label: 'Catppuccin Latte', tone: '浅色' },
-];
 
 function AppearancePanel({
   setError,
@@ -320,24 +311,10 @@ function AppearancePanel({
         label={tx('主题', 'Theme')}
         hint={tx('所有窗口立即同步;xterm 颜色与 UI 同步切换', 'Applies to all windows immediately; xterm colors stay in sync')}
       >
-        <select
-          className="settings-input"
+        <ThemePicker
           value={theme}
-          aria-label={tx('主题', 'Theme')}
-          onChange={(e) =>
-            void updateSettings(
-              { appearance: { theme: e.target.value as ThemeId } },
-              setError,
-            )
-          }
-        >
-          {THEMES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label} · {t.tone === '深色' ? tx('深色', 'Dark') : tx('浅色', 'Light')}
-              {t.note ? ` · ${t.note === '默认' ? tx('默认', 'Default') : t.note}` : ''}
-            </option>
-          ))}
-        </select>
+          onChange={(id) => void updateSettings({ appearance: { theme: id } }, setError)}
+        />
       </SettingRow>
 
       <SettingRow
@@ -503,6 +480,47 @@ function AppearancePanel({
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
+
+      {/* ADR-027:小庆祝与标题栏小石子 */}
+      <SettingRow
+        label={tx('小庆祝', 'Little celebrations')}
+        hint={tx(
+          'agent 跑完而你在看别处时,它的圆点上飞出几颗小星星,样式随主题;不抢焦点、不出声',
+          'When an agent finishes while you look elsewhere, a few sparkles pop off its dot, styled by the theme. No focus change, no sound',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={a?.celebrations ?? true}
+            onChange={(e) =>
+              void updateSettings({ appearance: { celebrations: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {(a?.celebrations ?? true) && (
+        <SettingRow
+          label={tx('标题栏小石子', 'Title bar pebble')}
+          hint={tx(
+            '窗口按钮旁的小圆团:都空闲时打盹,agent 干活时睁眼,跑完时笑一下',
+            'A small blob beside the window buttons: dozes when all is idle, watches while agents work, smiles when one finishes',
+          )}
+        >
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={a?.pebble ?? false}
+              onChange={(e) =>
+                void updateSettings({ appearance: { pebble: e.target.checked } }, setError)
+              }
+            />
+            <span>{tx('启用', 'Enable')}</span>
+          </label>
+        </SettingRow>
+      )}
     </section>
   );
 }
@@ -636,7 +654,84 @@ function ShellPanel({
           setError={setError}
         />
       </SettingRow>
+
+      <AgentUpdateSettings setError={setError} />
     </section>
+  );
+}
+
+/**
+ * Agent CLI 更新的两个开关 + 立即检查 (内嵌在 ShellPanel,紧跟启动模板)。
+ * 调度逻辑在 main 的 agent-auto-update.ts;这里只写设置、触发一次检查。
+ */
+function AgentUpdateSettings({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const behavior = useAppState().settings.behavior;
+  const autoCheck = behavior?.autoCheckAgents ?? true;
+  const autoUpdate = behavior?.autoUpdateAgents ?? false;
+  const [checking, setChecking] = useState(false);
+
+  const checkNow = (): void => {
+    setChecking(true);
+    window.api
+      .invoke(COMMAND_CHANNELS.AGENT_CHECK_NOW, undefined)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(tx(`检查 agent 更新失败:${msg}`, `Failed to check agents for updates: ${msg}`));
+      })
+      .finally(() => setChecking(false));
+  };
+
+  return (
+    <>
+      <SettingRow
+        label={tx('自动检查 agent 更新', 'Check agents for updates')}
+        hint={tx(
+          '启动后和每 6 小时查一次 Claude Code、Codex 等是否有新版本,有就弹通知。Beta 和开发版不自动检查',
+          'Checks Claude Code, Codex and the other agents at startup and every 6 hours, and shows a notice when a new version is out. Beta and dev builds do not check automatically',
+        )}
+      >
+        <div className="settings-update-actions">
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={autoCheck}
+              onChange={(e) =>
+                void updateSettings({ behavior: { autoCheckAgents: e.target.checked } }, setError)
+              }
+            />
+            <span>{tx('启用', 'Enable')}</span>
+          </label>
+          <button type="button" className="settings-button" disabled={checking} onClick={checkNow}>
+            {tx('立即检查', 'Check now')}
+          </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('自动升级 agent', 'Update agents automatically')}
+        hint={tx(
+          '发现新版本后先弹通知,30 秒后用安装它的工具升级;可以立即升级或跳过此版本。该 agent 还开着时等它关掉再升级',
+          'When a new version is found, a notice appears first and the update runs 30 seconds later with the tool that installed the agent. You can update right away or skip that version. An agent that is still open updates after you close it',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={autoUpdate}
+            disabled={!autoCheck}
+            onChange={(e) =>
+              void updateSettings({ behavior: { autoUpdateAgents: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+    </>
   );
 }
 
@@ -1014,9 +1109,9 @@ function TemplateEditor({
           onClick={() => void handleSave()}
           disabled={saving || !draft.name.trim()}
           style={{
-            background: 'var(--color-accent-special, #f0f)',
-            color: 'var(--color-bg-primary, #f0f)',
-            borderColor: 'var(--color-accent-special, #f0f)',
+            background: 'var(--md-primary, #f0f)',
+            color: 'var(--md-on-primary, #f0f)',
+            borderColor: 'var(--md-primary, #f0f)',
           }}
         >
           {saving ? tx('保存中…', 'Saving…') : isCreate ? tx('创建', 'Create') : tx('保存', 'Save')}
@@ -2611,15 +2706,7 @@ function AiPanel({
   const state = useAppState();
   const toast = useToast();
   const ai = state.settings.ai;
-  const provider = ai?.provider ?? null;
-  const apiKey = ai?.apiKey ?? '';
-  const baseURL = ai?.baseURL ?? '';
-  const model = ai?.model ?? '';
-  const statusRecheckEnabled = ai?.statusRecheckEnabled ?? false;
-  const statusRecheckSource = ai?.statusRecheckSource ?? 'headless';
-  const [testing, setTesting] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-  const nextPrompt = ai?.nextPrompt ?? { enabled: false, apiKey: '', baseURL: '', model: '' };
+  const nextPrompt = ai?.nextPrompt ?? { enabled: false, keySaved: false, baseURL: '', model: '' };
   const nextPromptReady = nextPromptConfigured(nextPrompt);
   const [testingNextPrompt, setTestingNextPrompt] = useState(false);
   const [usage, setUsage] = useState<NextPromptUsage | null>(null);
@@ -2630,6 +2717,13 @@ function AiPanel({
       .catch((err) => console.error('[Settings] read usage failed', err));
   }, []);
   useEffect(refreshUsage, [refreshUsage]);
+  const [habits, setHabits] = useState<FrequentPrompt[] | null>(null);
+  useEffect(() => {
+    window.api
+      .invoke<undefined, GetFrequentPromptsResponse>(COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS, undefined)
+      .then((res) => setHabits(res.prompts))
+      .catch((err) => console.error('[Settings] read frequent prompts failed', err));
+  }, []);
 
   const handleTestNextPrompt = async (): Promise<void> => {
     setTestingNextPrompt(true);
@@ -2658,215 +2752,38 @@ function AiPanel({
     }
   };
 
-  const handleTest = async (): Promise<void> => {
-    setError(null);
-    setTesting(true);
-    try {
-      const res = await window.api.invoke<undefined, { ok: boolean; message: string }>(
-        COMMAND_CHANNELS.AI_TEST_CONNECTION,
-        undefined,
-      );
-      toast.push({
-        kind: res.ok ? 'success' : 'error',
-        message: res.message || (res.ok ? tx('连接成功', 'Connected') : tx('连接失败', 'Connection failed')),
-      });
-    } catch (err) {
-      toast.push({
-        kind: 'error',
-        message: tx(`测试失败:${err instanceof Error ? err.message : String(err)}`, `Test failed: ${err instanceof Error ? err.message : String(err)}`),
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
   return (
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('AI 助手', 'AI Assistant')}</h2>
       <p className="settings-panel-hint">
         {tx(
-          'Ceteris 第一个 LLM 集成点。当前唯一用途是 BETA-006:active→idle 跃迁前让 LLM 看一眼 scrollback,避免 Vite 等长输出工具被误判 idle。所有 API 调用走主进程,不暴露 key 到 renderer。',
-          "Ceteris's first LLM integration. Current use: BETA-006 status recheck — let the LLM glance at the scrollback before active→idle transition, so long-running tools like Vite aren't falsely marked idle. All API calls go through the main process; the key is never exposed to the renderer.",
+          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字和下面列出的常用消息会发送给这个 API(默认 OpenRouter),所以屏幕上的密钥或私密内容也会被发送。',
+          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen and the frequent messages listed below go to that API (OpenRouter by default), including anything private shown on screen.',
         )}
       </p>
 
-      <SettingRow label={tx('服务商', 'Provider')} hint={tx('选择后才会激活其它字段', 'Other fields activate after you pick a provider')}>
-        <select
-          className="settings-input"
-          value={provider ?? ''}
-          onChange={(e) => {
-            const v = e.target.value;
-            void updateSettings(
-              {
-                ai: { provider: v === '' ? null : (v as 'anthropic' | 'openai') },
-              },
-              setError,
-            );
-          }}
-        >
-          <option value="">{tx('未启用', 'Disabled')}</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="openai">OpenAI</option>
-        </select>
+      <SettingRow
+        label={tx('OpenRouter 账号', 'OpenRouter account')}
+        hint={
+          nextPrompt.keySaved
+            ? tx(
+                'key 已加密保存在本机,只发给 OpenRouter。断开只删除本机这份;要作废它,到 openrouter.ai 的 Keys 页删除 "Ceteris next prompt"',
+                'The key is encrypted on this PC and sent only to OpenRouter. Disconnecting deletes this copy; to revoke it, delete "Ceteris next prompt" on the Keys page at openrouter.ai',
+              )
+            : tx(
+                '在浏览器里登录 OpenRouter 并同意,Ceteris 会自动拿到一个专用 key 并加密保存,不用复制粘贴',
+                'Sign in to OpenRouter in your browser and approve. Ceteris receives its own key and stores it encrypted; nothing to copy or paste',
+              )
+        }
+      >
+        <OpenRouterAccount
+          connected={nextPrompt.keySaved}
+          onError={(msg) => toast.push({ kind: 'error', message: msg })}
+          onConnected={() =>
+            toast.push({ kind: 'success', message: tx('已连接 OpenRouter', 'Connected to OpenRouter') })
+          }
+        />
       </SettingRow>
-
-      {provider !== null && (
-        <>
-          <SettingRow label={tx('API key', 'API key')} hint={tx('存储于本地 settings.json,导出时会带出', 'Stored locally in settings.json and included when exporting')}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type={showKey ? 'text' : 'password'}
-                className="settings-input"
-                value={apiKey}
-                placeholder={provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
-                onChange={(e) =>
-                  void updateSettings({ ai: { apiKey: e.target.value } }, setError)
-                }
-                style={{ minWidth: 280 }}
-              />
-              <button
-                type="button"
-                className="settings-button"
-                onClick={() => setShowKey((v) => !v)}
-              >
-                {showKey ? tx('隐藏', 'Hide') : tx('显示', 'Show')}
-              </button>
-            </div>
-          </SettingRow>
-
-          <SettingRow
-            label={tx('Base URL', 'Base URL')}
-            hint={tx('留空走官方默认;代理网关 / Azure OpenAI / 自托管 LLM 在此覆盖', 'Empty = official default; override here for proxy / Azure OpenAI / self-hosted LLM')}
-          >
-            <input
-              type="text"
-              className="settings-input"
-              value={baseURL}
-              placeholder={
-                provider === 'anthropic'
-                  ? 'https://api.anthropic.com'
-                  : 'https://api.openai.com/v1'
-              }
-              onChange={(e) =>
-                void updateSettings({ ai: { baseURL: e.target.value } }, setError)
-              }
-              style={{ minWidth: 320 }}
-              spellCheck={false}
-            />
-          </SettingRow>
-
-          <SettingRow label={tx('模型', 'Model')} hint={tx('留空走默认(haiku / gpt-4o-mini)', 'Empty = default (haiku / gpt-4o-mini)')}>
-            <input
-              type="text"
-              className="settings-input"
-              value={model}
-              placeholder={
-                provider === 'anthropic'
-                  ? 'claude-haiku-5-5'
-                  : 'gpt-4o-mini'
-              }
-              onChange={(e) =>
-                void updateSettings({ ai: { model: e.target.value } }, setError)
-              }
-              style={{ minWidth: 280 }}
-            />
-          </SettingRow>
-
-          <SettingRow label={tx('测试连接', 'Test connection')} hint={tx('跑一次最小 ping 请求验证 key 有效', 'Run a minimal ping to verify the key works')}>
-            <button
-              type="button"
-              className="settings-button"
-              onClick={() => void handleTest()}
-              disabled={testing || !apiKey.trim()}
-            >
-              {testing ? tx('测试中…', 'Testing…') : tx('测试连接', 'Test connection')}
-            </button>
-          </SettingRow>
-
-          <div className="settings-privacy-notice" role="note">
-            <strong>{tx('隐私提示', 'Privacy notice')}</strong> · {tx(
-              '开启"状态复核"后,Ceteris 在每次 active→idle 跃迁时会把以下数据通过 HTTPS 发送给你配置的 AI 服务商(可能是第三方,如 Kimi / DeepSeek / OpenAI / Anthropic):',
-              'When "Status recheck" is on, Ceteris sends the following over HTTPS to the AI provider you configured (may be a third party such as Kimi / DeepSeek / OpenAI / Anthropic) on each active→idle transition:',
-            )}
-            <ul>
-              <li>
-                <strong>{tx('终端尾部内容', 'Terminal tail content')}</strong> — {tx(
-                  '最近约 40 行已渲染文本(会包含你看到的命令、输出、错误信息、API 输出等)',
-                  'Last ~40 rendered lines (commands, output, error messages, API responses, etc.)',
-                )}
-              </li>
-              <li>
-                <strong>{tx('按键时间元数据', 'Keystroke timing metadata')}</strong> — {tx(
-                  '最近 ≤20 个按键的',
-                  'Up to 20 most recent keystrokes:',
-                )}
-                <em>{tx('时间戳 + 类别', 'timestamps + categories')}</em>{tx(
-                  '(char / enter / backspace / other),',
-                  ' (char / enter / backspace / other), ',
-                )}
-                <strong>{tx('不包含按键内容', 'NOT the key content')}</strong>{tx(
-                  ',不会泄露密码 / token / 命令体',
-                  ' — passwords / tokens / command bodies are never sent',
-                )}
-              </li>
-            </ul>
-            {tx(
-              '如果你正在处理敏感信息(密码、私有代码、客户数据),建议先关闭复核;纯 Anthropic / OpenAI 官方 endpoint 走他们的 API 数据策略,自托管 / 代理网关请确认你的数据流向。',
-              'If you handle sensitive material (passwords, proprietary code, customer data), disable recheck first. Official Anthropic / OpenAI endpoints follow their API data policy; for self-hosted / proxy gateways, verify where your data flows.',
-            )}
-          </div>
-
-          <SettingRow
-            label={tx('状态复核(BETA-006)', 'Status recheck (BETA-006)')}
-            hint={tx('active→idle 跃迁前让 LLM 复核;失败时回退原阈值,不阻塞', 'Let the LLM verify before active→idle transition; falls back to the threshold on error, never blocks')}
-          >
-            <label className="settings-checkbox">
-              <input
-                type="checkbox"
-                checked={statusRecheckEnabled}
-                onChange={(e) =>
-                  void updateSettings(
-                    { ai: { statusRecheckEnabled: e.target.checked } },
-                    setError,
-                  )
-                }
-                disabled={!apiKey.trim()}
-              />
-              <span>{tx('启用', 'Enable')}</span>
-            </label>
-          </SettingRow>
-
-          <SettingRow
-            label={tx('复核输入源', 'Recheck input source')}
-            hint={tx('headless=已渲染的字符矩阵(无 ANSI 噪音、无重绘残影)', 'headless=rendered character matrix (no ANSI noise, no redraw artifacts)')}
-          >
-            <select
-              className="settings-input"
-              value={statusRecheckSource}
-              onChange={(e) =>
-                void updateSettings(
-                  {
-                    ai: {
-                      statusRecheckSource: e.target.value as 'headless',
-                    },
-                  },
-                  setError,
-                )
-              }
-              disabled={!statusRecheckEnabled}
-            >
-              <option value="headless">{tx('headless (已渲染文本)', 'headless (rendered text)')}</option>
-            </select>
-          </SettingRow>
-        </>
-      )}
-      <h3 className="link-subsection-title">{tx('下一步提示建议', 'Next prompt suggestions')}</h3>
-      <p className="settings-panel-hint">
-        {tx(
-          'Claude Code 或 Codex 停下时,用你指定的 API 猜你接下来想说什么。点击建议只会填入,不会发送。开启后,屏幕末尾的文字会发送给 OpenRouter,所以屏幕上的密钥或私密内容也会被发送。',
-          'When Claude Code or Codex stops, the API you set guesses what you will say next. Clicking a suggestion types it in without sending. While this is on, the end of the terminal screen goes to OpenRouter, including anything private shown there.',
-        )}
-      </p>
 
       <SettingRow label={tx('启用建议', 'Enable suggestions')}>
         <label className="settings-checkbox">
@@ -2885,8 +2802,8 @@ function AiPanel({
       <SettingRow
         label={tx('API 地址', 'API address')}
         hint={tx(
-          '留空使用 OpenRouter。可填任何兼容 OpenAI 的地址,模型名也要一起改',
-          'Leave empty for OpenRouter. Any OpenAI compatible address works; set its model too',
+          '留空使用 OpenRouter。也可填本地模型服务(如 Ollama 的 http://127.0.0.1:11434/v1),这时不需要账号,OpenRouter key 也不会发给它',
+          'Leave empty for OpenRouter. Or a local model server, such as Ollama at http://127.0.0.1:11434/v1; it needs no account and never receives the OpenRouter key',
         )}
       >
         <input
@@ -2902,35 +2819,45 @@ function AiPanel({
       </SettingRow>
 
       <SettingRow
-        label={tx('API Key', 'API key')}
-        hint={tx('使用 OpenRouter 时必填,本地模型可留空', 'Required for OpenRouter; a local model may not need one')}
+        label={tx('模型', 'Model')}
+        hint={tx(
+          '列表来自上面的 API 地址。小模型够用:每次只猜一句话,停下就猜一次',
+          'Listed from the API address above. A small model is enough: each guess is one line, made at every stop',
+        )}
       >
-        <input
-          className="settings-input"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          value={nextPrompt.apiKey}
-          onChange={(e) =>
-            void updateSettings({ ai: { nextPrompt: { apiKey: e.target.value } } }, setError)
+        <NextPromptModelPicker
+          model={nextPrompt.model}
+          baseURL={nextPrompt.baseURL ?? ''}
+          keySaved={nextPrompt.keySaved}
+          onChange={(value) =>
+            void updateSettings({ ai: { nextPrompt: { model: value } } }, setError)
           }
         />
       </SettingRow>
 
       <SettingRow
-        label={tx('模型', 'Model')}
-        hint={tx('留空使用默认模型,约 0.2 秒一次', 'Leave empty for the default, about 0.2s per guess')}
+        label={tx('你的常用消息', 'Your frequent messages')}
+        hint={tx(
+          '从 Claude Code 和 Codex 的历史记录里找出发过 3 次以上的短消息,随每次猜测一起发送,模型合适时会原样建议',
+          'Short messages you sent to Claude Code or Codex 3 or more times, read from their history. Sent with each guess so the model can offer them word for word',
+        )}
       >
-        <input
-          className="settings-input"
-          type="text"
-          spellCheck={false}
-          placeholder={NEXT_PROMPT_DEFAULT_MODEL}
-          value={nextPrompt.model}
-          onChange={(e) =>
-            void updateSettings({ ai: { nextPrompt: { model: e.target.value } } }, setError)
-          }
-        />
+        {habits === null ? (
+          <span className="settings-usage">…</span>
+        ) : habits.length === 0 ? (
+          <span className="settings-usage">{tx('还没有', 'None yet')}</span>
+        ) : (
+          <ol className="next-prompt-habits">
+            {[...habits]
+              .sort((a, b) => b.count - a.count)
+              .map((h) => (
+                <li key={h.text}>
+                  <span className="next-prompt-habit-count">{h.count}×</span>
+                  <span>{h.text}</span>
+                </li>
+              ))}
+          </ol>
+        )}
       </SettingRow>
 
       <SettingRow label={tx('测试', 'Test')}>
@@ -2957,7 +2884,7 @@ function AiPanel({
       >
         <span className="settings-usage">
           {usage
-            ? `$${usage.costUsd.toFixed(usage.costUsd < 0.01 ? 6 : 4)} · ${usage.calls} ${tx('次', 'calls')} · ${(
+            ? `${formatUsd(usage.costUsd)} · ${usage.calls} ${tx('次', 'calls')} · ${(
                 usage.inputTokens + usage.outputTokens
               ).toLocaleString()} tokens`
             : '…'}
@@ -2976,6 +2903,203 @@ function AiPanel({
           {tx('清零', 'Reset')}
         </button>
       </SettingRow>
+
+      {usage && usage.calls > 0 && (
+        <SettingRow label={tx('每日花费', 'Daily cost')} hint={tx('把鼠标移到某一天上看当天的金额和次数', 'Hover a day to see its cost and calls')}>
+          <NextPromptCostChart usage={usage} />
+        </SettingRow>
+      )}
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 扩展分类 (ADR-019):可选功能,默认关,只影响打开之后新建的终端
+// ──────────────────────────────────────────────────────────────────
+
+function ExtensionsPanel({
+  setError,
+}: {
+  setError: (msg: string | null) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const state = useAppState();
+  const enabled = state.settings.extensions?.claudeMathImages ?? false;
+  const tabControl = state.settings.extensions?.tabControl ?? false;
+  const terminalMath = state.settings.extensions?.terminalMath ?? false;
+  const typer = useTypeIntoNewTerminal();
+  const preparing = typer.preparing;
+  // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
+  const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    if ((!enabled && !tabControl) || marketplaceDir) return;
+    window.api
+      .invoke<unknown, { dir: string }>(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, {})
+      .then((res) => setMarketplaceDir(res.dir))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  }, [enabled, tabControl, marketplaceDir, setError]);
+
+  /** 开一个新终端,把命令敲进去但不按 Enter (见 type-into-terminal.ts) */
+  const typeIntoNewTerminal = async (buildLine: (shellId: string) => string): Promise<void> => {
+    setError(null);
+    await typer.run(buildLine, setError);
+  };
+
+  const handlePrepareInstall = (): void => {
+    const dir = marketplaceDir;
+    if (dir) void typeIntoNewTerminal((shellId) => latexMathInstallLine(shellId, dir));
+  };
+
+  const handlePrepareTabControl = (): void => {
+    const dir = marketplaceDir;
+    if (dir) void typeIntoNewTerminal((shellId) => tabControlInstallLine(shellId, dir));
+  };
+
+  return (
+    <section className="settings-panel">
+      <h2 className="settings-panel-title">{tx('扩展', 'Extensions')}</h2>
+
+      <SettingRow
+        label={tx('Claude Code 公式图片', 'Claude Code formula images')}
+        hint={tx(
+          '在 Claude Code 的回复里把 LaTeX 公式排成图片。打开后:终端支持 iTerm2 内联图片并自报 iTerm2 3.5;Windows 上新终端改用自带的 ConPTY。只影响打开之后新建的终端。',
+          'Typesets the LaTeX math in Claude Code replies as images. When on, terminals accept iTerm2 inline images and identify as iTerm2 3.5, and new terminals on Windows use the bundled ConPTY. Applies to terminals opened afterwards.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) =>
+              void updateSettings({ extensions: { claudeMathImages: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {enabled && (
+        <SettingRow
+          label={tx('还需要的插件', 'Plugin you also need')}
+          hint={tx(
+            '公式由 Claude Code 的 latex-math 插件排版(需要 TeX Live、ImageMagick 和 Git Bash)。插件随 Ceteris 一起安装,在终端里跑一次下面两条命令把它加进 Claude Code,然后新开一个 Claude Code。若装过原版 latex-math@claude-latex-math,请先停用它。',
+            'The latex-math Claude Code plugin typesets the formulas (it needs TeX Live, ImageMagick and Git Bash). The plugin ships with Ceteris. Run these two commands once in a terminal to add it to Claude Code, then start a new Claude Code session. If you installed the original latex-math@claude-latex-math, disable it first.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block">
+              <code>{marketplaceDir ? latexMathInstallLines(marketplaceDir) : '…'}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing || !marketplaceDir}
+              onClick={handlePrepareInstall}
+              title={tx(
+                '打开一个新终端并输入这两条命令,不会自动执行',
+                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type them in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
+
+      <SettingRow
+        label={tx('Codex 公式渲染', 'Codex formula rendering')}
+        hint={tx(
+          'Codex 没有插件接口,会把公式转成 Unicode 文字。打开后,Ceteris 把终端里以文本出现的 $$…$$、\\(…\\) 和 \\[…\\] 用 KaTeX 画在原处(任何程序的输出都算)。立即对已打开的终端生效。',
+          'Codex has no plugin interface and turns formulas into Unicode text. When on, Ceteris draws the $$…$$, \\(…\\) and \\[…\\] it finds as text in a terminal with KaTeX, in place (in any program’s output). Applies to open terminals right away.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={terminalMath}
+            onChange={(e) =>
+              void updateSettings({ extensions: { terminalMath: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {terminalMath && (
+        <SettingRow
+          label={tx('告诉 Codex 怎么写公式', 'Tell Codex how to write formulas')}
+          hint={tx(
+            'Codex 只在行内代码里保留 LaTeX 原文。把下面这条指示加进 ~/.codex/AGENTS.md(Codex 的全局指示,只加一次),之后新开的 Codex 会话就会这样写公式。',
+            'Codex keeps LaTeX as written only inside inline code. Add this instruction to ~/.codex/AGENTS.md (Codex’s global instructions; added once), and new Codex sessions will write formulas this way.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block settings-code-wrap">
+              <code>{CODEX_MATH_INSTRUCTION}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing}
+              onClick={() => void typeIntoNewTerminal(codexMathInstructionCommand)}
+              title={tx(
+                '打开一个新终端并输入添加这条指示的命令,不会自动执行',
+                'Opens a new terminal with the command that adds this instruction; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type it in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
+
+      <SettingRow
+        label={tx('协调者控制标签页', 'Coordinator tab control')}
+        hint={tx(
+          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。',
+          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={tabControl}
+            onChange={(e) =>
+              void updateSettings({ extensions: { tabControl: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {tabControl && (
+        <SettingRow
+          label={tx('还需要的插件', 'Plugin you also need')}
+          hint={tx(
+            'Claude Code 通过随 Ceteris 安装的 ceteris-tabs 插件拿到这些工具。在终端里跑一次下面两条命令,然后在协调者标签里新开 Claude Code。右键标签,勾选"协调者"。',
+            'Claude Code gets these tools from the ceteris-tabs plugin, which ships with Ceteris. Run these two commands once in a terminal, then start Claude Code in the coordinator tab. Right-click a tab and tick Coordinator.',
+          )}
+        >
+          <div className="settings-code-stack">
+            <pre className="settings-code-block">
+              <code>{marketplaceDir ? tabControlInstallLines(marketplaceDir) : '…'}</code>
+            </pre>
+            <button
+              type="button"
+              className="settings-button"
+              disabled={preparing || !marketplaceDir}
+              onClick={handlePrepareTabControl}
+              title={tx(
+                '打开一个新终端并输入这两条命令,不会自动执行',
+                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+              )}
+            >
+              {tx('在新终端里输入命令', 'Type them in a new terminal')}
+            </button>
+          </div>
+        </SettingRow>
+      )}
     </section>
   );
 }

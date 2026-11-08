@@ -1493,6 +1493,73 @@ html[data-maximized='true'] .app-root.with-shell {
   white-space: nowrap;
 }
 
+/* Agent 状态点:叠在卡片右侧,点本身是独立按钮,不触发卡片的启动 */
+.template-button-wrap {
+  position: relative;
+  display: flex;
+}
+
+.template-button-wrap > .template-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.template-button.has-dot {
+  padding-right: 34px;
+}
+
+.agent-dot {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-dot::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.agent-dot.current::after {
+  background-color: var(--color-success, #f0f);
+}
+
+.agent-dot.outdated::after {
+  background-color: var(--color-warning, #f0f);
+}
+
+.agent-dot.installed::after {
+  background-color: var(--color-text-muted, #f0f);
+}
+
+.agent-dot.missing::after {
+  border: 1.5px solid var(--color-text-muted, #f0f);
+}
+
+button.agent-dot {
+  cursor: pointer;
+}
+
+button.agent-dot:hover:not(:disabled) {
+  background-color: var(--color-bg-active, #f0f);
+}
+
+button.agent-dot:hover:not(:disabled)::after {
+  transform: scale(1.25);
+}
+
 /* ── Tab bar ── */
 
 .tab-bar {
@@ -3131,6 +3198,29 @@ select.settings-input option {
   align-items: center;
 }
 
+/* toast 里的文字按钮 (例如 agent 升级通知的"立即升级 / 跳过此版本") */
+.toast-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.toast-action {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-accent-special, #f0f);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background-color: var(--color-bg-hover, #f0f);
+}
+
 .toast-close:hover {
   background-color: var(--color-bg-hover, #f0f);
   color: var(--color-text-primary, #f0f);
@@ -3436,4 +3526,32 @@ button:focus-visible,
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* 扩展分类 (ADR-019):可复制的安装命令 */
+.settings-code-block {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background-color: var(--color-bg-secondary, #f0f);
+  color: var(--color-text-primary, #f0f);
+  font-family: var(--terminal-font-family, monospace);
+  font-size: 12px;
+  white-space: pre;
+  overflow-x: auto;
+  user-select: text;
+}
+
+/* 扩展分类:命令块与"在新终端里输入命令"按钮上下排列 */
+.settings-code-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* 扩展分类:长的一行指示文字换行显示 */
+.settings-code-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
 }

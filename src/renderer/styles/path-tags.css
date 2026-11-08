@@ -198,3 +198,37 @@ button.tag-chip {
   margin-left: auto;
   padding-left: 12px;
 }
+
+/* ADR-023: the built-in Running and Needs you filters, first in the bar. */
+button.status-filter-chip {
+  padding: 0 10px 0 8px;
+}
+
+.status-filter-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.status-filter-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* The same colours as the sidebar session dots: green while running, warning while waiting. */
+.status-filter-dot.running {
+  background-color: var(--color-success, #f0f);
+}
+
+.status-filter-dot.needs-you {
+  background-color: var(--color-warning, #f0f);
+}
+
+.tag-bar-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background-color: var(--md-outline-variant, #f0f);
+}

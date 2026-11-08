@@ -52,6 +52,11 @@ import type {
   SshProfile, PathNode, SessionInfo } from '@shared/types';
 import { disambiguatePathNames } from '@shared/path-display';
 import { countTags, matchesTags } from '@shared/path-tags';
+import {
+  SESSION_STATUS_FILTERS,
+  sessionStatus,
+  type SessionStatusFilter,
+} from '@shared/session-status';
 import { useTranslation } from './LanguageProvider';
 import {
   findMyOwnedSessionId,
@@ -67,6 +72,7 @@ import { useToast } from './Toast';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import { buildSessionContextMenu } from './sessionContextMenu';
+import { CelebrationBurst } from './CelebrationBurst';
 
 /**
  * 状态点颜色 (软件定义书 6.2.4 状态指示):
@@ -140,6 +146,8 @@ export function Sidebar(): JSX.Element {
   const [remotePickerProfileId, setRemotePickerProfileId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [managedTag, setManagedTag] = useState<string | null>(null);
+  // ADR-023:内置的 Running / Needs you 筛选,一次只选一个(两者互斥,同时选只会清空)
+  const [statusFilter, setStatusFilter] = useState<SessionStatusFilter | null>(null);
   // ADR-018: a newer release puts a dot on the settings button.
   const { status: updateStatus } = useUpdateStatus();
   const availableUpdate = updateStatus?.state === 'available' ? updateStatus.update : null;
@@ -243,7 +251,24 @@ export function Sidebar(): JSX.Element {
   // A selected tag whose last folder is gone has no chip left to turn it off, so it stops
   // counting rather than leaving the list empty.
   const activeTags = selectedTags.filter((tag) => allTags.some((c) => c.name === tag));
-  const visibleFolders = folders.filter((n) => matchesTags(n.tags, activeTags));
+  const taggedFolders = folders.filter((n) => matchesTags(n.tags, activeTags));
+  // ADR-023:状态筛选按 session 算,跨所有文件夹,与文件夹标签是"且"的关系。
+  // 计数只数标签筛选后剩下的文件夹,点下去看到的数目与计数一致。
+  const statusOf = (sid: string): SessionStatusFilter | null => {
+    const s = state.sessions.get(sid);
+    return s ? sessionStatus(s) : null;
+  };
+  const statusCounts: Record<SessionStatusFilter, number> = { running: 0, 'needs-you': 0 };
+  for (const folder of taggedFolders) {
+    for (const sid of folder.sessionIds) {
+      const status = statusOf(sid);
+      if (status) statusCounts[status] += 1;
+    }
+  }
+  const visibleFolders =
+    statusFilter === null
+      ? taggedFolders
+      : taggedFolders.filter((n) => n.sessionIds.some((sid) => statusOf(sid) === statusFilter));
   const reachableTags = new Set(countTags(visibleFolders).map((c) => c.name));
 
   const toggleTag = (tag: string): void => {
@@ -421,16 +446,45 @@ export function Sidebar(): JSX.Element {
       <div className="sidebar-bookmarks-dropzone" data-segment={effectiveSegment}>
         <FolderList
           folders={visibleFolders}
+          statusFilter={statusFilter}
           activeTags={activeTags}
           onToggleTag={toggleTag}
           onManageTag={setManagedTag}
           onAdd={() => void handleAddBookmark()}
         />
       </div>
-      {allTags.length > 0 && (
-        <div className="sidebar-tag-bar">
-          <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
-            {allTags.map(({ name, count }) => {
+      {/* ADR-023:Running / Needs you 总在,所以这一栏不再只在有标签时出现 */}
+      <div className="sidebar-tag-bar">
+        <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
+          {SESSION_STATUS_FILTERS.map((status) => {
+            const active = statusFilter === status;
+            const count = statusCounts[status];
+            const label = status === 'running' ? tx('运行中', 'Running') : tx('等你处理', 'Needs you');
+            return (
+              <button
+                key={status}
+                type="button"
+                className={`tag-chip status-filter-chip${active ? ' active' : ''}`}
+                aria-pressed={active}
+                disabled={!active && count === 0}
+                title={
+                  status === 'running'
+                    ? tx('所有文件夹里正在运行的终端', 'Terminals running, in every folder')
+                    : tx(
+                        '所有文件夹里等你批准或等下一条指令的 agent',
+                        'Agents waiting for your approval or next prompt, in every folder',
+                      )
+                }
+                onClick={() => setStatusFilter(active ? null : status)}
+              >
+                <span className={`status-filter-dot ${status}`} aria-hidden="true" />
+                {label}
+                <span className="tag-chip-count">{count}</span>
+              </button>
+            );
+          })}
+          {allTags.length > 0 && <span className="tag-bar-divider" aria-hidden="true" />}
+          {allTags.map(({ name, count }) => {
             const active = activeTags.includes(name);
             return (
               <div
@@ -464,15 +518,21 @@ export function Sidebar(): JSX.Element {
               </div>
             );
           })}
-          </div>
-          {/* Outside the scrolling list, which would otherwise carry it out of view. */}
-          {activeTags.length > 0 && (
-            <button type="button" className="tag-clear" onClick={() => setSelectedTags([])}>
-              {tx('清除', 'Clear')}
-            </button>
-          )}
         </div>
-      )}
+        {/* Outside the scrolling list, which would otherwise carry it out of view. */}
+        {(activeTags.length > 0 || statusFilter !== null) && (
+          <button
+            type="button"
+            className="tag-clear"
+            onClick={() => {
+              setSelectedTags([]);
+              setStatusFilter(null);
+            }}
+          >
+            {tx('清除', 'Clear')}
+          </button>
+        )}
+      </div>
       {managedTag && <TagSettings tag={managedTag} onClose={() => setManagedTag(null)} />}
       {fileTreeOpen && <FileTreePanel />}
       {remotePickerOpen && (
@@ -562,10 +622,12 @@ const MAX_ROW_DOTS = 5;
 
 function FolderList({
   folders,
+  statusFilter,
   onAdd,
   ...dotActions
 }: {
   folders: PathNode[];
+  statusFilter: SessionStatusFilter | null;
   onAdd: () => void;
 } & TagDotActions): JSX.Element {
   const { t } = useTranslation();
@@ -600,6 +662,7 @@ function FolderList({
               <PathItem
                 key={p.id}
                 node={p}
+                statusFilter={statusFilter}
                 {...dotActions}
                 {...(override !== undefined ? { displayNameOverride: override } : {})}
               />
@@ -654,10 +717,13 @@ function RowTagDots({
 function PathItem({
   node,
   displayNameOverride,
+  statusFilter,
   ...dotActions
 }: {
   node: PathNode;
   displayNameOverride?: string;
+  /** ADR-023:设了就只列这类 session,并且总是展开,一眼看到全部 */
+  statusFilter: SessionStatusFilter | null;
 } & TagDotActions): JSX.Element {
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -665,13 +731,15 @@ function PathItem({
   const toast = useToast();
   const { tx } = useTranslation();
   const [tagging, setTagging] = useState(false);
-  const expanded = state.expandedPathIds.has(node.id);
+  const expanded = statusFilter !== null || state.expandedPathIds.has(node.id);
   const selected = state.selectedPathId === node.id;
-  const sessions = useMemo(
+  const allSessions = useMemo(
     () => node.sessionIds.map((sid) => state.sessions.get(sid)).filter(Boolean) as SessionInfo[],
     [node.sessionIds, state.sessions],
   );
-  const activeCount = sessions.length;
+  const sessions =
+    statusFilter === null ? allSessions : allSessions.filter((s) => sessionStatus(s) === statusFilter);
+  const activeCount = allSessions.length;
   // BETA-014:优先用 FolderList 算好的去重名;退到本节点 displayName / 末段
   const displayName =
     displayNameOverride ??
@@ -959,6 +1027,12 @@ function PathItem({
               session={s}
               myWindowId={state.myWindowId}
               selected={state.selectedSessionId === s.id}
+              unseen={state.unseenDoneSessionIds.has(s.id)}
+              celebrate={
+                !!state.settings.appearance?.hideTopTabBar &&
+                (state.settings.appearance?.celebrations ?? true)
+              }
+              themeId={state.settings.appearance?.theme}
             />
           ))}
         </ul>
@@ -973,6 +1047,15 @@ interface SessionItemProps {
   myWindowId: string;
   /** 父级传入 — 同上,避免订阅 state.selectedSessionId */
   selected: boolean;
+  /** ADR-021:agent 跑完时用户没在看;父级传入,理由同上 */
+  unseen: boolean;
+  /**
+   * ADR-027:圆点亮起时在这里撒小星星。只在顶部标签栏隐藏时为 true,
+   * 否则标签上已经撒过,两处同时撒太吵。
+   */
+  celebrate: boolean;
+  /** ADR-027:当前主题,决定小庆祝的样式 */
+  themeId: string | undefined;
 }
 
 /**
@@ -987,7 +1070,12 @@ function SessionItemImpl({
   session,
   myWindowId,
   selected,
+  unseen,
+  celebrate,
+  themeId,
 }: SessionItemProps): JSX.Element {
+  // ADR-027:小庆祝锚在状态圆点上
+  const stateDotRef = useRef<HTMLSpanElement>(null);
   const dispatch = useAppDispatch();
   const ctxMenu = useContextMenuApi();
   const toast = useToast();
@@ -1137,9 +1225,24 @@ function SessionItemImpl({
       title={fullTitle}
     >
       <span
-        className="session-state-dot"
-        style={{ backgroundColor: STATE_DOT_COLOR[session.state] }}
-        aria-label={`状态: ${session.state}`}
+        ref={stateDotRef}
+        className={
+          'session-state-dot' +
+          (session.agentPhase === 'blocked'
+            ? ' agent-blocked'
+            : unseen
+              ? ' agent-unseen'
+              : '')
+        }
+        style={{
+          backgroundColor:
+            session.agentPhase === 'blocked'
+              ? 'var(--color-warning, #f0f)'
+              : unseen
+                ? 'var(--md-primary, #f0f)'
+                : STATE_DOT_COLOR[session.state],
+        }}
+        aria-label={`状态: ${session.agentPhase ?? session.state}`}
       >
         {session.state === 'exited' && session.exitCode === 0 && (
           <CheckBold size={11} className="session-state-dot-icon ok" />
@@ -1150,6 +1253,14 @@ function SessionItemImpl({
             <CloseBold size={11} className="session-state-dot-icon fail" />
           )}
       </span>
+      {celebrate && (
+        <CelebrationBurst
+          play={unseen && session.agentPhase !== 'blocked'}
+          anchorRef={stateDotRef}
+          enabled
+          themeId={themeId}
+        />
+      )}
       {renaming ? (
         <input
           ref={renameInputRef}

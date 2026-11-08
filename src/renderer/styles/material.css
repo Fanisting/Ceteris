@@ -1327,6 +1327,15 @@ select.settings-input option {
   color: color-mix(in srgb, var(--color-danger, #f0f) 45%, var(--md-inverse-on-surface, #f0f));
 }
 
+/* snackbar 是反色底,按钮文字向前景色混合,保证对比度 */
+.toast-action {
+  color: color-mix(in srgb, var(--md-primary, #f0f) 40%, var(--md-inverse-on-surface, #f0f));
+}
+
+.toast-action:hover {
+  background-color: color-mix(in srgb, var(--md-inverse-on-surface, #f0f) 12%, transparent);
+}
+
 .toast-close {
   width: 28px;
   height: 28px;
@@ -1684,38 +1693,123 @@ select.settings-input option {
   outline-offset: -4px;
 }
 
-/* MD3 wavy activity indicator, drawn with a mask so it follows the theme colour. */
-.tab.running::before {
-  content: '';
+/*
+ * Agent and activity indicators (ADR-021). One rule: moving means the agent does not need
+ * you; still or breathing means it does.
+ *   .running        wavy line: the agent is working (or a plain shell has output)
+ *   .agent-blocked  breathing bar and dot in the warning colour: it waits for approval
+ *   .agent-unseen   dot that pings twice: it finished while you were elsewhere
+ */
+
+/* The wavy line itself is an SVG drawn by AgentWave.tsx: its shape follows the kind of work
+   (generating, waiting, tool) and its speed the token rate. Here only placement, colour and
+   the fade at the end; the flattening before the fade happens in the component. */
+.tab-wave {
   position: absolute;
   left: 10px;
-  right: 10px;
   bottom: 0;
-  height: 4px;
-  background-color: var(--md-on-surface-variant, #f0f);
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='4'%3E%3Cpath d='M0 2Q3 0 6 2T12 2' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E");
-  mask-repeat: repeat-x;
-  mask-size: 12px 4px;
-  animation: tab-wave 900ms linear infinite;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease;
 }
 
-.tab.running.selected::before {
-  background-color: var(--md-primary, #f0f);
+.tab-wave.visible {
+  opacity: 1;
+  transition: opacity 100ms ease;
+}
+
+/* The selected tab gets its underline back at once, so its wave must not fade on top. */
+.tab-wave.instant {
+  transition: none;
+}
+
+.tab-wave path {
+  fill: none;
+  stroke: var(--md-primary, #f0f);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tab.running.selected::after {
   content: none;
 }
 
-@keyframes tab-wave {
+.tab-agent-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--md-primary, #f0f);
+}
+
+.tab.agent-unseen .tab-agent-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-color: inherit;
+  animation: agent-ping 900ms ease-out 2;
+}
+
+.tab.agent-blocked .tab-agent-dot,
+.tab.agent-blocked.selected::after {
+  background-color: var(--color-warning, #f0f);
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+.tab.agent-blocked:not(.selected)::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background-color: var(--color-warning, #f0f);
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+/* The sidebar dot speaks the same language; its colour comes from the inline style. */
+.session-state-dot.agent-blocked {
+  animation: agent-breathe 1.4s ease-in-out infinite;
+}
+
+.session-state-dot.agent-unseen {
+  position: relative;
+}
+
+.session-state-dot.agent-unseen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-color: inherit;
+  animation: agent-ping 900ms ease-out 2;
+}
+
+@keyframes agent-ping {
   to {
-    mask-position: 12px 0;
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+@keyframes agent-breathe {
+  50% {
+    opacity: 0.3;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab.running::before {
-    animation: none;
+  .tab-agent-dot,
+  .tab-agent-dot::after,
+  .tab.agent-blocked::after,
+  .session-state-dot.agent-blocked,
+  .session-state-dot.agent-unseen::after {
+    animation: none !important;
   }
 }
 
@@ -1979,4 +2073,64 @@ select.settings-input option {
 .titlebar-dev-reload:hover {
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
+}
+
+/* Next prompt model choice: the list, and the text box under it for "Other". */
+.next-prompt-model {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.next-prompt-habits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--md-on-surface, #f0f);
+}
+
+.next-prompt-habits li {
+  display: flex;
+  gap: 8px;
+}
+
+/* Count first, right aligned, so the ranking reads down the column. */
+.next-prompt-habit-count {
+  min-width: 4ch;
+  text-align: right;
+  color: var(--md-on-surface-variant, #f0f);
+  font-variant-numeric: tabular-nums;
+}
+
+.next-prompt-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 280px;
+  font-size: 12px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-variant-numeric: tabular-nums;
+}
+
+.next-prompt-chart-head {
+  color: var(--md-on-surface, #f0f);
+}
+
+.next-prompt-chart-foot {
+  display: flex;
+  justify-content: space-between;
+}
+
+.next-prompt-chart-bar {
+  fill: var(--md-primary, #f0f);
+  opacity: 0.75;
+}
+
+.next-prompt-chart-bar.is-hover {
+  opacity: 1;
+}
+
+.next-prompt-chart-axis {
+  stroke: var(--md-outline-variant, #f0f);
+  stroke-width: 1;
 }

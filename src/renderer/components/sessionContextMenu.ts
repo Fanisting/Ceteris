@@ -4,7 +4,9 @@
  *   两边的菜单"内容"必须一致(用户明确要求),只有"重命名"的触发 UX 不同
  *   (Tab 走 Modal.prompt,Sidebar 走行内编辑),通过传入 onRename 回调解耦。
  */
+import { tx } from '@shared/i18n';
 import { COMMAND_CHANNELS } from '@shared/protocol';
+import { COORDINATOR_GUIDE_EVENT } from '@shared/tab-control';
 import type { PathTree, SessionInfo } from '@shared/types';
 import { findPathNode } from '../store';
 import type { ContextMenuItem } from './ContextMenu';
@@ -40,6 +42,30 @@ export function buildSessionContextMenu(
       disabled: isOther,
       ...(isOther ? { hint: '其他窗口持有,无法重命名' } : {}),
       onSelect: onRename,
+    },
+    {
+      // ADR-023:勾选后标签移到标签栏上方的 coordinator 行。任何窗口都能改,
+      // 它只决定标签放在哪一行,不动所有权。
+      label: tx('协调者', 'Coordinator'),
+      hint: tx(
+        '标签放到上方单独一行,在任何文件夹都看得到',
+        'Puts the tab in a row above, seen from every folder',
+      ),
+      checked: session.coordinator === true,
+      onSelect: () => {
+        const turningOn = session.coordinator !== true;
+        invoke(COMMAND_CHANNELS.SESSION_SET_COORDINATOR, {
+          sessionId: session.id,
+          coordinator: turningOn,
+        })
+          // ADR-024:第一次勾上时打开协调者引导 (CoordinatorGuide 自己判断看没看过)
+          .then(() => {
+            if (turningOn) window.dispatchEvent(new Event(COORDINATOR_GUIDE_EVENT));
+          })
+          .catch((err: unknown) =>
+            toastError(`设置协调者失败:${err instanceof Error ? err.message : String(err)}`),
+          );
+      },
     },
     {
       label: '复制初始路径',

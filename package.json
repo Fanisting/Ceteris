@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@xterm/addon-fit": "0.12.0-beta.256",
+    "@xterm/addon-image": "0.10.0-beta.256",
     "@xterm/addon-search": "0.17.0-beta.256",
     "@xterm/addon-serialize": "0.15.0-beta.256",
     "@xterm/addon-unicode11": "0.10.0-beta.256",
@@ -47,6 +48,7 @@
     "@xterm/addon-webgl": "0.20.0-beta.255",
     "@xterm/headless": "6.1.0-beta.256",
     "@xterm/xterm": "6.1.0-beta.256",
+    "katex": "0.19.1",
     "markdown-it": "^14.1.0",
     "node-pty": "^1.0.0",
     "pdfjs-dist": "^6.5.438",

@@ -180,10 +180,12 @@ function makeStubSettingsManager(
       uiZoom: 1,
       macOSTrafficLightHoverSymbols: false,
       hideTopTabBar: false,
+      celebrations: true,
+      pebble: false,
     },
     ai: {
       provider: null,
-      nextPrompt: { enabled: false, apiKey: '', baseURL: '', model: '' },
+      nextPrompt: { enabled: false, keySaved: false, baseURL: '', model: '' },
       apiKey: '',
       baseURL: '',
       model: '',
@@ -198,8 +200,11 @@ function makeStubSettingsManager(
       selectOnCopy: true,
       terminalRightClick: 'menu',
       quickLaunch: [],
+      quickLaunchTipSeen: true,
       bracketedPaste: true,
       autoCheckUpdates: true,
+      autoCheckAgents: true,
+      autoUpdateAgents: false,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {
@@ -210,6 +215,7 @@ function makeStubSettingsManager(
       terminalRenderer: 'auto',
       ...overrides,
     },
+    extensions: { claudeMathImages: false, terminalMath: false, tabControl: false, tabControlGuideSeen: false },
     // Ceteris Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
     // 结构,缺字段会让整个 stub 类型不成立。
     link: {
@@ -290,6 +296,7 @@ function makeManager(
     /** PER-2 / F1:默认 0 — 测试每个 chunk 立即 emit,保持现有时序断言 */
     emitBatchMs?: number;
     templates?: Template[];
+    controlEnv?: (sessionId: string) => Record<string, string>;
   } = {},
 ): {
   mgr: SessionManager;
@@ -310,6 +317,7 @@ function makeManager(
     inputQuietMs: opts.inputQuietMs ?? 0,
     emitBatchMs: opts.emitBatchMs ?? 0,
     skipCwdValidation: true,
+    ...(opts.controlEnv ? { controlEnv: opts.controlEnv } : {}),
   });
   return { mgr, win, path };
 }
@@ -369,6 +377,27 @@ describe('SessionManager — createSession', () => {
     expect(path.attached).toEqual([{ sessionId: info.id, path: 'C:\\proj\\a' }]);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(FakePty.instances).toHaveLength(1);
+  });
+
+  it('gives each tab its own control env, keyed by its session id (ADR-022)', async () => {
+    const prev = process.env.CETERIS_CONTROL_TOKEN;
+    process.env.CETERIS_CONTROL_TOKEN = 'parent-tab-token';
+    try {
+      const { mgr } = makeManager({ controlEnv: (id) => ({ CETERIS_CONTROL_PIPE: `pipe-${id}` }) });
+      const info = await mgr.createSession({
+        pathId: 'C:\\proj\\a',
+        templateId: 'shell',
+        ownerWindowId: 'w-1',
+        cols: 80,
+        rows: 24,
+      });
+      const env = FakePty.instances[0]!.options.env;
+      expect(env.CETERIS_CONTROL_PIPE).toBe(`pipe-${info.id}`);
+      expect(env.CETERIS_CONTROL_TOKEN).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.CETERIS_CONTROL_TOKEN;
+      else process.env.CETERIS_CONTROL_TOKEN = prev;
+    }
   });
 
   it('cols/rows 越界被夹到合法范围', async () => {
@@ -1094,6 +1123,23 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(idleChange).toBeDefined();
   });
 
+  it('reads agentPhase from the screen and clears it on exit (ADR-021)', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const fp = FakePty.instances[0]!;
+    fp.emitData('│ Do you want to proceed?\r\n│ ❯ 1. Yes\r\n│   2. No\r\n');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mgr.get(info.id)?.agentPhase).toBe('blocked');
+    fp.emitExit(0);
+    expect(mgr.get(info.id)?.agentPhase).toBeNull();
+  });
+
   it('resize 后 quiet 窗口内 ConPTY 重绘字节不触发 markActive (CP-3 勘误 #3 v2)', async () => {
     const settings = makeStubSettingsManager({ activeIdleThresholdSeconds: 1 });
     const { mgr } = makeManager({ settings, resizeQuietMs: 500 });
@@ -1281,6 +1327,27 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(after.exitCode).toBe(42);
     expect(after.exitedAt).toBeGreaterThan(0);
     expect(mgr.count()).toBe(1); // 仍在 sessions Map
+  });
+
+  it('closeOnSuccess 的一次性命令:退出码 0 自动销毁,非 0 留下 exited tab', async () => {
+    const { mgr } = makeManager();
+    const destroyed = vi.fn();
+    mgr.on('sessionDestroyed', destroyed);
+    const override = { name: 'X update', command: 'x', args: ['update'], closeOnSuccess: true };
+    const ok = await mgr.createSession({
+      pathId: '/p', templateId: 'shell', ownerWindowId: 'w', cols: 80, rows: 24,
+      commandOverride: override,
+    });
+    FakePty.instances[0]!.emitExit(0);
+    expect(mgr.get(ok.id)).toBeNull();
+    expect(destroyed).toHaveBeenCalledWith({ sessionId: ok.id, reason: 'pty-exited' });
+
+    const failed = await mgr.createSession({
+      pathId: '/p', templateId: 'shell', ownerWindowId: 'w', cols: 80, rows: 24,
+      commandOverride: override,
+    });
+    FakePty.instances[1]!.emitExit(1);
+    expect(mgr.get(failed.id)?.state).toBe('exited');
   });
 
   it('exited session 不可再回到 active (markActive guard)', async () => {
@@ -1532,6 +1599,25 @@ describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () =>
     const fp = FakePty.instances[0]!;
     fp.emitData('\x1b]0;Should Be Ignored\x07');
     expect(mgr.get(info.id)!.displayName).toBe('My Pinned Name');
+  });
+
+  it('setCoordinator broadcasts only real changes', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const changes: unknown[] = [];
+    mgr.on('sessionStateChanged', (p: { changes: unknown }) => changes.push(p.changes));
+    mgr.setCoordinator(info.id, true);
+    mgr.setCoordinator(info.id, true);
+    mgr.setCoordinator(info.id, false);
+    mgr.setCoordinator('missing', true);
+    expect(changes).toEqual([{ coordinator: true }, { coordinator: false }]);
+    expect(mgr.get(info.id)!.coordinator).toBe(false);
   });
 
   it('OSC 标题里 \\n / \\t 被替成空格,过长截到 100', async () => {

@@ -19,13 +19,15 @@
  * 完整 schema 校验 + 版本迁移 + export/import 在 CP-4。
  */
 import { EventEmitter } from 'node:events';
+import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
+import { isCustomThemeId } from '@shared/custom-themes';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
   QUICK_LAUNCH_MAX_ITEMS,
   isValidQuickLaunchItems,
 } from '@shared/quick-launch';
-import type { Settings, ThemeId } from '@shared/types';
+import type { BuiltinThemeId, Settings } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
 
@@ -54,6 +56,9 @@ export const DEFAULT_SETTINGS: Settings = {
     macOSTrafficLightHoverSymbols: false,
     // issue #4 默认关。TabBar 与 Sidebar 内容重复,用户可勾上更紧凑。
     hideTopTabBar: false,
+    // ADR-027:小庆祝默认开,小石子一直可见所以默认关。
+    celebrations: true,
+    pebble: false,
   },
   shell: {
     defaultShellId: '',
@@ -66,11 +71,16 @@ export const DEFAULT_SETTINGS: Settings = {
     selectOnCopy: true,
     terminalRightClick: 'menu',
     quickLaunch: [...DEFAULT_QUICK_LAUNCH_ITEMS],
+    // 首次使用引导:老用户升级后字段缺失,deep merge 补 false,也会看到一次。
+    quickLaunchTipSeen: false,
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
     // ADR-018:默认检查更新。只提示并给下载链接,不自动下载安装。
     autoCheckUpdates: true,
+    // 新建页 agent 状态点:后台检查默认开,自动升级默认关 (升级前总会先通知)
+    autoCheckAgents: true,
+    autoUpdateAgents: false,
   },
   systemIntegration: {
     explorerOpenIn: 'new-window',
@@ -91,6 +101,15 @@ export const DEFAULT_SETTINGS: Settings = {
     // 兼容性 bug 用(例如某些 TUI 的光标渲染在 WebGL 下异常)。
     terminalRenderer: 'auto',
   },
+  // 扩展默认全关 (ADR-019):公式图片会改 XTVERSION 回复与 Windows 的 ConPTY,
+  // 只给主动打开的用户。
+  extensions: {
+    claudeMathImages: false,
+    terminalMath: false,
+    tabControl: false,
+    // 协调者引导 (ADR-024):老设置文件缺这个字段,deep merge 补 false,升级后也会看到一次
+    tabControlGuideSeen: false,
+  },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
     provider: null,
@@ -98,7 +117,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // F6(beta 勘误2):自定义 endpoint,空串走官方默认地址
     baseURL: '',
     model: '',
-    nextPrompt: { enabled: false, apiKey: '', baseURL: '', model: '' },
+    nextPrompt: { enabled: false, keySaved: false, baseURL: '', model: '' },
     statusRecheckEnabled: false,
     // BETA-006 v2:默认走 headless(已渲染文本),消除 ANSI 噪音与 PSReadLine
     // 重绘残影。老用户升级后字段缺失也会因为 SettingsManager.merge 走 default。
@@ -117,7 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
 };
 
-const VALID_THEMES: ThemeId[] = [
+const VALID_THEMES: BuiltinThemeId[] = [
   'ceteris-dark',
   'ceteris-light',
   'rose-pine',
@@ -137,6 +156,17 @@ const VALID_THEMES: ThemeId[] = [
   'tokyo-night-day',
   'light-pink',
   'fairyfloss',
+  // 珠光系列
+  'pearl-lapis',
+  'pearl-sapphire',
+  'pearl-rose',
+  'pearl-ember',
+  'pearl-jade',
+  'pearl-moon',
+  'pearl-frost',
+  // 梅子
+  'meizi',
+  ...BEAMER_THEME_IDS,
 ];
 
 /**
@@ -155,6 +185,7 @@ export class SettingsError extends Error {
 
 export class SettingsManager extends EventEmitter {
   private settings: Settings;
+  private legacyNextPromptKey = '';
 
   /** @param defaults what a new data folder starts with. Each channel changes a little. */
   constructor(
@@ -175,6 +206,11 @@ export class SettingsManager extends EventEmitter {
     // v1.5+ 迁移:explorerContextMenu 从 settings 移到系统状态,如果老 settings.json
     // 残留这个字段,静默剥掉(避免 deepMerge 原样带进运行时 settings 对象,污染
     // 导入导出归档 + TS 类型断言失败)。
+    // ADR-025: a key pasted before keys moved to secrets.json. Kept for the caller to move
+    // into SecretStore, then stripped like any other legacy field.
+    const legacyKey = (result.value as { ai?: { nextPrompt?: { apiKey?: unknown } } })?.ai
+      ?.nextPrompt?.apiKey;
+    this.legacyNextPromptKey = typeof legacyKey === 'string' ? legacyKey.trim() : '';
     const migrated = stripUnknownLegacyFields(result.value);
     // 不论从哪加载,都要走一遍 deep merge 防止用户文件少字段
     const merged = deepMerge(this.defaults, migrated as DeepPartial<Settings>);
@@ -264,6 +300,27 @@ export class SettingsManager extends EventEmitter {
         settings: structuredClone(merged),
         changedKeys,
       });
+    }
+  }
+
+  /**
+   * The next prompt key found in plain text in settings.json at startup, '' when none.
+   * Returns it once, so the caller moves it to SecretStore exactly one time.
+   */
+  takeLegacyNextPromptKey(): string {
+    const key = this.legacyNextPromptKey;
+    this.legacyNextPromptKey = '';
+    return key;
+  }
+
+  /**
+   * Writes the current settings twice. JsonStore copies the old file to .bak before each
+   * write, so the second write is what removes a plain text key from settings.json.bak.
+   */
+  async rewriteBothCopies(): Promise<void> {
+    for (let i = 0; i < 2; i++) {
+      this.store.set(structuredClone(this.settings));
+      await this.store.flush();
     }
   }
 
@@ -359,6 +416,15 @@ export function stripUnknownLegacyFields<T>(raw: T): T {
       const cloned = ensureClone();
       const aiClone = { ...ai, statusRecheckSource: 'headless' };
       cloned['ai'] = aiClone;
+    }
+    // ADR-025: the next prompt key moved to secrets.json. initialize() hands any old one
+    // to SecretStore before this runs; an imported bundle never carried one.
+    const np = ai['nextPrompt'];
+    if (np && typeof np === 'object' && 'apiKey' in np) {
+      const cloned = ensureClone();
+      const npClone = { ...(np as Record<string, unknown>) };
+      delete npClone['apiKey'];
+      cloned['ai'] = { ...(cloned['ai'] as Record<string, unknown>), nextPrompt: npClone };
     }
   }
 
@@ -477,10 +543,13 @@ function validateLinkSettings(s: Settings): void {
 }
 
 export function validateSettings(s: Settings): void {
-  if (!VALID_THEMES.includes(s.appearance.theme)) {
+  // 用户主题文件只校验 id 格式:文件可能稍后才放进主题文件夹,或已被删除,此时
+  // renderer 回退到默认配色,不拒绝整份设置。
+  const theme = s.appearance.theme;
+  if (!isCustomThemeId(theme) && !VALID_THEMES.includes(theme as BuiltinThemeId)) {
     throw new SettingsError(
       'InvalidSettings',
-      `appearance.theme="${s.appearance.theme}" 不是合法主题,允许: ${VALID_THEMES.join(', ')}`,
+      `appearance.theme="${theme}" 不是合法主题,允许: ${VALID_THEMES.join(', ')} 或 custom:<slug>`,
       { field: 'appearance.theme', got: s.appearance.theme, allowed: VALID_THEMES },
     );
   }
@@ -509,6 +578,30 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `advanced.terminalRenderer="${s.advanced.terminalRenderer}" 必须是 auto / webgl / dom`,
+    );
+  }
+  if (typeof s.extensions.tabControlGuideSeen !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.tabControlGuideSeen=${String(s.extensions.tabControlGuideSeen)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.tabControl !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.tabControl=${String(s.extensions.tabControl)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.claudeMathImages !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.claudeMathImages=${String(s.extensions.claudeMathImages)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.terminalMath !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.terminalMath=${String(s.extensions.terminalMath)} 必须是 true 或 false`,
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {

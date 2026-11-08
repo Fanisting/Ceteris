@@ -222,6 +222,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:send-input` | 向 session 发送键盘输入 |
 | `cmd:session:resize` | 通知 session 终端尺寸变化 |
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
+| `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
 | `cmd:session:get-scrollback` | 获取 session 的 scrollback 缓冲(切换 owner 时用) |
 | `cmd:bookmark:add` | 添加收藏路径 |
 | `cmd:bookmark:remove` | 移除收藏 |
@@ -727,6 +728,28 @@ interface ClearManualRenamePayload {
 - 清掉 `manuallyRenamed` 标记
 - 不立即改 displayName(留待下一次 OSC 0/1/2 到来时覆盖)
 - 不广播事件(标记本身对 UI 不可见)
+
+---
+
+#### `cmd:session:set-coordinator` (ADR-023)
+标记或取消 coordinator。所有窗口把 coordinator 的标签放进标签栏上方单独一行,
+不论当前打开的是哪个文件夹。任何窗口都能改,所有权不变。
+
+```typescript
+// Payload
+interface SetCoordinatorPayload {
+  sessionId: string;
+  coordinator: boolean;
+}
+// Response: void
+```
+
+**Side Effects**:
+- 值真的变了才广播 `evt:session:state-changed`(`changes.coordinator` 在内)
+- 标记随 session 存在,session 销毁即消失,不持久化
+
+**Errors**:
+- 不存在的 sessionId 静默 no-op
 
 ---
 
@@ -2039,6 +2062,44 @@ async function handleSessionTabClick(sessionId: string) {
 - [ ] handshake 流程测试
 - [ ] 字节流聚合测试(16ms 内多次 onData 合并为一次推送)
 - [ ] 多窗口场景测试(owner 切换、广播覆盖所有窗口)
+
+---
+
+## 附录 D:Tab control pipe(ADR-024)
+
+这条通道不走 Electron IPC,是 main 与 ceteris-tabs 插件的 MCP 服务器之间的命名管道。格式定义在 `src/shared/tab-control.ts`,插件 `extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs` 里有一份相同的纯 JS 实现,`tab-control-mcp.test.ts` 检查两边一致。
+
+**连接**:每个标签的环境变量里有 `CETERIS_CONTROL_PIPE`(Windows 为 `\.\pipe\ceteris-control-<pid>-<随机>`)和本标签的 `CETERIS_CONTROL_TOKEN`。一条连接一个请求,30 秒内收不到完整请求就断开。
+
+**请求**(一行 JSON,换行结尾,最多 256 KB):
+
+```typescript
+interface TabControlRequest {
+  v: 1;
+  token: string;
+  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename';
+  args: Record<string, unknown>;
+}
+```
+
+**回复**(一行 JSON):`{ ok: true, result }` 或 `{ ok: false, code, message }`。`code` 取值:`bad-request`、`disabled`、`unknown-token`、`not-coordinator`、`not-found`、`ambiguous`、`self`、`failed`。
+
+| op | args | result |
+|---|---|---|
+| `list` | 无 | `{ folder, tabs: TabSummary[] }`,只含调用方文件夹的标签,按创建时间排序 |
+| `get` | `tab` | `TabSummary` |
+| `templates` | 无 | `{ id, name, command, args }[]` |
+| `create` | `template?`(id 或名字,默认 shell)、`name?` | 新标签的 `TabSummary`;没有 owner 窗口,尺寸同调用方 |
+| `close` | `tab` | `{ closed }`;不能是调用方自己 |
+| `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
+| `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
+| `rename` | `tab`、`name` | `TabSummary` |
+
+`tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
+
+**授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。
+
+**协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件。
 
 ---
 

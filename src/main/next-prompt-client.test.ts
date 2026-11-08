@@ -4,8 +4,9 @@ import {
   NEXT_PROMPT_DEFAULT_MODEL,
   NEXT_PROMPT_MAX_SCREEN_CHARS,
   addNextPromptUsage,
+  dailyCosts,
 } from '@shared/next-prompt';
-import { suggestNextPrompt } from './next-prompt-client';
+import { listNextPromptModels, suggestNextPrompt } from './next-prompt-client';
 
 const reply = (content: string, status = 200) =>
   new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status });
@@ -48,10 +49,10 @@ describe('suggestNextPrompt', () => {
     await expect(suggestNextPrompt(CONFIG, 's', fetchImpl as never)).rejects.toThrow(/402/);
   });
 
-  it('does not call out without a key', async () => {
+  it('does not call OpenRouter before the account is connected', async () => {
     const fetchImpl = vi.fn();
     await expect(suggestNextPrompt({ apiKey: ' ', baseURL: '', model: '' }, 's', fetchImpl as never)).rejects.toThrow(
-      /API Key/,
+      /OpenRouter/,
     );
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -82,14 +83,21 @@ describe('custom API address', () => {
     ]);
   });
 
-  it('sends no key to a local model that has none', async () => {
+  it('never sends the OpenRouter key to another address', async () => {
     let headers: Record<string, string> = {};
     const fetchImpl = (async (_url: string, init: RequestInit) => {
       headers = init.headers as Record<string, string>;
       return reply();
     }) as unknown as typeof fetch;
     await suggestNextPrompt(
-      { apiKey: '', baseURL: 'http://127.0.0.1:11434/v1', model: 'm' },
+      { apiKey: 'sk-or-secret', baseURL: 'http://127.0.0.1:11434/v1', model: 'm' },
+      'x',
+      fetchImpl,
+    );
+    expect(headers).not.toHaveProperty('Authorization');
+    // A look-alike host must not pass the prefix check either.
+    await suggestNextPrompt(
+      { apiKey: 'sk-or-secret', baseURL: 'https://openrouter.ai.evil.example/api/v1', model: 'm' },
       'x',
       fetchImpl,
     );
@@ -106,16 +114,31 @@ describe('custom API address', () => {
 describe('cost total', () => {
   it('adds priced calls, and counts a call with no price separately', () => {
     let total = EMPTY_NEXT_PROMPT_USAGE;
-    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 });
-    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 });
-    total = addNextPromptUsage(total, undefined);
+    total = addNextPromptUsage(total, { prompt_tokens: 100, completion_tokens: 10, cost: 0.002 }, '2026-11-07');
+    total = addNextPromptUsage(total, { prompt_tokens: 50, completion_tokens: 5 }, '2026-11-08');
+    total = addNextPromptUsage(total, undefined, '2026-11-08');
     expect(total).toEqual({
       calls: 3,
       inputTokens: 150,
       outputTokens: 15,
       costUsd: 0.002,
       unpricedCalls: 2,
+      daily: { '2026-11-07': { calls: 1, costUsd: 0.002 }, '2026-11-08': { calls: 2, costUsd: 0 } },
     });
+  });
+
+  it('keeps only the last 30 days, and charts the last 14 with empty days as zero', () => {
+    let total = EMPTY_NEXT_PROMPT_USAGE;
+    for (let d = 1; d <= 31; d++) {
+      total = addNextPromptUsage(total, { cost: d }, `2026-10-${String(d).padStart(2, '0')}`);
+    }
+    expect(Object.keys(total.daily)).toHaveLength(30);
+    expect(total.daily['2026-10-01']).toBeUndefined();
+
+    const chart = dailyCosts(total, new Date(2026, 10, 2));
+    expect(chart).toHaveLength(14);
+    expect(chart[0]).toEqual({ day: '2026-10-20', calls: 1, costUsd: 20 });
+    expect(chart.at(-1)).toEqual({ day: '2026-11-02', calls: 0, costUsd: 0 });
   });
 
   it('reports usage from a response, and asks only OpenRouter for the price', async () => {
@@ -132,5 +155,31 @@ describe('cost total', () => {
     expect(seen).toEqual([{ cost: 0.001 }]);
     expect(bodies[0]).toHaveProperty('usage');
     expect(bodies[1]).not.toHaveProperty('usage');
+  });
+});
+
+describe('frequent prompts and model list', () => {
+  it('tells the model the messages the user often sends', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => reply('ok'));
+    await suggestNextPrompt(CONFIG, 's', fetchImpl as never, undefined, [{ text: 'commit and push', count: 9 }]);
+    const system = JSON.parse(fetchImpl.mock.calls[0]?.[1].body as string).messages[0].content;
+    expect(system).toContain('commit and push');
+  });
+
+  it('asks the /models path of the same address, with the key when there is one', async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return new Response(JSON.stringify({ data: [{ id: 'llama3' }] }));
+    }) as unknown as typeof fetch;
+    await expect(
+      listNextPromptModels({ apiKey: '', baseURL: 'http://127.0.0.1:11434/v1', model: '' }, fetchImpl),
+    ).resolves.toEqual([{ id: 'llama3', name: 'llama3', inputPrice: undefined, outputPrice: undefined }]);
+    await listNextPromptModels(CONFIG, fetchImpl);
+    expect(calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:11434/v1/models',
+      'https://openrouter.ai/api/v1/models',
+    ]);
+    expect(calls[1]?.[1].headers).toEqual({ Authorization: 'Bearer test-key' });
   });
 });

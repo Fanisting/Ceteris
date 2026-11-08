@@ -13,6 +13,8 @@
  * - 慢速双击在 classifyRowClick 判定后还要等 RENAME_DELAY_MS 才进入编辑,期间
  *   再来一次点击说明用户其实在快速双击,取消重命名。
  * - 只用鼠标触发重命名,不加 F2:应用内功能键在 13.2 永远不做列表里。
+ * - 置顶文件夹 (file-tree-pins.ts) 以小方块显示在标题下面。点一下文件树临时切到
+ *   那个文件夹,再点一下或 session 的目录变了就回到 session 的目录。
  *
  * @对应文档章节: 软件定义书.md 13.2、14.6
  *
@@ -55,7 +57,15 @@ import {
   type AppState,
   useAppState,
 } from '../store';
-import { useContextMenuApi } from './ContextMenu';
+import {
+  isPinned,
+  remapLocalPins,
+  samePin,
+  togglePin,
+  useFolderPins,
+  type FolderPin,
+} from '../file-tree-pins';
+import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
 import { ChevronRight, Draft, Folder, FolderOpen } from './material-symbols';
 import { useToast } from './Toast';
@@ -82,6 +92,10 @@ function folderLabel(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
+function pinFor(path: string, sshProfileId: string | undefined): FolderPin {
+  return sshProfileId ? { path, sshProfileId } : { path };
+}
+
 export function FileTreePanel(): JSX.Element {
   const state = useAppState();
   const { t } = useTranslation();
@@ -90,8 +104,31 @@ export function FileTreePanel(): JSX.Element {
   const pathId = session?.pathId ?? state.selectedPathId;
   const node = pathId ? (findPathNode(state.pathTree, pathId) ?? null) : null;
   const root = session ? resolveFileTreeRoot(session, node) : (node?.path ?? null);
-  const sshProfileId = node?.kind === 'ssh' ? node.sshProfileId : undefined;
+  const sessionSshProfileId = node?.kind === 'ssh' ? node.sshProfileId : undefined;
   const { height, handleProps } = useResizableHeight();
+  const pins = useFolderPins();
+  const menu = useContextMenuApi();
+  // 点过的置顶只在 session 目录不变时有效,cd 或切 session 后自动回到 session 的目录
+  const baseKey = `${sessionSshProfileId ?? ''}|${session?.id ?? ''}|${root ?? ''}`;
+  const [jump, setJump] = useState<{ baseKey: string; pin: FolderPin } | null>(null);
+  const activePin = jump && jump.baseKey === baseKey && isPinned(pins, jump.pin) ? jump.pin : null;
+  const shownRoot = activePin ? activePin.path : root;
+  const sshProfileId = activePin ? activePin.sshProfileId : sessionSshProfileId;
+
+  const openPinMenu = (e: MouseEvent<HTMLElement>, pin: FolderPin): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu.open({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: t(isPinned(pins, pin) ? 'fileTree.unpin' : 'fileTree.pin'),
+          onSelect: () => togglePin(pin),
+        },
+      ],
+    });
+  };
 
   return (
     <>
@@ -107,16 +144,45 @@ export function FileTreePanel(): JSX.Element {
         aria-label={t('fileTree.title')}
         style={height === null ? undefined : { flexBasis: height }}
       >
-        <div className="file-tree-header" title={root ?? undefined}>
+        <div
+          className="file-tree-header"
+          title={shownRoot ?? undefined}
+          onContextMenu={(e) => {
+            if (shownRoot) openPinMenu(e, pinFor(shownRoot, sshProfileId));
+          }}
+        >
           <Folder size={14} />
           <span className="file-tree-header-label">
-            {root ? folderLabel(root) : t('fileTree.title')}
+            {shownRoot ? folderLabel(shownRoot) : t('fileTree.title')}
           </span>
         </div>
-        {root ? (
+        {pins.length > 0 && (
+          <div className="file-tree-pins" role="toolbar" aria-label={t('fileTree.pins')}>
+            {pins.map((pin) => {
+              const active = activePin !== null && samePin(activePin, pin);
+              return (
+                <button
+                  key={`${pin.sshProfileId ?? ''}|${pin.path}`}
+                  type="button"
+                  className={`file-tree-pin${active ? ' active' : ''}`}
+                  aria-pressed={active}
+                  title={pin.path}
+                  onClick={() => {
+                    setJump(active ? null : { baseKey, pin });
+                    focusTerminalDom();
+                  }}
+                  onContextMenu={(e) => openPinMenu(e, pin)}
+                >
+                  {folderLabel(pin.path)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {shownRoot ? (
           <FileTreeBody
-            key={`${sshProfileId ?? ''}|${root}`}
-            root={root}
+            key={`${sshProfileId ?? ''}|${shownRoot}`}
+            root={shownRoot}
             pdfViewKey={pdfViewKey(state)}
             sshProfileId={sshProfileId}
           />
@@ -208,6 +274,7 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
   const { t } = useTranslation();
   const toast = useToast();
   const menu = useContextMenuApi();
+  const pins = useFolderPins();
   const [dirs, setDirs] = useState<ReadonlyMap<string, DirState>>(() => new Map());
   const [expanded, setExpandedState] = useState<ReadonlySet<string>>(
     () => expandedByRoot.get(expansionKey) ?? new Set(),
@@ -374,6 +441,7 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
       return;
     }
     setExpanded(new Set([...expandedRef.current].map((p) => remapPath(p, oldPath, res.path))));
+    remapLocalPins((p) => remapPath(p, oldPath, res.path));
     setSelected((prev) => (prev === null ? prev : remapPath(prev, oldPath, res.path)));
     setDirs((prev) => {
       const next = new Map(prev);
@@ -435,13 +503,19 @@ function FileTreeBody({ root, pdfViewKey: pdfKey, sshProfileId }: FileTreeBodyPr
     e.stopPropagation();
     clearRenameTimer();
     setSelected(row.entry.path);
-    // 远端文件树只读,没有菜单项
-    if (sshProfileId) return;
-    menu.open({
-      x: e.clientX,
-      y: e.clientY,
-      items: [{ label: t('fileTree.rename'), onSelect: () => beginRename(row.entry) }],
-    });
+    const items: ContextMenuItem[] = [];
+    if (row.entry.isDirectory) {
+      const pin = pinFor(row.entry.path, sshProfileId);
+      items.push({
+        label: t(isPinned(pins, pin) ? 'fileTree.unpin' : 'fileTree.pin'),
+        onSelect: () => togglePin(pin),
+      });
+    }
+    // 远端文件树只读,不能改名
+    if (!sshProfileId) {
+      items.push({ label: t('fileTree.rename'), onSelect: () => beginRename(row.entry) });
+    }
+    if (items.length > 0) menu.open({ x: e.clientX, y: e.clientY, items });
   };
 
   const rootState = dirs.get(root);

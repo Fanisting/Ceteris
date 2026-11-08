@@ -107,7 +107,11 @@ import {
   type SendInputResponse,
   type SessionOutputPayload,
 } from '@shared/protocol';
-import type { SessionInfo, ThemeId } from '@shared/types';
+import { BEAMER_THEMES, type BeamerThemeId } from '@shared/beamer-themes';
+import { MEIZI_TERMINAL } from '@shared/meizi-theme';
+import type { BuiltinThemeId, SessionInfo, ThemeId } from '@shared/types';
+import { isCustomThemeId } from '@shared/custom-themes';
+import { getCustomThemes, resolveThemeId, useCustomThemes } from '../custom-themes';
 import { attachImeCompositionEndCleaner } from '@shared/ime-textarea-workaround';
 import { attachImeCompositionPositionLock } from '@shared/ime-composition-position-lock';
 import {
@@ -117,6 +121,8 @@ import {
 } from '@shared/ime-probe-ring';
 import { isDeviceAttributesResponse } from '@shared/terminal-input-filter';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
+import { activateInlineImages, reportTerminalLook } from '../inline-images';
+import { activateTerminalMath } from '../terminal-math-overlay';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
 import { detectAgent } from '@shared/next-prompt';
@@ -165,12 +171,23 @@ function buildLightExtendedAnsi(): string[] {
 }
 const LIGHT_EXTENDED_ANSI = buildLightExtendedAnsi();
 
+/** Beamer 主题的终端配色在 shared,这里只补上浅色主题的 256 色表。 */
+function buildBeamerXtermThemes(): Record<BeamerThemeId, ITheme> {
+  const entries = BEAMER_THEMES.map((theme) => [
+    theme.id,
+    theme.tone === '浅色'
+      ? { ...theme.terminal, extendedAnsi: LIGHT_EXTENDED_ANSI }
+      : theme.terminal,
+  ]);
+  return Object.fromEntries(entries) as Record<BeamerThemeId, ITheme>;
+}
+
 /**
  * 7 套主题对应的 xterm theme 颜色 (软件定义书 5.1.9)。
  * 与 global.css 的 [data-theme="..."] CSS 变量同源,任何主题变更都需
  * 同时更新这两处。
  */
-const XTERM_THEMES: Record<ThemeId, ITheme> = {
+const XTERM_THEMES: Record<BuiltinThemeId, ITheme> = {
   'ceteris-dark': {
     background: '#0e1514',
     foreground: '#dde4e3',
@@ -595,10 +612,197 @@ const XTERM_THEMES: Record<ThemeId, ITheme> = {
     brightCyan: '#c2ffdf',
     brightWhite: '#ffffff',
   },
+  // Lapis(青金曜华),与 pearl-themes.css 同源
+  'pearl-lapis': {
+    background: '#f3f8ff',
+    foreground: '#0e1b3a',
+    cursor: '#2a4fc0',
+    cursorAccent: '#f3f8ff',
+    selectionBackground: '#c7d3f1',
+    black: '#0e1b3a',
+    red: '#d1364e',
+    green: '#1a815f',
+    yellow: '#8d6d15',
+    blue: '#2a4fc0',
+    magenta: '#8a4fc8',
+    cyan: '#287a9e',
+    white: '#182a5a',
+    brightBlack: '#384872',
+    brightRed: '#b1283e',
+    brightGreen: '#166b4f',
+    brightYellow: '#755b12',
+    brightBlue: '#2a4fc0',
+    brightMagenta: '#7c3cbf',
+    brightCyan: '#216481',
+    brightWhite: '#0e1b3a',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  // Sapphire(宝蓝金脉),与 pearl-themes.css 同源
+  'pearl-sapphire': {
+    background: '#f4f9ff',
+    foreground: '#0a1a38',
+    cursor: '#2b6be0',
+    cursorAccent: '#f4f9ff',
+    selectionBackground: '#c8daf8',
+    black: '#0a1a38',
+    red: '#dc2643',
+    green: '#1b8056',
+    yellow: '#8e6d16',
+    blue: '#2b6be0',
+    magenta: '#984ed7',
+    cyan: '#1879a7',
+    white: '#1a3463',
+    brightBlack: '#3a517a',
+    brightRed: '#b81e37',
+    brightGreen: '#176b48',
+    brightYellow: '#755a12',
+    brightBlue: '#1d58c5',
+    brightMagenta: '#842ece',
+    brightCyan: '#14648a',
+    brightWhite: '#0a1a38',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  // Rose Dew(玫金晨露),与 pearl-themes.css 同源
+  'pearl-rose': {
+    background: '#fef8fa',
+    foreground: '#3a1028',
+    cursor: '#dd3f6f',
+    cursorAccent: '#fef8fa',
+    selectionBackground: '#f7d3de',
+    black: '#3a1028',
+    red: '#d8323e',
+    green: '#35815c',
+    yellow: '#956a1e',
+    blue: '#6069cd',
+    magenta: '#d9275d',
+    cyan: '#337d8b',
+    white: '#62223e',
+    brightBlack: '#7a435b',
+    brightRed: '#b7232d',
+    brightGreen: '#2c6b4c',
+    brightYellow: '#7b5819',
+    brightBlue: '#4953c6',
+    brightMagenta: '#b7204e',
+    brightCyan: '#2a6773',
+    brightWhite: '#3a1028',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  // Ember(绯霞金露),与 pearl-themes.css 同源
+  'pearl-ember': {
+    background: '#fef7f1',
+    foreground: '#351710',
+    cursor: '#e43b26',
+    cursorAccent: '#fef7f1',
+    selectionBackground: '#f9d4cc',
+    black: '#351710',
+    red: '#c82a3e',
+    green: '#4d7e30',
+    yellow: '#956a16',
+    blue: '#3c73b8',
+    magenta: '#be4486',
+    cyan: '#2b7b98',
+    white: '#5e281e',
+    brightBlack: '#76473e',
+    brightRed: '#b32637',
+    brightGreen: '#3f6827',
+    brightYellow: '#7b5712',
+    brightBlue: '#32609a',
+    brightMagenta: '#9f3870',
+    brightCyan: '#23667e',
+    brightWhite: '#351710',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  // Jade(翠玉金瞳),与 pearl-themes.css 同源
+  'pearl-jade': {
+    background: '#f5fdf9',
+    foreground: '#0c2a22',
+    cursor: '#1c926d',
+    cursorAccent: '#f5fdf9',
+    selectionBackground: '#c7eee1',
+    black: '#0c2a22',
+    red: '#da3030',
+    green: '#198362',
+    yellow: '#906f21',
+    blue: '#267ba5',
+    magenta: '#9e54bf',
+    cyan: '#18817b',
+    white: '#114939',
+    brightBlack: '#336456',
+    brightRed: '#bb2121',
+    brightGreen: '#146c50',
+    brightYellow: '#775c1b',
+    brightBlue: '#20678a',
+    brightMagenta: '#8940aa',
+    brightCyan: '#146c67',
+    brightWhite: '#0c2a22',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  // Moonlight(月白珠光),与 pearl-themes.css 同源
+  'pearl-moon': {
+    background: '#fcfefe',
+    foreground: '#232a2e',
+    cursor: '#a07622',
+    cursorAccent: '#fcfefe',
+    selectionBackground: '#f1e7cf',
+    black: '#232a2e',
+    red: '#cd4640',
+    green: '#348261',
+    yellow: '#8d712b',
+    blue: '#447ba2',
+    magenta: '#956595',
+    cyan: '#348087',
+    white: '#232a2e',
+    brightBlack: '#5b5644',
+    brightRed: '#b1342e',
+    brightGreen: '#2c6d50',
+    brightYellow: '#765e24',
+    brightBlue: '#386585',
+    brightMagenta: '#7d547d',
+    brightCyan: '#2b6b71',
+    brightWhite: '#232a2e',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  // Frost(银蓝霜露),与 pearl-themes.css 同源
+  'pearl-frost': {
+    background: '#fbfdff',
+    foreground: '#16212e',
+    cursor: '#3d81bc',
+    cursorAccent: '#fbfdff',
+    selectionBackground: '#d4e4f2',
+    black: '#16212e',
+    red: '#d43d4d',
+    green: '#31826a',
+    yellow: '#8c7220',
+    blue: '#3a79b1',
+    magenta: '#8665b6',
+    cyan: '#307e8c',
+    white: '#253c53',
+    brightBlack: '#44586b',
+    brightRed: '#b82938',
+    brightGreen: '#296c58',
+    brightYellow: '#735e1a',
+    brightBlue: '#306594',
+    brightMagenta: '#724fa5',
+    brightCyan: '#286a75',
+    brightWhite: '#16212e',
+    extendedAnsi: LIGHT_EXTENDED_ANSI,
+  },
+  ...buildBeamerXtermThemes(),
+  // 梅子,与 meizi-theme.css 同源
+  meizi: { ...MEIZI_TERMINAL, extendedAnsi: LIGHT_EXTENDED_ANSI },
 };
 
-function getXtermTheme(themeId: ThemeId | undefined): ITheme {
-  return XTERM_THEMES[themeId ?? 'ceteris-dark'] ?? XTERM_THEMES['ceteris-dark'];
+export function getXtermTheme(themeId: ThemeId | undefined): ITheme {
+  const id = themeId ? resolveThemeId(themeId) : undefined;
+  if (id && isCustomThemeId(id)) {
+    // 用户主题(ADR-026):配色由 @shared/custom-themes 从主题文件解析好;浅色补 256 色表
+    const custom = getCustomThemes().find((t) => t.id === id);
+    if (custom) {
+      return custom.dark ? custom.terminal : { ...custom.terminal, extendedAnsi: LIGHT_EXTENDED_ANSI };
+    }
+    return XTERM_THEMES['ceteris-dark'];
+  }
+  return XTERM_THEMES[(id ?? 'ceteris-dark') as BuiltinThemeId] ?? XTERM_THEMES['ceteris-dark'];
 }
 
 /**
@@ -675,6 +879,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const { t, tx } = useTranslation();
   const simpleMode = appState.simpleMode;
   const themeId = appState.settings.appearance?.theme;
+  // 主题文件保存后列表引用会变,下面的主题 effect 靠它重新取配色
+  const customThemes = useCustomThemes();
   const fontSize = appState.settings.appearance?.terminalFontSize ?? 13;
   const fontFamily =
     appState.settings.appearance?.terminalFontFamily ??
@@ -686,6 +892,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // 终端渲染器选择(mount 时决定,运行时切换需关 tab 重开)
   const terminalRenderer =
     appState.settings.advanced?.terminalRenderer ?? 'auto';
+  // 公式图片扩展 (ADR-019),运行时开关,不重建 xterm
+  const claudeMathImages = appState.settings.extensions?.claudeMathImages ?? false;
+  // Codex 公式渲染 (ADR-022),运行时开关,不重建 xterm
+  const terminalMath = appState.settings.extensions?.terminalMath ?? false;
 
   // 把"创建期"读到的初始值用 useMemo 锁定 (terminal 创建后只用 mutator 调整),
   // 否则每次 settings 引用变化都会重建 xterm 实例。
@@ -1783,6 +1993,29 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id, terminalRenderer]);
 
+  // 公式图片扩展 (ADR-019):设置打开时给这个终端装图片 addon + XTVERSION 回复,
+  // 关掉时卸下。跟着 session / 渲染器重建,所以 deps 带上它们。
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !claudeMathImages) return;
+    return activateInlineImages(term);
+  }, [claudeMathImages, session.id, terminalRenderer]);
+
+  // 公式图片扩展:把这个终端的颜色与格子宽高比报给 main,写进之后新 session 的环境变量。
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !claudeMathImages) return;
+    return reportTerminalLook(term, getXtermTheme(themeId));
+  }, [claudeMathImages, session.id, terminalRenderer, themeId, fontSize, fontFamily, lineHeight]);
+
+  // Codex 公式渲染 (ADR-022):把终端里以文本出现的 LaTeX 用 KaTeX 画在原处。主题或字号
+  // 变了就整体重来,新覆盖层用新颜色。
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || !terminalMath) return;
+    return activateTerminalMath(term, getXtermTheme(themeId), fontSize);
+  }, [terminalMath, session.id, terminalRenderer, themeId, fontSize]);
+
   // 主题运行时切换
   useEffect(() => {
     const term = termRef.current;
@@ -1791,7 +2024,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     term.options.minimumContrastRatio = isLightTheme(themeId)
       ? LIGHT_THEME_MIN_CONTRAST
       : 1;
-  }, [themeId]);
+  }, [themeId, customThemes]);
 
   // SCROLL-1 二次修复 + KBD-1:reveal 后立即归还焦点给 helper-textarea。
   // 期间 host inert,焦点漂到 body / 上次 active 元素;reveal 让 inert 解除,

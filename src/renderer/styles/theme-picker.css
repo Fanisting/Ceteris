@@ -1,0 +1,241 @@
+/*
+ * @file theme-picker.css
+ * @purpose 设置 → 外观的主题选择器(ThemePicker.tsx):Material 3 outlined 下拉字段、菜单和
+ *   变体 filter chip。
+ *
+ * @关键设计:
+ * - 字段沿用 .settings-input 的 outlined 外观(4px 圆角、outline 描边、primary 聚焦环)。
+ * - 菜单用 MD3 menu 规格:surface-container-high、elevation-2、条目 40px、状态层 8%。
+ * - 色块读所在 span 上 data-theme 对应主题的变量,外圈是该主题的页面底色与外框色对半,
+ *   中心点是强调色。
+ *
+ * @对应文档章节:软件定义书.md 5.1.9 节
+ */
+
+.theme-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 280px;
+}
+
+.theme-picker-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--md-outline, #f0f);
+  border-radius: var(--md-shape-xs, 4px);
+  background: transparent;
+  color: var(--md-on-surface, #f0f);
+  font-size: 13px;
+  text-align: left;
+}
+
+.theme-picker-field:hover {
+  border-color: var(--md-on-surface, #f0f);
+}
+
+.theme-picker-field:focus-visible,
+.theme-picker-field.open {
+  outline: 1px solid var(--md-primary, #f0f);
+  outline-offset: -1px;
+  border-color: var(--md-primary, #f0f);
+}
+
+.theme-picker-field-label {
+  font-weight: 500;
+}
+
+.theme-picker-field-support {
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.theme-picker-arrow {
+  margin-left: auto;
+  color: var(--md-on-surface-variant, #f0f);
+  transition: transform var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.theme-picker-field.open .theme-picker-arrow {
+  transform: rotate(180deg);
+}
+
+.theme-menu {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  z-index: 50;
+  width: 100%;
+  max-height: 360px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border-radius: var(--md-shape-md, 12px);
+  background-color: var(--md-surface-container-high, #f0f);
+  box-shadow: var(--md-elevation-2, none);
+  list-style: none;
+  outline: none;
+  transform-origin: top center;
+  animation: theme-menu-enter var(--md-duration-medium, 200ms) var(--md-easing-decelerate, ease-out)
+    backwards;
+}
+
+@keyframes theme-menu-enter {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.92);
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--md-shape-sm, 8px);
+  color: var(--md-on-surface, #f0f);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* 系列主题和单个主题之间一道分隔线 */
+.theme-menu-item.first-family {
+  position: relative;
+  margin-top: 9px;
+}
+
+.theme-menu-item.first-family::before {
+  position: absolute;
+  top: -5px;
+  right: 8px;
+  left: 8px;
+  height: 1px;
+  background-color: var(--md-outline-variant, #f0f);
+  content: '';
+}
+
+.theme-menu-item.active {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.theme-menu-item.selected {
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.theme-menu-label {
+  font-weight: 500;
+}
+
+.theme-menu-support {
+  margin-left: auto;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+}
+
+.theme-menu-check {
+  display: inline-flex;
+  width: 18px;
+  color: var(--md-primary-text, #f0f);
+}
+
+.theme-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* MD3 filter chip */
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 8px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: var(--md-shape-sm, 8px);
+  background: transparent;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    border-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.theme-chip:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.theme-chip.selected {
+  border-color: transparent;
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.theme-chip-check {
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.theme-swatch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    var(--color-bg-primary, #f0f) 0 50%,
+    var(--color-bg-secondary, #f0f) 50% 100%
+  );
+}
+
+.theme-swatch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-accent-special, #f0f);
+}
+
+/* 用户主题(ADR-026):菜单下方的文件操作,MD3 text button */
+.theme-custom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: -12px;
+}
+
+.theme-custom-action {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: transparent;
+  color: var(--md-primary-text, #f0f);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.theme-custom-action:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.theme-custom-note {
+  margin: 0;
+  color: var(--md-error-text, #f0f);
+  font-size: 12px;
+  user-select: text;
+}

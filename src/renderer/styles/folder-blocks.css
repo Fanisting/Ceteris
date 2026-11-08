@@ -76,6 +76,13 @@
   color: var(--md-on-secondary-container, #f0f);
 }
 
+/* The pebble holding the session on screen: a ring that follows the pebble's own uneven
+ * outline. An inset shadow, not a border, so the pebble keeps its size and the row does
+ * not reflow when the chosen session moves to another folder. */
+.path-block.chosen > .path-block-card {
+  box-shadow: inset 0 0 0 1.5px var(--md-primary, #f0f);
+}
+
 .path-block.invalid > .path-block-card {
   opacity: 0.55;
 }

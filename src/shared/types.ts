@@ -482,14 +482,13 @@ export interface Settings {
     /** 任意明文,UI 显示时遮罩;空串视为未填 */
     apiKey: string;
     /**
-     * F6(beta 勘误2):自定义 Base URL。空串 = 走 SDK 默认 endpoint
-     * (api.anthropic.com / api.openai.com);填写后透传给 SDK constructor 的
-     * `baseURL` 字段。覆盖场景:代理网关、Azure OpenAI、自托管 LLM、企业
-     * 内网镜像。Anthropic 与 OpenAI 两个官方 SDK 都接受 `baseURL` 字段,
-     * 透传逻辑统一。
+     * F6(beta 勘误2):自定义 Base URL。空串 = 走官方默认地址
+     * (api.anthropic.com / api.openai.com/v1)。含义沿用官方 SDK 的 baseURL:
+     * Anthropic 填到域名为止,OpenAI 填到 /v1 为止,ai-client.ts 补齐其余路径。
+     * 覆盖场景:代理网关、自托管 LLM、企业内网镜像。
      */
     baseURL: string;
-    /** 例如 'claude-haiku-4-5-20251001' / 'gpt-4o-mini',空串走 provider 默认 */
+    /** 例如 'claude-haiku-5-5' / 'gpt-4o-mini',空串走 provider 默认 */
     model: string;
     /**
      * Guess the next prompt for Claude Code and Codex. Off by default,

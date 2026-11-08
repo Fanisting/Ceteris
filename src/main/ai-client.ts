@@ -1,34 +1,52 @@
 /**
  * @file src/main/ai-client.ts
- * @purpose BETA-031:AI 助手主进程客户端。统一封装 Anthropic / OpenAI 两套
- *   SDK,提供 testConnection 与 recheckIdle 两个方法。
+ * @purpose BETA-031:AI 助手主进程客户端。统一封装 Anthropic Messages API 与
+ *   OpenAI 兼容的 Chat Completions API,提供 testConnection 与 recheckIdle 两个方法。
  *
- *   API key 来自 settings.ai.apiKey,运行时变更通过 setSettings() 同步。
+ *   API key 来自 settings.ai.apiKey,运行时变更通过 getSettings() 每次现读。
  *   失败回退 throw,调用方决定后续行为(BETA-006 LLM 复核失败回退到原阈值,
  *   不阻塞主流程)。
  *
- *   为什么用官方 SDK 而不是 fetch:与 BETA-031 实施决策一致(用户拍板:
- *   维护成本低、类型完整)。同时 BETA-031 是 Ceteris 第一个 LLM 集成点,
- *   未来还可能扩展 streaming / function calling,SDK 提供更平坦的升级路径。
+ *   为什么用 fetch 而不是官方 SDK(2026-11 起):两个 SDK 只为这里的两次非流式
+ *   POST 打进安装包。请求和回复都很小,手写 fetch 只有几十行,与
+ *   next-prompt-client.ts 同一写法,也省掉两个依赖。BETA-031 当初选 SDK 是为了
+ *   以后的 streaming / function calling,这两项至今没有做。
  *
- * @对应文档章节: 工单库 BETA-006 BETA-031;软件定义书后续 AI 章节
+ *   Base URL 的含义与 SDK 时代保持一致,用户已填的地址不用改:
+ *   - Anthropic:填到域名为止(默认 https://api.anthropic.com),本文件补 /v1/messages
+ *   - OpenAI:填到 /v1 为止(默认 https://api.openai.com/v1),本文件补 /chat/completions
+ *
+ * @对应文档章节: 工单库 BETA-006 BETA-031(docs/archive/beta反馈工单库-20260515.md)
+ *
+ * @不要在这里做的事:
+ * - 不要在这里放 next prompt 的请求(那是 next-prompt-client.ts,有自己的 key 和模型)
+ * - 不要重试:recheckIdle 要低延迟,失败由 session-manager 回退到原阈值判定
  */
-import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
 import type { Settings } from '@shared/types';
 import { logger } from './logger';
 
-const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-5-5';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com';
+const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+/** Anthropic API 要求的版本头;Messages API 自 2023-06-01 起未变 */
+const ANTHROPIC_VERSION = '2023-06-01';
+/**
+ * SDK 默认超时是 10 分钟。这里的请求只要几个 token,20 秒没回复就当失败,
+ * 免得一个卡住的网关让 recheckIdle 一直挂着。
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+type Provider = 'anthropic' | 'openai';
 
 /**
  * 取 settings 中的 ai 配置;未设置时返回安全默认(provider null)。
  * SettingsManager 在 initialize 完成前调用本类是合理的(测试 / 早期 IPC)。
  */
 function safeAi(s: Settings | undefined): {
-  provider: 'anthropic' | 'openai' | null;
+  provider: Provider | null;
   apiKey: string;
-  /** F6(beta 勘误2):自定义 endpoint;空串 = SDK 默认 */
+  /** F6(beta 勘误2):自定义 endpoint;空串 = 官方默认地址 */
   baseURL: string;
   model: string;
 } {
@@ -42,15 +60,76 @@ function safeAi(s: Settings | undefined): {
 }
 
 /**
- * F6(beta 勘误2):Anthropic / OpenAI 两个 SDK 都接 `baseURL?: string` 字段。
- * 空串视为未填,不传(让 SDK 走默认 endpoint);非空时透传(无 trailing
- * slash 处理 — SDK 内部已兼容)。返回值直接展开到 SDK constructor 的
- * options 上。
+ * 拼出完整请求地址。空串走官方默认;去掉末尾斜杠,免得出现 `//v1/messages`。
+ * 用户若已经把完整路径填进来(例如 `.../chat/completions`),不再重复追加。
  */
-function clientOptions(apiKey: string, baseURL: string): { apiKey: string; baseURL?: string } {
-  return baseURL.trim()
-    ? { apiKey, baseURL: baseURL.trim() }
-    : { apiKey };
+export function endpointFor(provider: Provider, baseURL: string): string {
+  const fallback = provider === 'anthropic' ? ANTHROPIC_DEFAULT_BASE_URL : OPENAI_DEFAULT_BASE_URL;
+  const base = (baseURL.trim() || fallback).replace(/\/+$/, '');
+  const suffix = provider === 'anthropic' ? '/v1/messages' : '/chat/completions';
+  return base.toLowerCase().endsWith(suffix) ? base : base + suffix;
+}
+
+interface ModelReply {
+  /** 服务端回报的模型名;缺失时用请求里的模型名 */
+  model: string;
+  /** 首个文本块;没有文本时为空串 */
+  text: string;
+  /** 完整回复,给 llm 日志排障用 */
+  raw: unknown;
+}
+
+/**
+ * 发一次非流式请求,返回首个文本块。
+ *
+ * @param extra 合并进请求体的额外字段(OpenAI 侧的跨厂商关推理字段)
+ * @throws HTTP 非 2xx、超时、网络错误、回复不是 JSON 时都会抛,message 里带状态码和回复开头
+ */
+async function callModel(
+  fetchImpl: typeof fetch,
+  provider: Provider,
+  apiKey: string,
+  baseURL: string,
+  model: string,
+  prompt: string,
+  maxTokens: number,
+  extra: Record<string, unknown> = {},
+): Promise<ModelReply> {
+  const url = endpointFor(provider, baseURL);
+  const headers: Record<string, string> =
+    provider === 'anthropic'
+      ? { 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION }
+      : { Authorization: `Bearer ${apiKey}` };
+  const res = await fetchImpl(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+      ...extra,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 300);
+    throw new Error(
+      `[AIClient] ${provider} 请求 ${url} 返回 ${res.status}:${detail}。` +
+        '可能原因:(1) API key 无效或过期;(2) 模型名不存在;' +
+        '(3) Base URL 指向的服务与所选 provider 的协议不兼容。',
+    );
+  }
+  const body = (await res.json()) as {
+    model?: string;
+    content?: Array<{ type?: string; text?: string }>;
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  // Anthropic 的 content 是 block 数组,取首个 text block;OpenAI 取首个 choice
+  const text =
+    provider === 'anthropic'
+      ? (body.content?.find((b) => b.type === 'text')?.text ?? '')
+      : (body.choices?.[0]?.message?.content ?? '');
+  return { model: body.model ?? model, text, raw: body };
 }
 
 export interface TestConnectionResult {
@@ -61,10 +140,14 @@ export interface TestConnectionResult {
 
 export class AIClient {
   /**
-   * @param getSettings 注入 settings 读取函数 — SettingsManager.get() 直接传过来。
+   * @param getSettings 注入 settings 读取函数,SettingsManager.get() 直接传过来。
    *   每次调用现读,避免 settings 改了客户端不刷新的问题。
+   * @param fetchImpl 测试注入用;生产走全局 fetch
    */
-  constructor(private readonly getSettings: () => Settings | undefined) {}
+  constructor(
+    private readonly getSettings: () => Settings | undefined,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
 
   /** 当前是否可用(已选 provider + 已填 key) */
   isConfigured(): boolean {
@@ -74,33 +157,26 @@ export class AIClient {
 
   /**
    * 跑一次最小请求验证 key 有效。
-   * 错误细节走 message 字段返回,不抛 — 调用方(IPC handler)直接转给 UI。
+   * 错误细节走 message 字段返回,不抛;调用方(IPC handler)直接转给 UI。
    */
   async testConnection(): Promise<TestConnectionResult> {
     const { provider, apiKey, baseURL, model } = safeAi(this.getSettings());
     if (!provider) return { ok: false, message: '未选择 provider' };
     if (!apiKey.trim()) return { ok: false, message: 'API key 为空' };
+    const name = provider === 'anthropic' ? 'Anthropic' : 'OpenAI';
+    const modelUsed =
+      model || (provider === 'anthropic' ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_OPENAI_MODEL);
     try {
-      if (provider === 'anthropic') {
-        const client = new Anthropic(clientOptions(apiKey, baseURL));
-        const res = await client.messages.create({
-          model: model || DEFAULT_ANTHROPIC_MODEL,
-          max_tokens: 8,
-          messages: [{ role: 'user', content: 'ping' }],
-        });
-        return {
-          ok: true,
-          message: `Anthropic ${res.model} 响应 OK`,
-        };
-      }
-      // openai
-      const client = new OpenAI(clientOptions(apiKey, baseURL));
-      const res = await client.chat.completions.create({
-        model: model || DEFAULT_OPENAI_MODEL,
-        max_tokens: 8,
-        messages: [{ role: 'user', content: 'ping' }],
-      });
-      return { ok: true, message: `OpenAI ${res.model} 响应 OK` };
+      const reply = await callModel(
+        this.fetchImpl,
+        provider,
+        apiKey,
+        baseURL,
+        modelUsed,
+        'ping',
+        8,
+      );
+      return { ok: true, message: `${name} ${reply.model} 响应 OK` };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn('AIClient', 'testConnection failed', err);
@@ -154,7 +230,7 @@ export class AIClient {
     // 之间反复推理 → 36s 延迟 + 同输入两次相反判定(详见 2026-05-16 日志)。
     //
     // 新策略:只问一句"在工作 vs 等人输入",让模型自己判断。配合下面
-    // chat.completions.create 里 reasoning_effort / thinking / enable_thinking
+    // OpenAI 分支里 reasoning_effort / thinking / enable_thinking
     // 三套跨厂商关推理字段,目标延迟 < 1s。
     //
     // prompt 明确禁止 chain-of-thought,双保险 — 某些 provider 关推理字段
@@ -213,10 +289,10 @@ export class AIClient {
       '--- end metadata ---\n\n' +
       'One word:';
 
-    // BETA-006 排障日志:把喂给 LLM 的 tail 完整落盘 — 排"为什么 sleep
-     // 被判 idle"这类问题必须看到 LLM 收到的原始字节(含 ANSI/控制符,
-     // JSON 序列化里会 \uXXXX 转义)。tail 上限 2KB,一次约 2-3KB。
-     // 走 logger.llm → 独立 llm-YYYY-MM-DD.log,不与 main 抢配额。
+    // BETA-006 排障日志:把喂给 LLM 的 tail 完整落盘。排"为什么 sleep
+    // 被判 idle"这类问题必须看到 LLM 收到的原始字节(含 ANSI/控制符,
+    // JSON 序列化里会 \uXXXX 转义)。tail 上限 2KB,一次约 2-3KB。
+    // 走 logger.llm → 独立 llm-YYYY-MM-DD.log,不与 main 抢配额。
     const modelUsed =
       model || (provider === 'anthropic' ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_OPENAI_MODEL);
     logger.llm(
@@ -226,72 +302,55 @@ export class AIClient {
       { tail: scrollbackTail, recentKeys },
     );
 
+    // max_tokens 64(2026-05-16 从 8192 降):推理已通过下面关推理字段关掉,
+    // answer 只需 1-3 token("active"/"idle"),64 给点余量。若某 provider
+    // 没认领关推理字段、模型仍在思考,64 会截断 CoT → content 空 → 下面
+    // normalized 判定走 go-idle 兜底(保守:误报 idle 提醒用户看,代价低于
+    // 漏报 keep-active)。
+    const maxTokens = 64;
+    // Claude 默认不开 extended thinking(thinking 是 opt-in 字段,不传就关),
+    // 所以 Anthropic 分支无需额外字段。
+    //
+    // OpenAI 兼容协议下未识别字段大多被忽略,所以一次把三家约定都发出去,
+    // 谁认领谁生效:
+    //   - reasoning_effort: 'minimal'  → OpenAI o-series / GPT-5
+    //   - thinking: { type: 'disabled' } → Kimi K2.5/K2.6, DeepSeek V4/R1
+    //   - enable_thinking: false        → Qwen (DashScope), Hunyuan
+    // 严格模式 provider 如果对未识别字段 400,这里会进 catch,
+    // recheckIdle throw → session-manager 回退到原阈值判定(不阻塞)。
+    const extra =
+      provider === 'openai'
+        ? { reasoning_effort: 'minimal', thinking: { type: 'disabled' }, enable_thinking: false }
+        : {};
+
     let text: string;
     try {
-      // max_tokens 64(2026-05-16 从 8192 降):推理已通过下面 reasoningOff
-      // 字段关掉,answer 只需 1-3 token("active"/"idle"),64 给点 slop
-      // buffer。若某 provider 没认领关推理字段、模型仍在思考,64 会截断
-      // CoT → content 空 → 下面 normalized 判定走 go-idle 兜底(保守:误报
-      // idle 提醒用户看,代价低于漏报 keep-active)。
-      const maxTokens = 64;
-      if (provider === 'anthropic') {
-        const client = new Anthropic(clientOptions(apiKey, baseURL));
-        // Claude(Haiku 4.5 等)默认不开 extended thinking — thinking 是 opt-in
-        // 字段,不传就关。这里无需额外参数。
-        const res = await client.messages.create({
-          model: modelUsed,
-          max_tokens: maxTokens,
-          messages: [{ role: 'user', content: prompt }],
-        });
-        // 完整 res 落盘 — 排"为什么 content 为空"要看 stop_reason / usage
-        logger.llm('AIClient', 'recheckIdle ← anthropic raw res', { res });
-        // Anthropic content 是 array of blocks;取首个 text block
-        const block = res.content[0];
-        text = block && block.type === 'text' ? block.text : '';
-      } else {
-        const client = new OpenAI(clientOptions(apiKey, baseURL));
-        // 跨厂商关推理:OpenAI 兼容协议下未识别字段大多被忽略,所以一次
-        // 把三家约定都发出去,谁认领谁生效。
-        //   - reasoning_effort: 'minimal'  → OpenAI o-series / GPT-5
-        //   - thinking: { type: 'disabled' } → Kimi K2.5/K2.6, DeepSeek V4/R1
-        //   - enable_thinking: false        → Qwen (DashScope), Hunyuan
-        // 严格模式 provider 如果对未识别字段 400,这里会进 catch,
-        // recheckIdle throw → session-manager 回退到原阈值判定(不阻塞)。
-        // any 强转:OpenAI SDK 类型不收录这三个 vendor extension 字段
-        // (reasoning_effort 较新版本可能已收录,但其它两个永远不会),逐字段
-        // 用 ts-expect-error 要写三处难读 — 这里用一次 as any 局部突破,
-        // 保留上下其余调用的强类型。
-        const params = {
-          model: modelUsed,
-          max_tokens: maxTokens,
-          messages: [{ role: 'user', content: prompt }],
-          reasoning_effort: 'minimal',
-          thinking: { type: 'disabled' },
-          enable_thinking: false,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any;
-        const res = await client.chat.completions.create(params);
-        // 完整 res 落盘 — 排"为什么 content 为空"要看 finish_reason /
-        // usage / message(可能有 reasoning_content 等非标字段)
-        logger.llm('AIClient', 'recheckIdle ← openai raw res', { res });
-        text = res.choices[0]?.message?.content ?? '';
-      }
+      const reply = await callModel(
+        this.fetchImpl,
+        provider,
+        apiKey,
+        baseURL,
+        modelUsed,
+        prompt,
+        maxTokens,
+        extra,
+      );
+      // 完整回复落盘:排"为什么 content 为空"要看 stop_reason / finish_reason /
+      // usage / reasoning_content 等非标字段
+      logger.llm('AIClient', `recheckIdle ← ${provider} raw res`, { res: reply.raw });
+      text = reply.text;
     } catch (err) {
       logger.warn('AIClient', 'recheckIdle LLM call threw', err);
       throw err;
     }
 
     // 严格相等判定:旧版用 includes('active'),会把 "idle, not active" 也算
-     // keep-active(子串误判)。新 prompt 要求"EXACTLY ONE word",严格等比
-     // 子串安全。命中不到 active 就 go-idle —— LLM 偶尔啰嗦也偏保守地"让
-     // 状态点亮起来"(idle 一侧是"提醒用户看",误报代价低于漏报)。
+    // keep-active(子串误判)。新 prompt 要求"EXACTLY ONE word",严格等比
+    // 子串安全。命中不到 active 就 go-idle:LLM 偶尔啰嗦也偏保守地"让
+    // 状态点亮起来"(idle 一侧是"提醒用户看",误报代价低于漏报)。
     const normalized = text.trim().toLowerCase();
-    const verdict: 'keep-active' | 'go-idle' =
-      normalized === 'active' ? 'keep-active' : 'go-idle';
-    logger.llm(
-      'AIClient',
-      `recheckIdle ← raw=${JSON.stringify(text)} verdict=${verdict}`,
-    );
+    const verdict: 'keep-active' | 'go-idle' = normalized === 'active' ? 'keep-active' : 'go-idle';
+    logger.llm('AIClient', `recheckIdle ← raw=${JSON.stringify(text)} verdict=${verdict}`);
     return verdict;
   }
 }

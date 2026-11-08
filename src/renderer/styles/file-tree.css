@@ -75,9 +75,9 @@
   flex-direction: column;
   margin: 0 8px 4px;
   overflow: hidden;
-  border-radius: var(--md-shape-md, 12px);
-  /* Same colour as the sidebar it sits in (material.css), with no outline: the sidebar and
-   * the file panel read as one block, set apart from the window by colour alone. */
+  /* Not a block: no fill, no corners, no outline. Like the sidebar it sits in, it is plain
+   * text on the shell (material.css). */
+  border-radius: 0;
   background-color: transparent;
 }
 

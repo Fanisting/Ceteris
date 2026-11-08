@@ -1146,14 +1146,14 @@ function PathItem({
     const shownDots = sessions.slice(0, MAX_BLOCK_SESSION_DOTS);
     // A pebble is as wide as its name and they wrap like words, so nothing lines up in
     // columns. The outline is one of a few shapes picked from the id, stable across renders.
-    // The pebble holding the session on screen gets a ring along that outline; the fill is
-    // left for a folder that is selected with no session of its own chosen.
+    // The pebble holding the session on screen, or the selected folder when none of its
+    // sessions is chosen, gets a ring along that outline. Pebbles never take a fill colour.
     const holdsChosenSession =
       state.selectedSessionId !== null && node.sessionIds.includes(state.selectedSessionId);
     return (
       <li
         className={`path-block pebble-shape-${pebbleShape(node.id)}${
-          holdsChosenSession ? ' chosen' : selected ? ' selected' : ''
+          holdsChosenSession || selected ? ' chosen' : ''
         }${node.invalid ? ' invalid' : ''}`}
       >
         {tagEditor}

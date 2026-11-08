@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/components/QuickLaunchOverlay.tsx
- * @purpose 右键 + 号时,在它周围弹出一圈小圆,点一下就在当前路径启动对应的
+ * @purpose 右键 + 号时,在它右下方展开一个扇形的小圆,点一下就在当前路径启动对应的
  *   agent 或 shell。可选项在 设置 → 行为 里编辑。
  *
  * @关键设计:

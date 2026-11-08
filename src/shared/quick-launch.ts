@@ -5,7 +5,8 @@
  * @关键设计:
  * - 选项和新建页相同,分模板和已检测到的 shell 两类。存 id 而不是副本,
  *   模板改名后这里自动跟随,模板被删时渲染端直接跳过。
- * - + 号在窗口顶部,所以选项排在它下方的一段弧上。数量多时加大半径,不让圆互相重叠。
+ * - + 号在窗口左上角,所以选项在它右下方展开成一个扇形:几层同心弧,从里往外排,
+ *   内层放满再放外层。全部在 + 号右侧,不会盖住左边的侧栏。
  *
  * @对应文档章节: 软件定义书.md 2 (鼠标优先)
  *
@@ -26,11 +27,15 @@ export const DEFAULT_QUICK_LAUNCH_ITEMS: readonly QuickLaunchItem[] = [
   { kind: 'template', id: 'codex' },
 ];
 
-const MIN_RADIUS_PX = 64;
-/** 相邻两圆圆心的最小间距,要容得下一个文字标签 (标签最宽 76px,见 quick-launch.css)。 */
+/** 扇形从 + 号正右偏下 30 度开始,到正下方结束。起点压低,最上面的圆也不会盖住同一行的标签文字。 */
+const FAN_START_RAD = (30 * Math.PI) / 180;
+const FAN_END_RAD = Math.PI / 2;
+/** 最内层弧的半径:两个默认选项正好放在这一层。 */
+const FIRST_RING_RADIUS_PX = 80;
+/** 相邻两层弧的间距:一个圆 (42px) 加它下方的文字标签,再留一点空隙。 */
+const RING_GAP_PX = 74;
+/** 同一层上相邻两圆圆心的最小间距,要容得下一个文字标签 (标签最宽 76px,见 quick-launch.css)。 */
 const ITEM_SPACING_PX = 78;
-/** 弧的最大张角:140 度,两端离 + 号的高度差仍大于圆的半径。 */
-const MAX_ARC_RAD = (140 * Math.PI) / 180;
 const VIEWPORT_MARGIN_PX = 12;
 const ITEM_RADIUS_PX = 21;
 
@@ -69,36 +74,46 @@ export interface Point {
 }
 
 /**
- * 计算各选项圆心位置,在 anchor 下方排成一段弧。
+ * 计算各选项圆心位置:在 anchor 右下方排成一个扇形。
  *
- * 弧不能铺满半圆:半圆两端和 + 号同高,圆会盖住标签文字和侧栏。
- * 数量多时加大半径,而不是把弧拉得更开。
+ * 扇形由几层同心弧组成,张角固定为 30 到 90 度。每层能放下的数量取决于它的弧长,
+ * 内层放满再放外层,所以 8 个选项也只用三层,最远约 230px,鼠标不用走太远。
+ * 同一层的圆在整段张角上均匀分布,只有一个时放在正中间。
  *
  * @param count 选项数量
  * @param anchor + 号中心,视口坐标
  * @param viewportWidth 视口宽度
- * @returns 圆心坐标,从左到右排列;整组向内平移,保证贴窗口边缘时也不被裁掉
+ * @returns 圆心坐标,内层到外层、每层从上到下;贴窗口右边时整组向左平移,不被裁掉
  */
 export function radialPositions(count: number, anchor: Point, viewportWidth: number): Point[] {
   if (count <= 0) return [];
-  // 弧长 = 半径 × 夹角,每段弧长至少要有 ITEM_SPACING_PX
-  const radius = Math.max(MIN_RADIUS_PX, (ITEM_SPACING_PX * (count - 1)) / MAX_ARC_RAD);
-  const step = ITEM_SPACING_PX / radius;
-  const arc = step * (count - 1);
-  const halfWidth = radius * Math.sin(arc / 2);
-  const centerX = clampCenterX(anchor.x, halfWidth, viewportWidth);
-  return Array.from({ length: count }, (_, i) => {
-    const angle = Math.PI / 2 + arc / 2 - step * i;
-    return {
-      x: centerX + radius * Math.cos(angle),
-      y: anchor.y + radius * Math.sin(angle),
-    };
-  });
+  const span = FAN_END_RAD - FAN_START_RAD;
+  const points: Point[] = [];
+  for (let ring = 0; points.length < count; ring += 1) {
+    const radius = FIRST_RING_RADIUS_PX + ring * RING_GAP_PX;
+    // 弧长 = 半径 × 张角,相邻两圆至少隔 ITEM_SPACING_PX
+    const capacity = Math.floor((radius * span) / ITEM_SPACING_PX) + 1;
+    const inRing = Math.min(capacity, count - points.length);
+    for (let i = 0; i < inRing; i += 1) {
+      const angle =
+        inRing === 1 ? FAN_START_RAD + span / 2 : FAN_START_RAD + (span * i) / (inRing - 1);
+      points.push({
+        x: anchor.x + radius * Math.cos(angle),
+        y: anchor.y + radius * Math.sin(angle),
+      });
+    }
+  }
+  return keepInViewport(points, viewportWidth);
 }
 
-function clampCenterX(x: number, halfWidth: number, viewportWidth: number): number {
-  const reach = halfWidth + ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX;
-  // 窗口窄到放不下时居中,而不是让 min 大于 max
-  if (reach * 2 > viewportWidth) return viewportWidth / 2;
-  return Math.min(Math.max(x, reach), viewportWidth - reach);
+/** 整组水平平移,让每个圆离窗口左右边缘都至少有 VIEWPORT_MARGIN_PX。窄到放不下时居中。 */
+function keepInViewport(points: Point[], viewportWidth: number): Point[] {
+  const reach = ITEM_RADIUS_PX + VIEWPORT_MARGIN_PX;
+  const minX = Math.min(...points.map((p) => p.x)) - reach;
+  const maxX = Math.max(...points.map((p) => p.x)) + reach;
+  let shift = 0;
+  if (maxX - minX > viewportWidth) shift = (viewportWidth - (maxX + minX)) / 2;
+  else if (maxX > viewportWidth) shift = viewportWidth - maxX;
+  else if (minX < 0) shift = -minX;
+  return points.map((p) => ({ x: p.x + shift, y: p.y }));
 }

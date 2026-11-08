@@ -157,11 +157,6 @@
   }
 }
 
-/* 波浪线在选中与未选中之间换色 */
-.tab.running::before {
-  transition: background-color var(--md-duration-short2, 100ms) var(--md-easing-standard, ease);
-}
-
 /* 新标签淡入。换文件夹时整排标签换新,同样淡入,说明这是另一组终端。 */
 .tab:not(.tab-blank) {
   animation: md-fade-in var(--md-duration-short3, 150ms)

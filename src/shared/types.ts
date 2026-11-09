@@ -18,6 +18,7 @@ import type { TagColors } from './path-tags';
 import type { BeamerThemeId } from './beamer-themes';
 import type { CustomThemeId } from './custom-themes';
 import type { LegadoThemeId } from './legado-themes';
+import type { PiliThemeId } from './pili-themes';
 import type {
   LegadoContrast,
   LegadoDynamicThemeId,
@@ -155,7 +156,9 @@ export type BuiltinThemeId =
   // 取自 legado-with-MD3 的 MD3 配色,清单见 legado-themes.ts
   | LegadoThemeId
   // Legado MD3 实时主题:种子色 / Windows 强调色生成(ADR-030)
-  | LegadoDynamicThemeId;
+  | LegadoDynamicThemeId
+  // Pili 系列:照 PiliPlus 的种子色和默认算法生成的 MD3 配色(ADR-031),清单见 pili-themes.ts
+  | PiliThemeId;
 
 /**
  * 窗口外观风格 (M1-A 引入,Milestone 1)。
@@ -409,7 +412,7 @@ export interface Settings {
 
   appearance: {
     theme: ThemeId;
-    windowStyle: WindowStyle;             // M1-A:窗口风格 (windows / macos)
+    windowStyle: WindowStyle; // M1-A:窗口风格 (windows / macos)
     /**
      * BETA-004 UI 语言。'system' 表示跟随系统 locale(app.getLocale()):
      * zh-* 默认中文,其他默认英文。固定 'zh-CN' / 'en-US' 强制使用对应语言。

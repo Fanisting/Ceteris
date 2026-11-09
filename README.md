@@ -304,6 +304,7 @@ Ceteris stands on the shoulders of:
 - [OnePage](https://github.com/ivaneye/OnePage) by ivaneye, built on [Cupertino](https://github.com/aaaaalexis/Obsidian-Cupertino) by aaaaalexis: the look of rendered Markdown files, ported from these Obsidian themes (MIT; notice kept in `src/renderer/styles/markdown-onepage.css`)
 - [Rose Pine](https://rosepinetheme.com/) — color palette inspiration
 - [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3): the Legado MD3 themes use its Material 3 colour schemes
+- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): the Pili themes are generated from its theme colours and its default Material 3 colour algorithm
 - [LXGW WenKai (霞鹜文楷)](https://github.com/lxgw/LxgwWenKai) — UI font
 
 And inspiration from:

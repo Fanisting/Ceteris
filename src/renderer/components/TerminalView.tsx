@@ -115,6 +115,7 @@ import { getCustomThemes, resolveThemeId, useCustomThemes } from '../custom-them
 import { LEGADO_THEMES, type LegadoThemeId } from '@shared/legado-themes';
 import { isLegadoDynamicThemeId, type LegadoDynamicThemeId } from '@shared/legado-dynamic-ids';
 import { getLegadoDynamicTerminal, useLegadoDynamic } from '../legado-dynamic';
+import { PILI_THEMES, type PiliThemeId } from '@shared/pili-themes';
 import { attachImeCompositionEndCleaner } from '@shared/ime-textarea-workaround';
 import { attachImeCompositionPositionLock } from '@shared/ime-composition-position-lock';
 import {
@@ -192,6 +193,15 @@ function buildLegadoXtermThemes(): Record<LegadoThemeId, ITheme> {
     theme.dark ? theme.terminal : { ...theme.terminal, extendedAnsi: LIGHT_EXTENDED_ANSI },
   ]);
   return Object.fromEntries(entries) as Record<LegadoThemeId, ITheme>;
+}
+
+/** Pili 主题(ADR-031)的终端配色同样在 shared,规则同 Legado MD3;浅色主题补 256 色表。 */
+function buildPiliXtermThemes(): Record<PiliThemeId, ITheme> {
+  const entries = PILI_THEMES.map((theme) => [
+    theme.id,
+    theme.dark ? theme.terminal : { ...theme.terminal, extendedAnsi: LIGHT_EXTENDED_ANSI },
+  ]);
+  return Object.fromEntries(entries) as Record<PiliThemeId, ITheme>;
 }
 
 /**
@@ -804,6 +814,7 @@ const XTERM_THEMES: Record<Exclude<BuiltinThemeId, LegadoDynamicThemeId>, ITheme
   // 梅子,与 meizi-theme.css 同源
   meizi: { ...MEIZI_TERMINAL, extendedAnsi: LIGHT_EXTENDED_ANSI },
   ...buildLegadoXtermThemes(),
+  ...buildPiliXtermThemes(),
 };
 
 export function getXtermTheme(themeId: ThemeId | undefined): ITheme {

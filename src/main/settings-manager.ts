@@ -28,6 +28,7 @@ import {
 import { BEAMER_THEME_IDS } from '@shared/beamer-themes';
 import { isCustomThemeId } from '@shared/custom-themes';
 import { LEGADO_THEME_IDS } from '@shared/legado-themes';
+import { PILI_THEME_IDS } from '@shared/pili-themes';
 import {
   isHexColor,
   LEGADO_CONTRAST_LEVELS,
@@ -63,8 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
       "'Cascadia Mono', 'JetBrains Mono', 'Consolas', 'LXGW WenKai Mono', monospace",
     terminalFontSize: 13,
     terminalLineHeight: 1.2,
-    uiFontFamily:
-      "'Segoe UI', Roboto, 'Microsoft YaHei UI', system-ui, sans-serif",
+    uiFontFamily: "'Segoe UI', Roboto, 'Microsoft YaHei UI', system-ui, sans-serif",
     uiZoom: 1.0,
     // BETA-023 macOS 红绿灯悬浮符号,默认关(与 CP-4 勘误第二轮决策一致)
     macOSTrafficLightHoverSymbols: false,
@@ -189,6 +189,7 @@ const VALID_THEMES: BuiltinThemeId[] = [
   ...BEAMER_THEME_IDS,
   ...LEGADO_THEME_IDS,
   ...LEGADO_DYNAMIC_THEME_IDS,
+  ...PILI_THEME_IDS,
 ];
 
 /**
@@ -264,9 +265,7 @@ export class SettingsManager extends EventEmitter {
     if (!partial || typeof partial !== 'object' || Array.isArray(partial)) {
       throw new SettingsError(
         'InvalidSettings',
-        `partial 必须是对象,实际: ${typeof partial}${
-          Array.isArray(partial) ? ' (Array)' : ''
-        }`,
+        `partial 必须是对象,实际: ${typeof partial}${Array.isArray(partial) ? ' (Array)' : ''}`,
       );
     }
     const next = deepMerge(this.settings, partial);
@@ -428,11 +427,7 @@ export function stripUnknownLegacyFields<T>(raw: T): T {
   // 路径已删除,老 settings.json 残留 ai.statusRecheckSource='raw' 静默 coerce
   // 到 'headless'(唯一可用)。不 coerce 的话 validateSettings 会因枚举不匹
   // 配抛错。
-  if (
-    obj['ai'] &&
-    typeof obj['ai'] === 'object' &&
-    !Array.isArray(obj['ai'])
-  ) {
+  if (obj['ai'] && typeof obj['ai'] === 'object' && !Array.isArray(obj['ai'])) {
     const ai = obj['ai'] as Record<string, unknown>;
     if (ai['statusRecheckSource'] === 'raw') {
       const cloned = ensureClone();
@@ -456,7 +451,7 @@ export function stripUnknownLegacyFields<T>(raw: T): T {
 export function deepMerge<T>(target: T, partial: DeepPartial<T> | undefined): T {
   if (partial === undefined || partial === null) return target;
   if (typeof target !== 'object' || target === null) {
-    return (partial as unknown) as T;
+    return partial as unknown as T;
   }
   if (Array.isArray(target)) {
     // 数组整体替换 (除非 partial 也是 array,直接用 partial)
@@ -602,12 +597,7 @@ export function validateSettings(s: Settings): void {
   checkRange('appearance.terminalFontSize', s.appearance.terminalFontSize, 8, 24);
   checkRange('appearance.terminalLineHeight', s.appearance.terminalLineHeight, 1.0, 2.0);
   checkRange('appearance.uiZoom', s.appearance.uiZoom, 0.75, 1.5);
-  checkRange(
-    'advanced.activeIdleThresholdSeconds',
-    s.advanced.activeIdleThresholdSeconds,
-    0.1,
-    60,
-  );
+  checkRange('advanced.activeIdleThresholdSeconds', s.advanced.activeIdleThresholdSeconds, 0.1, 60);
   if (!['INFO', 'DEBUG'].includes(s.advanced.logLevel)) {
     throw new SettingsError(
       'InvalidSettings',
@@ -697,9 +687,7 @@ export function validateSettings(s: Settings): void {
       `shell.newTerminalShellPolicy="${s.shell.newTerminalShellPolicy}" 必须是 default 或 last-used`,
     );
   }
-  if (
-    !['new-window', 'recent-window-tab'].includes(s.systemIntegration.explorerOpenIn)
-  ) {
+  if (!['new-window', 'recent-window-tab'].includes(s.systemIntegration.explorerOpenIn)) {
     throw new SettingsError(
       'InvalidSettings',
       `systemIntegration.explorerOpenIn="${s.systemIntegration.explorerOpenIn}" 必须是 new-window 或 recent-window-tab`,
@@ -712,10 +700,11 @@ function checkRange(field: string, value: unknown, min: number, max: number): vo
     throw new SettingsError('InvalidSettings', `${field} 必须是有限数,实际: ${value}`);
   }
   if (value < min || value > max) {
-    throw new SettingsError(
-      'InvalidSettings',
-      `${field}=${value} 越界,允许 [${min}, ${max}]`,
-      { field, value, min, max },
-    );
+    throw new SettingsError('InvalidSettings', `${field}=${value} 越界,允许 [${min}, ${max}]`, {
+      field,
+      value,
+      min,
+      max,
+    });
   }
 }

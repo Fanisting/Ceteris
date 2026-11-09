@@ -32,6 +32,8 @@ import './styles/meizi-theme.css';
 // 必须在 material.css 之后:Legado MD3 主题块同样覆写 --md-* 角色
 import './styles/legado-themes.css';
 import './styles/legado-controls.css';
+// 必须在 material.css 之后:Pili 主题块(ADR-031)同样覆写 --md-* 角色
+import './styles/pili-themes.css';
 import './styles/file-tree.css';
 // Rendered .md files use the OnePage reading look (MIT, credited in README)
 import './styles/markdown-onepage.css';

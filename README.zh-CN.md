@@ -302,6 +302,7 @@ Ceteris 站在这些项目的肩膀上:
 - [OnePage](https://github.com/ivaneye/OnePage)(一页清 ivaneye),基于 [Cupertino](https://github.com/aaaaalexis/Obsidian-Cupertino)(aaaaalexis):Markdown 文件的阅读样式移植自这两个 Obsidian 主题(MIT,许可声明保留在 `src/renderer/styles/markdown-onepage.css`)
 - [Rose Pine](https://rosepinetheme.com/) — 配色灵感
 - [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3):Legado MD3 系列主题使用它的 Material 3 配色方案
+- [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus):Pili 系列主题照它的主题色列表和默认 Material 3 配色算法生成
 - [霞鹜文楷 (LXGW WenKai)](https://github.com/lxgw/LxgwWenKai) — UI 中文字体
 
 灵感来源:

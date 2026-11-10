@@ -316,7 +316,9 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
       {children}
       {shown && (
         <div
-          className={'app-modal-backdrop' + (exiting ? ' exiting' : '')}
+          // app-modal-host 把它抬到其它 .app-modal-backdrop 之上:TagSettings 这类对话框
+          // 用 createPortal 挂在 body 末尾,同 z-index 时后来者在上,会盖住它们自己弹出的 confirm。
+          className={'app-modal-backdrop app-modal-host' + (exiting ? ' exiting' : '')}
           role="presentation"
           aria-hidden={exiting || undefined}
         >

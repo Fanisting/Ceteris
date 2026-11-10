@@ -91,6 +91,8 @@ export const DEFAULT_SETTINGS: Settings = {
     quickLaunch: [...DEFAULT_QUICK_LAUNCH_ITEMS],
     // 首次使用引导:老用户升级后字段缺失,deep merge 补 false,也会看到一次。
     quickLaunchTipSeen: false,
+    // 远程设置引导 (ADR-032):没配置远端时点 Local 问一次要不要 AI 带着配
+    remoteSetupGuideSeen: false,
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
@@ -640,6 +642,12 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `extensions.tabControlGuideSeen=${String(s.extensions.tabControlGuideSeen)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.behavior.remoteSetupGuideSeen !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.remoteSetupGuideSeen=${String(s.behavior.remoteSetupGuideSeen)} 必须是 true 或 false`,
     );
   }
   if (typeof s.extensions.tabControl !== 'boolean') {

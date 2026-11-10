@@ -969,6 +969,15 @@ interface SetDefaultTemplatePayload {
 
 **Errors**:`TemplateNotFound`
 
+#### `cmd:template:usage-list`
+新建页各按钮的启动次数(ADR-034)。无 payload。模板按钮的 key 是模板 id,检测到的 shell 按钮是 `shell:<shellId>`。计数在 `cmd:session:create` 里累加,只反映用户自己的点击;存在 `template-usage.json`,最多 64 条,最久没点的先丢。renderer 用 `src/shared/template-usage.ts` 的 `frequentChoices` 决定哪几个是常用选项。
+
+```typescript
+interface ListTemplateUsageResponse {
+  entries: { key: string; count: number; lastUsedAt: number }[];
+}
+```
+
 ### 5.5 Settings
 
 #### `cmd:settings:get`
@@ -1298,6 +1307,20 @@ interface UpdateStatus {
 
 **选哪个文件**(`src/shared/update-check.ts` 的 `selectAsset`):Windows 给 Setup exe,portable 运行时给 Portable exe;macOS 按 CPU 给 arm64 或 x64 的 dmg;Linux 以 AppImage 启动给 AppImage,否则 Debian 系给 deb、Red Hat 系给 rpm,找不到再退到 AppImage。
 
+### 5.10 远程设置引导 (ADR-032)
+
+#### `cmd:guides:remote-setup-paths`
+无 payload,返回随 Ceteris 一起安装的两份指南文件的绝对路径。renderer 把对应角色的路径拼进粘给 agent 的一行提示里,agent 自己读文件。安装版在 `<install>\resources\guides`(electron-builder extraResources,asar 外),dev 在仓库的 `guides/`。
+
+```typescript
+interface RemoteSetupGuidePathsResponse {
+  host: string;     // remote-setup-host.md:这台电脑做 SSH 主机
+  client: string;   // remote-setup-client.md:这台电脑去连另一台
+}
+```
+
+不在 `LINK_LOCAL_ONLY_CHANNELS` 里:远端视图不提供这个引导(view-menu.ts 在远端视图只列视图),所以不会从远程窗口调用。
+
 ### 5.7 Explorer Integration (v1.3)
 
 > Win11 新菜单(MSIX + `IExplorerCommand`)与经典菜单(HKCU 注册表)的状态
@@ -1419,6 +1442,19 @@ interface GetPsCommandsResponse {
 
 ---
 
+### 5.10 Agent CLI(ADR-034)
+
+新建页用的 agent 检测。版本和升级命令(`cmd:agent:list-versions`、`cmd:agent:upgrade` 等)的类型见 `src/shared/protocol.ts`;这里只记新建页决定显示哪些 agent 的那一条。
+
+#### `cmd:agent:list-installed`
+payload 可选 `{ force?: boolean }`,`force` 为 true 时丢掉缓存重新扫 PATH(新建页 Agents 标题旁的刷新按钮)。每个有检测规则的内置 agent(`AGENT_UPDATE_SPECS`)一项,`installed` 表示 PATH 上找得到它的命令。只扫 PATH,不跑 `--version`、不联网,毫秒级返回;新建页等它回来再画 Agents 区,没装的不显示。没有检测规则的模板(自定义)不在列表里,新建页照常显示它们。只对本机文件夹有意义,SSH / WSL 文件夹的新建页不调用。
+
+```typescript
+interface ListInstalledAgentsResponse {
+  agents: { templateId: string; installed: boolean }[];
+}
+```
+
 ### 5.11 Agent 更新时关掉再开回来 (ADR-037)
 
 agent CLI 的版本检查和升级命令(`cmd:agent:list-versions`、`cmd:agent:upgrade`、`cmd:agent:check-now`、`cmd:agent:notice-action`、`cmd:agent:notices-ready`)的类型都在 `src/shared/protocol.ts` 的注释里。这一节只写整体重载加的两条命令。实现在 `src/main/agent-reload.ts`。
@@ -1526,6 +1562,8 @@ interface SessionStateChangedPayload {
   full: SessionInfo;               // 完整最新状态(便于 Renderer 直接覆盖)
 }
 ```
+
+`changes.shellBusy`(ADR-023 修订):shell hook 报提示符时为 false,之后用户按 Enter 为 true,进程退出时为 null。没有 hook 的 shell 从不带这个字段。
 
 **频率**:Main 做 throttle(50ms)。状态在 active/idle 间频繁切换时聚合。
 

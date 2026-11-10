@@ -101,7 +101,7 @@
   gap: 12px;
   min-height: 40px;
   padding: 0 12px;
-  border-radius: var(--md-shape-sm, 8px);
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface, #f0f);
   font-size: 13px;
   cursor: pointer;
@@ -162,7 +162,7 @@
   height: 32px;
   padding: 0 14px 0 8px;
   border: 1px solid var(--md-outline-variant, #f0f);
-  border-radius: var(--md-shape-sm, 8px);
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--md-on-surface-variant, #f0f);
   font-size: 13px;
@@ -221,7 +221,7 @@
   height: 32px;
   padding: 0 12px;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--md-primary-text, #f0f);
   font-size: 13px;

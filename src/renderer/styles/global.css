@@ -1560,6 +1560,175 @@ button.agent-dot:hover:not(:disabled)::after {
   transform: scale(1.25);
 }
 
+/* ── 常用选项 (ADR-034) ──
+ * 新建页上点得最多的几个按钮:favorite 是第一名,frequent 是其余两个。
+ * 入场时图标按顺序起跳一下 (--hop-index 由 MainPane 给),悬停时摇一摇,按下去缩一缩;
+ * favorite 的图标角上还有一颗小星,平时半透明,每隔几秒眨一下,悬停时转一圈。
+ * 动的只有图标和那颗星,卡片本身不动,所以网格不抖。减少动效时由 global.css 末尾的
+ * 规则统一关掉。 */
+.template-button.favorite,
+.template-button.frequent {
+  transition:
+    border-color 80ms ease,
+    background-color 80ms ease,
+    transform 120ms ease;
+}
+
+.template-button.favorite .template-icon,
+.template-button.frequent .template-icon {
+  position: relative;
+  animation: template-hop 700ms cubic-bezier(0.34, 1.56, 0.64, 1)
+    calc(240ms + var(--hop-index, 0) * 120ms) backwards;
+}
+
+.template-button.favorite:hover:not(:disabled) .template-icon,
+.template-button.frequent:hover:not(:disabled) .template-icon {
+  animation: template-wiggle 600ms ease-in-out;
+}
+
+.template-button.favorite:active:not(:disabled),
+.template-button.frequent:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.template-button.favorite .template-icon::after {
+  content: '✦';
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--color-warning, #f0f);
+  pointer-events: none;
+  animation: template-twinkle 3.6s ease-in-out 1s infinite;
+}
+
+.template-button.favorite:hover:not(:disabled) .template-icon::after {
+  opacity: 1;
+  animation: template-sparkle-spin 500ms ease-out;
+}
+
+@keyframes template-hop {
+  0% {
+    transform: translateY(0);
+  }
+
+  35% {
+    transform: translateY(-6px) rotate(-6deg);
+  }
+
+  70% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  85% {
+    transform: translateY(-2px);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes template-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  20% {
+    transform: rotate(-10deg);
+  }
+
+  40% {
+    transform: rotate(9deg);
+  }
+
+  60% {
+    transform: rotate(-6deg);
+  }
+
+  80% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes template-twinkle {
+  0%,
+  80%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.8) rotate(0deg);
+  }
+
+  88% {
+    opacity: 1;
+    transform: scale(1.25) rotate(25deg);
+  }
+
+  94% {
+    opacity: 0.7;
+    transform: scale(0.95) rotate(45deg);
+  }
+}
+
+@keyframes template-sparkle-spin {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+
+  50% {
+    transform: scale(1.8) rotate(90deg);
+  }
+
+  100% {
+    transform: scale(1) rotate(180deg);
+  }
+}
+
+/* 一个 agent 都没装时 Agents 区的提示 (ADR-034) */
+.empty-agents-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-secondary, #f0f);
+}
+
+/* Agents 标题旁的重新检测按钮:检测中图标转圈 */
+.empty-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty-section-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary, #f0f);
+  cursor: pointer;
+}
+
+.empty-section-refresh:hover:not(:disabled) {
+  background-color: var(--color-bg-hover, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.empty-section-refresh.refreshing svg {
+  animation: template-refresh-spin 800ms linear infinite;
+}
+
+@keyframes template-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── Tab bar ── */
 
 .tab-bar {
@@ -2956,7 +3125,9 @@ select.settings-input option {
  * 主要修复 CPB-P2:Electron 原生 dialog 关闭后焦点归还不可控,
  * 自绘后由 ModalProvider 显式 previousActiveElementRef.focus()。
  *
- * z-index 高于 Toast (9999) 但低于 nothing(modal 不应同时存在多个)。
+ * z-index 高于 Toast (9999)。ModalProvider 的 confirm/prompt 带 .app-modal-host,再高一层:
+ * TagSettings 等 portal 对话框也用 .app-modal-backdrop 且挂在 body 末尾,同层时会盖住
+ * 它们自己弹出的确认框(右键标签 → 删除标签时确认框被压在颜色面板下面)。
  */
 .app-modal-backdrop {
   position: fixed;
@@ -2968,6 +3139,10 @@ select.settings-input option {
   align-items: center;
   justify-content: center;
   animation: app-modal-fade-in 100ms ease-out;
+}
+
+.app-modal-backdrop.app-modal-host {
+  z-index: 10001;
 }
 
 @keyframes app-modal-fade-in {

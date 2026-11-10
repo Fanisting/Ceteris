@@ -62,6 +62,7 @@ const SYMBOLS = [
   ['CloseFullscreen', 'close_fullscreen', 'default'],
   ['RadioChecked', 'radio_button_checked', 'default'],
   ['Search', 'search', 'default'],
+  ['Refresh', 'refresh', 'default'],
   ['Settings', 'settings', 'default'],
 
   // 设置分类

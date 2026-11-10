@@ -279,7 +279,7 @@ export function Sidebar(): JSX.Element {
   // 计数只数标签筛选后剩下的文件夹,点下去看到的数目与计数一致。
   const statusOf = (sid: string): SessionStatusFilter | null => {
     const s = state.sessions.get(sid);
-    return s ? sessionStatus(s) : null;
+    return s ? sessionStatus(s, state.unseenDoneSessionIds.has(sid)) : null;
   };
   const statusCounts: Record<SessionStatusFilter, number> = { running: 0, 'needs-you': 0 };
   for (const folder of taggedFolders) {
@@ -866,7 +866,11 @@ function PathItem({
     [node.sessionIds, state.sessions],
   );
   const sessions =
-    statusFilter === null ? allSessions : allSessions.filter((s) => sessionStatus(s) === statusFilter);
+    statusFilter === null
+      ? allSessions
+      : allSessions.filter(
+          (s) => sessionStatus(s, state.unseenDoneSessionIds.has(s.id)) === statusFilter,
+        );
   const activeCount = allSessions.length;
   // BETA-014:优先用 FolderList 算好的去重名;退到本节点 displayName / 末段
   const displayName =

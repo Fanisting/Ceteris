@@ -23,6 +23,9 @@
  * - **agentPhase** (ADR-021):每段输出后 300ms 内从 headless 屏幕尾部读一次
  *   agent 在做什么 (working / blocked / done,见 agent-phase.ts),进入 idle
  *   时再读一次。与 active / idle 并列,不替代它
+ * - **shellBusy** (ADR-023):shell hook 每次画提示符都发 OSC 1337 CurrentDir。
+ *   收到它 = 回到提示符 (false);之后用户按 Enter = 命令在跑 (true)。
+ *   没收到过提示符的 session 保持 undefined,侧栏筛选退回按输出判断
  * - 启动模板:从 TemplatesManager 拉,空 command → 纯 shell;有 command →
  *   通过 PlatformAdapter.buildShellLaunchParams 让 hook 之后再 exec command
  * - spawn 函数可注入 (PtySpawnFn) 便于测试;PlatformAdapter 也可注入
@@ -1307,7 +1310,8 @@ export class SessionManager extends EventEmitter {
     // "状态点保持 idle 黄色",直到 200ms 后才变绿 — 用户视角"按 Enter
     // 后命令延迟一拍才显示在跑"。
     // 普通按键(非 Enter)仍走原逻辑顺延 quiet 窗口。
-    if (text.includes('\r') || text.includes('\n')) {
+    const enter = text.includes('\r') || text.includes('\n');
+    if (enter) {
       managed.inputQuietUntil = 0;
       managed.lastEnterAt = now;
     } else {
@@ -1344,7 +1348,24 @@ export class SessionManager extends EventEmitter {
       );
       return { accepted: false, reason: 'pty-write-failed' };
     }
+    // ADR-023:在提示符上按 Enter = 命令开始跑,直到 hook 报下一个提示符。
+    // 只在已知"在提示符上"(false) 时翻转:undefined 说明 shell 没有 hook,
+    // true 时 Enter 是给正在跑的程序的 (vim、ssh、agent),都不算新命令。
+    if (enter && managed.info.shellBusy === false) {
+      managed.info.shellBusy = true;
+      this.emitStateChanged(managed, { shellBusy: true });
+    }
     return { accepted: true };
+  }
+
+  /**
+   * ADR-023:shell hook 报了一个提示符 (OSC 1337 CurrentDir),命令跑完了。
+   * 第一次收到时从 undefined 变 false,从此这个 session 按提示符判断忙闲。
+   */
+  private markShellPrompt(managed: ManagedSession): void {
+    if (managed.info.shellBusy === false) return;
+    managed.info.shellBusy = false;
+    this.emitStateChanged(managed, { shellBusy: false });
   }
 
   /**
@@ -1576,6 +1597,7 @@ export class SessionManager extends EventEmitter {
     for (const ev of parsed.events) {
       if (ev.kind === 'cwd') {
         this.handleOsc1337Cwd(managed, ev.value);
+        this.markShellPrompt(managed);
       } else if (ev.kind === 'title') {
         this.handleOscTitle(managed, ev.value);
       }
@@ -1752,6 +1774,7 @@ export class SessionManager extends EventEmitter {
     managed.info.agentWork = null;
     managed.info.agentPace = null;
     managed.tokenRate = null;
+    managed.info.shellBusy = null;
     this.emitStateChanged(managed, {
       state: managed.info.state,
       exitCode: managed.info.exitCode,
@@ -1760,6 +1783,7 @@ export class SessionManager extends EventEmitter {
       agentPhase: null,
       agentWork: null,
       agentPace: null,
+      shellBusy: null,
     });
     void oldState; // 留给将来加日志用
 

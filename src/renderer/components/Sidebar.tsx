@@ -648,7 +648,7 @@ const MAX_BLOCK_SESSION_DOTS = 5;
 
 
 /**
- * A session's dot colour (ADR-021): warning while an agent waits at an approval prompt, the
+ * A session's dot colour (ADR-021): warning while an agent waits at a prompt (approval or choice), the
  * primary colour when it finished unseen, otherwise the active / idle / exited colour.
  * Shared by the session rows and the dots on a folder block so the two never disagree.
  */

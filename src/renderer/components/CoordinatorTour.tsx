@@ -253,7 +253,9 @@ export function CoordinatorTour(): JSX.Element | null {
 
   const quickLaunch = useQuickLaunch(state.selectedPathId, 16);
 
-  const showError = (message: string): void => toast.push({ kind: 'error', message });
+  const showError = (message: string): void => {
+    toast.push({ kind: 'error', message });
+  };
 
   // 设成 Coordinator:打开引导 (改名在 main 的 setRole 里已经做了)
   useEffect(() => {

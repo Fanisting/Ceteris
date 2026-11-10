@@ -24,6 +24,7 @@ import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
 import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
+import { AgentChoiceNoticeBridge } from './components/AgentChoiceNoticeBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
 import { resolveThemeId, useCustomThemes } from './custom-themes';
 import { setLegadoDynamicInputs } from './legado-dynamic';
@@ -273,6 +274,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
           <LastSessionConfirmBridge />
           <SshAskpassBridge />
           <AgentUpdateNoticeBridge />
+          {/* ADR-035:别的标签里的 agent 停下来等用户决定时弹 toast,点了跳过去 */}
+          <AgentChoiceNoticeBridge />
           <ContextMenuProvider>
             <div
               className="app-root with-shell"

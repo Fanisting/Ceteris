@@ -48,7 +48,9 @@ interface Toast extends ToastInput {
 }
 
 interface ToastApi {
-  push(t: ToastInput): void;
+  /** Shows a toast and returns its id, for a caller that will dismiss it itself. */
+  push(t: ToastInput): number;
+  /** Removes a toast; unknown or already gone ids are ignored. */
   dismiss(id: number): void;
 }
 
@@ -113,10 +115,11 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
     [retire],
   );
 
-  const push = useCallback((t: ToastInput): void => {
+  const push = useCallback((t: ToastInput): number => {
     const id = nextId.current++;
     const toast: Toast = { id, bornAt: Date.now(), ...t };
     setItems((prev) => [toast, ...prev].slice(0, 6)); // 最多堆 6 条
+    return id;
   }, []);
 
   // 单一 ticker 检查每条是否到期,500ms 间隔(对 4s 时长足够精度)。

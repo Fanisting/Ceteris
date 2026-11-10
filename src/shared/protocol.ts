@@ -342,6 +342,12 @@ export const EVENT_CHANNELS = {
   VIEW_STATE_CHANGED: 'evt:view:state-changed',
   /** UpdateStatus 变化(开始检查 / 查到新版本 / 失败 / 开关变化),广播给本机所有窗口 */
   UPDATE_STATUS_CHANGED: 'evt:update:status-changed',
+  /**
+   * 协调者标签里的 agent 经 tab control 管道(ADR-033)要求在某个标签旁边显示一个文件。
+   * 广播给所有窗口;每个窗口在自己的 pdf-view-store 里打开,显示着那个标签的窗口就能看到。
+   * Payload:FileViewOpenRequestedPayload。
+   */
+  FILE_VIEW_OPEN_REQUESTED: 'evt:file-view:open-requested',
   /** agent 版本通知 (有新版本 / 即将自动升级 / 等 agent 关掉 / 升级完成 / 升级失败) */
   AGENT_UPDATE_NOTICE: 'evt:agent:update-notice',
   /** 主题文件夹里的文件变了,payload 是新的 CustomTheme[](ADR-026)。只发本机窗口 */
@@ -1292,6 +1298,15 @@ export interface LinkListBindCandidatesResponse {
 
 /** evt:link:status-changed 的 payload,与 cmd:link:get-status 同构。 */
 export type LinkStatusChangedPayload = LinkStatusResponse;
+
+/** evt:file-view:open-requested(ADR-033):在 sessionId 的终端旁显示 path 这个本地文件。 */
+export interface FileViewOpenRequestedPayload {
+  sessionId: string;
+  /** 文件名,查看器据此判断类型 */
+  name: string;
+  /** 绝对路径 */
+  path: string;
+}
 
 /**
  * evt:link:connection-state 的 payload。只发给远程窗口自己。

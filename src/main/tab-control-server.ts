@@ -2,7 +2,7 @@
  * @file src/main/tab-control-server.ts
  * @purpose The pipe the ceteris-tabs Claude Code plugin talks to (ADR-024). Claude Code in a
  *   coordinator tab can list, open, close, rename, type into and read the other tabs of the
- *   folder it runs in. Any other tab is refused.
+ *   folder it runs in, and show a file beside a tab (ADR-033). Any other tab is refused.
  *
  * @关键设计:
  * - The rule is checked on every request, against the session as it is now: the calling tab
@@ -21,8 +21,12 @@
  *   Text with line breaks goes in as a bracketed paste when the tab has asked for that mode.
  * - Pipe name has the pid and a random part, like askpass-server.ts, so stable and beta never
  *   share a pipe and other users cannot guess it.
+ * - Showing a file (ADR-033) only asks the windows to open it in the viewer next to a tab, the
+ *   same viewer a click in the file tree opens. Main checks the type and that the file exists;
+ *   the window reads the content itself. A relative path counts from the tab's current
+ *   directory, because that is where the agent just wrote the file.
  *
- * @对应文档章节:软件定义书.md ADR-024;docs/ipc-protocol.md "Tab control pipe"
+ * @对应文档章节:软件定义书.md ADR-024、ADR-033;docs/ipc-protocol.md 附录 D
  *
  * @不要在这里做的事:
  * - Do not mark or unmark coordinators here; only the user does that, from the tab menu.
@@ -37,7 +41,8 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
+import { fileViewKind } from '@shared/file-tree';
 import {
   TAB_CONTROL_ENV,
   TAB_CONTROL_KEYS,
@@ -48,6 +53,7 @@ import {
   decodeTabControlRequest,
   encodeTabControlReply,
   type TabControlErrorCode,
+  type TabControlOpenFileResult,
   type TabControlReply,
   type TabControlRequest,
   type TabSummary,
@@ -86,6 +92,10 @@ export interface TabControlHost {
   screenTail(sessionId: string, rows: number): string;
   /** True when the program in the tab turned on bracketed paste (ESC [ ? 2004 h). */
   bracketedPaste(sessionId: string): boolean;
+  /** True when an absolute path is an existing regular file. */
+  isFile(path: string): Promise<boolean>;
+  /** Asks every window to show the file in the viewer beside the tab (ADR-033). */
+  showFile(input: { sessionId: string; name: string; path: string }): void;
 }
 
 class RequestError extends Error {
@@ -223,6 +233,8 @@ export class TabControlService {
       }
       case 'input':
         return this.input(caller, args);
+      case 'open-file':
+        return this.openFile(caller, args);
       case 'read': {
         const target = this.target(caller, args.tab, { allowSelf: true });
         const lines = clampInt(args.lines, DEFAULT_READ_LINES, 1, TAB_CONTROL_MAX_READ_LINES);
@@ -311,6 +323,45 @@ export class TabControlService {
     const name = typeof args.name === 'string' ? args.name.trim() : '';
     if (name) this.host.rename(session.id, name.slice(0, 200));
     return summarize(this.host.get(session.id) ?? session, caller.id);
+  }
+
+  /**
+   * Shows a local file in the viewer beside a tab of the folder; the caller's own tab when
+   * `tab` is not given. Only the kinds the viewer knows (fileViewKind) are accepted, so an
+   * agent asking for a .ts file gets a clear refusal instead of a blank pane.
+   */
+  private async openFile(
+    caller: SessionInfo,
+    args: Record<string, unknown>,
+  ): Promise<TabControlOpenFileResult> {
+    if (caller.pathId.startsWith('ssh:')) {
+      throw new RequestError(
+        'bad-request',
+        'Showing files in an SSH folder is not supported; open them from the file tree.',
+      );
+    }
+    const target =
+      args.tab === undefined ? caller : this.target(caller, args.tab, { allowSelf: true });
+    const raw = typeof args.path === 'string' ? args.path.trim() : '';
+    if (!raw) throw new RequestError('bad-request', 'path must be a non-empty string');
+    const path = isAbsolute(raw) ? resolve(raw) : resolve(target.currentCwd, raw);
+    const name = basename(path);
+    const kind = fileViewKind(name);
+    if (!kind) {
+      throw new RequestError(
+        'bad-request',
+        `Ceteris cannot show "${name}". It shows .md, .txt, .json, .tex, .pdf and images.`,
+      );
+    }
+    if (!(await this.host.isFile(path))) {
+      throw new RequestError('not-found', `No file at ${path}. Write it first, then open it.`);
+    }
+    this.host.showFile({ sessionId: target.id, name, path });
+    logger.info(
+      'TabControl',
+      `open-file sid=${target.id} path=${path} by coordinator ${caller.id}`,
+    );
+    return { tab: summarize(target, caller.id), path, name, kind };
   }
 
   private async input(

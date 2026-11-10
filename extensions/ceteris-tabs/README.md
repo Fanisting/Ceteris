@@ -1,25 +1,28 @@
 # ceteris-tabs
 
-A Claude Code plugin that ships with [Ceteris](https://github.com/Fanisting/ceteris). It lets Claude Code in a coordinator tab manage the other tabs of the same folder.
+A Claude Code plugin that ships with [Ceteris](https://github.com/Fanisting/ceteris). It lets Claude Code in a coordinator tab manage the other tabs of the same folder, and show a file it wrote next to a tab.
 
 ## What it does
 
-Claude Code gets eight tools:
+Claude Code gets nine tools:
 
-| Tool | Does |
-|---|---|
-| `list_tabs` | Lists the folder's tabs with state and agent phase (working, blocked, done) |
-| `list_templates` | Lists the launch templates, for example `shell`, `claude-code`, `codex` |
-| `open_tab` | Opens a tab in the background; with `prompt`, waits until the agent is ready and sends it |
-| `send_input` | Types text, presses named keys (`escape`, `down`, `enter`, `ctrl-c`, ...), then Enter |
-| `read_tab` | Returns the last lines of a tab's screen |
-| `wait_for_tab` | Waits until an agent is done or blocked, a shell goes quiet, or the tab exits |
-| `rename_tab` | Renames a tab |
-| `close_tab` | Closes a tab and ends its process |
+| Tool             | Does                                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_tabs`      | Lists the folder's tabs with state and agent phase (working, blocked, done)                                                                                         |
+| `list_templates` | Lists the launch templates, for example `shell`, `claude-code`, `codex`                                                                                             |
+| `open_tab`       | Opens a tab in the background; with `prompt`, waits until the agent is ready and sends it                                                                           |
+| `send_input`     | Types text, presses named keys (`escape`, `down`, `enter`, `ctrl-c`, ...), then Enter                                                                               |
+| `read_tab`       | Returns the last lines of a tab's screen                                                                                                                            |
+| `wait_for_tab`   | Waits until an agent is done or blocked, a shell goes quiet, or the tab exits                                                                                       |
+| `rename_tab`     | Renames a tab                                                                                                                                                       |
+| `close_tab`      | Closes a tab and ends its process                                                                                                                                   |
+| `open_file`      | Shows a file in the Ceteris viewer beside a tab (its own by default): Markdown as a rendered page, `.txt` / `.json` / `.tex` as text, PDFs and images as themselves |
 
 ## Who may use it
 
 Only a tab you marked as coordinator (right-click the tab, tick Coordinator), and only while Settings, Extensions, Coordinator tab control is on. Ceteris checks this on every call, so unmarking the tab cuts it off at once. A coordinator sees only the tabs of its own folder and cannot close or type into itself.
+
+A typical use of `open_file`: ask the coordinator to "write the summary to `summary.md` and open it". The file appears beside the terminal, rendered, and you can switch it to the editor like any file from the file tree.
 
 ## Install
 

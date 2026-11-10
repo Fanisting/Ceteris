@@ -33,6 +33,7 @@ import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
   type BookmarksUpdatedPayload,
+  type FileViewOpenRequestedPayload,
   type GetSnapshotResponse,
   type PathTreeUpdatedPayload,
   type SessionCreatedPayload,
@@ -56,6 +57,7 @@ import type {
   Template,
   WindowInfo,
 } from '@shared/types';
+import { openPdf } from './pdf-view-store';
 
 // ──────────────────────────────────────────────────────────────────
 // State 定义
@@ -450,10 +452,7 @@ function reducer(state: AppState, action: AppAction): AppState {
     case 'view/update-terminal-dims': {
       const { cols, rows } = action.dims;
       // 简单去抖:相同尺寸不更新 (避免无意义重渲染)
-      if (
-        state.lastTerminalDims.cols === cols &&
-        state.lastTerminalDims.rows === rows
-      ) {
+      if (state.lastTerminalDims.cols === cols && state.lastTerminalDims.rows === rows) {
         return state;
       }
       return { ...state, lastTerminalDims: { cols, rows } };
@@ -471,14 +470,8 @@ function reducer(state: AppState, action: AppAction): AppState {
  * 历史搜索 等),曾经有调用方在外面重写过这条 fallback 链(MainPane Tab 内
  * 找 path 字段,P2-13)。统一从这里导出。
  */
-export function findPathNode(
-  tree: PathTree,
-  pathId: string,
-): PathNode | undefined {
-  return (
-    tree.bookmarks.find((p) => p.id === pathId) ??
-    tree.temporary.find((p) => p.id === pathId)
-  );
+export function findPathNode(tree: PathTree, pathId: string): PathNode | undefined {
+  return tree.bookmarks.find((p) => p.id === pathId) ?? tree.temporary.find((p) => p.id === pathId);
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -613,9 +606,7 @@ export function useIpcSync(): { ready: boolean; error: string | null } {
   const [status, setStatus] = useReducer(
     (
       _: { ready: boolean; error: string | null },
-      action:
-        | { type: 'ready' }
-        | { type: 'error'; message: string },
+      action: { type: 'ready' } | { type: 'error'; message: string },
     ) => {
       switch (action.type) {
         case 'ready':
@@ -635,87 +626,76 @@ export function useIpcSync(): { ready: boolean; error: string | null } {
 
     void (async () => {
       try {
-        const snapshot = await window.api.invoke<
-          { myWindowId: string },
-          GetSnapshotResponse
-        >(COMMAND_CHANNELS.APP_GET_SNAPSHOT, { myWindowId });
+        const snapshot = await window.api.invoke<{ myWindowId: string }, GetSnapshotResponse>(
+          COMMAND_CHANNELS.APP_GET_SNAPSHOT,
+          { myWindowId },
+        );
         if (cancelled) return;
         dispatch({ type: 'snapshot/load', snapshot });
 
         // 订阅事件
         cleanups.push(
-          window.api.on<PathTreeUpdatedPayload>(
-            EVENT_CHANNELS.PATH_TREE_UPDATED,
-            (p) => dispatch({ type: 'pathTree/update', tree: p.tree }),
+          window.api.on<PathTreeUpdatedPayload>(EVENT_CHANNELS.PATH_TREE_UPDATED, (p) =>
+            dispatch({ type: 'pathTree/update', tree: p.tree }),
           ),
-          window.api.on<BookmarksUpdatedPayload>(
-            EVENT_CHANNELS.BOOKMARKS_UPDATED,
-            (p) => dispatch({ type: 'bookmarks/update', bookmarks: p.bookmarks }),
+          window.api.on<BookmarksUpdatedPayload>(EVENT_CHANNELS.BOOKMARKS_UPDATED, (p) =>
+            dispatch({ type: 'bookmarks/update', bookmarks: p.bookmarks }),
           ),
-          window.api.on<SshProfilesUpdatedPayload>(
-            EVENT_CHANNELS.SSH_PROFILES_UPDATED,
-            (p) => dispatch({ type: 'sshProfiles/update', profiles: p.profiles }),
+          window.api.on<SshProfilesUpdatedPayload>(EVENT_CHANNELS.SSH_PROFILES_UPDATED, (p) =>
+            dispatch({ type: 'sshProfiles/update', profiles: p.profiles }),
           ),
-          window.api.on<SessionCreatedPayload>(
-            EVENT_CHANNELS.SESSION_CREATED,
-            (p) => dispatch({ type: 'sessions/created', session: p.session }),
+          window.api.on<SessionCreatedPayload>(EVENT_CHANNELS.SESSION_CREATED, (p) =>
+            dispatch({ type: 'sessions/created', session: p.session }),
           ),
-          window.api.on<SessionOwnerChangedPayload>(
-            EVENT_CHANNELS.SESSION_OWNER_CHANGED,
-            (p) =>
-              dispatch({
-                type: 'sessions/owner-changed',
-                sessionId: p.sessionId,
-                ownerWindowId: p.newOwnerWindowId,
-              }),
+          window.api.on<SessionOwnerChangedPayload>(EVENT_CHANNELS.SESSION_OWNER_CHANGED, (p) =>
+            dispatch({
+              type: 'sessions/owner-changed',
+              sessionId: p.sessionId,
+              ownerWindowId: p.newOwnerWindowId,
+            }),
           ),
-          window.api.on<SessionExitedPayload>(
-            EVENT_CHANNELS.SESSION_EXITED,
-            (p) =>
-              dispatch({
-                type: 'sessions/exited',
-                sessionId: p.sessionId,
-                exitCode: p.exitCode,
-              }),
+          window.api.on<SessionExitedPayload>(EVENT_CHANNELS.SESSION_EXITED, (p) =>
+            dispatch({
+              type: 'sessions/exited',
+              sessionId: p.sessionId,
+              exitCode: p.exitCode,
+            }),
           ),
-          window.api.on<SessionStateChangedPayload>(
-            EVENT_CHANNELS.SESSION_STATE_CHANGED,
-            (p) =>
-              dispatch({
-                type: 'sessions/state-changed',
-                sessionId: p.sessionId,
-                changes: p.changes,
-              }),
+          window.api.on<SessionStateChangedPayload>(EVENT_CHANNELS.SESSION_STATE_CHANGED, (p) =>
+            dispatch({
+              type: 'sessions/state-changed',
+              sessionId: p.sessionId,
+              changes: p.changes,
+            }),
           ),
-          window.api.on<SessionDestroyedPayload>(
-            EVENT_CHANNELS.SESSION_DESTROYED,
-            (p) => dispatch({ type: 'sessions/destroyed', sessionId: p.sessionId }),
+          window.api.on<SessionDestroyedPayload>(EVENT_CHANNELS.SESSION_DESTROYED, (p) =>
+            dispatch({ type: 'sessions/destroyed', sessionId: p.sessionId }),
           ),
-          window.api.on<TemplateListUpdatedPayload>(
-            EVENT_CHANNELS.TEMPLATES_UPDATED,
-            (p) =>
-              dispatch({
-                type: 'templates/update',
-                templates: p.templates,
-                defaultTemplateId: p.defaultTemplateId,
-              }),
+          // ADR-033: a coordinator's agent asks to show a file beside a tab. Same viewer as a
+          // click in the file tree; the window showing that tab has it on screen at once.
+          window.api.on<FileViewOpenRequestedPayload>(
+            EVENT_CHANNELS.FILE_VIEW_OPEN_REQUESTED,
+            (p) => void openPdf(p.sessionId, { name: p.name, path: p.path }),
           ),
-          window.api.on<WindowListUpdatedPayload>(
-            EVENT_CHANNELS.WINDOW_LIST_UPDATED,
-            (p) => dispatch({ type: 'windows/list-update', windows: p.windows }),
+          window.api.on<TemplateListUpdatedPayload>(EVENT_CHANNELS.TEMPLATES_UPDATED, (p) =>
+            dispatch({
+              type: 'templates/update',
+              templates: p.templates,
+              defaultTemplateId: p.defaultTemplateId,
+            }),
           ),
-          window.api.on<SettingsChangedPayload>(
-            EVENT_CHANNELS.SETTINGS_CHANGED,
-            (p) => dispatch({ type: 'settings/changed', settings: p.settings }),
+          window.api.on<WindowListUpdatedPayload>(EVENT_CHANNELS.WINDOW_LIST_UPDATED, (p) =>
+            dispatch({ type: 'windows/list-update', windows: p.windows }),
           ),
-          window.api.on<WindowFocusRequestedPayload>(
-            EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED,
-            (p) =>
-              dispatch({
-                type: 'view/focus-requested',
-                ...(p.selectSessionId ? { selectSessionId: p.selectSessionId } : {}),
-                ...(p.reason === 'tray-open-settings' ? { enterSettings: true } : {}),
-              }),
+          window.api.on<SettingsChangedPayload>(EVENT_CHANNELS.SETTINGS_CHANGED, (p) =>
+            dispatch({ type: 'settings/changed', settings: p.settings }),
+          ),
+          window.api.on<WindowFocusRequestedPayload>(EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED, (p) =>
+            dispatch({
+              type: 'view/focus-requested',
+              ...(p.selectSessionId ? { selectSessionId: p.selectSessionId } : {}),
+              ...(p.reason === 'tray-open-settings' ? { enterSettings: true } : {}),
+            }),
           ),
         );
 

@@ -41,6 +41,7 @@ afterEach(async () => {
 
 async function start(sessions: SessionInfo[]) {
   const writes: string[] = [];
+  const shown: { sessionId: string; path: string }[] = [];
   const host: TabControlHost = {
     enabled: () => true,
     list: () => sessions,
@@ -57,10 +58,12 @@ async function start(sessions: SessionInfo[]) {
     },
     screenTail: () => '',
     bracketedPaste: () => false,
+    isFile: async (path) => path.endsWith('answer.md'),
+    showFile: ({ sessionId, path }) => shown.push({ sessionId, path }),
   };
   server = new TabControlServer(host, 'node');
   await server.start();
-  return { server, writes };
+  return { server, writes, shown };
 }
 
 describe('ceteris-tabs MCP server', () => {
@@ -88,6 +91,21 @@ describe('ceteris-tabs MCP server', () => {
     });
     expect(reply.result.isError).toBeUndefined();
     expect(writes).toEqual(['run tests', '\r']);
+  });
+
+  it('asks Ceteris to show a file beside the coordinator tab', async () => {
+    const { server: s, shown } = await start([session('boss', { coordinator: true })]);
+    const reply = await handleMessage(s.envFor('boss'), {
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: { name: 'open_file', arguments: { path: 'answer.md' } },
+    });
+    expect(reply.result.isError).toBeUndefined();
+    expect(reply.result.content[0].text).toContain('markdown');
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.sessionId).toBe('boss');
+    expect(shown[0]!.path.endsWith('answer.md')).toBe(true);
   });
 
   it('reports a refusal from Ceteris as a tool error', async () => {

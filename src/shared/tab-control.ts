@@ -20,6 +20,7 @@
  * - Do not decide who may do what here; that is tab-control-server.ts.
  */
 import { latexMathMarketplaceCommand } from './claude-math-images';
+import type { FileViewKind } from './file-tree';
 import type { AgentPhase, SessionState } from './types';
 
 /** Env names set in every tab. Listed so a Ceteris started from a tab does not inherit them. */
@@ -51,7 +52,8 @@ export type TabControlOp =
   | 'close'
   | 'input'
   | 'read'
-  | 'rename';
+  | 'rename'
+  | 'open-file';
 
 export const TAB_CONTROL_OPS: readonly TabControlOp[] = [
   'list',
@@ -62,6 +64,7 @@ export const TAB_CONTROL_OPS: readonly TabControlOp[] = [
   'input',
   'read',
   'rename',
+  'open-file',
 ];
 
 /** Named keys an input request may press, and the bytes each one sends. */
@@ -115,6 +118,15 @@ export interface TabSummary {
   self: boolean;
   cwd: string;
   exitCode?: number;
+}
+
+/** Reply of `open-file`: the file now shown beside a tab. */
+export interface TabControlOpenFileResult {
+  tab: TabSummary;
+  /** Absolute path as resolved against the tab's current directory */
+  path: string;
+  name: string;
+  kind: FileViewKind;
 }
 
 /**

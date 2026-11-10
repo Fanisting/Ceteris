@@ -2065,7 +2065,7 @@ async function handleSessionTabClick(sessionId: string) {
 
 ---
 
-## 附录 D:Tab control pipe(ADR-024)
+## 附录 D:Tab control pipe(ADR-024、ADR-033)
 
 这条通道不走 Electron IPC,是 main 与 ceteris-tabs 插件的 MCP 服务器之间的命名管道。格式定义在 `src/shared/tab-control.ts`,插件 `extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs` 里有一份相同的纯 JS 实现,`tab-control-mcp.test.ts` 检查两边一致。
 
@@ -2077,7 +2077,7 @@ async function handleSessionTabClick(sessionId: string) {
 interface TabControlRequest {
   v: 1;
   token: string;
-  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename';
+  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename' | 'open-file';
   args: Record<string, unknown>;
 }
 ```
@@ -2094,8 +2094,11 @@ interface TabControlRequest {
 | `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
 | `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
 | `rename` | `tab`、`name` | `TabSummary` |
+| `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝 |
 
 `tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
+
+`open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path }`)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
 
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。
 

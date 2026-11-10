@@ -21,6 +21,8 @@
  * - Local folders (rows, the header, pinned blocks, the blank area) have "Open in File
  *   Explorer", which opens the folder itself; a local file has "Show in File Explorer",
  *   which selects it. SFTP paths are on another machine, so they get neither.
+ * - Delete (local only, 14.6 例外 2026-11-10) moves the entry to the Recycle Bin. There is no
+ *   confirm dialog because the bin is the undo; the item's hint says so.
  *
  * @对应文档章节: 软件定义书.md 13.2、14.6
  *
@@ -53,6 +55,8 @@ import {
   type ListDirResponse,
   type CreateFilePayload,
   type CreateFileResponse,
+  type DeleteEntryPayload,
+  type DeleteEntryResponse,
   type RenameEntryPayload,
   type RenameEntryResponse,
 } from '@shared/file-tree';
@@ -517,6 +521,31 @@ function FileTreeBody({
     void refreshAll();
   };
 
+  /**
+   * Moves a row to the Recycle Bin. No confirm dialog: the bin is the undo, and the menu
+   * item says where the entry goes. Pins to a deleted folder stay, so restoring it from the
+   * bin brings the pin back to life.
+   */
+  const applyDelete = async (row: FileTreeRow): Promise<void> => {
+    const { path, name } = row.entry;
+    const res = await window.api
+      .invoke<DeleteEntryPayload, DeleteEntryResponse>(COMMAND_CHANNELS.FS_DELETE, { path })
+      .catch((): DeleteEntryResponse => ({ ok: false, reason: 'unknown' }));
+    if (!mountedRef.current) return;
+    if (!res.ok) {
+      toast.push({ kind: 'error', message: t(`fileTree.delete.error.${res.reason}`, { name }) });
+      return;
+    }
+    toast.push({ kind: 'success', message: t('fileTree.delete.done', { name }) });
+    // remapPath changes exactly the paths at or under `path`, so this drops the deleted
+    // folder and everything below it from the expanded set and the listing cache.
+    const isGone = (p: string): boolean => remapPath(p, path, '') !== p;
+    setExpanded(new Set([...expandedRef.current].filter((p) => !isGone(p))));
+    setSelected((prev) => (prev !== null && isGone(prev) ? null : prev));
+    setDirs((prev) => new Map([...prev].filter(([dir]) => !isGone(dir))));
+    await loadDir(row.parentPath);
+  };
+
   const commitRename = async (row: FileTreeRow): Promise<void> => {
     if (renamingRef.current !== row.entry.path) return;
     endRename();
@@ -644,6 +673,13 @@ function FileTreeBody({
           t(isDirectory ? 'fileTree.openInExplorer' : 'fileTree.showInExplorer'),
           toastError,
         ),
+        { divider: true, label: '' },
+        {
+          label: t('fileTree.delete'),
+          hint: t('fileTree.delete.hint'),
+          danger: true,
+          onSelect: () => void applyDelete(row),
+        },
       );
     }
     if (items.length > 0) menu.open({ x: e.clientX, y: e.clientY, items });

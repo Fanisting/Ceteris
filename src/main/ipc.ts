@@ -204,6 +204,8 @@ import { detectSshAgent } from './ssh-agent';
 import type {
   CreateFilePayload,
   CreateFileResponse,
+  DeleteEntryPayload,
+  DeleteEntryResponse,
   ListDirPayload,
   ListDirResponse,
   ReadPdfPayload,
@@ -215,7 +217,7 @@ import type {
   WriteTextPayload,
   WriteTextResponse,
 } from '@shared/file-tree';
-import { createFile, listDirectory, renameEntry } from './file-tree';
+import { createFile, deleteEntry, listDirectory, renameEntry } from './file-tree';
 import { writeTextFile } from './text-writer';
 import type { CustomThemeStore } from './custom-theme-store';
 import type { CustomTheme, TemplateValues } from '@shared/custom-themes';
@@ -1577,6 +1579,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.FS_CREATE_FILE,
     (_e, envelope: CommandEnvelope<CreateFilePayload>): Promise<CreateFileResponse> =>
       createFile(envelope.payload.dirPath, envelope.payload.name),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.FS_DELETE,
+    (_e, envelope: CommandEnvelope<DeleteEntryPayload>): Promise<DeleteEntryResponse> =>
+      deleteEntry(envelope.payload.path, (p) => shell.trashItem(p)),
   );
 
   handleCommand(

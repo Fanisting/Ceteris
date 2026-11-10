@@ -153,6 +153,13 @@ export interface CreateFilePayload {
 /** Same shape as a rename: the new file's path, or why it was not made. */
 export type CreateFileResponse = RenameEntryResponse;
 
+export interface DeleteEntryPayload {
+  /** Local absolute path main returned in a listing. Moved to the Recycle Bin, never erased */
+  path: string;
+}
+
+export type DeleteEntryResponse = { ok: true } | { ok: false; reason: FileTreeFailure };
+
 const entryCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export type FileViewKind = 'pdf' | 'image' | 'markdown' | 'text';

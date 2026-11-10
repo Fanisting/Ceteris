@@ -206,6 +206,8 @@ export const COMMAND_CHANNELS = {
   FS_RENAME: 'cmd:fs:rename',
   /** Makes an empty file in a local folder. Never replaces an existing one */
   FS_CREATE_FILE: 'cmd:fs:create-file',
+  /** Moves a local file or folder to the Recycle Bin. Never erases it */
+  FS_DELETE: 'cmd:fs:delete',
   /** 分块读取 PDF。本地文件或 SFTP 文件,Link 下数据从 Host 分块传回 */
   FS_READ_PDF: 'cmd:fs:read-pdf',
   /** 查文件大小和修改时间,PDF 自动刷新靠它轮询。安静请求,不弹登录提示 */

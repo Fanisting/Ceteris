@@ -164,6 +164,9 @@ const VIEW_MIME_TYPES: Record<string, { kind: FileViewKind; mime: string }> = {
   txt: { kind: 'text', mime: 'text/plain' },
   json: { kind: 'text', mime: 'application/json' },
   tex: { kind: 'text', mime: 'text/x-tex' },
+  // SQL scripts; .hive is the HiveQL script extension used by Hive and Spark SQL users.
+  sql: { kind: 'text', mime: 'application/sql' },
+  hive: { kind: 'text', mime: 'application/sql' },
   png: { kind: 'image', mime: 'image/png' },
   jpg: { kind: 'image', mime: 'image/jpeg' },
   jpeg: { kind: 'image', mime: 'image/jpeg' },
@@ -184,9 +187,9 @@ export function fileViewKind(name: string): FileViewKind | null {
 }
 
 /**
- * Whether the file can be read in pages and saved by the text editor: .txt, .json, .tex and
- * Markdown (ADR-016, ADR-028). Markdown still opens as a rendered page and switches to the
- * editor on request.
+ * Whether the file can be read in pages and saved by the text editor: .txt, .json, .tex, .sql,
+ * .hive and Markdown (ADR-016, ADR-028). Markdown still opens as a rendered page and switches
+ * to the editor on request.
  */
 export function isEditableTextFile(name: string): boolean {
   const kind = fileViewKind(name);

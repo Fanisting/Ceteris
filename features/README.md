@@ -23,7 +23,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 |---|---|---|
 | [File viewer](file-viewer.md) | PDFs, images and Markdown beside the terminal | 0.3.0 |
 | [Live PDF preview](live-pdf-preview.md) | PDFs refresh when rebuilt, keeping page and zoom | 0.4.1 |
-| [Text file editing](text-file-editing.md) | Edit txt, json, md and tex in place | 0.3.0 |
+| [Text file editing](text-file-editing.md) | Edit txt, json, md, tex, sql and hive in place | 0.3.0 |
 | [Large text files](large-text-files.md) | Multi-gigabyte files open at once as read-only pages | 0.3.0 |
 | [OnePage Markdown look](onepage-markdown.md) | A paper-like reading style for Markdown | 0.4.1 |
 | [New file in the file tree](file-tree-new-file.md) | Create an empty file from the tree | 0.4.1 |

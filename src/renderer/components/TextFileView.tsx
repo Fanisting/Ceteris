@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/components/TextFileView.tsx
- * @purpose Shows a .txt, .json or .tex file in the file viewer, and a Markdown file once the user
+ * @purpose Shows a .txt, .json, .tex, .sql or .hive file in the file viewer, and a Markdown file once the user
  *   switches it to editing. Small files can be edited and saved. Very large files open as
  *   read-only pages.
  *

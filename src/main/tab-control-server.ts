@@ -362,7 +362,7 @@ export class TabControlService {
     if (!kind) {
       throw new RequestError(
         'bad-request',
-        `Ceteris cannot show "${name}". It shows .md, .txt, .json, .tex, .pdf and images.`,
+        `Ceteris cannot show "${name}". It shows .md, .txt, .json, .tex, .sql, .hive, .pdf and images.`,
       );
     }
     if (!(await this.host.isFile(path))) {

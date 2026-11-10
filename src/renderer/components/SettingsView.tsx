@@ -1215,6 +1215,7 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
   const selectOnCopy = b?.selectOnCopy ?? true;
   const terminalRightClick = b?.terminalRightClick ?? 'menu';
   const shelveIdleAfterHours = b?.shelveIdleAfterHours ?? 0;
+  const restoreTabsOnLaunch = b?.restoreTabsOnLaunch ?? true;
 
   return (
     <section className="settings-panel">
@@ -1264,6 +1265,25 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
             {tx('仅启动到托盘', 'Tray only')}
           </label>
         </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('启动时恢复标签', 'Reopen tabs at launch')}
+        hint={tx(
+          '退出、更新或崩溃后再打开 Ceteris,上次开着的标签都回来。Shell 和内置 agent 直接开回来,Claude Code 和 Codex 接着各自的对话;自定义命令、SSH 和管理员 Shell 放进收纳盒,点一下再开。',
+          'After a quit, an update or a crash, the tabs you had open come back. Shells and built-in agents start again, and Claude Code and Codex continue their own conversation. Custom commands, SSH and the Admin Shell wait in the shelf until you click them.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={restoreTabsOnLaunch}
+            onChange={(e) =>
+              void updateSettings({ behavior: { restoreTabsOnLaunch: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
       </SettingRow>
 
       <SettingRow

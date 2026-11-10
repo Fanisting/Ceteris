@@ -41,8 +41,11 @@ export interface ShelfEntry {
   lastActivityAt: number;
   /** Unix ms */
   shelvedAt: number;
-  /** 'auto' after the idle timeout, 'manual' from the tab menu */
-  reason: 'auto' | 'manual';
+  /**
+   * 'auto' after the idle timeout, 'manual' from the tab menu, 'restore' when a launch put
+   * back a tab it does not start on its own (ADR-039: custom command, SSH, Admin Shell)
+   */
+  reason: 'auto' | 'manual' | 'restore';
   /** Set when the agent's conversation can be resumed */
   resume: { agent: ResumableAgent; sessionId: string } | null;
 }
@@ -185,7 +188,7 @@ export function sanitizeShelfFile(raw: unknown): ShelfFile {
       createdAt: typeof r.createdAt === 'number' ? r.createdAt : r.shelvedAt,
       lastActivityAt: typeof r.lastActivityAt === 'number' ? r.lastActivityAt : r.shelvedAt,
       shelvedAt: r.shelvedAt,
-      reason: r.reason === 'manual' ? 'manual' : 'auto',
+      reason: r.reason === 'manual' || r.reason === 'restore' ? r.reason : 'auto',
       resume,
     });
     if (out.entries.length >= SHELF_MAX_ENTRIES) break;

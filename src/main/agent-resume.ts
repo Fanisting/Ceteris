@@ -213,3 +213,68 @@ async function findCodexSession(lookup: ResumeLookup): Promise<string | null> {
   }
   return newest(candidates);
 }
+
+/**
+ * ADR-039: whether the agent still has the transcript for `sessionId`, so `--resume <id>` /
+ * `resume <id>` will work. Checked before a launch passes the id, because Ceteris runs agents
+ * inside a shell that stays open (-NoExit): a refused id would leave the tab at a bare shell
+ * prompt instead of exiting, and nothing would notice.
+ *
+ * - Claude Code: `~/.claude/projects/<slug>/<id>.jsonl` for one of `cwds`. Only those folders
+ *   count, since `claude --resume` looks in the project of the directory it starts in.
+ * - Codex: any `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl`; `codex resume <id>` finds
+ *   it from any directory.
+ *
+ * Never throws; an unreadable folder counts as missing.
+ */
+export async function agentSessionExists(lookup: {
+  agent: ResumableAgent;
+  homeDir: string;
+  cwds: string[];
+  sessionId: string;
+}): Promise<boolean> {
+  if (!UUID_PATTERN.test(lookup.sessionId)) return false;
+  try {
+    if (lookup.agent === 'claude-code') {
+      for (const cwd of lookup.cwds) {
+        const path = join(
+          lookup.homeDir,
+          '.claude',
+          'projects',
+          claudeProjectSlug(cwd),
+          `${lookup.sessionId}.jsonl`,
+        );
+        try {
+          if ((await stat(path)).isFile()) return true;
+        } catch {
+          // not in this project folder
+        }
+      }
+      return false;
+    }
+    const suffix = `-${lookup.sessionId.toLowerCase()}.jsonl`;
+    const root = join(lookup.homeDir, '.codex', 'sessions');
+    // Newest years and months first: a conversation worth resuming is usually recent.
+    const list = async (dir: string): Promise<string[]> => {
+      try {
+        return (await readdir(dir)).sort().reverse();
+      } catch {
+        return [];
+      }
+    };
+    for (const y of await list(root)) {
+      for (const m of await list(join(root, y))) {
+        for (const d of await list(join(root, y, m))) {
+          const names = await list(join(root, y, m, d));
+          if (names.some((n) => n.startsWith('rollout-') && n.toLowerCase().endsWith(suffix))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  } catch (err) {
+    logger.warn('AgentResume', `exists check failed agent=${lookup.agent}`, err);
+    return false;
+  }
+}

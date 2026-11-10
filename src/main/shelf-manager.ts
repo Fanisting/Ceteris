@@ -253,6 +253,25 @@ export class ShelfManager extends EventEmitter {
     return { entry, pathId: entry.pathId, templateId: entry.templateId, extraArgs };
   }
 
+  /**
+   * ADR-039: puts back a tab that a launch does not start on its own (custom command, SSH,
+   * Admin Shell). No session is involved; the entry is made from what restore.json saved.
+   * Call after initialize(), or the load would overwrite it.
+   */
+  putBack(tab: Omit<ShelfEntry, 'id' | 'shelvedAt' | 'reason'>): ShelfEntry {
+    const entry: ShelfEntry = {
+      ...tab,
+      id: randomUUID(),
+      shelvedAt: this.now(),
+      reason: 'restore',
+    };
+    this.entries = pushEntry(this.entries, entry);
+    this.persist();
+    logger.info('Shelf', `put back "${entry.displayName}" template=${entry.templateId} at launch`);
+    this.emitChanged();
+    return entry;
+  }
+
   /** Drops one entry. Unknown ids are a no-op, so two windows can both clear the same row. */
   forget(entryId: string): void {
     const before = this.entries.length;

@@ -1364,6 +1364,20 @@ select.settings-input option {
   border-color: var(--md-primary, #f0f);
 }
 
+.toast-choice-step.current {
+  border-color: var(--md-primary, #f0f);
+}
+
+.toast-choice-send,
+.toast-choice-next,
+.toast-choice-go {
+  color: var(--md-primary, #f0f);
+}
+
+.toast-choice-input input:focus {
+  outline-color: var(--md-primary, #f0f);
+}
+
 .toast-action:hover {
   background-color: color-mix(in srgb, var(--md-inverse-on-surface, #f0f) 12%, transparent);
 }

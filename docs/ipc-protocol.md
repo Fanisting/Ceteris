@@ -221,7 +221,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:focus-owner` | 聚焦某 session 的 owner 窗口 |
 | `cmd:session:send-input` | 向 session 发送键盘输入 |
 | `cmd:session:read-choice` | **(ADR-035)** 读 agent 停着的提示:问题和编号选项 |
-| `cmd:session:answer-choice` | **(ADR-035)** 替用户在那个提示里选一项(方向键加回车) |
+| `cmd:session:answer-choice` | **(ADR-035)** 替用户回答那个提示:选项、打字回答、留言、翻页 |
 | `cmd:session:resize` | 通知 session 终端尺寸变化 |
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
 | `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
@@ -637,7 +637,7 @@ interface FocusSessionOwnerResponse {
 ---
 
 #### `cmd:session:read-choice`
-**(ADR-035)** 读某 session 屏幕末尾 agent 停着的提示。toast 里的"选项"按钮展开时调用。
+**(ADR-035)** 读某 session 屏幕末尾 agent 停着的提示。toast 里的"选项"按钮展开时调用,回答后面板每 200ms 再读一次,直到屏幕变了(下一页、勾上的框、或提示没了)。
 
 ```typescript
 // Payload
@@ -650,12 +650,22 @@ interface ReadChoiceResponse {
 }
 interface ChoicePrompt {
   question: string;              // 选项上面那一行,去掉框线;读不到就是空串
-  options: Array<{
-    index: number;               // 选项前印的数字,从 1 起
-    label: string;
-    pointed: boolean;            // agent 的指针停在这一项上
-    freeText: boolean;           // 选了还要打字("Type something."、"Chat about this"、"No, and tell Claude what to do")
-  }>;
+  options: ChoiceOption[];
+  pointer: number;               // 指针所在的方向键停靠位(选项的 pos,或多选列表的 Submit 行)
+  multiSelect: boolean;          // 选项带 [ ] / [✔],回车是勾选而不是作答
+  steps: Array<{ label: string; done: boolean }>;  // 分页提问的页签,不含最后的提交页;单页为空
+  reviewing: boolean;            // 提交页:"Ready to submit your answers?"
+  review: string[];              // 提交页上已选的答案行
+}
+interface ChoiceOption {
+  index: number;                 // 选项前印的数字,从 1 起
+  label: string;                 // 去掉多选框和"已选"✔ 的文字
+  description: string;           // 选项下面缩进的行:说明,或折行的长选项
+  pos: number;                   // 方向键停靠位;多选列表里 Submit 行也占一位,所以不总是 index-1
+  pointed: boolean;
+  input: 'none' | 'type' | 'chat';  // 直接选 / 打字回答(Type something)/ 离开提示后留言(Chat about this)
+  checked: boolean | null;       // 多选的勾;单选为 null
+  chosen: boolean;               // 分页提问退回某页时,先前选的那项
 }
 ```
 
@@ -664,26 +674,39 @@ interface ChoicePrompt {
 ---
 
 #### `cmd:session:answer-choice`
-**(ADR-035)** 替用户在提示里选一项。main 先重读一次屏幕核对提示还在、编号还在,再按指针位置发方向键和回车,过期的面板不会把按键敲进 agent 之后在做的事。
+**(ADR-035)** 替用户回答提示。main 先重读屏幕核对提示还在,再分段输入,每段之后等屏幕显示到位才发下一段,过期的面板不会把按键敲进 agent 之后在做的事。
 
 ```typescript
-// Payload
-interface AnswerChoicePayload {
-  sessionId: string;
-  index: number;                 // 选项前印的数字
-}
+// Payload:两种
+type AnswerChoicePayload =
+  | { sessionId: string; index: number; text?: string }  // 选一项;type 必须带 text,chat 可带留言
+  | { sessionId: string; next: true };                   // 分页提问翻到下一页(Tab),多选勾完后用
 // Response
 interface AnswerChoiceResponse {
   sent: boolean;
-  reason?: 'no-prompt' | 'option-gone' | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
+  reason?:
+    | 'no-prompt' | 'option-gone' | 'not-paged' | 'text-needed'
+    | 'pointer-stuck'   // 指针没到目标行,什么都没确认
+    | 'prompt-stuck'    // chat 选项选了但提示没离开,留言没发
+    | 'busy'            // 这个标签上一个回答还在输入
+    | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
 }
 ```
 
-**Errors**:无,都走 `reason`。
+各种 input 的输入顺序(按 2026-11-10 录下的 Claude Code 2.1.319 到 2.1.322 屏幕):
+
+| input | 输入 |
+|---|---|
+| none | 方向键 → 等指针到位 → 回车(多选列表里回车是勾 / 取消勾) |
+| type | 方向键 → 等到位 → 退格清掉先前打的字,打入一行文字 → 等文字显示 → 回车;多选列表不按回车(打字就已勾上,回车会取消) |
+| chat | 方向键 → 等到位 → 回车 → 等提示离开屏幕 → 留言(多行且终端开了 bracketed paste 就用它包起来)→ 回车 |
+| next | Tab |
+
+**Errors**:payload 既没有整数 index 也没有 `next: true` 时抛 `InvalidPayload`;其余都走 `reason`。
 
 **Side Effects**:
 - 同 `cmd:session:send-input`:写 PTY,记 lastInputAt / lastEnterAt
-- 日志 `answerChoice sid=… option N "label" from M`
+- 日志 `answerChoice sid=… option N "label" input=… from pos A to B chars=…`(不记打的内容)
 
 ---
 

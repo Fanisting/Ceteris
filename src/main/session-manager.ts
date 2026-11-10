@@ -51,6 +51,7 @@ import type {
   SessionStateChangedPayload,
 } from '@shared/protocol';
 import type { AgentWork, ChoicePrompt, SessionInfo, Template, Settings } from '@shared/types';
+import type { AnswerChoicePayload, AnswerChoiceResponse } from '@shared/protocol';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import type { TemplatesManager } from './templates-manager';
@@ -89,8 +90,10 @@ import { SESSION_ROLE_NAMES, type SessionRole } from '@shared/session-role';
 import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
 import {
   AGENT_PHASE_SCREEN_ROWS,
-  choiceKeys,
+  moveKeys,
+  oneLineAnswer,
   readChoicePrompt,
+  TYPE_OPTION,
   classifyWork,
   detectAgentPhase,
   readWorkSignals,
@@ -239,6 +242,26 @@ const INPUT_QUIET_MS = 200;
  * headless write 是异步 parse 的,等一会儿读到的屏幕才包含刚到的字节。
  */
 const AGENT_PHASE_CHECK_MS = 300;
+
+/**
+ * ADR-035: answering a prompt from a toast types in stages and checks the screen between
+ * them. A TUI moves its pointer, and turns a row into a text field, only when it redraws;
+ * text sent in the same burst as the arrow keys would reach the old row, where a digit
+ * picks an option. So each stage waits until the screen shows the pointer arrived.
+ */
+const CHOICE_POLL_MS = 50;
+/** How long one stage may take to show on screen before the answer is abandoned. */
+const CHOICE_STEP_TIMEOUT_MS = 1500;
+/** How long a 'chat' option may take to leave the prompt before the message is dropped. */
+const CHOICE_LEAVE_TIMEOUT_MS = 4000;
+/** Pause between typed text and the Enter that sends it, as in tab control (ADR-024). */
+const CHOICE_SUBMIT_DELAY_MS = 150;
+/** The longest answer or message typed from a toast. */
+const CHOICE_MAX_TEXT = 4000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * spawn 工厂,与 node-pty 的 spawn 兼容。测试中用 mock 替换。
@@ -1213,6 +1236,8 @@ export class SessionManager extends EventEmitter {
    * releases the window's others, which would blank every other pane.
    */
   private readonly paneSessions = new Map<string, Set<string>>();
+  /** ADR-035: sessions an answer is being typed into; a second click waits its turn. */
+  private readonly answeringChoice = new Set<string>();
 
   /** Empty list means one terminal, and claiming behaves as it always has. */
   setPaneSessions(windowId: string, sessionIds: string[]): void {
@@ -1978,34 +2003,136 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * ADR-035: picks option `index` in the prompt the agent stopped at, for the choice panel
-   * in a toast in another tab or window. Re-reads the screen first: a stale panel must
-   * never type arrow keys and Enter into whatever the agent is doing by now.
+   * ADR-035: answers the prompt the agent stopped at, for the choice panel in a toast in
+   * another tab or window. Re-reads the screen first and after every stage: a stale panel
+   * must never type into whatever the agent is doing by now.
+   *
+   * Stages for a pick (see the recordings in agent-phase.test.ts):
+   *
+   *   arrows ──(pointer on target)──┬─ none ──────── Enter (multi-select: Enter ticks)
+   *                                 ├─ type ── clear old text, text ─(shown)─ Enter
+   *                                 │          (multi-select: no Enter, typing ticks it)
+   *                                 └─ chat ── Enter ─(prompt gone)─ message, Enter
+   *
+   * { next: true } sends Tab, which pages forward in a paged AskUserQuestion.
    *
    * @returns sent=false with a reason instead of throwing: the panel shows the reason and
    *   offers the tab, nothing here is an error of the caller's
    */
-  answerChoice(
-    sessionId: string,
-    index: number,
-  ): {
-    sent: boolean;
-    reason?: 'no-prompt' | 'option-gone' | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
-  } {
-    const prompt = this.readChoice(sessionId);
+  async answerChoice(action: AnswerChoicePayload): Promise<AnswerChoiceResponse> {
+    const { sessionId } = action;
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return { sent: false, reason: 'session-not-found' };
+    if (this.answeringChoice.has(sessionId)) return { sent: false, reason: 'busy' };
+    this.answeringChoice.add(sessionId);
+    try {
+      return await this.typeChoice(managed, action);
+    } finally {
+      this.answeringChoice.delete(sessionId);
+    }
+  }
+
+  private async typeChoice(
+    managed: ManagedSession,
+    action: AnswerChoicePayload,
+  ): Promise<AnswerChoiceResponse> {
+    const sid = managed.info.id;
+    const prompt = this.readChoice(sid);
     if (!prompt) return { sent: false, reason: 'no-prompt' };
-    const pointed = prompt.options.find((o) => o.pointed);
-    const target = prompt.options.find((o) => o.index === index);
-    if (!pointed || !target) return { sent: false, reason: 'option-gone' };
+    const write = (data: string): AnswerChoiceResponse | null => {
+      const res = this.sendInput(sid, Buffer.from(data, 'utf8').toString('base64'));
+      return res.accepted ? null : { sent: false, reason: res.reason ?? 'pty-write-failed' };
+    };
+
+    if ('next' in action) {
+      if (prompt.steps.length === 0 || prompt.reviewing)
+        return { sent: false, reason: 'not-paged' };
+      logger.info('SessionManager', `answerChoice sid=${sid} next page`);
+      return write('\t') ?? { sent: true };
+    }
+
+    const target = prompt.options.find((o) => o.index === action.index);
+    if (!target) return { sent: false, reason: 'option-gone' };
+    const raw = (action.text ?? '').slice(0, CHOICE_MAX_TEXT);
+    const text = target.input === 'type' ? oneLineAnswer(raw) : raw.trim();
+    if (target.input === 'type' && !text) return { sent: false, reason: 'text-needed' };
     logger.info(
       'SessionManager',
-      `answerChoice sid=${sessionId} option ${index} "${target.label}" from ${pointed.index}`,
+      `answerChoice sid=${sid} option ${target.index} "${target.label}" input=${target.input} ` +
+        `from pos ${prompt.pointer} to ${target.pos} chars=${text.length}`,
     );
-    const keys = Buffer.from(choiceKeys(pointed.index, target.index), 'utf8').toString('base64');
-    const res = this.sendInput(sessionId, keys);
-    return res.accepted
-      ? { sent: true }
-      : { sent: false, reason: res.reason ?? 'pty-write-failed' };
+
+    if (prompt.pointer !== target.pos) {
+      const failed = write(moveKeys(prompt.pointer, target.pos));
+      if (failed) return failed;
+      const arrived = await this.waitForChoice(managed, (p) => p?.pointer === target.pos);
+      if (!arrived) {
+        logger.warn(
+          'SessionManager',
+          `answerChoice sid=${sid} pointer never reached ${target.pos}`,
+        );
+        return { sent: false, reason: 'pointer-stuck' };
+      }
+    }
+
+    if (target.input === 'type') {
+      // Text typed there earlier is still in the field; the row shows it as the label.
+      const old = TYPE_OPTION.test(target.label) ? 0 : [...target.label].length;
+      const failed = write('\x7f'.repeat(old) + text);
+      if (failed) return failed;
+      const head = text.slice(0, 8);
+      const shown = await this.waitForChoice(managed, (p) =>
+        Boolean(p?.options.find((o) => o.pos === target.pos)?.label.startsWith(head)),
+      );
+      if (!shown) {
+        logger.warn('SessionManager', `answerChoice sid=${sid} typed text never showed`);
+        return { sent: false, reason: 'pointer-stuck' };
+      }
+      // In a multi-select list the typed row is ticked as soon as it has text; Enter would
+      // untick it (recorded 2026-11-10). The user pages on with { next: true }.
+      if (prompt.multiSelect) return { sent: true };
+      await sleep(CHOICE_SUBMIT_DELAY_MS);
+      return write('\r') ?? { sent: true };
+    }
+
+    const failed = write('\r');
+    if (failed) return failed;
+    if (target.input !== 'chat' || !text) return { sent: true };
+
+    // "Chat about this" and "No, and tell Claude" leave the prompt; the message then goes to
+    // the agent's normal input, queued by the agent if it is answering the decline first.
+    const left = await this.waitForChoice(managed, (p) => p === null, CHOICE_LEAVE_TIMEOUT_MS);
+    if (!left) return { sent: false, reason: 'prompt-stuck' };
+    const multiline = /[\r\n]/.test(text);
+    const body =
+      multiline && this.isBracketedPasteOn(sid)
+        ? `\x1b[200~${text}\x1b[201~`
+        : multiline
+          ? oneLineAnswer(text)
+          : text;
+    const typed = write(body);
+    if (typed) return typed;
+    await sleep(CHOICE_SUBMIT_DELAY_MS);
+    return write('\r') ?? { sent: true };
+  }
+
+  /**
+   * Polls the screen until `ok` holds for the prompt on it (null when there is none).
+   * Reads the screen directly, not through agentPhase, which lags output by up to 300ms.
+   */
+  private async waitForChoice(
+    managed: ManagedSession,
+    ok: (prompt: ChoicePrompt | null) => boolean,
+    timeoutMs = CHOICE_STEP_TIMEOUT_MS,
+  ): Promise<boolean> {
+    const until = Date.now() + timeoutMs;
+    for (;;) {
+      if (!this.sessions.has(managed.info.id)) return false;
+      const screen = this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS);
+      if (ok(readChoicePrompt(screen))) return true;
+      if (Date.now() >= until) return false;
+      await sleep(CHOICE_POLL_MS);
+    }
   }
 
   private getHeadlessTail(managed: ManagedSession, maxRows: number): string {

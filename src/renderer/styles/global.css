@@ -3326,6 +3326,123 @@ select.settings-input option {
   opacity: 0.75;
 }
 
+/* 分页提问的页签:答过的打勾,提交页在最后 */
+.toast-choice-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.toast-choice-step {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
+  border-radius: 999px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.toast-choice-step.done {
+  opacity: 1;
+}
+
+.toast-choice-step.current {
+  opacity: 1;
+  border-color: var(--color-accent-special, #f0f);
+}
+
+/* 提交页:已选的答案 */
+.toast-choice-review {
+  margin-bottom: 6px;
+}
+
+.toast-choice-review-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toast-choice-review-line.answer {
+  padding-left: 12px;
+  opacity: 0.8;
+}
+
+.toast-choice-review-line.warn {
+  color: var(--color-warning, #f0f);
+}
+
+.toast-choice-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-choice-option.chosen {
+  border-color: color-mix(in srgb, currentcolor 55%, transparent);
+}
+
+.toast-choice-box {
+  margin-right: 6px;
+}
+
+.toast-choice-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* 打字回答 / 留言的输入行 */
+.toast-choice-input {
+  display: flex;
+  gap: 6px;
+}
+
+.toast-choice-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, currentcolor 6%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+.toast-choice-input input:focus {
+  outline: 2px solid var(--color-accent-special, #f0f);
+  outline-offset: -1px;
+}
+
+.toast-choice-send,
+.toast-choice-next,
+.toast-choice-go {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, currentcolor 30%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-accent-special, #f0f);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toast-choice-next {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.toast-choice-go {
+  padding: 0 6px;
+  border: none;
+}
+
+.toast-choice-send:disabled,
+.toast-choice-next:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ── Bootstrap / 错误占位 ── */
 
 .bootstrap-placeholder {

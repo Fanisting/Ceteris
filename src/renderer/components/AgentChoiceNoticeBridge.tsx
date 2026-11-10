@@ -20,7 +20,8 @@
  * - "Options" expands the toast into the prompt itself: main reads the question and the
  *   numbered options off the tab's screen (cmd:session:read-choice) and a click answers
  *   through cmd:session:answer-choice, which re-reads the screen before typing anything.
- *   The toast closes on a sent answer; the phase change would close it a moment later too.
+ *   The panel itself lives in ChoicePanel.tsx. The toast stays while the agent is still at
+ *   a prompt (the next page of a paged one), and closes when the phase leaves 'blocked'.
  *
  * @对应文档章节:软件定义书.md ADR-035
  * @不要在这里做的事:
@@ -29,16 +30,9 @@
  * - No settings switch yet: the toast fires only for a tab out of sight, at most once per
  *   prompt, so there is nothing to tune until someone asks.
  */
-import { useEffect, useRef, useState } from 'react';
-import {
-  COMMAND_CHANNELS,
-  type AnswerChoicePayload,
-  type AnswerChoiceResponse,
-  type FocusSessionOwnerResponse,
-  type ReadChoicePayload,
-  type ReadChoiceResponse,
-} from '@shared/protocol';
-import type { AgentPhase, ChoiceOption, ChoicePrompt, SessionInfo } from '@shared/types';
+import { useEffect, useRef } from 'react';
+import { COMMAND_CHANNELS, type FocusSessionOwnerResponse } from '@shared/protocol';
+import type { AgentPhase, SessionInfo } from '@shared/types';
 import {
   findMyOwnedSessionId,
   getDisplayableSession,
@@ -49,6 +43,7 @@ import {
   useAppStateRef,
   type AppState,
 } from '../store';
+import { ChoicePanel } from './ChoicePanel';
 import { useTranslation } from './LanguageProvider';
 import { useToast } from './Toast';
 
@@ -63,108 +58,6 @@ function isVisibleHere(state: AppState, sessionId: string): boolean {
   if (getDisplayableSession(state)?.id === sessionId) return true;
   if (getEffectivePaneLayout(state) === 'single') return false;
   return getPaneSlots(state).some((s) => s?.id === sessionId);
-}
-
-/**
- * The expanded part of the toast: the agent's question and its options as buttons. A click
- * sends the pick to the tab through main, which re-reads the screen first. Options that
- * want typed text afterwards open the tab instead; typing belongs in the terminal.
- */
-function ChoicePanel({
-  sessionId,
-  onGo,
-  onSent,
-}: {
-  sessionId: string;
-  onGo: () => void;
-  onSent: () => void;
-}): JSX.Element {
-  const { tx } = useTranslation();
-  /** undefined while loading */
-  const [prompt, setPrompt] = useState<ChoicePrompt | null | undefined>(undefined);
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
-
-  useEffect(() => {
-    let alive = true;
-    window.api
-      .invoke<ReadChoicePayload, ReadChoiceResponse>(COMMAND_CHANNELS.SESSION_READ_CHOICE, {
-        sessionId,
-      })
-      .then((res) => {
-        if (alive) setPrompt(res.prompt);
-      })
-      .catch((err) => {
-        console.warn('[AgentChoiceNotice] read-choice failed', err);
-        if (alive) setPrompt(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionId]);
-
-  const pick = (option: ChoiceOption): void => {
-    if (option.freeText) {
-      onGo();
-      return;
-    }
-    setStatus('sending');
-    window.api
-      .invoke<AnswerChoicePayload, AnswerChoiceResponse>(COMMAND_CHANNELS.SESSION_ANSWER_CHOICE, {
-        sessionId,
-        index: option.index,
-      })
-      .then((res) => {
-        if (res.sent) {
-          setStatus('sent');
-          onSent();
-        } else {
-          console.warn('[AgentChoiceNotice] answer-choice refused', res.reason);
-          setStatus('failed');
-        }
-      })
-      .catch((err) => {
-        console.warn('[AgentChoiceNotice] answer-choice failed', err);
-        setStatus('failed');
-      });
-  };
-
-  if (prompt === undefined) {
-    return <span className="toast-choice-empty">{tx('读取中…', 'Reading…')}</span>;
-  }
-  if (!prompt) {
-    return (
-      <span className="toast-choice-empty">
-        {tx('读不出选项,去标签里看看', 'Could not read the options, open the tab')}
-      </span>
-    );
-  }
-  return (
-    <>
-      {prompt.question && <div className="toast-choice-question">{prompt.question}</div>}
-      <div className="toast-choice-list">
-        {prompt.options.map((o) => (
-          <button
-            key={o.index}
-            type="button"
-            className={'toast-choice-option' + (o.pointed ? ' pointed' : '')}
-            disabled={status === 'sending' || status === 'sent'}
-            onClick={() => pick(o)}
-          >
-            <span className="toast-choice-index">{o.index}.</span>
-            {o.label}
-            {o.freeText && (
-              <span className="toast-choice-note">{tx('(去标签里打字)', '(type in the tab)')}</span>
-            )}
-          </button>
-        ))}
-      </div>
-      {status === 'failed' && (
-        <div className="toast-choice-empty">
-          {tx('提示已经变了,去标签里看看', 'The prompt changed, open the tab')}
-        </div>
-      )}
-    </>
-  );
 }
 
 export function AgentChoiceNoticeBridge(): null {
@@ -241,12 +134,6 @@ export function AgentChoiceNoticeBridge(): null {
         if (isVisibleHere(state, s.id)) continue;
         // Look the session up again at click time: its owner may have changed by then.
         const go = (): void => goToTab(stateRef.current.sessions.get(s.id) ?? s);
-        const closeOwn = (): void => {
-          const tid = open.current.get(s.id);
-          if (tid === undefined) return;
-          toast.dismiss(tid);
-          open.current.delete(s.id);
-        };
         const id = toast.push({
           kind: 'warn',
           message: tx(
@@ -256,7 +143,7 @@ export function AgentChoiceNoticeBridge(): null {
           durationMs: CHOICE_TOAST_MS,
           detail: {
             label: tx('选项', 'Options'),
-            render: () => <ChoicePanel sessionId={s.id} onGo={go} onSent={closeOwn} />,
+            render: () => <ChoicePanel sessionId={s.id} onGo={go} />,
           },
           actions: [{ label: tx('去看看', 'Go to tab'), onClick: go }],
         });

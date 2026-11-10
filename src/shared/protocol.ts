@@ -593,20 +593,43 @@ export interface ReadChoiceResponse {
   prompt: ChoicePrompt | null;
 }
 
-/** cmd:session:answer-choice (ADR-035) */
-export interface AnswerChoicePayload {
-  sessionId: string;
-  /** 选项前面印的数字 */
-  index: number;
-}
+/**
+ * cmd:session:answer-choice (ADR-035). Two shapes:
+ * - { index, text? }: pick the option with that printed number. text is the answer for a
+ *   'type' option (required) or the message after a 'chat' option (optional).
+ * - { next: true }: go to the next page of a paged prompt (Tab); multi-select uses it once
+ *   the boxes are ticked.
+ */
+export type AnswerChoicePayload =
+  | { sessionId: string; index: number; text?: string }
+  | { sessionId: string; next: true };
+
+/**
+ * Why an answer was not (fully) sent:
+ * - no-prompt: the agent is no longer at a prompt
+ * - option-gone: the prompt changed and has no option with that number
+ * - not-paged: next on a prompt without pages, or on its last page
+ * - text-needed: a 'type' option with no text
+ * - pointer-stuck: the pointer did not reach the option, so nothing was confirmed
+ * - prompt-stuck: a 'chat' option was picked but the prompt stayed, so the message was not sent
+ * - busy: another answer to this tab is still being typed
+ * - session-not-found / pty-exited / pty-write-failed: as in cmd:session:send-input
+ */
+export type AnswerChoiceReason =
+  | 'no-prompt'
+  | 'option-gone'
+  | 'not-paged'
+  | 'text-needed'
+  | 'pointer-stuck'
+  | 'prompt-stuck'
+  | 'busy'
+  | 'session-not-found'
+  | 'pty-exited'
+  | 'pty-write-failed';
 
 export interface AnswerChoiceResponse {
   sent: boolean;
-  /**
-   * no-prompt:agent 已经不在提示上;option-gone:提示变了,没有这个编号;
-   * 其余同 cmd:session:send-input。
-   */
-  reason?: 'no-prompt' | 'option-gone' | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
+  reason?: AnswerChoiceReason;
 }
 
 /**

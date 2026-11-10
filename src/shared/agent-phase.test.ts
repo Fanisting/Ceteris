@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  choiceKeys,
   classifyWork,
   detectAgentPhase,
+  moveKeys,
+  oneLineAnswer,
   readChoicePrompt,
   readWorkSignals,
   updateTokenRate,
@@ -165,29 +166,161 @@ describe('agent work and pace', () => {
 });
 
 describe('readChoicePrompt (ADR-035)', () => {
-  it('reads the question and options of each prompt kind', () => {
+  // Screens recorded from Claude Code 2.1.319 to 2.1.322 on 2026-11-10, HUD rows dropped.
+  const RULE = '─'.repeat(40);
+  const PAGED_Q1 = [
+    RULE,
+    '←  ☐ Colour  ☐ Size  ✔ Submit  →',
+    'Which colour?',
+    '❯ 1. Red',
+    '     Red',
+    '  2. Blue',
+    '     Blue',
+    '  3. Type something.',
+    RULE,
+    '  4. Chat about this',
+    'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
+  ].join('\n');
+  // Stepped back to page two after answering it: the earlier answer carries a ✔.
+  const PAGED_Q2_BACK = [
+    '←  ☒ Colour  ☒ Size  ✔ Submit  →',
+    'Which size?',
+    '❯ 1. Small ✔',
+    '     Small',
+    '  2. Large',
+    '     Large',
+    '  3. Type something.',
+    RULE,
+    '  4. Chat about this',
+    'Enter to select · Tab/Arrow keys to navigate · Esc to cancel',
+  ].join('\n');
+  // The review page has no footer.
+  const REVIEW = [
+    RULE,
+    '←  ☒ Colour  ☒ Size  ✔ Submit  →',
+    'Review your answers',
+    ' ● Which colour?',
+    '   → Red',
+    ' ● Which size?',
+    '   → Small',
+    'Ready to submit your answers?',
+    '❯ 1. Submit answers',
+    '  2. Cancel',
+  ].join('\n');
+  const MULTI = [
+    '←  ☒ Fruit  ✔ Submit  →',
+    'Which fruits?',
+    '  1. [✔] Apple',
+    '         Apple',
+    '❯ 2. [✔] Pear',
+    '         Pear',
+    '  3. [ ] Plum',
+    '         Plum',
+    '  4. [ ] Type something',
+    '     Submit',
+    RULE,
+    '  5. Chat about this',
+    'Enter to select · ↑/↓ to navigate · Esc to cancel',
+  ].join('\n');
+  // Multi-select after typing "Kiwi" into its field, pointer moved on to the Submit row.
+  const MULTI_ON_SUBMIT = MULTI.replace('❯ 2.', '  2.')
+    .replace('  4. [ ] Type something', '  4. [✔] Kiwi')
+    .replace('     Submit', '❯    Submit');
+  // Single-select with "Green please" typed into the field.
+  const TYPED = [
+    ' ☐ Colour ',
+    'Which colour?',
+    '  1. Red',
+    '  2. Blue',
+    '❯ 3. Green please',
+    RULE,
+    '  4. Chat about this',
+    'Enter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel',
+  ].join('\n');
+  // Claude Code 2.1.322's file approval: option 2 wraps, option 3 is a plain "No".
+  const APPROVAL_2_1_322 = [
+    ' Do you want to create approval-probe.txt?',
+    ' ❯ 1. Yes',
+    '   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session;',
+    '      Yes, and always allow access to C:\\tmp for this session (shift+tab)',
+    '   3. No',
+    ' Esc to cancel · Tab to amend',
+  ].join('\n');
+
+  it('reads a one-page prompt with option descriptions', () => {
     expect(readChoicePrompt(CLAUDE_CHOICE)).toEqual({
       question: 'Which colour do you prefer?',
       options: [
-        { index: 1, label: 'Red (Recommended)', pointed: true, freeText: false },
-        { index: 2, label: 'Blue', pointed: false, freeText: false },
-        { index: 3, label: 'Type something.', pointed: false, freeText: true },
-        { index: 4, label: 'Chat about this', pointed: false, freeText: true },
-      ],
-    });
-    expect(readChoicePrompt(CLAUDE_APPROVAL)).toEqual({
-      question: 'Do you want to proceed?',
-      options: [
-        { index: 1, label: 'Yes', pointed: true, freeText: false },
+        {
+          index: 1,
+          label: 'Red (Recommended)',
+          description: 'Choose red.',
+          pos: 0,
+          pointed: true,
+          input: 'none',
+          checked: null,
+          chosen: false,
+        },
         {
           index: 2,
-          label: "Yes, and don't ask again for npm test",
+          label: 'Blue',
+          description: 'Choose blue.',
+          pos: 1,
           pointed: false,
-          freeText: false,
+          input: 'none',
+          checked: null,
+          chosen: false,
         },
-        { index: 3, label: 'No, and tell Claude what to do (esc)', pointed: false, freeText: true },
+        {
+          index: 3,
+          label: 'Type something.',
+          description: '',
+          pos: 2,
+          pointed: false,
+          input: 'type',
+          checked: null,
+          chosen: false,
+        },
+        {
+          index: 4,
+          label: 'Chat about this',
+          description: '',
+          pos: 3,
+          pointed: false,
+          input: 'chat',
+          checked: null,
+          chosen: false,
+        },
       ],
+      pointer: 0,
+      multiSelect: false,
+      steps: [],
+      reviewing: false,
+      review: [],
     });
+  });
+
+  it('reads approval prompts, old and new', () => {
+    const old = readChoicePrompt(CLAUDE_APPROVAL);
+    expect(old?.question).toBe('Do you want to proceed?');
+    expect(old?.options.map((o) => [o.label, o.input])).toEqual([
+      ['Yes', 'none'],
+      ["Yes, and don't ask again for npm test", 'none'],
+      ['No, and tell Claude what to do (esc)', 'chat'],
+    ]);
+    const now = readChoicePrompt(APPROVAL_2_1_322);
+    expect(now?.question).toBe('Do you want to create approval-probe.txt?');
+    expect(now?.options.map((o) => [o.label, o.input])).toEqual([
+      ['Yes', 'none'],
+      [
+        'Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session;',
+        'none',
+      ],
+      ['No', 'none'],
+    ]);
+    expect(now?.options[1]?.description).toBe(
+      'Yes, and always allow access to C:\\tmp for this session (shift+tab)',
+    );
     expect(readChoicePrompt(CODEX_APPROVAL)?.options.map((o) => o.pointed)).toEqual([
       true,
       false,
@@ -195,17 +328,84 @@ describe('readChoicePrompt (ADR-035)', () => {
     ]);
   });
 
+  it('reads the pages of a several-question prompt', () => {
+    const q1 = readChoicePrompt(PAGED_Q1);
+    expect(q1?.steps).toEqual([
+      { label: 'Colour', done: false },
+      { label: 'Size', done: false },
+    ]);
+    expect(q1?.question).toBe('Which colour?');
+    const back = readChoicePrompt(PAGED_Q2_BACK);
+    expect(back?.steps.map((s) => s.done)).toEqual([true, true]);
+    expect(back?.options[0]).toMatchObject({ label: 'Small', chosen: true, pointed: true });
+  });
+
+  it('reads the review page that submits them', () => {
+    expect(readChoicePrompt(REVIEW)).toMatchObject({
+      question: 'Ready to submit your answers?',
+      reviewing: true,
+      review: ['● Which colour?', '→ Red', '● Which size?', '→ Small'],
+      options: [
+        { index: 1, label: 'Submit answers', pointed: true },
+        { index: 2, label: 'Cancel', pointed: false },
+      ],
+    });
+  });
+
+  it('reads multi-select boxes and counts the unnumbered Submit row as a stop', () => {
+    const p = readChoicePrompt(MULTI);
+    expect(p?.multiSelect).toBe(true);
+    expect(p?.options.map((o) => [o.label, o.checked, o.pos, o.input])).toEqual([
+      ['Apple', true, 0, 'none'],
+      ['Pear', true, 1, 'none'],
+      ['Plum', false, 2, 'none'],
+      ['Type something', false, 3, 'type'],
+      ['Chat about this', null, 5, 'chat'],
+    ]);
+    expect(p?.pointer).toBe(1);
+    // The pointer on the Submit row is still a live prompt; the typed row keeps its kind.
+    const onSubmit = readChoicePrompt(MULTI_ON_SUBMIT);
+    expect(onSubmit?.pointer).toBe(4);
+    expect(onSubmit?.options[3]).toMatchObject({ label: 'Kiwi', checked: true, input: 'type' });
+  });
+
+  it('keeps the kind of a text field that already holds an answer', () => {
+    expect(readChoicePrompt(TYPED)?.options[2]).toMatchObject({
+      label: 'Green please',
+      input: 'type',
+      pointed: true,
+    });
+  });
+
   it('refuses rows that are not a live prompt', () => {
     // A numbered list in prose: no pointer.
     expect(readChoicePrompt('● Two options:\n  1. Keep it\n  2. Drop it\n❯')).toBeNull();
-    // Numbers out of order are not an option set.
+    // Numbers that do not start at 1 are not an option set.
     expect(readChoicePrompt('Pick:\n❯ 2. Second\n  3. Third')).toBeNull();
     expect(readChoicePrompt(SHELL)).toBeNull();
   });
 
-  it('turns an option pick into arrow keys and Enter', () => {
-    expect(choiceKeys(1, 1)).toBe('\r');
-    expect(choiceKeys(1, 3)).toBe('\x1b[B\x1b[B\r');
-    expect(choiceKeys(3, 2)).toBe('\x1b[A\r');
+  it('takes the last numbered run, so prose above the prompt does not count', () => {
+    const screen = `● Plan:\n  1. Read the file\n  2. Fix the bug\n${CLAUDE_CHOICE}`;
+    expect(readChoicePrompt(screen)?.options.map((o) => o.label)).toEqual([
+      'Red (Recommended)',
+      'Blue',
+      'Type something.',
+      'Chat about this',
+    ]);
+  });
+
+  it('turns a move into arrow keys and makes typed answers one line', () => {
+    expect(moveKeys(1, 1)).toBe('');
+    expect(moveKeys(0, 2)).toBe('\x1b[B\x1b[B');
+    expect(moveKeys(3, 2)).toBe('\x1b[A');
+    expect(oneLineAnswer('  two\r\nlines\x07 ')).toBe('two lines');
+  });
+
+  it('counts the review page and a pointer on the chat row as blocked', () => {
+    expect(detectAgentPhase('claude-code', REVIEW, 'idle')).toBe('blocked');
+    const onChat = PAGED_Q1.replace('❯ 1. Red', '  1. Red').replace('  4. Chat', '❯ 4. Chat');
+    expect(detectAgentPhase('claude-code', onChat, 'idle')).toBe('blocked');
+    expect(detectAgentPhase('claude-code', MULTI_ON_SUBMIT, 'idle')).toBe('blocked');
   });
 });

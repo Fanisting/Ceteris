@@ -1010,8 +1010,24 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_ANSWER_CHOICE,
-    (_e, envelope: CommandEnvelope<AnswerChoicePayload>): AnswerChoiceResponse =>
-      sessionManager.answerChoice(envelope.payload.sessionId, envelope.payload.index),
+    (_e, envelope: CommandEnvelope<AnswerChoicePayload>): Promise<AnswerChoiceResponse> => {
+      // The payload crosses from the renderer: rebuild it from checked fields only.
+      const p = envelope.payload as unknown as Record<string, unknown>;
+      const sessionId = typeof p.sessionId === 'string' ? p.sessionId : '';
+      if (p.next === true) return sessionManager.answerChoice({ sessionId, next: true });
+      if (typeof p.index !== 'number' || !Number.isInteger(p.index)) {
+        throw makeIpcError(
+          'InvalidPayload',
+          `answer-choice needs an integer index or next:true; got keys ${Object.keys(p).join(',')}. ` +
+            'Likely a renderer built against an older protocol; reload the window.',
+        );
+      }
+      return sessionManager.answerChoice({
+        sessionId,
+        index: p.index,
+        ...(typeof p.text === 'string' ? { text: p.text } : {}),
+      });
+    },
   );
 
   handleCommand(

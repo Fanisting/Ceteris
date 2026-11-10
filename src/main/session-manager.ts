@@ -492,6 +492,12 @@ export interface CreateSessionInput {
    * 非 0 留下 exited 状态的 tab,用户能看到报错。
    */
   commandOverride?: { name: string; command: string; args: string[]; closeOnSuccess?: boolean };
+  /**
+   * 追加在模板 args 之后的参数,其余 (env / shell / hook / 退出行为) 全按模板。
+   * 整体重载 (ADR-037) 用它给 `claude` 加 `--continue` 之类的恢复参数。
+   * 纯 shell 模板 (command 为空) 忽略它。与 commandOverride 同时给时以 commandOverride 为准。
+   */
+  extraArgs?: string[];
 }
 
 export class SessionManagerError extends Error {
@@ -664,7 +670,9 @@ export class SessionManager extends EventEmitter {
           env: {},
           postExitAction: 'keep_shell' as const,
         }
-      : resolved;
+      : input.extraArgs && input.extraArgs.length > 0 && resolved.command
+        ? { ...resolved, args: [...resolved.args, ...input.extraArgs] }
+        : resolved;
     const dims = validateDimensions(input.cols, input.rows);
     const shells = await this.getShells();
     if (shells.length === 0) {

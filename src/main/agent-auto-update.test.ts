@@ -94,6 +94,42 @@ describe('AgentAutoUpdater', () => {
     expect(startUpgrade).toHaveBeenCalledTimes(1);
   });
 
+  it('cancelPending hands a waiting update to a reload without skipping the version', async () => {
+    const { updater, kinds, state, startUpgrade } = setup();
+    state.running = true;
+    await updater.checkNow();
+    expect(kinds()).toEqual(['waiting']);
+    updater.cancelPending('codex');
+    // the reload closes the tabs: the auto updater must not start its own countdown
+    state.running = false;
+    updater.onSessionsChanged();
+    await vi.advanceTimersByTimeAsync(AUTO_UPDATE_DELAY_MS);
+    expect(kinds()).toEqual(['waiting']);
+    expect(startUpgrade).not.toHaveBeenCalled();
+    // the version is not skipped: a later check offers it again
+    await updater.checkNow();
+    await vi.advanceTimersByTimeAsync(AUTO_UPDATE_DELAY_MS);
+    expect(kinds()).toEqual(['waiting', 'scheduled', 'done']);
+  });
+
+  it('isBusy is true only while a background update is queued or running', async () => {
+    const { updater, state, startUpgrade } = setup();
+    expect(updater.isBusy('codex')).toBe(false);
+    let finish: (() => void) | null = null;
+    startUpgrade.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ exitCode: state.exitCode, sessionId: 's1', pathId: '/home' });
+        }),
+    );
+    await updater.checkNow();
+    await vi.advanceTimersByTimeAsync(AUTO_UPDATE_DELAY_MS);
+    expect(updater.isBusy('codex')).toBe(true);
+    finish!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(updater.isBusy('codex')).toBe(false);
+  });
+
   it('does nothing without a window, and starts when one opens', async () => {
     const { updater, kinds, state } = setup();
     state.windows = 0;

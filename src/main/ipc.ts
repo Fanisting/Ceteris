@@ -1371,7 +1371,24 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_SHOW_IN_EXPLORER,
     async (_e, envelope: CommandEnvelope<ShowInExplorerPayload>): Promise<void> => {
-      shell.showItemInFolder(envelope.payload.path);
+      const { path, open } = envelope.payload;
+      // open 只对文件夹生效:shell.openPath 遇到文件会用关联程序运行它 (.exe、.bat 直接执行),
+      // 所以先确认是目录。stat 失败或不是目录时退回 showItemInFolder,只在父目录里选中。
+      if (
+        open &&
+        (await fs.stat(path).then(
+          (s) => s.isDirectory(),
+          () => false,
+        ))
+      ) {
+        const err = await shell.openPath(path);
+        if (!err) return;
+        logger.warn(
+          'ipc',
+          `show-in-explorer openPath failed for ${path}: ${err}; selecting it instead`,
+        );
+      }
+      shell.showItemInFolder(path);
     },
   );
 

@@ -1059,6 +1059,11 @@ export interface GetAutoStartResponse {
 
 export interface ShowInExplorerPayload {
   path: string;
+  /**
+   * true: open a folder itself in the system file manager instead of selecting it in its
+   * parent. Ignored for files (main never runs a file), they are always just selected.
+   */
+  open?: boolean;
 }
 
 export interface OpenExternalPayload {

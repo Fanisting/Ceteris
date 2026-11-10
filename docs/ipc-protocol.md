@@ -248,6 +248,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:system:open-external` | 用系统默认浏览器打开 URL(仅 http(s)/mailto) |
 | `cmd:fs:list-dir` | 列目录(本地或 SFTP),文件树用 |
 | `cmd:fs:rename` | 重命名本地文件树条目 |
+| `cmd:fs:delete` | 把本地文件树条目移到回收站 |
 | `cmd:fs:read-pdf` | 分块读取可查看的文件(PDF / 图片 / markdown) |
 | `cmd:fs:stat-file` | **(v1.4)** 查文件大小和修改时间,PDF 自动刷新轮询用 |
 | `cmd:ssh:askpass-answer` | **(v1.4)** 回答一条 `evt:ssh:askpass-prompt` |
@@ -1130,6 +1131,20 @@ type RenameEntryResponse =
 **Errors**:无。目标已存在时返回 `exists`,绝不覆盖
 
 **Side Effects**:在原目录内改名。本节的命令在 Link 远程窗口里都转发给 Host,因为路径和 SSH profile 都在 Host 上
+
+#### `cmd:fs:delete`
+```typescript
+interface DeleteEntryPayload {
+  path: string;                 // 本地条目绝对路径
+}
+type DeleteEntryResponse =
+  | { ok: true }
+  | { ok: false; reason: FileTreeFailure };
+```
+
+**Errors**:无。路径不存在返回 `not-found`;相对路径和盘符根返回 `invalid-name`;回收站拒收 (被占用、所在盘没有回收站) 返回 `unknown`
+
+**Side Effects**:调 `shell.trashItem()` 移到回收站,从不永久删除。只用于本地路径,SFTP 文件树没有删除
 
 #### `cmd:fs:read-pdf`
 ```typescript

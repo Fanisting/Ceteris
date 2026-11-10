@@ -28,7 +28,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [OnePage Markdown look](onepage-markdown.md) | A paper-like reading style for Markdown | 0.4.1 |
 | [New file in the file tree](file-tree-new-file.md) | Create an empty file from the tree | 0.4.1 |
 | [Pinned folders in the file tree](file-tree-pins.md) | Pin folders as small blocks atop the tree | 0.4.1 |
-| [Open in File Explorer](file-tree-open-in-explorer.md) | Open a local folder from the file tree in the system file manager | Next |
+| [Open in File Explorer and delete](file-tree-open-in-explorer.md) | Open a local folder in File Explorer, or move an item to the Recycle Bin | Next |
 | [Formula images for Claude Code](formula-images-claude-code.md) | Typeset formulas in Claude Code replies | 0.4.1 |
 | [Formula rendering for Codex](formula-rendering-codex.md) | Typeset formulas in Codex output | 0.4.1 |
 

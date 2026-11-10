@@ -25,7 +25,7 @@
 
 .file-tree-toggle {
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--md-on-surface-variant, #f0f);
   transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
@@ -115,7 +115,7 @@
   margin: -4px -6px -4px 0;
   padding: 0;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--md-on-surface-variant, #f0f);
   cursor: pointer;
@@ -186,7 +186,7 @@
   gap: 4px;
   min-height: 26px;
   padding-right: 6px;
-  border-radius: 6px;
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface, #f0f);
   font-size: 12px;
   white-space: nowrap;
@@ -307,7 +307,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--color-text-muted, #f0f);
   cursor: pointer;
@@ -354,7 +354,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--color-text-muted, #f0f);
   cursor: pointer;
@@ -384,7 +384,7 @@
   gap: 4px;
   padding: 0 6px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--color-text-muted, #f0f);
   font-size: 11px;
@@ -486,7 +486,7 @@
   height: 24px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--block-radius, 8px);
   background-color: var(--color-bg-secondary, #f0f);
   color: var(--color-text-primary, #f0f);
   cursor: pointer;
@@ -537,7 +537,7 @@
   margin: 0 12px 8px;
   padding: 2px 10px;
   border: 1px solid var(--color-bg-elevated, #f0f);
-  border-radius: 4px;
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--color-text-primary, #f0f);
   cursor: pointer;
@@ -590,7 +590,7 @@
   height: 26px;
   padding: 0 10px;
   border: 1px solid var(--md-outline-variant, #f0f);
-  border-radius: 6px;
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--color-text-primary, #f0f);
   font: inherit;
@@ -661,7 +661,7 @@
   padding: 0 8px;
   overflow: hidden;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container-high, #f0f);
   color: var(--md-on-surface-variant, #f0f);
   font: inherit;

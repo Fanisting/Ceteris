@@ -40,7 +40,7 @@
   height: 30px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container-highest, rgb(128 128 128 / 16%));
   color: var(--md-on-surface-variant, #f0f);
 }
@@ -63,7 +63,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   background: none;
   color: var(--md-on-surface-variant, #f0f);
   cursor: pointer;

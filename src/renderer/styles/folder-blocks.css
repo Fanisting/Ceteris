@@ -27,7 +27,7 @@
   padding: 0 10px;
 
   /* A symmetric capsule: equal round ends, the same for every folder. */
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container-high, #f0f);
   color: var(--md-on-surface, #f0f);
   cursor: pointer;
@@ -140,7 +140,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   background: none;
   color: inherit;
   cursor: pointer;
@@ -161,7 +161,7 @@
 /* The chosen session in an opened folder is outlined as a pebble, like the folder pebbles:
  * a symmetric capsule ring and no fill, instead of the list layout's filled capsule. */
 .path-open-folder .session-item {
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
 
   /* No flicker on click (motion.css applies these to every session row):
    * - no fade-in, so the list does not flash in when a pebble opens it;

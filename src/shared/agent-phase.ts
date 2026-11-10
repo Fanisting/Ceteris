@@ -12,6 +12,10 @@
  *   so thinking, running a tool and writing all measured 650 to 760 B/s on 2026-11-08.
  * - Pace comes from the token counter on Claude Code's spinner line instead. It rises while
  *   the model generates and stands still while a tool runs.
+ * - A choice prompt (Claude Code's AskUserQuestion, ADR-035) is 'blocked' too: the agent
+ *   stopped and waits for the user exactly as at an approval, and the tab and the toast
+ *   treat the two the same. The rules are what the prompt's own rows look like, not the
+ *   footer alone, because the footer wording is shared with menus the user opens.
  * - The approval and working rules apply to any session, because an agent started by typing
  *   `claude` in a plain shell hides the markers detectAgent looks for while a prompt is open.
  * - "done" needs a detected agent, so a plain shell that goes quiet stays null and keeps
@@ -22,7 +26,7 @@
  *   kind or pace. An agent update that rewords these falls back to the plain wave, never
  *   to a wrong state.
  *
- * @对应文档章节:软件定义书.md ADR-021
+ * @对应文档章节:软件定义书.md ADR-021、ADR-035
  */
 import { detectAgent } from './next-prompt';
 import type { AgentPhase, AgentWork, SessionState } from './types';
@@ -43,6 +47,16 @@ const AGENT_MARKER_ROWS = 12;
 const APPROVAL_QUESTION = /\b(Do you want to|Would you like to)\b[^\n]*\?/;
 /** An option line: box border or pointer, an optional number, then "Yes". */
 const APPROVAL_YES_OPTION = /^[\s│|❯›>]*(\d+\.\s*)?Yes\b/m;
+/**
+ * Claude Code's AskUserQuestion prompt (ADR-035), recorded from 2.1.319 on 2026-11-10:
+ * a question, numbered options with a pointer on the chosen one, a "Chat about this" row
+ * and the footer "Enter to select · ↑/↓ to navigate · Esc to cancel". The footer is shared
+ * with other pickers, so the rule also wants a pointed numbered option; the "Chat about
+ * this" row alone is enough, it is this prompt's own.
+ */
+const CHOICE_FOOTER = /\bEnter to select\b[^\n]*\bEsc to cancel\b/;
+const CHOICE_POINTED_OPTION = /^\s*[❯›>]\s*\d+\.\s/m;
+const CHOICE_CHAT_OPTION = /^\s*(\d+\.\s*)?Chat about this\s*$/m;
 /** Codex, and older Claude Code versions. */
 const ESC_TO_INTERRUPT = /\besc to interrupt\b/i;
 /** Claude Code's spinner line: a star glyph, a random verb, an ellipsis ("✻ Cogitating…"). */
@@ -88,6 +102,8 @@ export function detectAgentPhase(
   if (state === 'exited') return null;
   const tail = screenTail(screen, SEARCH_ROWS);
   if (APPROVAL_QUESTION.test(tail) && APPROVAL_YES_OPTION.test(tail)) return 'blocked';
+  if (CHOICE_CHAT_OPTION.test(tail)) return 'blocked';
+  if (CHOICE_FOOTER.test(tail) && CHOICE_POINTED_OPTION.test(tail)) return 'blocked';
   if (ESC_TO_INTERRUPT.test(tail) || SPINNER.test(tail)) return 'working';
   const agent = detectAgent(templateId, screenTail(screen, AGENT_MARKER_ROWS));
   if (!agent) return null;
@@ -132,7 +148,11 @@ export interface TokenRate {
  * @param at the time of the reading in ms
  * @returns null when there is no counter
  */
-export function updateTokenRate(prev: TokenRate | null, tokens: number | null, at: number): TokenRate | null {
+export function updateTokenRate(
+  prev: TokenRate | null,
+  tokens: number | null,
+  at: number,
+): TokenRate | null {
   if (tokens === null) return null;
   // A smaller count means a new turn started from zero.
   if (!prev || tokens < prev.tokens) return { tokens, at, rate: 0 };

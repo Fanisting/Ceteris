@@ -39,6 +39,7 @@ import {
   type AgentVersionChecker,
 } from './agent-versions';
 import { AgentAutoUpdater } from './agent-auto-update';
+import { AgentReloader } from './agent-reload';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -111,6 +112,10 @@ import {
   type AgentUpdateNotice,
   type ListAgentVersionsResponse,
   type UpgradeAgentPayload,
+  type AgentReloadPlan,
+  type AgentReloadPlanPayload,
+  type ReloadAgentPayload,
+  type ReloadAgentResponse,
   type ListSshProfilesResponse,
   type SshAgentStatusResponse,
   type SshConfigListResponse,
@@ -1973,6 +1978,93 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   });
   agentAutoUpdater.refreshSchedule();
 
+  // 整体重载 (ADR-037, 见 agent-reload.ts):关掉一个 agent 的全部终端 → 升级 → 开回来
+  const agentReloader = new AgentReloader({
+    sessions: () => sessionManager.list(),
+    screenOf: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
+    isLocal: (pathId) => pathRefFromId(pathId).kind !== 'ssh',
+    hasWindow: (windowId) => windowManager.getById(windowId) !== null,
+    close: (sessionId) => sessionManager.closeSession(sessionId),
+    create: (input) => sessionManager.createSession(input),
+    isManuallyRenamed: (sessionId) => sessionManager.isManuallyRenamed(sessionId),
+    rename: (sessionId, name) => sessionManager.renameSession(sessionId, name),
+    setRole: (sessionId, role) => sessionManager.setRole(sessionId, role),
+    write: (sessionId, text) =>
+      sessionManager.sendInput(sessionId, Buffer.from(text, 'utf8').toString('base64')).accepted,
+    events: sessionManager,
+    upgrade: async (templateId, ctx) => {
+      const { exited } = await startAgentUpgrade(
+        templateId,
+        ctx.pathId,
+        ctx.ownerWindowId,
+        ctx.cols,
+        ctx.rows,
+      );
+      return exited;
+    },
+    version: async (templateId, force) =>
+      (await getAgentChecker().list(force)).find((a) => a.templateId === templateId) ?? null,
+    nameOf: (templateId) => templatesManager.resolve(templateId).name,
+    notify: (notice) =>
+      broadcastEvent<AgentUpdateNotice>(EVENT_CHANNELS.AGENT_UPDATE_NOTICE, notice),
+  });
+
+  /**
+   * 开始一次整体重载。后台自动升级正在跑这个 agent 时拒绝 (两边一起升级同一个全局包会撞车);
+   * 等着的自动升级交给重载。
+   * @throws AgentBusy 后台升级正在跑;TemplateNotFound 不是内置 agent
+   */
+  const startAgentReload = (
+    templateId: string,
+    ctx: { pathId: string; ownerWindowId: string; cols: number; rows: number },
+  ): ReloadAgentResponse => {
+    if (!findAgentSpec(templateId)) {
+      throw makeIpcError('TemplateNotFound', `no upgrade command for templateId="${templateId}"`);
+    }
+    if (agentAutoUpdater.isBusy(templateId)) {
+      throw makeIpcError(
+        'AgentBusy',
+        `templateId="${templateId}" is being updated in the background. ` +
+          `Wait for the done or failed notice, then reload.`,
+      );
+    }
+    agentAutoUpdater.cancelPending(templateId);
+    const { started, tabs } = agentReloader.reload(templateId, ctx);
+    logger.info(
+      'ipc',
+      `agent reload ${started ? 'started' : 'already running'}: template=${templateId} tabs=${tabs}`,
+    );
+    return { started, tabs };
+  };
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_RELOAD_PLAN,
+    (_e, envelope: CommandEnvelope<AgentReloadPlanPayload>): AgentReloadPlan => {
+      const { templateId } = envelope.payload;
+      if (!findAgentSpec(templateId)) {
+        throw makeIpcError(
+          'TemplateNotFound',
+          `templateId="${templateId}" is not a built-in agent`,
+        );
+      }
+      return agentReloader.plan(templateId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_RELOAD,
+    (_e, envelope: CommandEnvelope<ReloadAgentPayload>): ReloadAgentResponse => {
+      const { templateId, pathId, cols, rows } = envelope.payload;
+      if (pathRefFromId(pathId).kind === 'ssh') {
+        throw makeIpcError(
+          'InvalidPayload',
+          `agent reload runs on local paths only, got pathId="${pathId}"`,
+        );
+      }
+      return startAgentReload(templateId, { pathId, ownerWindowId: envelope.windowId, cols, rows });
+    },
+  );
+
   handleCommand(
     COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
     async (
@@ -2023,8 +2115,18 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.AGENT_NOTICE_ACTION,
     (_e, envelope: CommandEnvelope<AgentNoticeActionPayload>): void => {
       const { templateId, action } = envelope.payload;
-      if (!findAgentSpec(templateId) || !['now', 'skip', 'update'].includes(action)) {
+      if (!findAgentSpec(templateId) || !['now', 'skip', 'update', 'reload'].includes(action)) {
         throw makeIpcError('InvalidPayload', `templateId="${templateId}" action="${action}"`);
+      }
+      if (action === 'reload') {
+        // 通知上没有当前文件夹:升级终端开在 home,显示在点按钮的窗口里
+        startAgentReload(templateId, {
+          pathId: homedir(),
+          ownerWindowId: envelope.windowId,
+          cols: 120,
+          rows: 30,
+        });
+        return;
       }
       agentAutoUpdater.act(templateId, action);
     },

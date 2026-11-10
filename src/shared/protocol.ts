@@ -162,6 +162,13 @@ export const COMMAND_CHANNELS = {
    * 保证"先通知再升级"的通知真的有人收到 (窗口还在加载时发的事件会丢)。
    */
   AGENT_NOTICES_READY: 'cmd:agent:notices-ready',
+  /** 整体重载会动到什么 (ADR-037):该 agent 开着几个终端、几个在跑;给对话框用 */
+  AGENT_RELOAD_PLAN: 'cmd:agent:reload-plan',
+  /**
+   * 整体重载 (ADR-037):关掉该 agent 的全部本机终端,跑升级,再把每个终端开回来并
+   * 恢复对话;关闭时在跑的终端收到 "continue"。立即返回,进度走 evt:agent:update-notice。
+   */
+  AGENT_RELOAD: 'cmd:agent:reload',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -969,9 +976,12 @@ export interface ListAgentVersionsResponse {
  * - scheduled:delayMs 后自动升级,用户可以立即升级或跳过此版本
  * - waiting:该 agent 有终端开着,关掉后再升级
  * - done / failed:后台升级结束;失败时 sessionId 指向留着报错的终端
+ * - reloading:整体重载开始 (ADR-037),tabs 是关掉的终端数
+ * - reloaded:整体重载结束;tabs 开回来的终端数,continued 收到 "continue" 的数,
+ *   failedTabs 没开回来的数,updated 升级是否生效,to 重查后的已装版本
  */
 export interface AgentUpdateNotice {
-  kind: 'available' | 'scheduled' | 'waiting' | 'done' | 'failed';
+  kind: 'available' | 'scheduled' | 'waiting' | 'done' | 'failed' | 'reloading' | 'reloaded';
   templateId: string;
   /** agent 显示名 (Codex 等) */
   name: string;
@@ -981,12 +991,54 @@ export interface AgentUpdateNotice {
   exitCode?: number;
   sessionId?: string;
   pathId?: string;
+  tabs?: number;
+  continued?: number;
+  failedTabs?: number;
+  updated?: boolean;
 }
 
 export interface AgentNoticeActionPayload {
   templateId: string;
-  /** now:跳过倒计时立即升级;skip:跳过这个版本;update:从"有新版本"通知手动升级 */
-  action: 'now' | 'skip' | 'update';
+  /**
+   * now:跳过倒计时立即升级;skip:跳过这个版本;update:从"有新版本"通知手动升级;
+   * reload:整体重载 (ADR-037),升级终端开在 home 目录
+   */
+  action: 'now' | 'skip' | 'update' | 'reload';
+}
+
+export interface AgentReloadPlanPayload {
+  templateId: string;
+}
+
+/** 整体重载会动到什么 (ADR-037),只算本机、没退出的终端 */
+export interface AgentReloadPlan {
+  /** 该 agent 模板的终端数,全部会被关掉再开回来 */
+  tabs: number;
+  /** 其中 agentPhase 为 working 的,开回来后会收到 "continue" */
+  running: number;
+  /** 其中在等用户批准的;开回来后不发 continue */
+  blocked: number;
+  /** 别的模板 (通常是纯 shell) 里手动跑着同一个 agent 的终端数;不动,只提醒 */
+  otherTabs: number;
+  /** 这个 agent 有恢复对话的命令行参数;没有的话开回来是新对话 */
+  resumes: boolean;
+  /** 同一个 agent 的重载还在进行 */
+  inProgress: boolean;
+}
+
+export interface ReloadAgentPayload {
+  templateId: string;
+  /** 升级终端开在哪个本地路径下 */
+  pathId: string;
+  cols: number;
+  rows: number;
+}
+
+export interface ReloadAgentResponse {
+  /** false 表示这个 agent 已经在重载 */
+  started: boolean;
+  /** 关掉的终端数 */
+  tabs: number;
 }
 
 export interface UpgradeAgentPayload {

@@ -140,6 +140,23 @@ export class AgentAutoUpdater {
     this.onSessionsChanged();
   }
 
+  /**
+   * 整体重载 (agent-reload.ts) 接手这个 agent 的升级:撤掉等着的自动升级,但不算
+   * 跳过版本。重载关掉终端时,onSessionsChanged 才不会抢着开始自己的倒计时。
+   */
+  cancelPending(templateId: string): void {
+    const p = this.pending.get(templateId);
+    if (!p) return;
+    if (p.timer) clearTimeout(p.timer);
+    this.pending.delete(templateId);
+    logger.info('AgentAutoUpdater', `pending update of ${templateId} handed to reload`);
+  }
+
+  /** 这个 agent 的升级正在排队或在跑 (后台自动升级);整体重载要等它完 */
+  isBusy(templateId: string): boolean {
+    return this.running.has(templateId);
+  }
+
   /** 通知上的按钮 */
   act(templateId: string, action: 'now' | 'skip' | 'update', latest?: string): void {
     const p = this.pending.get(templateId);

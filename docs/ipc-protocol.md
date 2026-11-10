@@ -1454,11 +1454,13 @@ interface ReloadAgentResponse { started: boolean; tabs: number }
 ```typescript
 // payload: undefined
 interface AgentModelOptionsResponse {
-  'claude-code': { models: ModelChoice[]; efforts: string[] }; // 别名 fable / opus / sonnet / haiku
-  codex: { models: ModelChoice[]; efforts: string[] };         // 读 ~/.codex/models_cache.json,读不到时 models 为空
+  'claude-code': { models: ModelChoice[]; efforts: string[]; own: ModelEffort }; // 别名 fable / opus / sonnet / haiku
+  codex: { models: ModelChoice[]; efforts: string[]; own: ModelEffort };         // 读 ~/.codex/models_cache.json,读不到时 models 为空
 }
 interface ModelChoice { id: string; label: string; efforts: string[] }
+interface ModelEffort { model: string; effort: string }
 ```
+`own` 是 agent 自己设置里的模型和 effort(Claude Code 的 settings.json:`model`、`effortLevel` 或 `modelSettings` 里对应模型的 `effortLevel`;Codex 的 config.toml 顶层 `model`、`model_reasoning_effort`),只读;文件没写的为空字符串。界面在没有选择时显示它,不显示"默认"。
 
 #### `cmd:agent:switch-model`
 ```typescript

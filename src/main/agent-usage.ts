@@ -32,7 +32,13 @@
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import type { AgentUsage, ModelAgent, ModelChoice, UsageWindow } from '@shared/agent-model';
+import type {
+  AgentUsage,
+  ModelAgent,
+  ModelChoice,
+  ModelEffort,
+  UsageWindow,
+} from '@shared/agent-model';
 import { CODEX_FALLBACK_EFFORTS } from '@shared/agent-model';
 import { logger } from './logger';
 
@@ -628,6 +634,51 @@ export async function readCodexModels(codexDir: string): Promise<ModelChoice[]> 
     logger.debug('agent-usage', `no Codex model list in ${codexDir}: ${String(err)}`);
     return [];
   }
+}
+
+/**
+ * Claude Code's own model and effort, from settings.json: `model` (an alias such as "opus" or
+ * a full id) and `effortLevel`; without a top-level effort, the `modelSettings` entry whose
+ * id contains the model alias (Claude Code keeps per-model efforts there, for example
+ * `modelSettings["claude-opus-5-5"].effortLevel`). '' where the file does not say.
+ * Read only.
+ */
+export async function readClaudeOwnDefault(claudeDir: string): Promise<ModelEffort> {
+  try {
+    const json = obj(JSON.parse(await readFile(join(claudeDir, 'settings.json'), 'utf8')));
+    const model = str(json?.['model']) ?? '';
+    let effort = str(json?.['effortLevel']) ?? '';
+    const perModel = obj(json?.['modelSettings']);
+    if (!effort && model && perModel) {
+      const key = Object.keys(perModel).find((k) => k.toLowerCase().includes(model.toLowerCase()));
+      effort = (key && str(obj(perModel[key])?.['effortLevel'])) || '';
+    }
+    return { model, effort };
+  } catch (err) {
+    logger.debug('agent-usage', `no Claude Code settings in ${claudeDir}: ${String(err)}`);
+    return { model: '', effort: '' };
+  }
+}
+
+/**
+ * Codex's own model and effort: the top-level `model` and `model_reasoning_effort` lines of
+ * config.toml (before the first [table]). Only these two plain string keys are read, so no
+ * TOML parser is needed. '' where the file does not say. Read only.
+ */
+export async function readCodexOwnDefault(codexDir: string): Promise<ModelEffort> {
+  const out: ModelEffort = { model: '', effort: '' };
+  try {
+    const text = await readFile(join(codexDir, 'config.toml'), 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      if (/^\s*\[/.test(line)) break;
+      const m = /^\s*(model|model_reasoning_effort)\s*=\s*["']([^"']*)["']/.exec(line);
+      if (m?.[1] === 'model') out.model = m[2]!;
+      else if (m?.[1] === 'model_reasoning_effort') out.effort = m[2]!;
+    }
+  } catch (err) {
+    logger.debug('agent-usage', `no Codex config in ${codexDir}: ${String(err)}`);
+  }
+  return out;
 }
 
 // ──────────────────────────────────────────────────────────────────

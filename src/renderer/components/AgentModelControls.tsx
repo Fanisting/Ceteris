@@ -182,17 +182,36 @@ function effortsFor(
 }
 
 /**
- * Menu items for one choice. `withDefault` adds "Default" (folder rows); `disabledHint`
- * greys every item and says why (a busy agent).
+ * The menu id of a model the agent names in its own settings or reports: the same id, else
+ * (Claude Code) the alias inside a full id ("claude-opus-5-5" → "opus"). '' when none fits.
  */
+function modelIdOf(
+  agent: ModelAgent,
+  options: AgentModelOptionsResponse | null,
+  raw: string | undefined,
+): string {
+  if (!raw) return '';
+  const models = options?.[agent].models ?? [];
+  const lower = raw.toLowerCase();
+  return (
+    models.find((m) => m.id.toLowerCase() === lower)?.id ??
+    (agent === 'claude-code'
+      ? (models.find((m) => lower.includes(m.id.toLowerCase()))?.id ?? '')
+      : '')
+  );
+}
+
+/** Shown when neither Ceteris, the agent's report nor its settings name a value */
+const UNKNOWN_VALUE = 'auto';
+
+/** Menu items for one choice; `disabledHint` greys every item and says why (a busy agent). */
 function choiceItems(
   values: Array<{ id: string; label: string }>,
   current: string,
   onPick: (id: string) => void,
-  opts: { withDefault?: string; disabledHint?: string },
+  opts: { disabledHint?: string },
 ): ContextMenuItem[] {
-  const all = opts.withDefault ? [{ id: '', label: opts.withDefault }, ...values] : values;
-  return all.map((v) => ({
+  return values.map((v) => ({
     label: v.label,
     checked: v.id === current,
     ...(opts.disabledHint ? { disabled: true, hint: opts.disabledHint } : {}),
@@ -256,18 +275,22 @@ export function FolderAgentDefaultsRows({
         }),
       );
   };
-  const defaultWord = tx('默认', 'Default');
-
   return (
     <ul className="folder-agent-rows" onClick={(e) => e.stopPropagation()}>
       {agents.map((agent) => {
         const v = folderDefaultFor(list, pathId, agent);
+        // Without a folder value the row shows what the agent runs anyway (its own settings);
+        // picking that same value removes the folder value instead of storing a copy
+        const ownModel = modelIdOf(agent, options, options?.[agent].own.model);
+        const ownEffort = options?.[agent].own.effort ?? '';
+        const shownModel = v.model || ownModel;
+        const shownEffort = v.effort || ownEffort;
         const title = tx(
           `${folderName} 里新开的 ${AGENT_NAME[agent]}`,
           `New ${AGENT_NAME[agent]} tabs in ${folderName}`,
         );
         const models = (options?.[agent].models ?? []).map((m) => ({ id: m.id, label: m.label }));
-        const efforts = effortsFor(agent, options, v.model).map((l) => ({ id: l, label: l }));
+        const efforts = effortsFor(agent, options, shownModel).map((l) => ({ id: l, label: l }));
         return (
           <li
             key={agent}
@@ -288,14 +311,17 @@ export function FolderAgentDefaultsRows({
                     ctxMenu,
                     e,
                     title,
-                    choiceItems(models, v.model, (id) => save(agent, id, v.effort), {
-                      withDefault: defaultWord,
-                    }),
+                    choiceItems(
+                      models,
+                      shownModel,
+                      (id) => save(agent, id === ownModel ? '' : id, v.effort),
+                      {},
+                    ),
                     false,
                   )
                 }
               >
-                {v.model ? choiceLabel(agent, v.model, options) : defaultWord}
+                {shownModel ? choiceLabel(agent, shownModel, options) : UNKNOWN_VALUE}
               </button>
               ]
             </span>
@@ -303,20 +329,23 @@ export function FolderAgentDefaultsRows({
               [
               <button
                 type="button"
-                className={`bracket-value effort-${effortLevel(v.effort)}${v.effort ? '' : ' unset'}`}
+                className={`bracket-value effort-${effortLevel(shownEffort)}${v.effort ? '' : ' unset'}`}
                 onClick={(e) =>
                   openAt(
                     ctxMenu,
                     e,
                     title,
-                    choiceItems(efforts, v.effort, (id) => save(agent, v.model, id), {
-                      withDefault: defaultWord,
-                    }),
+                    choiceItems(
+                      efforts,
+                      shownEffort,
+                      (id) => save(agent, v.model, id === ownEffort ? '' : id),
+                      {},
+                    ),
                     false,
                   )
                 }
               >
-                {v.effort || defaultWord}
+                {shownEffort || UNKNOWN_VALUE}
               </button>
               ]
             </span>
@@ -386,12 +415,15 @@ export function AgentStatusLine(): JSX.Element | null {
 
   // What runs now: Ceteris' own record first (it knows a switch before the agent reports it)
   const chosenModel = session.agentModel ?? '';
+  const own = options?.[agent].own;
   const modelText = chosenModel
     ? choiceLabel(agent, chosenModel, options)
     : reported?.model
       ? choiceLabel(agent, reported.model, options)
-      : tx('默认模型', 'Default model');
-  const effortText = session.agentEffort || reported?.effort || '';
+      : own?.model
+        ? choiceLabel(agent, modelIdOf(agent, options, own.model) || own.model, options)
+        : UNKNOWN_VALUE;
+  const effortText = session.agentEffort || reported?.effort || own?.effort || '';
   const models = options?.[agent].models ?? [];
   const activeModelId =
     chosenModel ||
@@ -400,6 +432,7 @@ export function AgentStatusLine(): JSX.Element | null {
         ? m.id === reported?.model
         : reported?.model?.toLowerCase().startsWith(m.label.toLowerCase()),
     )?.id ||
+    modelIdOf(agent, options, own?.model) ||
     '';
   const busy = session.agentPhase === 'working' || session.agentPhase === 'blocked';
   const busyHint = busy
@@ -519,7 +552,7 @@ export function AgentStatusLine(): JSX.Element | null {
             onClick={openEfforts}
             title={tx('换 effort', 'Change the effort')}
           >
-            {effortText || tx('默认 effort', 'default effort')}
+            {effortText || UNKNOWN_VALUE}
           </button>
         </>
       )}

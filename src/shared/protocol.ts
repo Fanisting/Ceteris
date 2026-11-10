@@ -27,7 +27,7 @@ import type {
 } from './types';
 import type { DeepPartial } from './types-helpers';
 import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
-import type { AgentUsage, ModelChoice } from './agent-model';
+import type { AgentUsage, ModelChoice, ModelEffort } from './agent-model';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -1017,10 +1017,14 @@ export interface AgentReloadPlanPayload {
   templateId: string;
 }
 
-/** ADR-038: choices per agent. models empty for Codex when its cache cannot be read. */
+/**
+ * ADR-038: choices per agent. models empty for Codex when its cache cannot be read.
+ * `own` is what the agent runs with when Ceteris adds no flag, read from its own settings
+ * (Claude Code settings.json, Codex config.toml); '' where the file does not say.
+ */
 export interface AgentModelOptionsResponse {
-  'claude-code': { models: ModelChoice[]; efforts: string[] };
-  codex: { models: ModelChoice[]; efforts: string[] };
+  'claude-code': { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+  codex: { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
 }
 
 export interface AgentSwitchModelPayload {

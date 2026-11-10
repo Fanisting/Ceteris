@@ -40,7 +40,13 @@ import {
 } from './agent-versions';
 import { AgentAutoUpdater } from './agent-auto-update';
 import { AgentReloader } from './agent-reload';
-import { AgentUsageReader, readCodexModels, type UsageTab } from './agent-usage';
+import {
+  AgentUsageReader,
+  readClaudeOwnDefault,
+  readCodexModels,
+  readCodexOwnDefault,
+  type UsageTab,
+} from './agent-usage';
 import { AgentModelSwitcher } from './agent-model-switch';
 import {
   CLAUDE_EFFORTS,
@@ -2130,15 +2136,24 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.AGENT_MODEL_OPTIONS,
     async (): Promise<AgentModelOptionsResponse> => {
-      const codexModels = await readCodexModels(
-        process.env['CODEX_HOME'] || joinPath(homedir(), '.codex'),
-      );
+      const codexDir = process.env['CODEX_HOME'] || joinPath(homedir(), '.codex');
+      const claudeDir = process.env['CLAUDE_CONFIG_DIR'] || joinPath(homedir(), '.claude');
+      const [codexModels, claudeOwn, codexOwn] = await Promise.all([
+        readCodexModels(codexDir),
+        readClaudeOwnDefault(claudeDir),
+        readCodexOwnDefault(codexDir),
+      ]);
       const codexEfforts = [...new Set(codexModels.flatMap((m) => m.efforts))];
       return {
-        'claude-code': { models: [...CLAUDE_MODELS], efforts: [...CLAUDE_EFFORTS] },
+        'claude-code': {
+          models: [...CLAUDE_MODELS],
+          efforts: [...CLAUDE_EFFORTS],
+          own: claudeOwn,
+        },
         codex: {
           models: codexModels,
           efforts: codexEfforts.length > 0 ? codexEfforts : [...CODEX_FALLBACK_EFFORTS],
+          own: codexOwn,
         },
       };
     },

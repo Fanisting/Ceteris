@@ -17,7 +17,9 @@ import {
   claudeProjectDir,
   findClaudeTranscript,
   findCodexRollout,
+  readClaudeOwnDefault,
   readCodexModels,
+  readCodexOwnDefault,
 } from './agent-usage';
 
 let root: string;
@@ -427,6 +429,49 @@ describe('readCodexModels', () => {
     await mkdir(codexDir, { recursive: true });
     await writeFile(join(codexDir, 'models_cache.json'), '{not json');
     expect(await readCodexModels(codexDir)).toEqual([]);
+  });
+});
+
+describe("the agents' own model and effort", () => {
+  it('reads Claude Code settings: model and top-level effortLevel', async () => {
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(
+      join(claudeDir, 'settings.json'),
+      JSON.stringify({ model: 'opus', effortLevel: 'high' }),
+    );
+    expect(await readClaudeOwnDefault(claudeDir)).toEqual({ model: 'opus', effort: 'high' });
+  });
+
+  it("falls back to the per-model effort of the chosen model's entry", async () => {
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(
+      join(claudeDir, 'settings.json'),
+      JSON.stringify({
+        model: 'sonnet',
+        modelSettings: {
+          'claude-opus-5-5': { effortLevel: 'max' },
+          'claude-sonnet-5-5': { effortLevel: 'low' },
+        },
+      }),
+    );
+    expect(await readClaudeOwnDefault(claudeDir)).toEqual({ model: 'sonnet', effort: 'low' });
+  });
+
+  it('reads the top-level Codex keys only, not those inside a table', async () => {
+    await mkdir(codexDir, { recursive: true });
+    await writeFile(
+      join(codexDir, 'config.toml'),
+      'model = "gpt-a"\nmodel_reasoning_effort = "high"\n\n[profiles.fast]\nmodel = "gpt-b"\n',
+    );
+    expect(await readCodexOwnDefault(codexDir)).toEqual({ model: 'gpt-a', effort: 'high' });
+  });
+
+  it('says nothing when the files are missing or broken', async () => {
+    expect(await readClaudeOwnDefault(claudeDir)).toEqual({ model: '', effort: '' });
+    expect(await readCodexOwnDefault(codexDir)).toEqual({ model: '', effort: '' });
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(join(claudeDir, 'settings.json'), '{not json');
+    expect(await readClaudeOwnDefault(claudeDir)).toEqual({ model: '', effort: '' });
   });
 });
 

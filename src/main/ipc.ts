@@ -49,7 +49,13 @@ import {
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { resolve, join as joinPath } from 'node:path';
+import { dirname, resolve, join as joinPath } from 'node:path';
+import {
+  codexMcpBlock,
+  hasCodexMcpBlock,
+  upsertCodexMcpBlock,
+  type CodexMcpStatus,
+} from '@shared/codex-mcp';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -927,6 +933,59 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         if (code !== 'ENOENT') logger.warn('ipc', `tab control status: cannot read ${file}`, err);
         return { pluginInstalled: false };
       }
+    },
+  );
+
+  // ADR-033:Codex 没有插件市场,MCP 服务器写在 ~/.codex/config.toml(CODEX_HOME 可改目录)。
+  // 服务器就是 Claude Code 插件里那个脚本,用 Ceteris 自己的可执行文件当 Node 跑。
+  const codexConfigPath = (): string =>
+    joinPath(process.env.CODEX_HOME || joinPath(homedir(), '.codex'), 'config.toml');
+  const codexBlock = (): string =>
+    codexMcpBlock({
+      command: process.execPath,
+      serverPath: joinPath(
+        bundledMarketplaceDir({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath(),
+        }),
+        'ceteris-tabs',
+        'server',
+        'ceteris-tabs-mcp.mjs',
+      ),
+    });
+  /** The file's text, '' when it does not exist. Other read errors are thrown to the caller. */
+  const readCodexConfig = async (file: string): Promise<string> => {
+    try {
+      return await fs.readFile(file, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw new Error(
+        `[ipc] cannot read Codex config ${file}: ${(err as Error).message}. ` +
+          'Possible causes: no permission, or the path is a folder. Check the file, then retry.',
+      );
+    }
+  };
+
+  handleCommand(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, async (): Promise<CodexMcpStatus> => {
+    const configPath = codexConfigPath();
+    const text = await readCodexConfig(configPath);
+    return { configPath, configured: hasCodexMcpBlock(text), block: codexBlock() };
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_INSTALL,
+    async (): Promise<CodexMcpStatus> => {
+      const configPath = codexConfigPath();
+      const block = codexBlock();
+      const next = upsertCodexMcpBlock(await readCodexConfig(configPath), block);
+      // 先写临时文件再改名,和 persistence.ts 一样:Codex 正在读这个文件时不能看到半截
+      await fs.mkdir(dirname(configPath), { recursive: true });
+      const tmp = `${configPath}.tmp.${process.pid}.${Date.now()}`;
+      await fs.writeFile(tmp, next, 'utf8');
+      await fs.rename(tmp, configPath);
+      logger.info('ipc', `codex mcp entry written to ${configPath}`);
+      return { configPath, configured: true, block };
     },
   );
 

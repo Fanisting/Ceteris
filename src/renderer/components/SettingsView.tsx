@@ -115,6 +115,7 @@ import {
   tabControlInstallLine,
   tabControlInstallLines,
 } from '@shared/tab-control';
+import type { CodexMcpStatus } from '@shared/codex-mcp';
 import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
@@ -3137,6 +3138,33 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
     if (dir) void typeIntoNewTerminal((shellId) => tabControlInstallLine(shellId, dir));
   };
 
+  // ADR-033: Codex gets the same server through its config.toml; Ceteris writes the entry.
+  const [codexMcp, setCodexMcp] = useState<CodexMcpStatus | null>(null);
+  const [codexBusy, setCodexBusy] = useState(false);
+  useEffect(() => {
+    if (codexMcp) return;
+    window.api
+      .invoke<unknown, CodexMcpStatus>(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, {})
+      .then(setCodexMcp)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  }, [codexMcp, setError]);
+  const handleCodexInstall = async (): Promise<void> => {
+    setError(null);
+    setCodexBusy(true);
+    try {
+      setCodexMcp(
+        await window.api.invoke<unknown, CodexMcpStatus>(
+          COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_INSTALL,
+          {},
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
   return (
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('扩展', 'Extensions')}</h2>
@@ -3284,6 +3312,37 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
           >
             {tx('在新终端里输入命令', 'Type it in a new terminal')}
           </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('Codex 也要用?', 'Using Codex too?')}
+        hint={tx(
+          'Codex 没有插件,MCP 服务器写在它的 config.toml 里。点一下,Ceteris 把同一个服务器加进去(已有的会重写成当前路径),然后新开 Codex。Codex 里工具叫 ceteris-tabs/open_file。',
+          'Codex has no plugins; MCP servers live in its config.toml. One click adds the same server there (an existing entry is rewritten with the current paths), then start a new Codex. In Codex the tool is called ceteris-tabs/open_file.',
+        )}
+      >
+        <div className="settings-code-stack">
+          <pre className="settings-code-block settings-code-wrap">
+            <code>{codexMcp ? codexMcp.block.trimEnd() : '…'}</code>
+          </pre>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={codexBusy || !codexMcp}
+            onClick={() => void handleCodexInstall()}
+            title={codexMcp?.configPath ?? ''}
+          >
+            {codexMcp?.configured
+              ? tx('重写 config.toml 里的这一项', 'Rewrite the entry in config.toml')
+              : tx('写进 config.toml', 'Add to config.toml')}
+          </button>
+          {codexMcp?.configured && (
+            <span className="settings-row-hint">
+              {tx('已在 ', 'Already in ')}
+              {codexMcp.configPath}
+            </span>
+          )}
         </div>
       </SettingRow>
 

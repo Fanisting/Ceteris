@@ -78,6 +78,10 @@ export const COMMAND_CHANNELS = {
   EXTENSIONS_GET_MARKETPLACE_DIR: 'cmd:extensions:get-marketplace-dir',
   /** 协调者控制 (ADR-024):Claude Code 是否已装 ceteris-tabs 插件,协调者引导用它打勾 */
   EXTENSIONS_TAB_CONTROL_STATUS: 'cmd:extensions:tab-control-status',
+  /** ADR-033:Codex 的 config.toml 里有没有 ceteris-tabs 这个 MCP 服务器;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_STATUS: 'cmd:extensions:codex-mcp-status',
+  /** ADR-033:把 ceteris-tabs 写进(或重写进)Codex 的 config.toml;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_INSTALL: 'cmd:extensions:codex-mcp-install',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**

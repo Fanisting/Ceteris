@@ -81,6 +81,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import { buildSessionContextMenu } from './sessionContextMenu';
 import { CelebrationBurst } from './CelebrationBurst';
+import { FolderAgentDefaultsRow } from './AgentModelControls';
 
 /**
  * 状态点颜色 (软件定义书 6.2.4 状态指示):
@@ -1219,6 +1220,10 @@ function PathItem({
           {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
           {!renaming && openTerminalButton}
         </div>
+        {/* ADR-038: model and effort that new agent tabs in this folder start with */}
+        {statusFilter === null && (
+          <FolderAgentDefaultsRow pathId={node.id} folderName={displayName} />
+        )}
         {sessionList || (
           <p className="sidebar-empty path-open-folder-empty">
             {statusFilter === null
@@ -1274,6 +1279,10 @@ function PathItem({
         )}
         {!renaming && openTerminalButton}
       </div>
+      {/* ADR-038: only under the clicked folder, so the other open folders stay compact */}
+      {expanded && selected && statusFilter === null && (
+        <FolderAgentDefaultsRow pathId={node.id} folderName={displayName} />
+      )}
       {expanded && sessionList}
     </li>
   );

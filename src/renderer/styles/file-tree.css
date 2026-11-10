@@ -10,16 +10,18 @@
   gap: 4px;
 }
 
-/* Both footer buttons are icons of one size, and .pane-layout-btn uses the same icon size. */
+/* Both footer buttons match .pane-layout-btn in material.css: a 32px square around a 20px icon.
+   The file tree toggle and the split view buttons sit on the same bottom line, so a different
+   size shows at once; change both together. */
 .sidebar-footer .settings-entry,
 .file-tree-toggle {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
   padding: 0;
 }
 

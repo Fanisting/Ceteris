@@ -220,6 +220,8 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:release` | 释放本窗口对某 session 的 ownership |
 | `cmd:session:focus-owner` | 聚焦某 session 的 owner 窗口 |
 | `cmd:session:send-input` | 向 session 发送键盘输入 |
+| `cmd:session:read-choice` | **(ADR-035)** 读 agent 停着的提示:问题和编号选项 |
+| `cmd:session:answer-choice` | **(ADR-035)** 替用户在那个提示里选一项(方向键加回车) |
 | `cmd:session:resize` | 通知 session 终端尺寸变化 |
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
 | `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
@@ -631,6 +633,57 @@ interface FocusSessionOwnerResponse {
 **Side Effects**:
 - 若 session 有 owner → 等价于 `cmd:window:focus`
 - 若无 owner → 不做事,response 中 focused=false(Renderer 自行决定是否 claim)
+
+---
+
+#### `cmd:session:read-choice`
+**(ADR-035)** 读某 session 屏幕末尾 agent 停着的提示。toast 里的"选项"按钮展开时调用。
+
+```typescript
+// Payload
+interface ReadChoicePayload {
+  sessionId: string;
+}
+// Response
+interface ReadChoiceResponse {
+  prompt: ChoicePrompt | null;   // null:agent 不在 blocked,或屏幕上的行读不出提示
+}
+interface ChoicePrompt {
+  question: string;              // 选项上面那一行,去掉框线;读不到就是空串
+  options: Array<{
+    index: number;               // 选项前印的数字,从 1 起
+    label: string;
+    pointed: boolean;            // agent 的指针停在这一项上
+    freeText: boolean;           // 选了还要打字("Type something."、"Chat about this"、"No, and tell Claude what to do")
+  }>;
+}
+```
+
+**Errors**:无。session 不存在也返回 `prompt: null`。
+
+---
+
+#### `cmd:session:answer-choice`
+**(ADR-035)** 替用户在提示里选一项。main 先重读一次屏幕核对提示还在、编号还在,再按指针位置发方向键和回车,过期的面板不会把按键敲进 agent 之后在做的事。
+
+```typescript
+// Payload
+interface AnswerChoicePayload {
+  sessionId: string;
+  index: number;                 // 选项前印的数字
+}
+// Response
+interface AnswerChoiceResponse {
+  sent: boolean;
+  reason?: 'no-prompt' | 'option-gone' | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
+}
+```
+
+**Errors**:无,都走 `reason`。
+
+**Side Effects**:
+- 同 `cmd:session:send-input`:写 PTY,记 lastInputAt / lastEnterAt
+- 日志 `answerChoice sid=… option N "label" from M`
 
 ---
 

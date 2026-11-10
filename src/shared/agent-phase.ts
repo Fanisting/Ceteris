@@ -29,7 +29,7 @@
  * @对应文档章节:软件定义书.md ADR-021、ADR-035
  */
 import { detectAgent } from './next-prompt';
-import type { AgentPhase, AgentWork, SessionState } from './types';
+import type { AgentPhase, AgentWork, ChoiceOption, ChoicePrompt, SessionState } from './types';
 
 /**
  * Rows of the screen end that main reads. Claude Code leaves about ten blank rows between a
@@ -180,4 +180,59 @@ export function classifyWork(
   if (r < GENERATING_MIN_RATE) return { work: 'waiting', pace: null };
   const pace = Math.max(0.25, Math.min(1, Math.ceil((r / FULL_PACE_RATE) * 4) / 4));
   return { work: 'generating', pace };
+}
+
+/** An option row: optional box edge, optional pointer, a number, the label, optional box edge. */
+const OPTION_ROW = /^\s*[│|]?\s*([❯›>])?\s*(\d+)\.\s+(.*?)\s*[│|]?\s*$/;
+/** Rows that cannot be the question: blank, box borders, rules, the AskUserQuestion header chip. */
+const NOT_A_QUESTION = /^\s*[│|]?\s*(?:[─━╭╮╰╯┃═]|☐|☑|$)/;
+/** Options that want typed text after they are picked. */
+const FREE_TEXT_OPTION =
+  /^(?:Type something|Other\b|Chat about this|.*tell (?:Claude|Codex) what to do)/;
+
+/**
+ * The prompt an agent stopped at, from the end of its screen (ADR-035): the question and the
+ * numbered options, with the pointer's row marked. Rows must count 1, 2, 3 in order, so a
+ * numbered list in the agent's prose does not pass for a prompt; one row must carry the
+ * pointer, which only a live prompt draws. The caller checks the phase is 'blocked' first.
+ *
+ * @returns null when the rows do not read as a prompt
+ */
+export function readChoicePrompt(screen: string): ChoicePrompt | null {
+  const rows = screenTail(screen, SEARCH_ROWS).split('\n');
+  const options: ChoiceOption[] = [];
+  let first = -1;
+  rows.forEach((row, i) => {
+    const m = OPTION_ROW.exec(row);
+    if (!m) return;
+    const index = parseInt(m[2]!, 10);
+    if (index !== options.length + 1) return;
+    if (first < 0) first = i;
+    const label = m[3]!.trim();
+    options.push({
+      index,
+      label,
+      pointed: m[1] !== undefined,
+      freeText: FREE_TEXT_OPTION.test(label),
+    });
+  });
+  if (options.length === 0 || !options.some((o) => o.pointed)) return null;
+  let question = '';
+  for (let i = first - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (NOT_A_QUESTION.test(row)) continue;
+    question = row.replace(/^\s*[│|]\s*|\s*[│|]\s*$/g, '').trim();
+    break;
+  }
+  return { question, options };
+}
+
+/**
+ * The keystrokes that move the agent's pointer from one option to another and confirm it:
+ * arrow keys, then Enter. Arrows, not the option's number, because Claude Code's prompts
+ * differ in what a digit does, while the arrows walk every list the same way.
+ */
+export function choiceKeys(from: number, to: number): string {
+  const step = to > from ? '\x1b[B' : '\x1b[A';
+  return step.repeat(Math.abs(to - from)) + '\r';
 }

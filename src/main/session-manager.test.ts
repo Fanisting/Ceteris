@@ -137,9 +137,7 @@ function makeStubPathManager(): StubPathManager {
   return stub as unknown as StubPathManager;
 }
 
-function makeStubTemplatesManager(
-  extraTemplates: Template[] = [],
-): TemplatesManager {
+function makeStubTemplatesManager(extraTemplates: Template[] = []): TemplatesManager {
   // 用真实的 BUILTIN_TEMPLATES,resolve('shell') 返回内置 shell 模板
   const templates = [...BUILTIN_TEMPLATES, ...extraTemplates];
   return {
@@ -159,14 +157,16 @@ function makeStubTemplatesManager(
     get(id: string): Template | null {
       return templates.find((t) => t.id === id) ?? null;
     },
-    on() { return this; },
-    emit() { return true; },
+    on() {
+      return this;
+    },
+    emit() {
+      return true;
+    },
   } as unknown as TemplatesManager;
 }
 
-function makeStubSettingsManager(
-  overrides: Partial<Settings['advanced']> = {},
-): SettingsManager {
+function makeStubSettingsManager(overrides: Partial<Settings['advanced']> = {}): SettingsManager {
   const settings: Settings = {
     version: 1,
     appearance: {
@@ -219,7 +219,12 @@ function makeStubSettingsManager(
       terminalRenderer: 'auto',
       ...overrides,
     },
-    extensions: { claudeMathImages: false, terminalMath: false, tabControl: false, tabControlGuideSeen: false },
+    extensions: {
+      claudeMathImages: false,
+      terminalMath: false,
+      tabControl: false,
+      tabControlGuideSeen: false,
+    },
     // Ceteris Link 默认全关。SessionManager 不读这一段,但 Settings 是必填
     // 结构,缺字段会让整个 stub 类型不成立。
     link: {
@@ -501,9 +506,7 @@ describe('SessionManager — createSession', () => {
     });
 
     expect(info.displayName).toBe('prod:~/repo');
-    expect(FakePty.instances[0]!.file).toBe(
-      'C:\\Windows\\System32\\OpenSSH\\ssh.exe',
-    );
+    expect(FakePty.instances[0]!.file).toBe('C:\\Windows\\System32\\OpenSSH\\ssh.exe');
     expect(FakePty.instances[0]!.args).toEqual([
       '-tt',
       '-p',
@@ -511,7 +514,7 @@ describe('SessionManager — createSession', () => {
       '-o',
       'ServerAliveInterval=30',
       'alice@example.com',
-      "cd \"$HOME\"/'repo' && exec \"${SHELL:-/bin/sh}\" -l",
+      'cd "$HOME"/\'repo\' && exec "${SHELL:-/bin/sh}" -l',
     ]);
   });
 
@@ -545,7 +548,9 @@ describe('SessionManager — createSession', () => {
       },
     });
 
-    expect(FakePty.instances[0]!.args).not.toEqual(expect.arrayContaining([expect.stringContaining('exec')]));
+    expect(FakePty.instances[0]!.args).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('exec')]),
+    );
   });
 
   it('SSH 启动模板在远端 cwd 中执行命令/参数/env', async () => {
@@ -745,7 +750,9 @@ describe('SessionManager — createSession', () => {
 
     // The value sits inside nested shell quotes, so only the name and the socket are fixed.
     expect(lastArg()).toMatch(/CETERIS_TMUX_SOCKET=\W*ceteris\W/);
-    expect(lastArg({ tmuxSocket: 'ceteris-beta' })).toMatch(/CETERIS_TMUX_SOCKET=\W*ceteris-beta\W/);
+    expect(lastArg({ tmuxSocket: 'ceteris-beta' })).toMatch(
+      /CETERIS_TMUX_SOCKET=\W*ceteris-beta\W/,
+    );
   });
 
   it('SSH tmux 可配置远端缺 tmux 时直接失败', async () => {
@@ -1150,6 +1157,36 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(mgr.get(info.id)?.agentPhase).toBeNull();
   });
 
+  it('answers a choice prompt with arrows and Enter, only while it is on screen (ADR-035)', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const fp = FakePty.instances[0]!;
+    expect(mgr.readChoice(info.id)).toBeNull();
+    expect(mgr.answerChoice(info.id, 2)).toEqual({ sent: false, reason: 'no-prompt' });
+    fp.emitData(
+      'Which colour do you prefer?\r\n❯ 1. Red\r\n  2. Blue\r\n  3. Chat about this\r\n' +
+        'Enter to select · ↑/↓ to navigate · Esc to cancel\r\n',
+    );
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mgr.readChoice(info.id)).toEqual({
+      question: 'Which colour do you prefer?',
+      options: [
+        { index: 1, label: 'Red', pointed: true, freeText: false },
+        { index: 2, label: 'Blue', pointed: false, freeText: false },
+        { index: 3, label: 'Chat about this', pointed: false, freeText: true },
+      ],
+    });
+    expect(mgr.answerChoice(info.id, 9)).toEqual({ sent: false, reason: 'option-gone' });
+    expect(mgr.answerChoice(info.id, 2)).toEqual({ sent: true });
+    expect(fp.written.at(-1)).toBe('\x1b[B\r');
+  });
+
   it('resize 后 quiet 窗口内 ConPTY 重绘字节不触发 markActive (CP-3 勘误 #3 v2)', async () => {
     const settings = makeStubSettingsManager({ activeIdleThresholdSeconds: 1 });
     const { mgr } = makeManager({ settings, resizeQuietMs: 500 });
@@ -1345,7 +1382,11 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     mgr.on('sessionDestroyed', destroyed);
     const override = { name: 'X update', command: 'x', args: ['update'], closeOnSuccess: true };
     const ok = await mgr.createSession({
-      pathId: '/p', templateId: 'shell', ownerWindowId: 'w', cols: 80, rows: 24,
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
       commandOverride: override,
     });
     FakePty.instances[0]!.emitExit(0);
@@ -1353,7 +1394,11 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(destroyed).toHaveBeenCalledWith({ sessionId: ok.id, reason: 'pty-exited' });
 
     const failed = await mgr.createSession({
-      pathId: '/p', templateId: 'shell', ownerWindowId: 'w', cols: 80, rows: 24,
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
       commandOverride: override,
     });
     FakePty.instances[1]!.emitExit(1);
@@ -1533,23 +1578,20 @@ describe('SessionManager — OSC 1337 cwd 跟踪 (ADR-008)', () => {
     },
   );
 
-  it.skipIf(process.platform !== 'win32')(
-    'POSIX 驱动器根 `/c` 归一为 `C:\\`',
-    async () => {
-      const { mgr } = makeManager();
-      const info = await mgr.createSession({
-        pathId: 'C:\\',
-        templateId: 'shell',
-        ownerWindowId: 'w',
-        cols: 80,
-        rows: 24,
-      });
-      const fp = FakePty.instances[0]!;
-      fp.emitData('\x1b]1337;CurrentDir=/c\x07');
-      const after = mgr.get(info.id)!;
-      expect(after.currentCwd.toLowerCase()).toBe('c:\\');
-    },
-  );
+  it.skipIf(process.platform !== 'win32')('POSIX 驱动器根 `/c` 归一为 `C:\\`', async () => {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: 'C:\\',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const fp = FakePty.instances[0]!;
+    fp.emitData('\x1b]1337;CurrentDir=/c\x07');
+    const after = mgr.get(info.id)!;
+    expect(after.currentCwd.toLowerCase()).toBe('c:\\');
+  });
 });
 
 describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () => {
@@ -1795,9 +1837,7 @@ describe('SessionManager — OSC 0/1/2 标题 (displayName 自动跟随)', () =>
 
     // Claude Code 自定义标题(含路径但有描述前缀)— 必须放行
     fp.emitData('\x1b]0;✻ Claude · ~/p (working…)\x07');
-    expect(mgr.get(info.id)!.displayName).toBe(
-      '✻ Claude · ~/p (working…)',
-    );
+    expect(mgr.get(info.id)!.displayName).toBe('✻ Claude · ~/p (working…)');
 
     // 其他常见合法标题
     fp.emitData('\x1b]0;node app.js\x07');
@@ -2024,9 +2064,13 @@ describe('SessionManager: split panes', () => {
     mgr.claimOwner(a.id, 'w1');
     mgr.setPaneSessions('w1', [a.id, b.id]);
     mgr.claimOwner(b.id, 'w1');
-    expect(mgr.list().filter((s) => s.ownerWindowId === 'w1').map((s) => s.id).sort()).toEqual(
-      [a.id, b.id].sort(),
-    );
+    expect(
+      mgr
+        .list()
+        .filter((s) => s.ownerWindowId === 'w1')
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual([a.id, b.id].sort());
   });
 
   it('claiming still releases sessions that are not in a pane', async () => {
@@ -2157,9 +2201,7 @@ describe('SessionManager — sendInput / resize', () => {
     });
     const fp = FakePty.instances[0]!;
     fp.emitExit(0);
-    expect(() =>
-      mgr.sendInput(info.id, Buffer.from('x', 'utf8').toString('base64')),
-    ).not.toThrow();
+    expect(() => mgr.sendInput(info.id, Buffer.from('x', 'utf8').toString('base64'))).not.toThrow();
   });
 
   // TYP-1 / IPC-4:sendInput 现在返回 { accepted, reason }
@@ -2174,20 +2216,14 @@ describe('SessionManager — sendInput / resize', () => {
     });
     const fp = FakePty.instances[0]!;
     fp.emitExit(0);
-    const res = mgr.sendInput(
-      info.id,
-      Buffer.from('x', 'utf8').toString('base64'),
-    );
+    const res = mgr.sendInput(info.id, Buffer.from('x', 'utf8').toString('base64'));
     expect(res.accepted).toBe(false);
     expect(res.reason).toBe('pty-exited');
   });
 
   it('sendInput 在不存在 session 上返回 accepted=false reason=session-not-found', () => {
     const { mgr } = makeManager();
-    const res = mgr.sendInput(
-      'no-such-id',
-      Buffer.from('x', 'utf8').toString('base64'),
-    );
+    const res = mgr.sendInput('no-such-id', Buffer.from('x', 'utf8').toString('base64'));
     expect(res.accepted).toBe(false);
     expect(res.reason).toBe('session-not-found');
   });
@@ -2201,10 +2237,7 @@ describe('SessionManager — sendInput / resize', () => {
       cols: 80,
       rows: 24,
     });
-    const res = mgr.sendInput(
-      info.id,
-      Buffer.from('x', 'utf8').toString('base64'),
-    );
+    const res = mgr.sendInput(info.id, Buffer.from('x', 'utf8').toString('base64'));
     expect(res.accepted).toBe(true);
     expect(res.reason).toBeUndefined();
   });
@@ -2235,9 +2268,7 @@ describe('SessionManager — sendInput / resize', () => {
       vi.advanceTimersByTime(10);
       expect(outputs.length).toBe(1);
       // base64 解码后是 'aaabbbccc'
-      expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe(
-        'aaabbbccc',
-      );
+      expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe('aaabbbccc');
       // seq 是最后一条 chunk 对应的(3 个 chunk → outputSeq 0,1,2)
       expect(outputs[0]!.seq).toBe(2);
     } finally {
@@ -2278,10 +2309,7 @@ describe('SessionManager — sendInput / resize', () => {
     });
     const fp = FakePty.instances[0]!;
     fp.writeShouldThrow = true;
-    const res = mgr.sendInput(
-      info.id,
-      Buffer.from('x', 'utf8').toString('base64'),
-    );
+    const res = mgr.sendInput(info.id, Buffer.from('x', 'utf8').toString('base64'));
     expect(res.accepted).toBe(false);
     expect(res.reason).toBe('pty-write-failed');
   });
@@ -2346,9 +2374,7 @@ describe('SessionManager — PER-2 emit 聚合 / state-replay 不变量', () => 
     // 返回时 chunk1 已通过 sessionOutput 发出,lastSeq 反映该 chunk 的 seq。
     const res = await mgr.getScrollbackForReplay(info.id);
     expect(outputs).toHaveLength(1);
-    expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe(
-      'AAAA',
-    );
+    expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe('AAAA');
     expect(outputs[0]!.seq).toBe(res.lastSeq);
 
     // serialize 输出反映 headless 已经接受了 AAAA(headless 已 drain)
@@ -2552,7 +2578,12 @@ describe('TemplatesManager.mergeBuiltins', () => {
   it('空文件 → 内置模板齐全,defaultId=shell', () => {
     const r = mergeBuiltins([], '');
     expect(r.templates.map((t) => t.id)).toEqual(BUILTIN_TEMPLATES.map((t) => t.id));
-    expect(r.templates.map((t) => t.id).slice(0, 4)).toEqual(['shell', 'claude-code', 'codex', 'opencode']);
+    expect(r.templates.map((t) => t.id).slice(0, 4)).toEqual([
+      'shell',
+      'claude-code',
+      'codex',
+      'opencode',
+    ]);
     expect(r.defaultId).toBe('shell');
     expect(r.mutated).toBe(true);
   });

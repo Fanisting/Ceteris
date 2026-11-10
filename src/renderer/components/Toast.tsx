@@ -31,10 +31,20 @@ export type ToastKind = 'info' | 'success' | 'warn' | 'error';
 export interface ToastInput {
   kind: ToastKind;
   message: string;
-  /** 显示时长 ms;不传走默认(error 8s,其余 4s) */
+  /** 显示时长 ms;不传走默认(error 8s,其余 4s);Infinity = 只能手动关或由调用方 dismiss */
   durationMs?: number;
   /** 消息右侧的文字按钮;点了先执行 onClick 再关掉这条 toast */
   actions?: ToastAction[];
+  /**
+   * ADR-035:可展开的内容。右侧多一个 label 按钮,点了在消息下面展开 render() 的
+   * 内容,再点收起。展开区里的点击不会关掉 toast(选择面板要在里面点选项)。
+   */
+  detail?: ToastDetail;
+}
+
+export interface ToastDetail {
+  label: string;
+  render: () => ReactNode;
 }
 
 export interface ToastAction {
@@ -69,6 +79,16 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
   // 正在淡出的 toast。它们还在 items 里(所以还渲染),但已经不计时、不响应鼠标,
   // MOTION_EXIT_MS 后才真正移除。ref 给 ticker 用,state 给渲染用。
   const [leaving, setLeaving] = useState<ReadonlySet<number>>(new Set());
+  /** ADR-035:展开了 detail 的 toast */
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
+  const toggleExpanded = useCallback((id: number): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const leavingRef = useRef<ReadonlySet<number>>(leaving);
   leavingRef.current = leaving;
   const itemsRef = useRef<Toast[]>(items);
@@ -152,7 +172,11 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
         {items.map((t) => (
           <div
             key={t.id}
-            className={`toast toast-${t.kind}${leaving.has(t.id) ? ' leaving' : ''}`}
+            className={
+              `toast toast-${t.kind}` +
+              (leaving.has(t.id) ? ' leaving' : '') +
+              (t.detail && expanded.has(t.id) ? ' expanded' : '')
+            }
             onMouseEnter={() => pausedIds.current.add(t.id)}
             onMouseLeave={() => pausedIds.current.delete(t.id)}
             onClick={() => dismiss(t.id)}
@@ -164,10 +188,31 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
                 <Icon name="circleDot" size={14} />
               )}
             </span>
-            <span className="toast-message">{t.message}</span>
-            {t.actions && t.actions.length > 0 && (
+            <span className="toast-body">
+              <span className="toast-message">{t.message}</span>
+              {t.detail && expanded.has(t.id) && (
+                // 展开区自己处理点击,不冒泡到 toast 体(那会关掉 toast)
+                <span className="toast-detail" onClick={(e) => e.stopPropagation()}>
+                  {t.detail.render()}
+                </span>
+              )}
+            </span>
+            {((t.actions && t.actions.length > 0) || t.detail) && (
               <span className="toast-actions">
-                {t.actions.map((a) => (
+                {t.detail && (
+                  <button
+                    type="button"
+                    className="toast-action"
+                    aria-expanded={expanded.has(t.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpanded(t.id);
+                    }}
+                  >
+                    {t.detail.label}
+                  </button>
+                )}
+                {(t.actions ?? []).map((a) => (
                   <button
                     key={a.label}
                     type="button"

@@ -8,4 +8,6 @@ Ceteris updates an agent with the same tool that installed it, such as npm, Home
 
 In Settings under Shell, you can turn the check off, press "Check now", or turn on automatic updates. Automatic updates are off by default and always wait 30 seconds with a way to cancel.
 
+When the agent still has tabs open, Ceteris asks whether to close them, update, and reopen them with their conversations. See [Full reload on agent update](agent-full-reload.md).
+
 Related: [Software definition](../docs/软件定义书.md).

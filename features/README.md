@@ -71,4 +71,5 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Windows, macOS and Linux](platforms.md) | One app on three systems | 0.1.0 |
 | [Update checks](update-checks.md) | A dot and a download link when a new version exists | 0.4.1 |
 | [Agent updates](agent-updates.md) | Notices and updates for the agents you use | 0.4.1 |
+| [Full reload on agent update](agent-full-reload.md) | Close an agent's tabs, update it, reopen them with their conversations | Next |
 | [Stable, beta and dev channels](release-channels.md) | Run several builds side by side | 0.3.0 |

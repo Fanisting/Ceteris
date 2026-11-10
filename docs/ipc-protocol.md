@@ -1298,6 +1298,33 @@ interface UpdateStatus {
 
 **选哪个文件**(`src/shared/update-check.ts` 的 `selectAsset`):Windows 给 Setup exe,portable 运行时给 Portable exe;macOS 按 CPU 给 arm64 或 x64 的 dmg;Linux 以 AppImage 启动给 AppImage,否则 Debian 系给 deb、Red Hat 系给 rpm,找不到再退到 AppImage。
 
+### 5.10 Agent 更新时关掉再开回来 (ADR-037)
+
+agent CLI 的版本检查和升级命令(`cmd:agent:list-versions`、`cmd:agent:upgrade`、`cmd:agent:check-now`、`cmd:agent:notice-action`、`cmd:agent:notices-ready`)的类型都在 `src/shared/protocol.ts` 的注释里。这一节只写整体重载加的两条命令。实现在 `src/main/agent-reload.ts`。
+
+#### `cmd:agent:reload-plan`
+```typescript
+interface AgentReloadPlanPayload { templateId: string }
+interface AgentReloadPlan {
+  tabs: number;        // 该 agent 模板的本机终端数 (不算 SSH 和已退出的),全部会关掉再开回来
+  running: number;     // 其中 agentPhase 为 working 的,开回来后会收到 "continue"
+  blocked: number;     // 其中在等用户批准的;不发 continue
+  otherTabs: number;   // 别的模板 (纯 shell) 里手动跑着同一个 agent 的终端数;不动,只提醒
+  resumes: boolean;    // 这个 agent 有恢复对话的命令行参数
+  inProgress: boolean; // 同一个 agent 的重载还在进行
+}
+```
+renderer 在弹对话框前调,把数字写进正文。**Errors**:`TemplateNotFound`(不是内置 agent)。
+
+#### `cmd:agent:reload`
+```typescript
+interface ReloadAgentPayload { templateId: string; pathId: string; cols: number; rows: number }
+interface ReloadAgentResponse { started: boolean; tabs: number }
+```
+立即返回;之后的进度走 `evt:agent:update-notice`:`reloading`(tabs 关掉的终端数)→ `reloaded`(tabs 开回来的数、continued 收到 continue 的数、failedTabs 没开回来的数、updated 升级是否生效、to 重查后的已装版本)。升级终端开在 `pathId` 下、显示在发起窗口里(与 `cmd:agent:upgrade` 一样)。`cmd:agent:notice-action` 的 `action: 'reload'` 做同样的事,升级终端开在 home 目录。
+
+**Errors**:`TemplateNotFound`;`InvalidPayload`(`pathId` 是 SSH 路径);`AgentBusy`(后台自动升级正在跑这个 agent)。同一个 agent 已在重载时不报错,`started=false`。
+
 ### 5.7 Explorer Integration (v1.3)
 
 > Win11 新菜单(MSIX + `IExplorerCommand`)与经典菜单(HKCU 注册表)的状态

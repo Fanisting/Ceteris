@@ -174,6 +174,24 @@ describe('TabControlService open-file (ADR-033)', () => {
     expect(shown).toEqual([{ sessionId: 'a', name: 'answer.md', path: note }]);
   });
 
+  it('works from a plain worker tab with the extension off', async () => {
+    const { tokenOf, call, shown } = setup([session('w', { currentCwd: cwd })], {
+      enabled: false,
+      files: [note],
+    });
+    const reply = await call(tokenOf('w'), 'open-file', { path: 'notes/answer.md' });
+    expect(reply.ok).toBe(true);
+    expect(shown.map((s) => s.sessionId)).toEqual(['w']);
+    expect(errorCode(await call(tokenOf('w'), 'list'))).toBe('disabled');
+  });
+
+  it('still refuses an exited tab', async () => {
+    const { tokenOf, call } = setup([session('w', { state: 'exited' })], { files: [note] });
+    expect(errorCode(await call(tokenOf('w'), 'open-file', { path: note }))).toBe(
+      'not-coordinator',
+    );
+  });
+
   it('shows an absolute path beside a named tab of the folder', async () => {
     const { tokenOf, call, shown } = setup(
       [session('a', { coordinator: true }), session('bbbb1', { currentCwd: cwd })],

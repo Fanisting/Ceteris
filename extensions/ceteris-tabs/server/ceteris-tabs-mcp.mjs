@@ -32,14 +32,16 @@ const POLL_MS = 1000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
 const INSTRUCTIONS = [
-  'These tools control the other terminal tabs in this Ceteris folder.',
-  'They work only while this tab is marked as coordinator in Ceteris; otherwise every call says so.',
+  'You are running in a terminal tab of Ceteris, a terminal app with a file viewer beside each tab.',
+  'open_file works from any tab: when the user asks you to show, display or open your answer, a',
+  'report or a file "in Ceteris", "as a tab" or "as a page", write it to a .md (or .txt, .json,',
+  '.tex, .pdf, image) file and call open_file with its path. Ceteris displays it next to this tab.',
+  'The other tools control the other terminal tabs of this folder and work only while this tab is',
+  'marked as coordinator in Ceteris; otherwise every call says so.',
   'Typical loop: list_tabs; open_tab with template "claude-code" and a prompt to start a worker;',
   'wait_for_tab until it is done or blocked; read_tab to see its answer; send_input to answer an',
   'approval prompt (keys) or give the next prompt (text); close_tab when it is finished.',
   'Tabs are named by the id from list_tabs (a unique prefix of 4+ characters works) or by exact name.',
-  'To show the user a result, write it to a .md (or .txt, .json, .tex, .pdf, image) file and call',
-  'open_file with its path: Ceteris displays it next to your tab.',
 ].join(' ');
 
 export const KEY_NAMES = [
@@ -165,7 +167,7 @@ export const TOOLS = [
   {
     name: 'open_file',
     description:
-      'Show a file in the Ceteris viewer beside a tab (your own by default): Markdown rendered as a page, .txt/.json/.tex as text, PDFs and images as themselves. Write the file first, then call this with its path; a relative path counts from the current directory of the tab.',
+      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, .txt/.json/.tex as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or a file in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
     inputSchema: {
       type: 'object',
       properties: {

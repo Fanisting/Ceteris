@@ -25,6 +25,10 @@
  *   same viewer a click in the file tree opens. Main checks the type and that the file exists;
  *   the window reads the content itself. A relative path counts from the tab's current
  *   directory, because that is where the agent just wrote the file.
+ * - open-file is open to every live tab, coordinator or not, extension on or off: the user
+ *   asks their own Claude Code to "show the answer in Ceteris", and that tab must be able to
+ *   do it without any setup. It shows nothing the user could not click in the file tree, and
+ *   it only touches the tab that asks (or another tab of the same folder).
  *
  * @对应文档章节:软件定义书.md ADR-024、ADR-033;docs/ipc-protocol.md 附录 D
  *
@@ -171,7 +175,10 @@ export class TabControlService {
     }
   }
 
-  /** The calling tab, if it may use the pipe right now. */
+  /**
+   * The calling tab, if it may use the pipe right now. Controlling tabs needs the extension on
+   * and a coordinator tab; open-file (ADR-033) needs only a live tab, see the file header.
+   */
   private authorize(request: TabControlRequest): SessionInfo {
     if (request.v !== TAB_CONTROL_VERSION) {
       throw new RequestError(
@@ -179,7 +186,8 @@ export class TabControlService {
         `protocol version ${request.v} is not ${TAB_CONTROL_VERSION}; update the ceteris-tabs plugin to match this Ceteris`,
       );
     }
-    if (!this.host.enabled()) {
+    const anyTab = request.op === 'open-file';
+    if (!anyTab && !this.host.enabled()) {
       throw new RequestError(
         'disabled',
         'Tab control is off. Turn it on in Ceteris Settings, Extensions, Coordinator tab control.',
@@ -193,7 +201,10 @@ export class TabControlService {
         'This tab is not known to the running Ceteris. Open Claude Code in a new Ceteris tab.',
       );
     }
-    if (caller.coordinator !== true || caller.state === 'exited') {
+    if (caller.state === 'exited') {
+      throw new RequestError('not-coordinator', 'This tab has exited.');
+    }
+    if (!anyTab && caller.coordinator !== true) {
       throw new RequestError(
         'not-coordinator',
         'Only coordinator tabs may control tabs. Right-click this tab in Ceteris and tick Coordinator.',
@@ -328,7 +339,8 @@ export class TabControlService {
   /**
    * Shows a local file in the viewer beside a tab of the folder; the caller's own tab when
    * `tab` is not given. Only the kinds the viewer knows (fileViewKind) are accepted, so an
-   * agent asking for a .ts file gets a clear refusal instead of a blank pane.
+   * agent asking for a .ts file gets a clear refusal instead of a blank pane. Any live tab may
+   * call this (see authorize); naming another tab still needs it to be in the same folder.
    */
   private async openFile(
     caller: SessionInfo,
@@ -357,10 +369,7 @@ export class TabControlService {
       throw new RequestError('not-found', `No file at ${path}. Write it first, then open it.`);
     }
     this.host.showFile({ sessionId: target.id, name, path });
-    logger.info(
-      'TabControl',
-      `open-file sid=${target.id} path=${path} by coordinator ${caller.id}`,
-    );
+    logger.info('TabControl', `open-file sid=${target.id} path=${path} by tab ${caller.id}`);
     return { tab: summarize(target, caller.id), path, name, kind };
   }
 

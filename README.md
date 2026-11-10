@@ -111,19 +111,19 @@ Ceteris gives you:
 
 ### Install
 
-Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.1):
+Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.2):
 
 | System | Download |
 |---|---|
-| Windows 10/11 (x64) | [Ceteris-Setup-0.4.1-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-Setup-0.4.1-x64.exe) |
-| macOS, Apple Silicon | [Ceteris-0.4.1-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-arm64.dmg) |
-| macOS, Intel | [Ceteris-0.4.1-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x64.dmg) |
-| Linux (x64), any distribution | [Ceteris-0.4.1-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x86_64.AppImage) |
-| Ubuntu or Debian (x64) | [Ceteris-0.4.1-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.1/Ceteris-0.4.1-amd64.deb) |
+| Windows 10/11 (x64) | [Ceteris-Setup-0.4.2-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.2/Ceteris-Setup-0.4.2-x64.exe) |
+| macOS, Apple Silicon | [Ceteris-0.4.2-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.2/Ceteris-0.4.2-arm64.dmg) |
+| macOS, Intel | [Ceteris-0.4.2-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.2/Ceteris-0.4.2-x64.dmg) |
+| Linux (x64), any distribution | [Ceteris-0.4.2-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.2/Ceteris-0.4.2-x86_64.AppImage) |
+| Ubuntu or Debian (x64) | [Ceteris-0.4.2-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.2/Ceteris-0.4.2-amd64.deb) |
 
 - **Windows**: run the installer, then launch Ceteris from the Start Menu or your desktop. The installer is not code signed yet, so SmartScreen may warn: choose **More info**, then **Run anyway**.
 - **macOS**: open the `.dmg` and drag Ceteris into Applications. The app is not signed yet, so the first time, right-click it and choose **Open**.
-- **Linux**: run `chmod +x Ceteris-0.4.1-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.1-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
+- **Linux**: run `chmod +x Ceteris-0.4.2-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.2-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
 
 Windows gets the most testing. The macOS and Linux builds are newer, so please [open an issue](https://github.com/Fanisting/ceteris/issues) if something breaks.
 
@@ -176,7 +176,7 @@ Every feature has its own page with what it does and where to find it: see the [
 - ✅ **Multi-window**: any number of equal windows; close-to-tray; cross-window session visibility
 - ✅ **Ceteris Link (remote attach)**: open the terminal tabs running on another Windows machine, live. Same sessions, same scrollback, same running agents; the sessions never leave the host. End-to-end encrypted (X25519 + AES-256-GCM) with a pre-shared token that never travels over the wire. See [docs/远程访问指南.md](docs/远程访问指南.md)
 - ✅ **CWD tracking**: OSC 1337 hooks for PowerShell and cmd.exe
-- ✅ **57 themes**: Light Pink (default), Ceteris Dark, Ceteris Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal, Meizi, 7 Pearl themes from colour palettes (Lapis, Sapphire, Rose Dew, Ember, Jade, Moonlight, Frost), and 6 from LaTeX Beamer templates (Metropolis, Metropolis Dark, Madrid, CambridgeUS, AnnArbor, Spruce), and 26 Legado MD3 themes, four of them generated live from a seed colour or the Windows accent colour. Drop your own `.css` files into the `themes` folder to add custom themes
+- ✅ **95 themes**: Light Pink (default), Ceteris Dark, Ceteris Light, Rose Pine (3 variants), Catppuccin (2), Tokyo Night (2), Dracula, One Dark Pro, Cutie, Light Pink, Fairyfloss, Business, Ubuntu, Windows Terminal, Meizi, 7 Pearl themes from colour palettes (Lapis, Sapphire, Rose Dew, Ember, Jade, Moonlight, Frost), and 6 from LaTeX Beamer templates (Metropolis, Metropolis Dark, Madrid, CambridgeUS, AnnArbor, Spruce), and 26 38 Pili themes from PiliPlus seed colours, and Legado MD3 themes, four of them generated live from a seed colour or the Windows accent colour. Drop your own `.css` files into the `themes` folder to add custom themes
 - ✅ **Window style**: Windows or macOS (sets title-bar layout — not theme colors)
 - ✅ **Settings**: live-applied, no save button; export/import config (with secrets-redaction option)
 - ✅ **System tray**: persistent menu with running-sessions submenu; honest quit confirmation
@@ -187,6 +187,8 @@ Every feature has its own page with what it does and where to find it: see the [
 - ✅ **Edit txt, json, md and tex** in place, with unsaved drafts kept across reconnects; files over 2 MB open as fast read-only pages; markdown reads in the OnePage style; create new files from the file tree
 - ✅ **See what agents are doing**: the tab wave changes with the agent's phase, short AI titles name each agent tab, and a small burst marks an agent that finished while you looked elsewhere
 - ✅ **Running and Needs you filters** at the front of the tab bar, plus coordinator tabs that stay in view across folders and can manage the other tabs in their folder
+- ✅ **Show me a file**: ask your Claude Code to open its answer in Ceteris and it appears in the file panel beside the tab, no coordinator needed
+- ✅ **Full reload on agent update**: close an agent's tabs, update it, and reopen them with their conversations
 - ✅ **Formulas as images**: LaTeX that Claude Code and Codex print shows as rendered formulas in the terminal
 - ✅ **Update check**: Ceteris looks for a newer GitHub release and offers the right download for your system
 - ✅ **Material Design 3 look** across windows, menus, dialogs and settings

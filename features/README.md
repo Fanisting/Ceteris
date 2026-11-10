@@ -52,7 +52,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar | 0.4.1 |
 | [Coordinator tour](coordinator-tour.md) | An animated guide to roles and tab control | 0.4.1 |
 | [Tab control plugin](tab-control-plugin.md) | A Coordinator opens, reads and drives other tabs | 0.4.1 |
-| [Open file tool](open-file-tool.md) | Your agent shows you a file beside its tab | Next |
+| [Open file tool](open-file-tool.md) | Your agent shows you a file beside its tab | 0.4.2 |
 
 ## Appearance
 
@@ -60,7 +60,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 |---|---|---|
 | [Built-in themes](built-in-themes.md) | More than 90 themes, including pearl and Beamer | 0.4.1 |
 | [Legado MD3 themes](legado-themes.md) | Material 3 colour sets plus live seed and Windows accent themes | 0.4.1 |
-| [Pili themes](pili-themes.md) | 38 Material 3 themes from PiliPlus seed colours | Next |
+| [Pili themes](pili-themes.md) | 38 Material 3 themes from PiliPlus seed colours | 0.4.2 |
 | [Custom themes](custom-themes.md) | A theme is one CSS file in the themes folder | 0.4.1 |
 | [Material Design 3 look](material-design-look.md) | Material shapes and motion across the app | 0.3.0 |
 
@@ -71,5 +71,5 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Windows, macOS and Linux](platforms.md) | One app on three systems | 0.1.0 |
 | [Update checks](update-checks.md) | A dot and a download link when a new version exists | 0.4.1 |
 | [Agent updates](agent-updates.md) | Notices and updates for the agents you use | 0.4.1 |
-| [Full reload on agent update](agent-full-reload.md) | Close an agent's tabs, update it, reopen them with their conversations | Next |
+| [Full reload on agent update](agent-full-reload.md) | Close an agent's tabs, update it, reopen them with their conversations | 0.4.2 |
 | [Stable, beta and dev channels](release-channels.md) | Run several builds side by side | 0.3.0 |

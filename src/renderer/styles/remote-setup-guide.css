@@ -1,0 +1,169 @@
+/*
+ * 远程设置引导 (ADR-032, RemoteSetupGuide.tsx):标题栏徽标下的气泡和 设置 → 远程 顶部的卡片
+ * 共用一套内容样式 (.rsg-*)。气泡的外形照快捷启动引导 (quick-launch.css) 的气泡。
+ */
+
+.rsg-bubble {
+  position: fixed;
+  z-index: 8000;
+  width: 300px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: 12px;
+  background-color: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface, #f0f);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
+  animation: rsg-in 180ms var(--md-easing-standard, ease) both;
+  -webkit-app-region: no-drag;
+}
+
+.rsg-bubble::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: var(--arrow-x, 28px);
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid var(--md-outline-variant, #f0f);
+  border-left: 1px solid var(--md-outline-variant, #f0f);
+  background-color: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.rsg-card {
+  margin: 0 0 14px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: 12px;
+  background-color: var(--md-surface-container, #f0f);
+  color: var(--md-on-surface, #f0f);
+}
+
+.rsg-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rsg-body {
+  margin: 0 0 8px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.rsg-note {
+  margin: 6px 0 4px;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.rsg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.rsg-primary {
+  padding: 4px 14px;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background-color: var(--md-primary, #f0f);
+  color: var(--md-on-primary, #f0f);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rsg-quiet {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--md-shape-full, 999px);
+  background: none;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rsg-primary:hover,
+.rsg-primary:focus-visible,
+.rsg-quiet:hover,
+.rsg-quiet:focus-visible {
+  filter: brightness(1.08);
+  outline: none;
+}
+
+.rsg-quiet:hover {
+  background-color: var(--md-surface-container-highest, #f0f);
+}
+
+/* 两个角色按钮:整行可点,名字一行,说明一行 */
+.rsg-role {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--md-outline-variant, #f0f);
+  border-radius: 10px;
+  background-color: var(--md-surface-container, #f0f);
+  color: var(--md-on-surface, #f0f);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rsg-role:hover,
+.rsg-role:focus-visible {
+  border-color: var(--md-primary, #f0f);
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+  outline: none;
+}
+
+.rsg-role:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rsg-role-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.rsg-role-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.rsg-role:hover .rsg-role-hint {
+  color: inherit;
+}
+
+/* 回答过之后的一行:文字加一个开始按钮 */
+.rsg-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rsg-compact .rsg-body {
+  margin: 0;
+}
+
+@keyframes rsg-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rsg-bubble {
+    animation: none;
+  }
+}

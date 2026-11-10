@@ -4,6 +4,10 @@
  *   that reaches any other one, over Tailscale or SSH. The rules are in
  *   shared/view-menu.ts; this file only connects them to the app.
  *
+ * @关键设计:
+ * - 远程设置引导 (ADR-032):还没配置任何远端、也没回答过的时候,点徽标先弹一个气泡问要不要
+ *   让 AI agent 带着配;回答过之后菜单末尾留一项"让 AI 帮我配置…"随时可用。
+ *
  * @不要在这里做的事:
  * - 不要在这里决定菜单内容,改 view-menu.ts,那里有测试
  */
@@ -29,6 +33,7 @@ import {
 import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
 import { ExpandMore } from './material-symbols';
+import { RemoteSetupBubble, type RemoteSetupStep } from './RemoteSetupGuide';
 import { useToast } from './Toast';
 import { findPathNode, useAppDispatch, useAppState } from '../store';
 
@@ -45,6 +50,10 @@ export function ViewSwitchButton(): JSX.Element {
   const [linkClients, setLinkClients] = useState<LinkStatusResponse['clients']>([]);
   /** Hosts just clicked, so a failed connection is reported instead of doing nothing. */
   const pending = useRef(new Map<string, string>());
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  /** The remote setup guide bubble (ADR-032), when open. */
+  const [offer, setOffer] = useState<{ x: number; y: number; step: RemoteSetupStep } | null>(null);
+  const closeOffer = useCallback(() => setOffer(null), []);
 
   const refreshViews = useCallback(() => {
     void window.api
@@ -160,26 +169,61 @@ export function ViewSwitchButton(): JSX.Element {
           label: tx('添加 SSH 服务器…', 'Add SSH server…'),
           onSelect: () => dispatch({ type: 'view/enter-settings', category: 'remote' }),
         };
+      case 'setup-guide':
+        return {
+          label: tx('让 AI 帮我配置…', 'Set up with my AI agent…'),
+          onSelect: () => openOffer('role'),
+        };
       case 'divider':
         return { label: '', divider: true };
     }
   };
 
+  const openOffer = (step: RemoteSetupStep): void => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setOffer({ x: rect.left + rect.width / 2, y: rect.bottom, step });
+  };
+
+  // 还没配置任何远端、也没回答过引导时,第一次点徽标先问要不要让 AI 带着配 (ADR-032)。
+  // 远端视图里不问:那里的设置属于 Host,引导也会在错的机器上跑。
+  const nothingConfigured = input.savedHosts.length === 0 && input.sshProfiles.length === 0;
+  const guideAnswered = state.settings.behavior?.remoteSetupGuideSeen ?? false;
+  const inRemoteView = targets.some((t) => t.active && t.id !== VIEW_TARGET_LOCAL);
+
   const handleClick = (e: MouseEvent<HTMLButtonElement>): void => {
+    if (offer) {
+      setOffer(null);
+      return;
+    }
+    if (nothingConfigured && !guideAnswered && !inRemoteView) {
+      openOffer('offer');
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     menu.open({ x: rect.left, y: rect.bottom + 4, items: buildViewMenu(input).map(toItem) });
   };
 
   return (
-    <button
-      type="button"
-      className="titlebar-window-badge titlebar-view-switch"
-      onClick={handleClick}
-      title={tx('切换到其他机器', 'Switch to another machine')}
-      aria-haspopup="menu"
-    >
-      {viewBadgeLabel(input)}
-      <ExpandMore size={14} />
-    </button>
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="titlebar-window-badge titlebar-view-switch"
+        onClick={handleClick}
+        title={tx('切换到其他机器', 'Switch to another machine')}
+        aria-haspopup="menu"
+      >
+        {viewBadgeLabel(input)}
+        <ExpandMore size={14} />
+      </button>
+      {offer && (
+        <RemoteSetupBubble
+          anchor={{ x: offer.x, y: offer.y }}
+          initialStep={offer.step}
+          onClose={closeOffer}
+        />
+      )}
+    </>
   );
 }

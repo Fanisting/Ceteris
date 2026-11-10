@@ -78,6 +78,11 @@ export const COMMAND_CHANNELS = {
   EXTENSIONS_GET_MARKETPLACE_DIR: 'cmd:extensions:get-marketplace-dir',
   /** 协调者控制 (ADR-024):Claude Code 是否已装 ceteris-tabs 插件,协调者引导用它打勾 */
   EXTENSIONS_TAB_CONTROL_STATUS: 'cmd:extensions:tab-control-status',
+  /**
+   * 远程设置引导 (ADR-032):随 Ceteris 一起安装的两份指南文件的绝对路径,renderer 把它拼进
+   * 粘给 agent 的 prompt。返回 RemoteSetupGuidePathsResponse。
+   */
+  GUIDES_REMOTE_SETUP_PATHS: 'cmd:guides:remote-setup-paths',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**
@@ -437,6 +442,15 @@ export interface FocusWindowPayload {
 // ──────────────────────────────────────────────────────────────────
 // Session 域
 // ──────────────────────────────────────────────────────────────────
+
+/**
+ * 远程设置引导 (ADR-032):两份指南文件在本机的绝对路径。安装版在 resources/guides,
+ * dev 在仓库的 guides/。
+ */
+export interface RemoteSetupGuidePathsResponse {
+  host: string;
+  client: string;
+}
 
 export interface CreateSessionPayload {
   /** 启动 session 的 path id (= 该 path 的 normalize 后绝对路径)。

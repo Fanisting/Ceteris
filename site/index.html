@@ -1,0 +1,1806 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Ceteris</title>
+    <meta
+      name="description"
+      content="Ceteris is a path-centric, AI-agent-friendly terminal manager for Windows, macOS and Linux. Close every window; your sessions keep running."
+    />
+    <meta property="og:title" content="Ceteris" />
+    <meta property="og:description" content="Close the window. Keep the sessions." />
+    <meta property="og:image" content="https://fanisting.github.io/Ceteris/icon.png" />
+    <link rel="icon" href="icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Caveat:wght@400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=swap"
+    />
+    <style>
+      /* Layout: a top app bar, a two-column hero (thesis + live window mock), then stacked
+   sections on alternating surface-container tones. Everything derives from the MD3
+   colour roles below, seeded from the app icon: midnight blue, lime prompt, aurora. */
+      :root {
+        --md-primary: #3b4cc0;
+        --md-on-primary: #ffffff;
+        --md-primary-container: #dfe0ff;
+        --md-on-primary-container: #000f5c;
+        --md-secondary: #8a3aa8;
+        --md-on-secondary: #ffffff;
+        --md-secondary-container: #f6d9ff;
+        --md-on-secondary-container: #32004a;
+        --md-tertiary: #4f6600;
+        --md-on-tertiary: #ffffff;
+        --md-tertiary-container: #d3f58a;
+        --md-on-tertiary-container: #151f00;
+        --md-error: #ba1a1a;
+        --md-surface: #fbf8ff;
+        --md-surface-dim: #dbd9e3;
+        --md-surface-bright: #fbf8ff;
+        --md-surface-container-lowest: #ffffff;
+        --md-surface-container-low: #f5f2fd;
+        --md-surface-container: #efecf7;
+        --md-surface-container-high: #e9e7f1;
+        --md-surface-container-highest: #e3e1eb;
+        --md-on-surface: #1b1b23;
+        --md-on-surface-variant: #46464f;
+        --md-outline: #777680;
+        --md-outline-variant: #c7c5d0;
+        --md-inverse-surface: #303038;
+        --md-inverse-on-surface: #f2eff9;
+        --md-scrim: rgba(0, 0, 0, 0.32);
+        --aurora-a: #8a3aa8;
+        --aurora-b: #d84a9a;
+        --term-bg: #15162b;
+        --term-fg: #e2e3f4;
+        --term-lime: #b6e65a;
+        --term-muted: #8a8ca8;
+        --shadow-1: 0 1px 2px rgba(27, 27, 35, 0.3), 0 1px 3px 1px rgba(27, 27, 35, 0.15);
+        --shadow-3: 0 4px 8px 3px rgba(27, 27, 35, 0.15), 0 1px 3px rgba(27, 27, 35, 0.3);
+        --font-body: 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-mono: 'Roboto Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+        --shape-xs: 4px;
+        --shape-sm: 8px;
+        --shape-md: 12px;
+        --shape-lg: 16px;
+        --shape-xl: 28px;
+        --shape-full: 999px;
+        --gutter: max(16px, env(safe-area-inset-left, 0px));
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --md-primary: #bcc2ff;
+          --md-on-primary: #0d1d8f;
+          --md-primary-container: #2234a7;
+          --md-on-primary-container: #dfe0ff;
+          --md-secondary: #e9b3ff;
+          --md-on-secondary: #520073;
+          --md-secondary-container: #701e8e;
+          --md-on-secondary-container: #f6d9ff;
+          --md-tertiary: #b7d86f;
+          --md-on-tertiary: #263500;
+          --md-tertiary-container: #394d00;
+          --md-on-tertiary-container: #d3f58a;
+          --md-error: #ffb4ab;
+          --md-surface: #121322;
+          --md-surface-dim: #121322;
+          --md-surface-bright: #393a4b;
+          --md-surface-container-lowest: #0d0e1b;
+          --md-surface-container-low: #1b1c2b;
+          --md-surface-container: #1f202f;
+          --md-surface-container-high: #292a3a;
+          --md-surface-container-highest: #343545;
+          --md-on-surface: #e4e1ee;
+          --md-on-surface-variant: #c7c5d4;
+          --md-outline: #908fa0;
+          --md-outline-variant: #464654;
+          --md-inverse-surface: #e4e1ee;
+          --md-inverse-on-surface: #303040;
+          --aurora-a: #6a2a8c;
+          --aurora-b: #c43a8a;
+          --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+          --shadow-3: 0 4px 8px 3px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.5);
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme='dark'] {
+        --md-primary: #bcc2ff;
+        --md-on-primary: #0d1d8f;
+        --md-primary-container: #2234a7;
+        --md-on-primary-container: #dfe0ff;
+        --md-secondary: #e9b3ff;
+        --md-on-secondary: #520073;
+        --md-secondary-container: #701e8e;
+        --md-on-secondary-container: #f6d9ff;
+        --md-tertiary: #b7d86f;
+        --md-on-tertiary: #263500;
+        --md-tertiary-container: #394d00;
+        --md-on-tertiary-container: #d3f58a;
+        --md-error: #ffb4ab;
+        --md-surface: #121322;
+        --md-surface-dim: #121322;
+        --md-surface-bright: #393a4b;
+        --md-surface-container-lowest: #0d0e1b;
+        --md-surface-container-low: #1b1c2b;
+        --md-surface-container: #1f202f;
+        --md-surface-container-high: #292a3a;
+        --md-surface-container-highest: #343545;
+        --md-on-surface: #e4e1ee;
+        --md-on-surface-variant: #c7c5d4;
+        --md-outline: #908fa0;
+        --md-outline-variant: #464654;
+        --md-inverse-surface: #e4e1ee;
+        --md-inverse-on-surface: #303040;
+        --aurora-a: #6a2a8c;
+        --aurora-b: #c43a8a;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+        --shadow-3: 0 4px 8px 3px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.5);
+        color-scheme: dark;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--md-surface);
+        color: var(--md-on-surface);
+        font-family: var(--font-body);
+        font-size: 16px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--md-primary);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      h1,
+      h2,
+      h3,
+      h4 {
+        margin: 0;
+        text-wrap: balance;
+        font-weight: 400;
+      }
+      p {
+        margin: 0;
+      }
+      img {
+        max-width: 100%;
+        display: block;
+      }
+      .ms {
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        direction: ltr;
+        font-variation-settings:
+          'FILL' 0,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24;
+        -webkit-font-feature-settings: 'liga';
+        font-feature-settings: 'liga';
+        flex-shrink: 0;
+      }
+      .ms.fill {
+        font-variation-settings:
+          'FILL' 1,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24;
+      }
+      :focus-visible {
+        outline: 3px solid var(--md-primary);
+        outline-offset: 2px;
+        border-radius: var(--shape-sm);
+      }
+
+      /* ---- Type scale (MD3) ---- */
+      .display {
+        font-size: clamp(2.4rem, 5.5vw, 3.6rem);
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        font-weight: 400;
+      }
+      .headline {
+        font-size: clamp(1.6rem, 3vw, 2rem);
+        line-height: 1.25;
+        font-weight: 400;
+      }
+      .title-lg {
+        font-size: 1.375rem;
+        line-height: 1.3;
+        font-weight: 400;
+      }
+      .title-md {
+        font-size: 1rem;
+        line-height: 1.5;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+      }
+      .body-lg {
+        font-size: 1.0625rem;
+        line-height: 1.6;
+        letter-spacing: 0.01em;
+      }
+      .body-md {
+        font-size: 0.9375rem;
+        line-height: 1.55;
+        letter-spacing: 0.015em;
+      }
+      .label-lg {
+        font-size: 0.875rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        line-height: 1.4;
+      }
+      .label-md {
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        line-height: 1.3;
+      }
+      .eyebrow {
+        color: var(--md-primary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .muted {
+        color: var(--md-on-surface-variant);
+      }
+
+      /* ---- Buttons (MD3 common buttons) ---- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 40px;
+        padding: 0 24px;
+        border-radius: var(--shape-full);
+        border: 0;
+        font: inherit;
+        font-size: 0.875rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition:
+          box-shadow 0.2s,
+          background-color 0.2s;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        text-decoration: none;
+      }
+      .btn::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: currentColor;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .btn:hover::after {
+        opacity: 0.08;
+      }
+      .btn:active::after {
+        opacity: 0.12;
+      }
+      .btn .ms {
+        font-size: 18px;
+      }
+      .btn.filled {
+        background: var(--md-primary);
+        color: var(--md-on-primary);
+      }
+      .btn.filled:hover {
+        box-shadow: var(--shadow-1);
+      }
+      .btn.tonal {
+        background: var(--md-secondary-container);
+        color: var(--md-on-secondary-container);
+      }
+      .btn.outlined {
+        background: transparent;
+        color: var(--md-primary);
+        border: 1px solid var(--md-outline);
+      }
+      .btn.text {
+        background: transparent;
+        color: var(--md-primary);
+        padding: 0 12px;
+      }
+      .btn.lg {
+        height: 48px;
+        padding: 0 28px;
+        font-size: 0.9375rem;
+      }
+      .btn.lg .ms {
+        font-size: 20px;
+      }
+      .icon-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--shape-full);
+        border: 0;
+        background: transparent;
+        color: var(--md-on-surface-variant);
+        display: inline-grid;
+        place-items: center;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+      }
+      .icon-btn::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: currentColor;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .icon-btn:hover::after {
+        opacity: 0.08;
+      }
+
+      /* ---- Top app bar ---- */
+      .appbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: color-mix(in srgb, var(--md-surface) 86%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+      }
+      .appbar.scrolled {
+        background: color-mix(in srgb, var(--md-surface-container) 92%, transparent);
+      }
+      .appbar-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: var(--gutter);
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--md-on-surface);
+        font-weight: 500;
+        font-size: 1.125rem;
+      }
+      .brand:hover {
+        text-decoration: none;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+      }
+      .appbar nav {
+        display: flex;
+        gap: 4px;
+        margin-left: auto;
+      }
+      .appbar nav a {
+        color: var(--md-on-surface-variant);
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0 14px;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        border-radius: var(--shape-full);
+      }
+      .appbar nav a:hover {
+        background: var(--md-surface-container-high);
+        text-decoration: none;
+        color: var(--md-on-surface);
+      }
+      .appbar .actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 4px;
+      }
+      @media (max-width: 760px) {
+        .appbar nav {
+          display: none;
+        }
+        .appbar .actions {
+          margin-left: auto;
+        }
+      }
+
+      /* ---- Sections ---- */
+      .section {
+        padding-left: var(--gutter);
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+        padding-block: clamp(56px, 8vw, 104px);
+      }
+      .section.low {
+        background: var(--md-surface-container-low);
+      }
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .section-head {
+        max-width: 720px;
+        display: grid;
+        gap: 12px;
+        margin-bottom: clamp(28px, 4vw, 48px);
+      }
+
+      /* ---- Hero ---- */
+      .hero {
+        position: relative;
+        overflow: hidden;
+        padding-left: var(--gutter);
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+        padding-block: clamp(40px, 7vw, 96px);
+      }
+      .hero::before {
+        content: '';
+        position: absolute;
+        inset: auto -20% -40% -20%;
+        height: 70%;
+        background:
+          radial-gradient(
+            60% 70% at 30% 100%,
+            color-mix(in srgb, var(--aurora-a) 38%, transparent),
+            transparent 70%
+          ),
+          radial-gradient(
+            50% 60% at 75% 100%,
+            color-mix(in srgb, var(--aurora-b) 30%, transparent),
+            transparent 70%
+          );
+        filter: blur(20px);
+        pointer-events: none;
+      }
+      .hero-grid {
+        position: relative;
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+        gap: clamp(32px, 5vw, 72px);
+        align-items: center;
+      }
+      .hero-copy {
+        display: grid;
+        gap: 24px;
+      }
+      .hero-copy .display {
+        max-width: 16ch;
+      }
+      .hero-copy .lede {
+        max-width: 48ch;
+        color: var(--md-on-surface-variant);
+      }
+      .hero-cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+      .hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        border-radius: var(--shape-sm);
+        border: 1px solid var(--md-outline-variant);
+        color: var(--md-on-surface-variant);
+        font-size: 0.8125rem;
+        font-weight: 500;
+      }
+      .chip .ms {
+        font-size: 18px;
+      }
+      .chip.assist {
+        background: var(--md-surface-container-low);
+      }
+      @media (max-width: 900px) {
+        .hero-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      /* ---- App window mock: mirrors the real window (title bar with script wordmark and
+         Local chip, folder view in the sidebar, primary tabs with the agent wave, session
+         header, terminal on the surface colour). Sizes follow the app's desktop density. ---- */
+      .mock {
+        background: var(--md-surface);
+        border-radius: var(--shape-lg);
+        box-shadow: var(--shadow-3);
+        border: 1px solid var(--md-outline-variant);
+        overflow: hidden;
+        font-size: 12.5px;
+        min-width: 0;
+        max-width: 100%;
+        color: var(--md-on-surface);
+      }
+      .mock .titlebar {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+      }
+      .mock .titlebar .sig {
+        font-family: 'Segoe Script', 'Ink Free', 'Caveat', cursive;
+        font-style: italic;
+        font-size: 17px;
+        color: var(--md-primary);
+        letter-spacing: 0.01em;
+      }
+      .mock .titlebar .host {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px 6px 3px 10px;
+        border-radius: var(--shape-full);
+        background: var(--md-secondary-container);
+        color: var(--md-on-secondary-container);
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .mock .titlebar .host .ms {
+        font-size: 14px;
+      }
+      .mock .winctl {
+        margin-left: auto;
+        display: flex;
+        gap: 18px;
+        color: var(--md-on-surface-variant);
+        font-size: 11px;
+      }
+      .mock .body {
+        display: grid;
+        grid-template-columns: 190px minmax(0, 1fr);
+        min-height: 380px;
+      }
+      .mock .side {
+        padding: 6px 10px 10px 14px;
+        display: grid;
+        align-content: start;
+        gap: 2px;
+      }
+      .mock .side .h {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 2px 8px;
+        color: var(--md-on-surface-variant);
+      }
+      .mock .side .h .ms {
+        font-size: 16px;
+      }
+      .mock .side .h .count {
+        color: var(--md-outline);
+        margin-right: auto;
+      }
+      .mock .side .h .ms + .ms {
+        margin-left: 6px;
+      }
+      .mock .side .back {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 4px 8px 2px;
+        color: var(--md-on-surface);
+      }
+      .mock .side .back .ms {
+        font-size: 16px;
+        color: var(--md-on-surface-variant);
+      }
+      .mock .side .back .ms:last-child {
+        margin-left: auto;
+      }
+      .mock .sess {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        padding: 0 10px 0 12px;
+        border-radius: var(--shape-full);
+        border: 1.5px solid transparent;
+        color: var(--md-on-surface-variant);
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .mock .sess .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+      }
+      .mock .sess.sel {
+        border-color: var(--md-primary);
+        color: var(--md-on-surface);
+      }
+      .mock .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot.busy {
+        background: var(--md-primary);
+      }
+      .dot.wait {
+        background: #e0a100;
+        animation: breathe 1.6s ease-in-out infinite;
+      }
+      .dot.idle {
+        background: var(--md-outline);
+      }
+      .dot.done {
+        background: var(--md-tertiary);
+      }
+      .mock .main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr);
+        min-width: 0;
+        border-left: 1px solid var(--md-outline-variant);
+      }
+      .mock .tabs {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 8px 8px 0;
+        border-bottom: 1px solid var(--md-outline-variant);
+        overflow: hidden;
+        min-width: 0;
+      }
+      .mock .tab {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px 12px 14px;
+        color: var(--md-on-surface-variant);
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .mock .tab .t {
+        max-width: 132px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mock .tab .x {
+        font-size: 13px;
+        color: var(--md-on-surface-variant);
+      }
+      .mock .tab.on {
+        color: var(--md-primary);
+      }
+      .mock .tab .ind {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 0;
+        height: 3px;
+        border-radius: 3px 3px 0 0;
+        background: var(--md-primary);
+      }
+      .mock .tab svg {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 1px;
+        width: calc(100% - 20px);
+        height: 8px;
+        overflow: hidden;
+      }
+      .mock .tab svg path {
+        fill: none;
+        stroke: var(--md-primary);
+        stroke-width: 2;
+        stroke-linecap: round;
+      }
+      .mock .tab.wait .ind {
+        background: #e0a100;
+        animation: breathe 1.6s ease-in-out infinite;
+      }
+      .mock .tab.wait {
+        color: var(--md-on-surface);
+      }
+      .mock .quick {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: 6px;
+        padding-bottom: 6px;
+      }
+      .mock .quick .ms {
+        font-size: 16px;
+        color: var(--md-on-surface-variant);
+      }
+      .mock .quick .plus {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--md-secondary-container);
+        color: var(--md-on-secondary-container);
+      }
+      .mock .quick .plus .ms {
+        font-size: 16px;
+        color: inherit;
+      }
+      .mock .shead {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 14px;
+        color: var(--md-on-surface-variant);
+        font-size: 11.5px;
+      }
+      .mock .shead .ms {
+        font-size: 14px;
+        margin-left: 4px;
+      }
+      .mock .term {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.7;
+        padding: 10px 18px 16px;
+        overflow: hidden;
+        min-width: 0;
+        color: var(--md-on-surface);
+      }
+      .mock .term .p {
+        color: var(--md-tertiary);
+        font-weight: 500;
+      }
+      .mock .term .m {
+        color: var(--md-on-surface-variant);
+      }
+      .mock .term .b {
+        color: var(--md-primary);
+      }
+      .mock .term .k {
+        color: var(--md-secondary);
+      }
+      .mock .term .cur {
+        display: inline-block;
+        width: 7px;
+        height: 13px;
+        background: var(--md-on-surface);
+        vertical-align: -2px;
+        animation: blink 1s steps(2) infinite;
+      }
+      .mock .term .formula {
+        display: inline-block;
+        background: var(--md-surface-container);
+        border-radius: 4px;
+        padding: 1px 8px;
+        font-style: italic;
+      }
+      @keyframes blink {
+        to {
+          opacity: 0;
+        }
+      }
+      @keyframes breathe {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+      @keyframes wave {
+        to {
+          transform: translateX(-24px);
+        }
+      }
+      .mock .tab.gen svg path {
+        animation: wave 0.9s linear infinite;
+      }
+      @media (max-width: 560px) {
+        .mock .body {
+          grid-template-columns: minmax(0, 1fr);
+          min-height: 0;
+        }
+        .mock .side {
+          display: none;
+        }
+        .mock .main {
+          border-left: 0;
+        }
+        .mock .term {
+          font-size: 11px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+
+      /* ---- Cards ---- */
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+      }
+      .card {
+        background: var(--md-surface-container-lowest);
+        border-radius: var(--shape-md);
+        padding: 24px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+        min-width: 0;
+        border: 1px solid var(--md-outline-variant);
+        transition:
+          box-shadow 0.2s,
+          transform 0.2s;
+      }
+      .section.low .card {
+        border-color: transparent;
+      }
+      .card:hover {
+        box-shadow: var(--shadow-1);
+      }
+      .card .icon {
+        width: 48px;
+        height: 48px;
+        border-radius: var(--shape-md);
+        display: grid;
+        place-items: center;
+        background: var(--md-primary-container);
+        color: var(--md-on-primary-container);
+      }
+      .card .icon.sec {
+        background: var(--md-secondary-container);
+        color: var(--md-on-secondary-container);
+      }
+      .card .icon.ter {
+        background: var(--md-tertiary-container);
+        color: var(--md-on-tertiary-container);
+      }
+      .card h3 {
+        font-size: 1.125rem;
+        font-weight: 500;
+        line-height: 1.35;
+      }
+      .card p {
+        color: var(--md-on-surface-variant);
+        font-size: 0.9375rem;
+      }
+
+      /* ---- Problem list ---- */
+      .pains {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+      }
+      .pain {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 18px 20px;
+        border-radius: var(--shape-md);
+        background: var(--md-surface-container);
+        color: var(--md-on-surface);
+        font-size: 0.9375rem;
+        min-width: 0;
+      }
+      .pain .ms {
+        color: var(--md-secondary);
+      }
+
+      /* ---- Steps ---- */
+      .steps {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+        counter-reset: step;
+      }
+      .step {
+        position: relative;
+        padding: 24px 24px 24px 24px;
+        border-radius: var(--shape-md);
+        background: var(--md-surface-container-lowest);
+        border: 1px solid var(--md-outline-variant);
+        display: grid;
+        gap: 8px;
+        align-content: start;
+        min-width: 0;
+      }
+      .step::before {
+        counter-increment: step;
+        content: counter(step);
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--md-tertiary-container);
+        color: var(--md-on-tertiary-container);
+        font-weight: 500;
+        margin-bottom: 6px;
+      }
+      .step h3 {
+        font-size: 1.0625rem;
+        font-weight: 500;
+      }
+      .step p {
+        color: var(--md-on-surface-variant);
+        font-size: 0.9375rem;
+      }
+
+      /* ---- Compare table ---- */
+      .table-wrap {
+        overflow-x: auto;
+        border-radius: var(--shape-md);
+        border: 1px solid var(--md-outline-variant);
+        background: var(--md-surface-container-lowest);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 640px;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        text-align: center;
+        border-bottom: 1px solid var(--md-outline-variant);
+        white-space: nowrap;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+        white-space: normal;
+        min-width: 220px;
+      }
+      thead th {
+        font-weight: 500;
+        color: var(--md-on-surface-variant);
+        background: var(--md-surface-container-low);
+        font-size: 0.8125rem;
+        letter-spacing: 0.03em;
+      }
+      thead th.us {
+        color: var(--md-on-primary-container);
+        background: var(--md-primary-container);
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      td.us {
+        background: color-mix(in srgb, var(--md-primary-container) 40%, transparent);
+      }
+      td .ms {
+        font-size: 20px;
+        vertical-align: middle;
+      }
+      td .yes {
+        color: var(--md-tertiary);
+      }
+      td .no {
+        color: var(--md-outline-variant);
+      }
+
+      /* ---- Download ---- */
+      .dl-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+      }
+      .dl {
+        display: grid;
+        gap: 14px;
+        align-content: start;
+        padding: 24px;
+        border-radius: var(--shape-lg);
+        background: var(--md-surface-container-lowest);
+        border: 1px solid var(--md-outline-variant);
+        min-width: 0;
+      }
+      .dl.mine {
+        border: 2px solid var(--md-primary);
+      }
+      .dl .os {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .dl .os .ms {
+        font-size: 28px;
+        color: var(--md-primary);
+      }
+      .dl h3 {
+        font-size: 1.125rem;
+        font-weight: 500;
+      }
+      .dl .you {
+        margin-left: auto;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        padding: 2px 10px;
+        border-radius: var(--shape-full);
+        background: var(--md-primary-container);
+        color: var(--md-on-primary-container);
+      }
+      .dl .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .dl .note {
+        color: var(--md-on-surface-variant);
+        font-size: 0.875rem;
+      }
+      .dl code {
+        font-family: var(--font-mono);
+        font-size: 0.8125rem;
+        background: var(--md-surface-container);
+        padding: 1px 6px;
+        border-radius: var(--shape-xs);
+      }
+      .notice {
+        margin-top: 24px;
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 16px 20px;
+        border-radius: var(--shape-md);
+        background: var(--md-surface-container);
+        color: var(--md-on-surface-variant);
+        font-size: 0.9rem;
+      }
+      .notice .ms {
+        color: var(--md-secondary);
+      }
+      .notice b {
+        color: var(--md-on-surface);
+        font-weight: 500;
+      }
+
+      /* ---- Footer ---- */
+      footer {
+        padding-left: var(--gutter);
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+        padding-block: 40px;
+        background: var(--md-surface-container);
+        color: var(--md-on-surface-variant);
+        font-size: 0.875rem;
+      }
+      footer .wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px 32px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      footer .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+      footer a {
+        color: var(--md-on-surface-variant);
+      }
+      footer a:hover {
+        color: var(--md-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="appbar" id="appbar">
+      <div class="appbar-inner">
+        <a class="brand" href="#top"
+          ><img src="icon.png" alt="" width="32" height="32" /> Ceteris</a
+        >
+        <nav aria-label="Sections">
+          <a href="#why">Why</a>
+          <a href="#features">Features</a>
+          <a href="#agents">For agents</a>
+          <a href="#compare">Compare</a>
+          <a href="#download">Download</a>
+        </nav>
+        <div class="actions">
+          <button
+            class="icon-btn"
+            id="themeToggle"
+            type="button"
+            aria-label="Toggle dark mode"
+            title="Toggle dark mode"
+          >
+            <span class="ms" id="themeIcon">dark_mode</span>
+          </button>
+          <a class="btn text" href="https://github.com/Fanisting/Ceteris" rel="noopener"
+            ><span class="ms">code</span>GitHub</a
+          >
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <span class="eyebrow">Terminal manager · Windows, macOS, Linux</span>
+            <h1 class="display">Close the window. Keep the sessions.</h1>
+            <p class="lede body-lg">
+              Ceteris keeps every shell, build and AI coding agent running in the background,
+              grouped by folder, with a glance telling you which agent is waiting for you.
+            </p>
+            <div class="hero-cta">
+              <a class="btn filled lg" id="heroDownload" href="#download"
+                ><span class="ms">download</span><span id="heroDownloadLabel">Download</span></a
+              >
+              <a class="btn outlined lg" href="https://github.com/Fanisting/Ceteris" rel="noopener"
+                ><span class="ms">star</span>View on GitHub</a
+              >
+            </div>
+            <div class="hero-meta">
+              <span class="chip assist"
+                ><span class="ms">verified</span>Free and open source, MIT</span
+              >
+              <span class="chip assist"
+                ><span class="ms">new_releases</span><span id="versionChip">v0.4.1</span></span
+              >
+              <span class="chip assist"
+                ><span class="ms">mouse</span>Mouse first, no shortcuts to learn</span
+              >
+            </div>
+          </div>
+
+          <div class="mock" aria-label="A sketch of the Ceteris window" role="img">
+            <div class="titlebar">
+              <span class="sig">Ceteris</span>
+              <span class="host">Local<span class="ms">arrow_drop_down</span></span>
+              <span class="winctl"><span>─</span><span>☐</span><span>✕</span></span>
+            </div>
+            <div class="body">
+              <aside class="side">
+                <div class="h">
+                  <span class="ms">folder</span>Folders <span class="count">12</span
+                  ><span class="ms">view_list</span><span class="ms">add</span>
+                </div>
+                <div class="back">
+                  <span class="ms">arrow_back</span>auth<span class="ms">folder_open</span>
+                </div>
+                <div class="sess">
+                  <span class="dot busy"></span><span class="t">Refresh tokens with backoff</span>
+                </div>
+                <div class="sess">
+                  <span class="dot done"></span><span class="t">Run the auth test suite</span>
+                </div>
+                <div class="sess sel">
+                  <span class="dot wait"></span><span class="t">Add retry to the login form</span>
+                </div>
+                <div class="sess"><span class="dot idle"></span><span class="t">shell</span></div>
+              </aside>
+              <div class="main">
+                <div class="tabs">
+                  <span class="tab gen"
+                    ><span class="t">Refresh tokens with backoff</span
+                    ><span class="ms x">close</span
+                    ><svg viewBox="0 0 100 8" preserveAspectRatio="xMinYMid slice">
+                      <path
+                        d="M0 4 Q6 1.5 12 4 T24 4 T36 4 T48 4 T60 4 T72 4 T84 4 T96 4 T108 4 T120 4 T132 4 T144 4"
+                      /></svg
+                  ></span>
+                  <span class="tab"
+                    ><span class="t">Run the auth test suite</span
+                    ><span class="ms x">close</span></span
+                  >
+                  <span class="tab on wait"
+                    ><span class="t">Add retry to the login form</span
+                    ><span class="ms x">close</span><span class="ind"></span
+                  ></span>
+                  <span class="quick"
+                    ><span class="ms">auto_awesome</span><span class="ms">hub</span
+                    ><span class="plus"><span class="ms">add</span></span></span
+                  >
+                </div>
+                <div class="shead">
+                  <span class="dot wait"></span>Add retry to the login form · pid 37476<span
+                    class="ms"
+                    >open_in_new</span
+                  >
+                </div>
+                <div class="term">
+                  <div><span class="p">❯</span> claude</div>
+                  <div>
+                    <span class="b">✻</span> Welcome to Claude Code
+                    <span class="m">· ~/projects/auth</span>
+                  </div>
+                  <div>&nbsp;</div>
+                  <div>
+                    <span class="k">›</span> Add retry with backoff to the login form submit.
+                  </div>
+                  <div>&nbsp;</div>
+                  <div>
+                    <span class="b">●</span> The retry window follows
+                    <span class="formula">t = 2ᵏ · 250 ms</span> for attempt k.
+                  </div>
+                  <div>
+                    <span class="b">●</span> Edit <span class="m">src/auth/LoginForm.tsx</span>
+                  </div>
+                  <div class="m">
+                    Do you want to make this edit? <span class="k">(y/n)</span>
+                    <span class="cur"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section low" id="why">
+        <div class="wrap">
+          <div class="section-head">
+            <span class="eyebrow">Why it exists</span>
+            <h2 class="headline">If you have ever done one of these, Ceteris is for you.</h2>
+          </div>
+          <div class="pains">
+            <div class="pain">
+              <span class="ms">smart_toy</span
+              ><span
+                >Run five AI coding agents in five projects and forgotten which one was waiting for
+                your input.</span
+              >
+            </div>
+            <div class="pain">
+              <span class="ms">close</span
+              ><span
+                >Closed a terminal window by accident and killed a two-hour build, a long test run,
+                or an agent mid-task.</span
+              >
+            </div>
+            <div class="pain">
+              <span class="ms">keyboard</span
+              ><span>Typed a deeply nested <code>cd</code> path for the third time today.</span>
+            </div>
+            <div class="pain">
+              <span class="ms">dns</span
+              ><span
+                >Jumped between remote servers and wished SSH sessions were organised by path, not
+                by a pile of tabs.</span
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="wrap">
+          <div class="section-head">
+            <span class="eyebrow">How it works</span>
+            <h2 class="headline">Four ideas, and everything else follows.</h2>
+            <p class="muted body-lg">
+              Ceteris is short for ceteris paribus, all else equal. Change where the window is, and
+              nothing else changes.
+            </p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="icon"><span class="ms">shield</span></div>
+              <h3>Sessions survive window closure</h3>
+              <p>
+                Close every window. Sessions keep running in the background. Reopen any window and
+                they are all still there, with their scrollback.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon sec"><span class="ms">folder_open</span></div>
+              <h3>Paths are first class</h3>
+              <p>
+                Keep working directories in one list and filter it by colour tag. Sessions are
+                grouped by where they live, not by which profile spawned them.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon ter"><span class="ms">mouse</span></div>
+              <h3>Mouse first</h3>
+              <p>
+                No shortcuts to memorise and no <code>cd</code> to type. Click a folder in the
+                sidebar, click + in the tab strip. That is the whole workflow.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon"><span class="ms">grid_view</span></div>
+              <h3>All windows are equal</h3>
+              <p>
+                There is no main window. Open as many as you want on any folder, close any of them,
+                and the app keeps running in the tray or Dock.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section low" id="agents">
+        <div class="wrap">
+          <div class="section-head">
+            <span class="eyebrow">Built for AI coding agents</span>
+            <h2 class="headline">See what every agent is doing without switching tabs.</h2>
+            <p class="muted body-lg">
+              Ceteris began from the frustration of running several Claude Code and Codex sessions
+              at once and losing track of which one was idle, which one was waiting, and which one
+              had been killed by closing the wrong window.
+            </p>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <div class="icon"><span class="ms">waves</span></div>
+              <h3>Agent-aware tabs</h3>
+              <p>
+                The tab underline changes shape while Claude Code or Codex generates, waits or runs
+                a command. A stalled approval prompt breathes in a warning colour until you answer.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon sec"><span class="ms">filter_alt</span></div>
+              <h3>Running and waiting filters</h3>
+              <p>
+                Two sidebar filters show only the terminals that are running, or only the agents
+                waiting for you. A finished agent leaves a dot on its tab until you look.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon ter"><span class="ms">hub</span></div>
+              <h3>Coordinator tabs</h3>
+              <p>
+                Mark a tab as coordinator and it stays above the strip in every folder. A Claude
+                Code coordinator can open, read, prompt and close the other tabs in its folder.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon"><span class="ms">rocket_launch</span></div>
+              <h3>Launch templates</h3>
+              <p>
+                Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Cursor and Aider are built
+                in, plus your own commands. Right-click + for a quick-launch ring.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon sec"><span class="ms">functions</span></div>
+              <h3>Formulas rendered inline</h3>
+              <p>
+                Formulas that Claude Code and Codex print show as rendered images in the terminal,
+                so a derivation reads the way it was meant to.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon ter"><span class="ms">draft</span></div>
+              <h3>Files beside the terminal</h3>
+              <p>
+                Open a file next to a terminal instead of over it. Edit text, JSON, Markdown and
+                TeX, and page through multi-gigabyte logs instantly.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon"><span class="ms">picture_as_pdf</span></div>
+              <h3>PDFs that follow the file</h3>
+              <p>
+                A PDF in the file panel, local or on an SSH server, reloads when it is rebuilt and
+                keeps its page and zoom. Made for the LaTeX edit and compile loop.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon sec"><span class="ms">cloud</span></div>
+              <h3>Remote paths and tmux</h3>
+              <p>
+                Bookmark remote working directories beside local ones. Start or attach to tmux on a
+                host with one click, and fall back to the shell when tmux exits.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon ter"><span class="ms">cast</span></div>
+              <h3>Ceteris Link</h3>
+              <p>
+                Open the tabs running on another Windows machine, live. Same sessions, same
+                scrollback, same agents, end-to-end encrypted with a token that never travels.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon"><span class="ms">palette</span></div>
+              <h3>Themes</h3>
+              <p>
+                Dozens of Material Design 3 themes, including live ones built from a seed colour or
+                your Windows accent. Pearl, Beamer and your own CSS themes too.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="magic">
+        <div class="wrap">
+          <div class="section-head">
+            <span class="eyebrow">Try it in a minute</span>
+            <h2 class="headline">That's it. That's the product.</h2>
+          </div>
+          <div class="steps">
+            <div class="step">
+              <h3>Open a few sessions</h3>
+              <p>Add two or three folders and start a shell or an agent in each.</p>
+            </div>
+            <div class="step">
+              <h3>Close the window</h3>
+              <p>Click ×. Ceteris stays in the system tray on Windows, or in the Dock on macOS.</p>
+            </div>
+            <div class="step">
+              <h3>Open a new one</h3>
+              <p>Click the tray icon. A fresh window opens, and every session is still running.</p>
+            </div>
+            <div class="step">
+              <h3>Carry on</h3>
+              <p>Your build is still building and your agent is still working. Nothing was lost.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section low" id="compare">
+        <div class="wrap">
+          <div class="section-head">
+            <span class="eyebrow">Why not just use…</span>
+            <h2 class="headline">Compared with the terminals you already know.</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Feature</th>
+                  <th scope="col">Windows Terminal</th>
+                  <th scope="col">Tabby</th>
+                  <th scope="col">Wave</th>
+                  <th scope="col">Warp</th>
+                  <th scope="col" class="us">Ceteris</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Sessions survive window closure</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms yes">check</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>Path-centric organisation</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>Automatic cwd tracking</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms yes">check</span></td>
+                  <td><span class="ms yes">check</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>Multi-window with a shared session pool</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>Remote path bookmarks</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>One-click remote tmux</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>Built for AI agent workflows</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+                <tr>
+                  <td>Mouse-first, no required shortcuts</td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td><span class="ms no">remove</span></td>
+                  <td class="us"><span class="ms yes">check</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="download">
+        <div class="wrap">
+          <div class="section-head">
+            <span class="eyebrow">Download</span>
+            <h2 class="headline">Get Ceteris <span id="versionHead">0.4.1</span>.</h2>
+            <p class="muted body-lg">
+              Alpha software. Windows gets the most testing; the macOS and Linux builds are newer.
+              If something breaks,
+              <a href="https://github.com/Fanisting/Ceteris/issues" rel="noopener">open an issue</a
+              >.
+            </p>
+          </div>
+          <div class="dl-grid">
+            <div class="dl" data-os="win">
+              <div class="os">
+                <span class="ms">desktop_windows</span>
+                <h3>Windows</h3>
+                <span class="you" hidden>Your system</span>
+              </div>
+              <div class="links">
+                <a
+                  class="btn filled"
+                  data-asset="win"
+                  href="https://github.com/Fanisting/Ceteris/releases/download/v0.4.1/Ceteris-Setup-0.4.1-x64.exe"
+                  ><span class="ms">download</span>Installer, x64</a
+                >
+              </div>
+              <p class="note">
+                Windows 10 and 11. SmartScreen will warn once: choose <b>More info</b>, then
+                <b>Run anyway</b>.
+              </p>
+            </div>
+            <div class="dl" data-os="mac">
+              <div class="os">
+                <span class="ms">laptop_mac</span>
+                <h3>macOS</h3>
+                <span class="you" hidden>Your system</span>
+              </div>
+              <div class="links">
+                <a
+                  class="btn filled"
+                  data-asset="mac-arm"
+                  href="https://github.com/Fanisting/Ceteris/releases/download/v0.4.1/Ceteris-0.4.1-arm64.dmg"
+                  ><span class="ms">download</span>Apple Silicon</a
+                >
+                <a
+                  class="btn tonal"
+                  data-asset="mac-x64"
+                  href="https://github.com/Fanisting/Ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x64.dmg"
+                  ><span class="ms">download</span>Intel</a
+                >
+              </div>
+              <p class="note">
+                Drag into Applications. The first time, right-click the app and choose <b>Open</b>.
+              </p>
+            </div>
+            <div class="dl" data-os="linux">
+              <div class="os">
+                <span class="ms">terminal</span>
+                <h3>Linux</h3>
+                <span class="you" hidden>Your system</span>
+              </div>
+              <div class="links">
+                <a
+                  class="btn filled"
+                  data-asset="deb"
+                  href="https://github.com/Fanisting/Ceteris/releases/download/v0.4.1/Ceteris-0.4.1-amd64.deb"
+                  ><span class="ms">download</span>Debian, Ubuntu</a
+                >
+                <a
+                  class="btn tonal"
+                  data-asset="appimage"
+                  href="https://github.com/Fanisting/Ceteris/releases/download/v0.4.1/Ceteris-0.4.1-x86_64.AppImage"
+                  ><span class="ms">download</span>AppImage</a
+                >
+              </div>
+              <p class="note">
+                Install the deb with <code>sudo apt install ./Ceteris-*.deb</code>, or
+                <code>chmod +x</code> the AppImage and run it.
+              </p>
+            </div>
+          </div>
+          <div class="notice">
+            <span class="ms">info</span>
+            <span
+              >None of the builds are signed with a paid certificate, so your system warns on first
+              launch. Ceteris checks GitHub Releases for updates and offers the right download for
+              your system; it never installs anything by itself. All releases and checksums are on
+              the
+              <a href="https://github.com/Fanisting/Ceteris/releases" rel="noopener"
+                >releases page</a
+              >.</span
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span
+          >Ceteris · MIT License · a fork of
+          <a href="https://github.com/Liyue-Cheng/marina" rel="noopener">Marina</a> by
+          Liyue-Cheng</span
+        >
+        <div class="links">
+          <a href="https://github.com/Fanisting/Ceteris" rel="noopener">GitHub</a>
+          <a href="https://github.com/Fanisting/Ceteris/blob/main/README.md" rel="noopener"
+            >README</a
+          >
+          <a href="https://github.com/Fanisting/Ceteris/blob/main/README.zh-CN.md" rel="noopener"
+            >中文文档</a
+          >
+          <a href="https://github.com/Fanisting/Ceteris/blob/main/CHANGELOG.md" rel="noopener"
+            >Changelog</a
+          >
+          <a href="https://github.com/Fanisting/Ceteris/issues" rel="noopener">Issues</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var toggle = document.getElementById('themeToggle');
+        var icon = document.getElementById('themeIcon');
+        var params = new URLSearchParams(location.search);
+
+        function current() {
+          var t = root.getAttribute('data-theme');
+          if (t) return t;
+          return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        function apply(theme) {
+          root.setAttribute('data-theme', theme);
+          icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+        }
+        try {
+          var saved = params.get('theme') || localStorage.getItem('ceteris-theme');
+          if (saved === 'dark' || saved === 'light') apply(saved);
+          else icon.textContent = current() === 'dark' ? 'light_mode' : 'dark_mode';
+        } catch (e) {
+          /* storage blocked; system theme applies */
+        }
+        toggle.addEventListener('click', function () {
+          var next = current() === 'dark' ? 'light' : 'dark';
+          apply(next);
+          try {
+            localStorage.setItem('ceteris-theme', next);
+          } catch (e) {
+            /* ignore */
+          }
+        });
+
+        var bar = document.getElementById('appbar');
+        function onScroll() {
+          bar.classList.toggle('scrolled', window.scrollY > 8);
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+
+        // Highlight the visitor's platform and point the hero button at its installer.
+        var ua = navigator.userAgent || '';
+        var plat = navigator.platform || '';
+        var os =
+          /Win/.test(plat) || /Windows/.test(ua)
+            ? 'win'
+            : /Mac/.test(plat)
+              ? 'mac'
+              : /Linux/.test(plat) && !/Android/.test(ua)
+                ? 'linux'
+                : null;
+        var heroBtn = document.getElementById('heroDownload');
+        var heroLabel = document.getElementById('heroDownloadLabel');
+        function pickHero() {
+          var card = os && document.querySelector('.dl[data-os="' + os + '"]');
+          if (!card) {
+            heroLabel.textContent = 'Download';
+            return;
+          }
+          card.classList.add('mine');
+          card.querySelector('.you').hidden = false;
+          var first = card.querySelector('a[data-asset]');
+          heroBtn.href = first.href;
+          heroLabel.textContent =
+            'Download for ' + { win: 'Windows', mac: 'macOS', linux: 'Linux' }[os];
+        }
+        pickHero();
+
+        // Keep the links on the latest release. Falls back to the version baked in above.
+        fetch('https://api.github.com/repos/Fanisting/Ceteris/releases/latest')
+          .then(function (r) {
+            return r.ok ? r.json() : null;
+          })
+          .then(function (rel) {
+            if (!rel || !rel.assets || !rel.tag_name) return;
+            var ver = rel.tag_name.replace(/^v/, '');
+            var byName = function (re) {
+              var a = rel.assets.filter(function (x) {
+                return re.test(x.name);
+              })[0];
+              return a && a.browser_download_url;
+            };
+            var map = {
+              win: byName(/Setup.*x64\.exe$/),
+              'mac-arm': byName(/arm64\.dmg$/),
+              'mac-x64': byName(/x64\.dmg$/),
+              deb: byName(/amd64\.deb$/),
+              appimage: byName(/x86_64\.AppImage$/),
+            };
+            Object.keys(map).forEach(function (k) {
+              if (!map[k]) return;
+              document.querySelectorAll('a[data-asset="' + k + '"]').forEach(function (a) {
+                a.href = map[k];
+              });
+            });
+            document.getElementById('versionChip').textContent = 'v' + ver;
+            document.getElementById('versionHead').textContent = ver;
+            pickHero();
+          })
+          .catch(function () {
+            /* offline or rate limited: baked-in links stay */
+          });
+      })();
+    </script>
+  </body>
+</html>

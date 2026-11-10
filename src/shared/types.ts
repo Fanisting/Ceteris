@@ -492,6 +492,12 @@ export interface Settings {
      */
     quickLaunchTipSeen: boolean;
     /**
+     * 远程设置引导 (ADR-032) 是否已回答过。默认 false:没配置任何远端时点标题栏的 Local
+     * 会问一次"要不要让 AI 带你配置";用户选"不用了"或开始引导后写 true,之后只在菜单和
+     * 设置 → 远程 里留一个入口。老设置文件 deep merge 补 false。
+     */
+    remoteSetupGuideSeen: boolean;
+    /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell
      * (PowerShell 7+, bash 5+, zsh, fish, Claude Code REPL)把粘贴

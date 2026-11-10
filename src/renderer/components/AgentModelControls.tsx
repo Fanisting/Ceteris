@@ -28,7 +28,14 @@
  * - No keyboard shortcut to open the menus (软件定义书 13.2: mouse first).
  * - No file reading or PTY writes here; both belong to the main process.
  */
-import { useEffect, useState, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from 'react';
 import {
   CLAUDE_EFFORTS,
   effortLevel,
@@ -57,6 +64,49 @@ const AGENT_SHORT: Record<ModelAgent, string> = { 'claude-code': 'CC', codex: 'C
 const AGENT_NAME: Record<ModelAgent, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
 /** How often the selected tab's reported model and effort are read */
 const REPORTED_POLL_MS = 15_000;
+/**
+ * Claude Code and Codex both draw their status lines (the OMC HUD, Codex's footer) two
+ * cells in from the terminal's left edge; the buttons start on that same column.
+ */
+const HUD_INDENT_CELLS = 2;
+
+/**
+ * Left offset (px) that puts the start of `lineRef` on the HUD column of the focused pane's
+ * terminal. Measured from the terminal itself, so it follows the font size, the split layout
+ * and window resizes. 0 when there is no terminal to measure.
+ */
+function useHudIndent(
+  lineRef: RefObject<HTMLDivElement>,
+  sessionId: string | null,
+  cols: number,
+  layout: string,
+): number {
+  const [indent, setIndent] = useState(0);
+  useLayoutEffect(() => {
+    const line = lineRef.current;
+    const bar = line?.parentElement;
+    const screen =
+      document.querySelector<HTMLElement>('.pane-slot.focused .xterm-screen') ??
+      document.querySelector<HTMLElement>('.xterm-screen');
+    if (!line || !bar || !screen || cols <= 0) {
+      setIndent(0);
+      return undefined;
+    }
+    const measure = (): void => {
+      const s = screen.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      const pad = parseFloat(getComputedStyle(bar).paddingLeft) || 0;
+      const column = s.left + (s.width / cols) * HUD_INDENT_CELLS;
+      setIndent(Math.max(0, Math.round(column - b.left - pad)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(screen);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [lineRef, sessionId, cols, layout]);
+  return indent;
+}
 
 // ──────────────────────────────────────────────────────────────────
 // Model options (fetched once per window)
@@ -297,6 +347,13 @@ export function AgentStatusLine(): JSX.Element | null {
   const ctxMenu = useContextMenuApi();
   const toast = useToast();
   const { tx } = useTranslation();
+  const lineRef = useRef<HTMLDivElement | null>(null);
+  const indent = useHudIndent(
+    lineRef,
+    live ? session.id : null,
+    live ? session.cols : 0,
+    state.paneLayout,
+  );
 
   // A different tab never shows the previous tab's switching note
   useEffect(() => {
@@ -414,7 +471,7 @@ export function AgentStatusLine(): JSX.Element | null {
     );
 
   return (
-    <div className="agent-status-line">
+    <div className="agent-status-line" ref={lineRef} style={{ marginLeft: indent }}>
       {switching ? (
         <span className="agent-status-switching">
           {tx(`正在换成 ${switching}…`, `Switching to ${switching}…`)}

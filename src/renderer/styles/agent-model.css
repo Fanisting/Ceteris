@@ -93,20 +93,42 @@
 .agent-status-line {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
   margin-right: auto;
   font-size: 12px;
   white-space: nowrap;
 }
 
-/* Same box as .pane-layout-btn: 32px tall, small corner, hover tint */
+/* Same box as .pane-layout-btn: 32px tall, small corner, hover tint. The outline is a 1px
+   gradient from the theme's primary to its secondary accent, drawn by ::before and masked to
+   a ring, so the inside stays transparent and keeps the hover tint. */
 .agent-status-pick {
+  position: relative;
   display: inline-flex;
   align-items: center;
   height: 32px;
-  padding: 0 8px;
+  padding: 0 10px;
   border-radius: var(--md-shape-sm, 8px);
+}
+
+.agent-status-pick::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    120deg,
+    var(--md-primary, #f0f),
+    var(--color-accent-secondary, var(--md-primary, #f0f))
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .agent-status-pick:hover {

@@ -10,7 +10,7 @@ New tabs of that agent in the folder then start with `--model` and `--effort` (C
 
 ## One tab
 
-The row with the split-view icons under the terminals shows the selected tab's model and effort as two buttons the size of those icons, for example **Opus** and **high**. Click either to choose a new one. Ceteris exits the agent, waits for the shell, and starts it again in the same tab with the new choice, resuming the same conversation. The row says "Switching to …" for the few seconds this takes, then a notice confirms it. Only this tab changes. While the agent is working or waiting for your approval, the menu still opens but its choices are greyed out, with the reason shown.
+The row with the split-view icons under the terminals shows the selected tab's model and effort as two buttons the size of those icons, for example **Opus** and **high**, outlined in a gradient of the theme's colours. They start on the same column as the agent's status line in the terminal (the OMC status bar, or Codex's footer), whatever the font size or split layout. Click either to choose a new one. Ceteris exits the agent, waits for the shell, and starts it again in the same tab with the new choice, resuming the same conversation. The row says "Switching to …" for the few seconds this takes, then a notice confirms it. Only this tab changes. While the agent is working or waiting for your approval, the menu still opens but its choices are greyed out, with the reason shown.
 
 For a tab started with the agent's own default, the buttons show the model and effort the agent reports, read from its own files.
 

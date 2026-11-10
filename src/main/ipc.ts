@@ -33,7 +33,11 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
 import { getAppLabel, getBuildType, getChannel, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
-import { createAgentVersionChecker, findAgentSpec, type AgentVersionChecker } from './agent-versions';
+import {
+  createAgentVersionChecker,
+  findAgentSpec,
+  type AgentVersionChecker,
+} from './agent-versions';
 import { AgentAutoUpdater } from './agent-auto-update';
 import {
   getExplorerIntegrationStatus,
@@ -106,6 +110,7 @@ import {
   type AgentNoticeActionPayload,
   type AgentUpdateNotice,
   type ListAgentVersionsResponse,
+  type RemoteSetupGuidePathsResponse,
   type UpgradeAgentPayload,
   type ListSshProfilesResponse,
   type SshAgentStatusResponse,
@@ -224,6 +229,7 @@ import { ConnectCancelled, cancelOpenRouterConnect, connectOpenRouter } from './
 import type { SecretStore } from './secret-store';
 import type { ViewSwitcher } from './view-switcher';
 import { bundledMarketplaceDir, parseTerminalLook } from './claude-math-images';
+import { remoteSetupGuidePaths } from './guides';
 import { isSessionRoleOrNull } from '@shared/session-role';
 import {
   TAB_CONTROL_PLUGIN_ID,
@@ -884,16 +890,24 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  handleCommand(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, (): { dir: string } => ({
+    // 公式图片扩展 (ADR-019):安装版在 resources/extensions,dev 在仓库的 extensions/
+    dir: bundledMarketplaceDir({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+    }),
+  }));
+
   handleCommand(
-    COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR,
-    (): { dir: string } => ({
-      // 公式图片扩展 (ADR-019):安装版在 resources/extensions,dev 在仓库的 extensions/
-      dir: bundledMarketplaceDir({
+    COMMAND_CHANNELS.GUIDES_REMOTE_SETUP_PATHS,
+    (): RemoteSetupGuidePathsResponse =>
+      // 远程设置引导 (ADR-032):安装版在 resources/guides,dev 在仓库的 guides/
+      remoteSetupGuidePaths({
         isPackaged: app.isPackaged,
         resourcesPath: process.resourcesPath,
         appPath: app.getAppPath(),
       }),
-    }),
   );
 
   handleCommand(
@@ -1487,10 +1501,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.AI_CONNECT_OPENROUTER,
-    async (
-      _e,
-      envelope: CommandEnvelope<undefined>,
-    ): Promise<ConnectOpenRouterResponse> => {
+    async (_e, envelope: CommandEnvelope<undefined>): Promise<ConnectOpenRouterResponse> => {
       refuseRemote(envelope.windowId);
       if (!deps.secretStore) throw new Error('SecretStore 未初始化,无法保存 key');
       try {
@@ -1536,7 +1547,8 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         config,
         envelope.payload.screen,
         fetch,
-        (usage) => deps.nextPromptUsage?.record(usage, config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL),
+        (usage) =>
+          deps.nextPromptUsage?.record(usage, config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL),
         await frequentPrompts.get(),
       );
       return { suggestion };
@@ -1980,10 +1992,19 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     async (_e, envelope: CommandEnvelope<UpgradeAgentPayload>): Promise<CreateSessionResponse> => {
       const { templateId, pathId, cols, rows } = envelope.payload;
       if (pathRefFromId(pathId).kind === 'ssh') {
-        throw makeIpcError('InvalidPayload', `agent upgrade runs on local paths only, got pathId="${pathId}"`);
+        throw makeIpcError(
+          'InvalidPayload',
+          `agent upgrade runs on local paths only, got pathId="${pathId}"`,
+        );
       }
       const oldTreeJson = JSON.stringify(pathManager.getTree());
-      const { session } = await startAgentUpgrade(templateId, pathId, envelope.windowId, cols, rows);
+      const { session } = await startAgentUpgrade(
+        templateId,
+        pathId,
+        envelope.windowId,
+        cols,
+        rows,
+      );
       return { session, pathTreeChanged: JSON.stringify(pathManager.getTree()) !== oldTreeJson };
     },
   );

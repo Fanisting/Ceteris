@@ -1298,6 +1298,20 @@ interface UpdateStatus {
 
 **选哪个文件**(`src/shared/update-check.ts` 的 `selectAsset`):Windows 给 Setup exe,portable 运行时给 Portable exe;macOS 按 CPU 给 arm64 或 x64 的 dmg;Linux 以 AppImage 启动给 AppImage,否则 Debian 系给 deb、Red Hat 系给 rpm,找不到再退到 AppImage。
 
+### 5.10 远程设置引导 (ADR-032)
+
+#### `cmd:guides:remote-setup-paths`
+无 payload,返回随 Ceteris 一起安装的两份指南文件的绝对路径。renderer 把对应角色的路径拼进粘给 agent 的一行提示里,agent 自己读文件。安装版在 `<install>\resources\guides`(electron-builder extraResources,asar 外),dev 在仓库的 `guides/`。
+
+```typescript
+interface RemoteSetupGuidePathsResponse {
+  host: string;     // remote-setup-host.md:这台电脑做 SSH 主机
+  client: string;   // remote-setup-client.md:这台电脑去连另一台
+}
+```
+
+不在 `LINK_LOCAL_ONLY_CHANNELS` 里:远端视图不提供这个引导(view-menu.ts 在远端视图只列视图),所以不会从远程窗口调用。
+
 ### 5.7 Explorer Integration (v1.3)
 
 > Win11 新菜单(MSIX + `IExplorerCommand`)与经典菜单(HKCU 注册表)的状态

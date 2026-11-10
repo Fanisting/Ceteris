@@ -6,7 +6,8 @@
  *
  * @关键设计:
  * - The badge is the one place to reach another machine, so it always has a menu, even
- *   with nothing set up yet. That menu then offers to add a Host or a server.
+ *   with nothing set up yet. That menu then offers to add a Host or a server, or to let the
+ *   user's AI agent set it up (ADR-032).
  * - This is the only switcher. A Link Host replaces the whole window, while an SSH server
  *   only changes what the sidebar lists, but to the user they are the same question:
  *   which machine am I on?
@@ -38,6 +39,8 @@ export type ViewMenuEntry =
   | { kind: 'ssh'; id: string; label: string; active: boolean }
   | { kind: 'add-link' }
   | { kind: 'add-ssh' }
+  /** Start the remote setup guide (ADR-032): an agent tab that walks the user through SSH. */
+  | { kind: 'setup-guide' }
   | { kind: 'divider' };
 
 const LOCAL_LABEL = 'Local';
@@ -91,7 +94,9 @@ export function buildViewMenu(input: ViewMenuInput): ViewMenuEntry[] {
 
   const hosts: ViewMenuEntry[] = input.savedHosts
     // A connected Host is already listed above as a view.
-    .filter((host) => liveClient(input.linkClients, `${host.host}:${host.port}`)?.state !== 'connected')
+    .filter(
+      (host) => liveClient(input.linkClients, `${host.host}:${host.port}`)?.state !== 'connected',
+    )
     .map((host) => ({
       kind: 'link',
       host,
@@ -113,5 +118,6 @@ export function buildViewMenu(input: ViewMenuInput): ViewMenuEntry[] {
     { kind: 'divider' },
     { kind: 'add-link' },
     { kind: 'add-ssh' },
+    { kind: 'setup-guide' },
   ];
 }

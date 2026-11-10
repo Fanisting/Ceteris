@@ -21,12 +21,12 @@
  * @对应文档章节: 软件定义书.md 6.3 (右侧标签页)、6.4 (终端区域)
  */
 import {
-  Fragment,
   useEffect,
   useRef,
   useState,
   type MouseEvent,
   type DragEvent,
+  Fragment,
 } from 'react';
 import {
   COMMAND_CHANNELS,

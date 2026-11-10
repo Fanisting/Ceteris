@@ -269,8 +269,6 @@ function bootstrap(): void {
     new JsonStore<SecretsFile>(join(dataDir, 'secrets.json')),
     safeStorage,
   );
-  // ADR-036:收纳盒,收起来的标签和它们的 resume id
-  const shelfStore = new JsonStore<ShelfFile>(join(dataDir, 'shelf.json'));
 
   const channel = CHANNELS[getChannel()];
   logger.info('main', 'channel profile', { ...channel });
@@ -361,6 +359,7 @@ function bootstrap(): void {
     tabControlServer.service.revoke(e.sessionId),
   );
   // ADR-036:收纳盒。规则在 shelf.ts,扫描每分钟一次,设置改了下一轮就生效。
+  const shelfStore = new JsonStore<ShelfFile>(join(dataDir, 'shelf.json'));
   const shelfManager = new ShelfManager(shelfStore, {
     listSessions: () => sessionManager.list(),
     getSession: (id) => sessionManager.get(id),
@@ -936,9 +935,9 @@ function bootstrap(): void {
         settingsManager.flush(),
         pathManager.flush(),
         nextPromptUsage.flush(),
-        shelfManager.flush(),
         secretStore.flush(),
         sshProfileManager.flush(),
+        shelfManager.flush(),
         knownHostsManager.flush(),
         templatesManager.flush(),
         logger.flush(),

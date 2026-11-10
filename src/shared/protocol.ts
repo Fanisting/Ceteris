@@ -13,9 +13,9 @@
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
 import type { SessionRole } from './session-role';
-import type { ShelfEntry } from './shelf';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
+import type { ShelfEntry } from './shelf';
 import type {
   AppSnapshot,
   Bookmark,

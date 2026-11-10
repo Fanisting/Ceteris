@@ -160,6 +160,8 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 
 ## 核心特性
 
+每个功能都有一页单独的说明,讲它做什么、在哪里找:见 [features 文件夹](features/README.md)(英文)。
+
 ### V1(当前 alpha)
 
 - ✅ **支持 Windows、macOS 和 Linux**:macOS 上关闭窗口后应用留在 Dock;Linux 上作为普通桌面应用运行([ADR-013](docs/软件定义书.md#adr-013))

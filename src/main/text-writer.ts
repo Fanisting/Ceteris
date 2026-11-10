@@ -1,6 +1,6 @@
 /**
  * @file src/main/text-writer.ts
- * @purpose Saves a .txt, .json, .tex or Markdown file edited in the viewer. A save either replaces the whole
+ * @purpose Saves a .txt, .json, .tex, .sql, .hive or Markdown file edited in the viewer. A save either replaces the whole
  *   file or leaves it exactly as it was.
  *
  * @关键设计:

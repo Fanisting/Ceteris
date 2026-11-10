@@ -2,7 +2,7 @@
  * @file src/main/tab-control-server.ts
  * @purpose The pipe the ceteris-tabs Claude Code plugin talks to (ADR-024). Claude Code in a
  *   coordinator tab can list, open, close, rename, type into and read the other tabs of the
- *   folder it runs in. Any other tab is refused.
+ *   folder it runs in, and show a file beside a tab (ADR-033). Any other tab is refused.
  *
  * @关键设计:
  * - The rule is checked on every request, against the session as it is now: the calling tab
@@ -21,8 +21,16 @@
  *   Text with line breaks goes in as a bracketed paste when the tab has asked for that mode.
  * - Pipe name has the pid and a random part, like askpass-server.ts, so stable and beta never
  *   share a pipe and other users cannot guess it.
+ * - Showing a file (ADR-033) only asks the windows to open it in the viewer next to a tab, the
+ *   same viewer a click in the file tree opens. Main checks the type and that the file exists;
+ *   the window reads the content itself. A relative path counts from the tab's current
+ *   directory, because that is where the agent just wrote the file.
+ * - open-file is open to every live tab, coordinator or not, extension on or off: the user
+ *   asks their own Claude Code to "show the answer in Ceteris", and that tab must be able to
+ *   do it without any setup. It shows nothing the user could not click in the file tree, and
+ *   it only touches the tab that asks (or another tab of the same folder).
  *
- * @对应文档章节:软件定义书.md ADR-024;docs/ipc-protocol.md "Tab control pipe"
+ * @对应文档章节:软件定义书.md ADR-024、ADR-033;docs/ipc-protocol.md 附录 D
  *
  * @不要在这里做的事:
  * - Do not mark or unmark coordinators here; only the user does that, from the tab menu.
@@ -37,7 +45,8 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
+import { fileViewKind } from '@shared/file-tree';
 import {
   TAB_CONTROL_ENV,
   TAB_CONTROL_KEYS,
@@ -48,6 +57,7 @@ import {
   decodeTabControlRequest,
   encodeTabControlReply,
   type TabControlErrorCode,
+  type TabControlOpenFileResult,
   type TabControlReply,
   type TabControlRequest,
   type TabSummary,
@@ -86,6 +96,10 @@ export interface TabControlHost {
   screenTail(sessionId: string, rows: number): string;
   /** True when the program in the tab turned on bracketed paste (ESC [ ? 2004 h). */
   bracketedPaste(sessionId: string): boolean;
+  /** True when an absolute path is an existing regular file. */
+  isFile(path: string): Promise<boolean>;
+  /** Asks every window to show the file in the viewer beside the tab (ADR-033). */
+  showFile(input: { sessionId: string; name: string; path: string }): void;
 }
 
 class RequestError extends Error {
@@ -161,7 +175,10 @@ export class TabControlService {
     }
   }
 
-  /** The calling tab, if it may use the pipe right now. */
+  /**
+   * The calling tab, if it may use the pipe right now. Controlling tabs needs the extension on
+   * and a coordinator tab; open-file (ADR-033) needs only a live tab, see the file header.
+   */
   private authorize(request: TabControlRequest): SessionInfo {
     if (request.v !== TAB_CONTROL_VERSION) {
       throw new RequestError(
@@ -169,7 +186,8 @@ export class TabControlService {
         `protocol version ${request.v} is not ${TAB_CONTROL_VERSION}; update the ceteris-tabs plugin to match this Ceteris`,
       );
     }
-    if (!this.host.enabled()) {
+    const anyTab = request.op === 'open-file';
+    if (!anyTab && !this.host.enabled()) {
       throw new RequestError(
         'disabled',
         'Tab control is off. Turn it on in Ceteris Settings, Extensions, Coordinator tab control.',
@@ -183,7 +201,10 @@ export class TabControlService {
         'This tab is not known to the running Ceteris. Open Claude Code in a new Ceteris tab.',
       );
     }
-    if (caller.coordinator !== true || caller.state === 'exited') {
+    if (caller.state === 'exited') {
+      throw new RequestError('not-coordinator', 'This tab has exited.');
+    }
+    if (!anyTab && caller.coordinator !== true) {
       throw new RequestError(
         'not-coordinator',
         'Only coordinator tabs may control tabs. Right-click this tab in Ceteris and tick Coordinator.',
@@ -223,6 +244,8 @@ export class TabControlService {
       }
       case 'input':
         return this.input(caller, args);
+      case 'open-file':
+        return this.openFile(caller, args);
       case 'read': {
         const target = this.target(caller, args.tab, { allowSelf: true });
         const lines = clampInt(args.lines, DEFAULT_READ_LINES, 1, TAB_CONTROL_MAX_READ_LINES);
@@ -311,6 +334,43 @@ export class TabControlService {
     const name = typeof args.name === 'string' ? args.name.trim() : '';
     if (name) this.host.rename(session.id, name.slice(0, 200));
     return summarize(this.host.get(session.id) ?? session, caller.id);
+  }
+
+  /**
+   * Shows a local file in the viewer beside a tab of the folder; the caller's own tab when
+   * `tab` is not given. Only the kinds the viewer knows (fileViewKind) are accepted, so an
+   * agent asking for a .ts file gets a clear refusal instead of a blank pane. Any live tab may
+   * call this (see authorize); naming another tab still needs it to be in the same folder.
+   */
+  private async openFile(
+    caller: SessionInfo,
+    args: Record<string, unknown>,
+  ): Promise<TabControlOpenFileResult> {
+    if (caller.pathId.startsWith('ssh:')) {
+      throw new RequestError(
+        'bad-request',
+        'Showing files in an SSH folder is not supported; open them from the file tree.',
+      );
+    }
+    const target =
+      args.tab === undefined ? caller : this.target(caller, args.tab, { allowSelf: true });
+    const raw = typeof args.path === 'string' ? args.path.trim() : '';
+    if (!raw) throw new RequestError('bad-request', 'path must be a non-empty string');
+    const path = isAbsolute(raw) ? resolve(raw) : resolve(target.currentCwd, raw);
+    const name = basename(path);
+    const kind = fileViewKind(name);
+    if (!kind) {
+      throw new RequestError(
+        'bad-request',
+        `Ceteris cannot show "${name}". It shows .md, .txt, .json, .tex, .pdf and images.`,
+      );
+    }
+    if (!(await this.host.isFile(path))) {
+      throw new RequestError('not-found', `No file at ${path}. Write it first, then open it.`);
+    }
+    this.host.showFile({ sessionId: target.id, name, path });
+    logger.info('TabControl', `open-file sid=${target.id} path=${path} by tab ${caller.id}`);
+    return { tab: summarize(target, caller.id), path, name, kind };
   }
 
   private async input(

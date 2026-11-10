@@ -33,7 +33,11 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
 import { getAppLabel, getBuildType, getChannel, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
-import { createAgentVersionChecker, findAgentSpec, type AgentVersionChecker } from './agent-versions';
+import {
+  createAgentVersionChecker,
+  findAgentSpec,
+  type AgentVersionChecker,
+} from './agent-versions';
 import { AgentAutoUpdater } from './agent-auto-update';
 import {
   getExplorerIntegrationStatus,
@@ -165,6 +169,7 @@ import {
   type LinkListBindCandidatesResponse,
   type LinkRegenerateTokenResponse,
   type LinkStatusChangedPayload,
+  type FileViewOpenRequestedPayload,
   type LinkStatusResponse,
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
@@ -388,6 +393,14 @@ export function setLinkCommandForwarder(fn: LinkCommandForwarder | null): void {
  */
 export function broadcastLinkStatus(payload: LinkStatusChangedPayload): void {
   broadcastEvent<LinkStatusChangedPayload>(EVENT_CHANNELS.LINK_STATUS_CHANGED, payload);
+}
+
+/**
+ * 协调者的 agent 要在某个标签旁显示文件(ADR-033)。广播给所有窗口,每个窗口自己决定
+ * 要不要加载:显示着那个标签的窗口会把文件摆在终端旁边,别的窗口只记一个视图。
+ */
+export function broadcastFileViewOpen(payload: FileViewOpenRequestedPayload): void {
+  broadcastEvent<FileViewOpenRequestedPayload>(EVENT_CHANNELS.FILE_VIEW_OPEN_REQUESTED, payload);
 }
 
 /**
@@ -884,17 +897,14 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
-  handleCommand(
-    COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR,
-    (): { dir: string } => ({
-      // 公式图片扩展 (ADR-019):安装版在 resources/extensions,dev 在仓库的 extensions/
-      dir: bundledMarketplaceDir({
-        isPackaged: app.isPackaged,
-        resourcesPath: process.resourcesPath,
-        appPath: app.getAppPath(),
-      }),
+  handleCommand(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, (): { dir: string } => ({
+    // 公式图片扩展 (ADR-019):安装版在 resources/extensions,dev 在仓库的 extensions/
+    dir: bundledMarketplaceDir({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
     }),
-  );
+  }));
 
   handleCommand(
     COMMAND_CHANNELS.EXTENSIONS_TAB_CONTROL_STATUS,
@@ -1487,10 +1497,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
 
   handleCommand(
     COMMAND_CHANNELS.AI_CONNECT_OPENROUTER,
-    async (
-      _e,
-      envelope: CommandEnvelope<undefined>,
-    ): Promise<ConnectOpenRouterResponse> => {
+    async (_e, envelope: CommandEnvelope<undefined>): Promise<ConnectOpenRouterResponse> => {
       refuseRemote(envelope.windowId);
       if (!deps.secretStore) throw new Error('SecretStore 未初始化,无法保存 key');
       try {
@@ -1536,7 +1543,8 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         config,
         envelope.payload.screen,
         fetch,
-        (usage) => deps.nextPromptUsage?.record(usage, config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL),
+        (usage) =>
+          deps.nextPromptUsage?.record(usage, config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL),
         await frequentPrompts.get(),
       );
       return { suggestion };
@@ -1980,10 +1988,19 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     async (_e, envelope: CommandEnvelope<UpgradeAgentPayload>): Promise<CreateSessionResponse> => {
       const { templateId, pathId, cols, rows } = envelope.payload;
       if (pathRefFromId(pathId).kind === 'ssh') {
-        throw makeIpcError('InvalidPayload', `agent upgrade runs on local paths only, got pathId="${pathId}"`);
+        throw makeIpcError(
+          'InvalidPayload',
+          `agent upgrade runs on local paths only, got pathId="${pathId}"`,
+        );
       }
       const oldTreeJson = JSON.stringify(pathManager.getTree());
-      const { session } = await startAgentUpgrade(templateId, pathId, envelope.windowId, cols, rows);
+      const { session } = await startAgentUpgrade(
+        templateId,
+        pathId,
+        envelope.windowId,
+        cols,
+        rows,
+      );
       return { session, pathTreeChanged: JSON.stringify(pathManager.getTree()) !== oldTreeJson };
     },
   );

@@ -3,6 +3,7 @@
  * @purpose Who may control which tabs over the tab control pipe (ADR-024), and what typing
  *   sends to the PTY. One test per rule.
  */
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SessionInfo, Template } from '@shared/types';
 import { TAB_CONTROL_VERSION, type TabControlReply } from '@shared/tab-control';
@@ -31,10 +32,14 @@ const TEMPLATES = [
   { id: 'claude-code', name: 'Claude Code', command: 'claude', args: [] },
 ] as unknown as Template[];
 
-function setup(sessions: SessionInfo[], opts: { enabled?: boolean; paste?: boolean } = {}) {
+function setup(
+  sessions: SessionInfo[],
+  opts: { enabled?: boolean; paste?: boolean; files?: string[] } = {},
+) {
   const writes: { id: string; data: string }[] = [];
   const closed: string[] = [];
   const created: Parameters<TabControlHost['create']>[0][] = [];
+  const shown: Parameters<TabControlHost['showFile']>[0][] = [];
   const host: TabControlHost = {
     enabled: () => opts.enabled ?? true,
     list: () => sessions,
@@ -57,12 +62,14 @@ function setup(sessions: SessionInfo[], opts: { enabled?: boolean; paste?: boole
     },
     screenTail: (id, rows) => `screen of ${id}, ${rows} rows`,
     bracketedPaste: () => opts.paste ?? false,
+    isFile: async (path) => (opts.files ?? []).includes(path),
+    showFile: (input) => shown.push(input),
   };
   const service = new TabControlService(host, { submitMs: 0, keyMs: 0 });
   const tokenOf = (id: string): string => service.issue(id);
   const call = (token: string, op: string, args: Record<string, unknown> = {}) =>
     service.handle({ v: TAB_CONTROL_VERSION, token, op: op as never, args });
-  return { service, tokenOf, call, writes, closed, created };
+  return { service, tokenOf, call, writes, closed, created, shown };
 }
 
 const errorCode = (reply: TabControlReply): string | null => (reply.ok ? null : reply.code);
@@ -145,5 +152,87 @@ describe('TabControlService actions', () => {
       errorCode(await call(tokenOf('a'), 'input', { tab: 'b', text: 'x', keys: ['f13'] })),
     ).toBe('bad-request');
     expect(writes).toEqual([]);
+  });
+});
+
+describe('TabControlService open-file (ADR-033)', () => {
+  const cwd = resolve('/proj/a');
+  const note = resolve(cwd, 'notes', 'answer.md');
+
+  it('shows a relative path from the coordinator cwd beside the coordinator itself', async () => {
+    const { tokenOf, call, shown } = setup(
+      [session('a', { coordinator: true, currentCwd: cwd }), session('b')],
+      { files: [note] },
+    );
+    const reply = await call(tokenOf('a'), 'open-file', { path: 'notes/answer.md' });
+    expect(reply.ok && reply.result).toMatchObject({
+      path: note,
+      name: 'answer.md',
+      kind: 'markdown',
+      tab: { id: 'a', self: true },
+    });
+    expect(shown).toEqual([{ sessionId: 'a', name: 'answer.md', path: note }]);
+  });
+
+  it('works from a plain worker tab with the extension off', async () => {
+    const { tokenOf, call, shown } = setup([session('w', { currentCwd: cwd })], {
+      enabled: false,
+      files: [note],
+    });
+    const reply = await call(tokenOf('w'), 'open-file', { path: 'notes/answer.md' });
+    expect(reply.ok).toBe(true);
+    expect(shown.map((s) => s.sessionId)).toEqual(['w']);
+    expect(errorCode(await call(tokenOf('w'), 'list'))).toBe('disabled');
+  });
+
+  it('still refuses an exited tab', async () => {
+    const { tokenOf, call } = setup([session('w', { state: 'exited' })], { files: [note] });
+    expect(errorCode(await call(tokenOf('w'), 'open-file', { path: note }))).toBe(
+      'not-coordinator',
+    );
+  });
+
+  it('shows an absolute path beside a named tab of the folder', async () => {
+    const { tokenOf, call, shown } = setup(
+      [session('a', { coordinator: true }), session('bbbb1', { currentCwd: cwd })],
+      { files: [note] },
+    );
+    const reply = await call(tokenOf('a'), 'open-file', { tab: 'bbbb', path: note });
+    expect(reply.ok && (reply.result as { tab: { id: string } }).tab.id).toBe('bbbb1');
+    expect(shown.map((s) => s.sessionId)).toEqual(['bbbb1']);
+  });
+
+  it('refuses a kind the viewer cannot show without touching the disk', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { coordinator: true })], {
+      files: [resolve(cwd, 'main.ts')],
+    });
+    const reply = await call(tokenOf('a'), 'open-file', { path: resolve(cwd, 'main.ts') });
+    expect(errorCode(reply)).toBe('bad-request');
+    expect(shown).toEqual([]);
+  });
+
+  it('refuses a file that does not exist', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { coordinator: true })]);
+    expect(errorCode(await call(tokenOf('a'), 'open-file', { path: note }))).toBe('not-found');
+    expect(shown).toEqual([]);
+  });
+
+  it('refuses an empty path and a tab of another folder', async () => {
+    const { tokenOf, call } = setup(
+      [session('a', { coordinator: true }), session('other', { pathId: 'D:/proj/b' })],
+      { files: [note] },
+    );
+    expect(errorCode(await call(tokenOf('a'), 'open-file', { path: '  ' }))).toBe('bad-request');
+    expect(errorCode(await call(tokenOf('a'), 'open-file', { tab: 'other', path: note }))).toBe(
+      'not-found',
+    );
+  });
+
+  it('refuses in an SSH folder, where the file is on the other machine', async () => {
+    const { tokenOf, call } = setup(
+      [session('a', { coordinator: true, pathId: 'ssh:box:/home/u' })],
+      { files: [note] },
+    );
+    expect(errorCode(await call(tokenOf('a'), 'open-file', { path: note }))).toBe('bad-request');
   });
 });

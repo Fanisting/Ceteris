@@ -19,6 +19,7 @@
  */
 import { app, Menu, net, safeStorage, session as electronSession } from 'electron';
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { WindowManager } from './window-manager';
 import { TrayManager } from './tray';
@@ -36,6 +37,7 @@ import {
   broadcastAccentColor,
   broadcastCustomThemes,
   broadcastUpdateStatus,
+  broadcastFileViewOpen,
   decryptStoredPassword,
   installIpcLayer,
   sendEventToWindowId,
@@ -336,6 +338,13 @@ function bootstrap(): void {
         sessionManager.sendInput(sessionId, Buffer.from(text, 'utf8').toString('base64')).accepted,
       screenTail: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
       bracketedPaste: (sessionId) => sessionManager.isBracketedPasteOn(sessionId),
+      // ADR-033: the agent names a file it wrote; the windows show it beside the tab.
+      isFile: (path) =>
+        stat(path).then(
+          (s) => s.isFile(),
+          () => false,
+        ),
+      showFile: broadcastFileViewOpen,
     },
     // The plugin runs its MCP server with this executable and ELECTRON_RUN_AS_NODE=1.
     process.execPath,
@@ -659,7 +668,9 @@ function bootstrap(): void {
       });
       updateChecker.refreshSchedule();
       // 主题文件夹读取失败不影响启动,内置主题照常可用
-      customThemes.start().catch((err) => logger.warn('themes', 'custom theme store start failed', err));
+      customThemes
+        .start()
+        .catch((err) => logger.warn('themes', 'custom theme store start failed', err));
       // ADR-030:系统强调色一变就推给所有窗口,Legado MD3 的强调色主题跟着重新生成
       getPlatformAdapter()
         .onAccentColorChanged(broadcastAccentColor)

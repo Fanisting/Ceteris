@@ -1,7 +1,8 @@
 /**
  * @file extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs
  * @purpose MCP server that lets Claude Code in a Ceteris coordinator tab control the other tabs
- *   of its folder: list, open, close, rename, type into, read, and wait for them (Ceteris ADR-024).
+ *   of its folder: list, open, close, rename, type into, read, and wait for them (Ceteris
+ *   ADR-024), and show a file it wrote beside a tab (ADR-033).
  *
  * @关键设计:
  * - No dependencies. It speaks MCP over stdio (one JSON-RPC message per line) by hand, and talks
@@ -24,15 +25,19 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
 export const PROTOCOL_VERSION = 1;
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '0.2.0';
 const SUPPORTED_MCP_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18'];
 const AGENT_TEMPLATES = new Set(['claude-code', 'codex']);
 const POLL_MS = 1000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
 const INSTRUCTIONS = [
-  'These tools control the other terminal tabs in this Ceteris folder.',
-  'They work only while this tab is marked as coordinator in Ceteris; otherwise every call says so.',
+  'You are running in a terminal tab of Ceteris, a terminal app with a file viewer beside each tab.',
+  'open_file works from any tab: when the user asks you to show, display or open your answer, a',
+  'report or a file "in Ceteris", "as a tab" or "as a page", write it to a .md (or .txt, .json,',
+  '.tex, .pdf, image) file and call open_file with its path. Ceteris displays it next to this tab.',
+  'The other tools control the other terminal tabs of this folder and work only while this tab is',
+  'marked as coordinator in Ceteris; otherwise every call says so.',
   'Typical loop: list_tabs; open_tab with template "claude-code" and a prompt to start a worker;',
   'wait_for_tab until it is done or blocked; read_tab to see its answer; send_input to answer an',
   'approval prompt (keys) or give the next prompt (text); close_tab when it is finished.',
@@ -156,6 +161,20 @@ export const TOOLS = [
       type: 'object',
       properties: { tab: TAB },
       required: ['tab'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'open_file',
+    description:
+      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, .txt/.json/.tex as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or a file in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path, absolute or relative to the tab' },
+        tab: { ...TAB, description: `${TAB.description}; default your own tab` },
+      },
+      required: ['path'],
       additionalProperties: false,
     },
   },
@@ -359,6 +378,13 @@ export async function runTool(env, name, args = {}, options = {}) {
     case 'close_tab': {
       const { closed } = await callCeteris(env, 'close', { tab: args.tab });
       return `Closed ${closed}.`;
+    }
+    case 'open_file': {
+      const { tab, path, kind } = await callCeteris(env, 'open-file', {
+        path: args.path,
+        ...(args.tab !== undefined ? { tab: args.tab } : {}),
+      });
+      return `Showing ${path} (${kind}) beside ${describeTab(tab)}`;
     }
     default:
       throw new ControlError(`Unknown tool ${name}`);

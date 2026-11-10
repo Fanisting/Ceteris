@@ -71,10 +71,12 @@ import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
 import { useModal } from './Modal';
-import { NEXT_PROMPT_DEFAULT_BASE_URL,
+import {
+  NEXT_PROMPT_DEFAULT_BASE_URL,
   type FrequentPrompt,
   type NextPromptUsage,
-  nextPromptConfigured } from '@shared/next-prompt';
+  nextPromptConfigured,
+} from '@shared/next-prompt';
 import {
   AGENT_TITLE_DEFAULT_GUIDE,
   AGENT_TITLE_DEFAULT_MAX_CHARS,
@@ -108,7 +110,11 @@ import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
 import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
-import { tabControlInstallLine, tabControlInstallLines } from '@shared/tab-control';
+import {
+  TAB_CONTROL_UPDATE_COMMAND,
+  tabControlInstallLine,
+  tabControlInstallLines,
+} from '@shared/tab-control';
 import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
@@ -137,7 +143,11 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'shell', iconName: 'shell', titleKey: 'settings.category.shell' },
   { id: 'behavior', iconName: 'behavior', titleKey: 'settings.category.behavior' },
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
-  { id: 'system-integration', iconName: 'systemIntegration', titleKey: 'settings.category.systemIntegration' },
+  {
+    id: 'system-integration',
+    iconName: 'systemIntegration',
+    titleKey: 'settings.category.systemIntegration',
+  },
   { id: 'ai', iconName: 'ai', titleKey: 'settings.category.ai' },
   { id: 'extensions', iconName: 'extensions', titleKey: 'settings.category.extensions' },
   { id: 'advanced', iconName: 'advanced', titleKey: 'settings.category.advanced' },
@@ -267,11 +277,7 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
 // 外观分类
 // ──────────────────────────────────────────────────────────────────
 
-function AppearancePanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function AppearancePanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const a = state.settings.appearance;
@@ -290,9 +296,7 @@ function AppearancePanel({
   const [terminalFonts, setTerminalFonts] = useState<FontEntry[]>(() =>
     probeFonts(RECOMMENDED_TERMINAL_FONTS),
   );
-  const [uiFonts, setUiFonts] = useState<FontEntry[]>(() =>
-    probeFonts(RECOMMENDED_UI_FONTS),
-  );
+  const [uiFonts, setUiFonts] = useState<FontEntry[]>(() => probeFonts(RECOMMENDED_UI_FONTS));
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
@@ -318,7 +322,10 @@ function AppearancePanel({
 
       <SettingRow
         label={tx('主题', 'Theme')}
-        hint={tx('所有窗口立即同步;xterm 颜色与 UI 同步切换', 'Applies to all windows immediately; xterm colors stay in sync')}
+        hint={tx(
+          '所有窗口立即同步;xterm 颜色与 UI 同步切换',
+          'Applies to all windows immediately; xterm colors stay in sync',
+        )}
       >
         <ThemePicker
           value={theme}
@@ -347,7 +354,10 @@ function AppearancePanel({
 
       <SettingRow
         label={tx('窗口风格', 'Window style')}
-        hint={tx('影响标题栏布局与窗口控制按钮位置(不影响主题配色)', 'Title bar layout and control button position (does not affect theme colors)')}
+        hint={tx(
+          '影响标题栏布局与窗口控制按钮位置(不影响主题配色)',
+          'Title bar layout and control button position (does not affect theme colors)',
+        )}
       >
         <div className="settings-radio-group">
           <label className="settings-radio">
@@ -383,44 +393,49 @@ function AppearancePanel({
         </div>
       </SettingRow>
 
-      <SettingRow label={tx('终端字体', 'Terminal font')} hint={tx('系统已安装的等宽字体 + 推荐字体', 'Installed monospace fonts + recommended')}>
+      <SettingRow
+        label={tx('终端字体', 'Terminal font')}
+        hint={tx('系统已安装的等宽字体 + 推荐字体', 'Installed monospace fonts + recommended')}
+      >
         <FontPicker
           value={terminalFontFamily}
           fonts={terminalFonts}
           onChange={(value) =>
-            void updateSettings(
-              { appearance: { terminalFontFamily: value } },
-              setError,
-            )
+            void updateSettings({ appearance: { terminalFontFamily: value } }, setError)
           }
         />
       </SettingRow>
 
-      <SettingRow label={tx('终端字号', 'Terminal font size')} hint={tx('范围 8 - 24', 'Range 8 - 24')}>
+      <SettingRow
+        label={tx('终端字号', 'Terminal font size')}
+        hint={tx('范围 8 - 24', 'Range 8 - 24')}
+      >
         <NumberInput
           value={terminalFontSize}
           min={8}
           max={24}
           step={1}
-          onChange={(v) =>
-            void updateSettings({ appearance: { terminalFontSize: v } }, setError)
-          }
+          onChange={(v) => void updateSettings({ appearance: { terminalFontSize: v } }, setError)}
         />
       </SettingRow>
 
-      <SettingRow label={tx('终端行高', 'Terminal line height')} hint={tx('范围 1.0 - 2.0', 'Range 1.0 - 2.0')}>
+      <SettingRow
+        label={tx('终端行高', 'Terminal line height')}
+        hint={tx('范围 1.0 - 2.0', 'Range 1.0 - 2.0')}
+      >
         <NumberInput
           value={terminalLineHeight}
           min={1}
           max={2}
           step={0.05}
-          onChange={(v) =>
-            void updateSettings({ appearance: { terminalLineHeight: v } }, setError)
-          }
+          onChange={(v) => void updateSettings({ appearance: { terminalLineHeight: v } }, setError)}
         />
       </SettingRow>
 
-      <SettingRow label={tx('UI 字体', 'UI font')} hint={tx('侧栏 / 按钮 / 标签等 UI 区域', 'Sidebar / buttons / tabs and other UI areas')}>
+      <SettingRow
+        label={tx('UI 字体', 'UI font')}
+        hint={tx('侧栏 / 按钮 / 标签等 UI 区域', 'Sidebar / buttons / tabs and other UI areas')}
+      >
         <FontPicker
           value={uiFontFamily}
           fonts={uiFonts}
@@ -430,23 +445,27 @@ function AppearancePanel({
         />
       </SettingRow>
 
-      <SettingRow label={tx('UI 缩放', 'UI zoom')} hint={tx('范围 75% - 150%,影响整个 UI 字号', 'Range 75% - 150%, affects all UI font sizes')}>
+      <SettingRow
+        label={tx('UI 缩放', 'UI zoom')}
+        hint={tx('范围 75% - 150%,影响整个 UI 字号', 'Range 75% - 150%, affects all UI font sizes')}
+      >
         <NumberInput
           value={uiZoom}
           min={0.75}
           max={1.5}
           step={0.05}
           formatPercent
-          onChange={(v) =>
-            void updateSettings({ appearance: { uiZoom: v } }, setError)
-          }
+          onChange={(v) => void updateSettings({ appearance: { uiZoom: v } }, setError)}
         />
       </SettingRow>
 
       {/* BETA-004:语言切换 */}
       <SettingRow
         label={tx('语言', 'Language')}
-        hint={tx("切换 UI 显示语言;'跟随系统'下 zh-* 系统显示中文,其他显示英文", "Switch UI language; 'Follow system' picks Chinese for zh-* locales, English otherwise")}
+        hint={tx(
+          "切换 UI 显示语言;'跟随系统'下 zh-* 系统显示中文,其他显示英文",
+          "Switch UI language; 'Follow system' picks Chinese for zh-* locales, English otherwise",
+        )}
       >
         <select
           className="settings-input"
@@ -468,7 +487,10 @@ function AppearancePanel({
       {windowStyle === 'macos' && (
         <SettingRow
           label={tx('红绿灯悬浮符号', 'Traffic-light hover symbols')}
-          hint={tx('macOS 风格下,鼠标移到红绿灯按钮上是否显示 ×/−/+;默认关(更克制)', 'Show ×/−/+ when hovering traffic-light buttons in macOS style; off by default (more minimal)')}
+          hint={tx(
+            'macOS 风格下,鼠标移到红绿灯按钮上是否显示 ×/−/+;默认关(更克制)',
+            'Show ×/−/+ when hovering traffic-light buttons in macOS style; off by default (more minimal)',
+          )}
         >
           <label className="settings-checkbox">
             <input
@@ -499,10 +521,7 @@ function AppearancePanel({
             type="checkbox"
             checked={a?.hideTopTabBar ?? false}
             onChange={(e) =>
-              void updateSettings(
-                { appearance: { hideTopTabBar: e.target.checked } },
-                setError,
-              )
+              void updateSettings({ appearance: { hideTopTabBar: e.target.checked } }, setError)
             }
           />
           <span>{tx('启用', 'Enable')}</span>
@@ -557,11 +576,7 @@ function AppearancePanel({
 // Shell 与启动分类
 // ──────────────────────────────────────────────────────────────────
 
-function ShellPanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function ShellPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const sh = state.settings.shell;
@@ -572,17 +587,13 @@ function ShellPanel({
     Array<{ id: string; displayName: string; executablePath: string }>
   >([]);
   const [templateMode, setTemplateMode] = useState<
-    | { kind: 'list' }
-    | { kind: 'edit'; templateId: string | null /* null = 新建 */ }
+    { kind: 'list' } | { kind: 'edit'; templateId: string | null /* null = 新建 */ }
   >({ kind: 'list' });
 
   useEffect(() => {
     let cancelled = false;
     window.api
-      .invoke<unknown, ListShellsResponse>(
-        COMMAND_CHANNELS.SETTINGS_LIST_SHELLS,
-        {},
-      )
+      .invoke<unknown, ListShellsResponse>(COMMAND_CHANNELS.SETTINGS_LIST_SHELLS, {})
       .then((res) => {
         if (!cancelled) setShells(res.shells);
       })
@@ -609,18 +620,23 @@ function ShellPanel({
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('Shell 与启动', 'Shell & Startup')}</h2>
 
-      <SettingRow label={tx('默认 shell', 'Default shell')} hint={tx('新终端启动时使用的 shell', 'Shell used when a new terminal starts')}>
+      <SettingRow
+        label={tx('默认 shell', 'Default shell')}
+        hint={tx('新终端启动时使用的 shell', 'Shell used when a new terminal starts')}
+      >
         <select
           className="settings-input"
           value={defaultShellId}
           onChange={(e) =>
-            void updateSettings(
-              { shell: { defaultShellId: e.target.value } },
-              setError,
-            )
+            void updateSettings({ shell: { defaultShellId: e.target.value } }, setError)
           }
         >
-          <option value="">{tx('自动检测最优(pwsh > powershell > cmd)', 'Auto-detect best (pwsh > powershell > cmd)')}</option>
+          <option value="">
+            {tx(
+              '自动检测最优(pwsh > powershell > cmd)',
+              'Auto-detect best (pwsh > powershell > cmd)',
+            )}
+          </option>
           {shells.map((s) => (
             <option key={s.id} value={s.id}>
               {s.displayName} — {s.executablePath}
@@ -675,7 +691,13 @@ function ShellPanel({
         </div>
       </SettingRow>
 
-      <SettingRow label={tx('启动模板', 'Launch templates')} hint={tx('新建终端时可选的模板;内置不可删,可改名', 'Templates for new terminals; built-ins can be renamed but not deleted')}>
+      <SettingRow
+        label={tx('启动模板', 'Launch templates')}
+        hint={tx(
+          '新建终端时可选的模板;内置不可删,可改名',
+          'Templates for new terminals; built-ins can be renamed but not deleted',
+        )}
+      >
         <TemplateList
           onEdit={(id) => setTemplateMode({ kind: 'edit', templateId: id })}
           onCreate={() => setTemplateMode({ kind: 'edit', templateId: null })}
@@ -784,11 +806,9 @@ function TemplateList({
 
   const handleSetDefault = (id: string): void => {
     setError(null);
-    window.api
-      .invoke(COMMAND_CHANNELS.TEMPLATE_SET_DEFAULT, { id })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
+    window.api.invoke(COMMAND_CHANNELS.TEMPLATE_SET_DEFAULT, { id }).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
   };
 
   const handleSetHidden = (id: string, hidden: boolean): void => {
@@ -814,11 +834,9 @@ function TemplateList({
     });
     if (!ok) return;
     setError(null);
-    window.api
-      .invoke(COMMAND_CHANNELS.TEMPLATE_DELETE, { id })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
+    window.api.invoke(COMMAND_CHANNELS.TEMPLATE_DELETE, { id }).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
   };
 
   return (
@@ -833,9 +851,14 @@ function TemplateList({
           </span>
           <span className="template-list-name">{t.name}</span>
           {t.isBuiltin && <span className="template-list-tag">{tx('内置', 'Built-in')}</span>}
-          {t.id === defaultId && <span className="template-list-tag default">{tx('默认', 'Default')}</span>}
+          {t.id === defaultId && (
+            <span className="template-list-tag default">{tx('默认', 'Default')}</span>
+          )}
           {t.hidden && <span className="template-list-tag">{tx('已隐藏', 'Hidden')}</span>}
-          <span className="template-list-cmd" title={t.command || tx('(纯 shell)', '(plain shell)')}>
+          <span
+            className="template-list-cmd"
+            title={t.command || tx('(纯 shell)', '(plain shell)')}
+          >
             {t.command || tx('(纯 shell)', '(plain shell)')}
           </span>
           <div className="template-list-actions">
@@ -848,11 +871,7 @@ function TemplateList({
                 {tx('设为默认', 'Set as default')}
               </button>
             )}
-            <button
-              type="button"
-              className="settings-button"
-              onClick={() => onEdit(t.id)}
-            >
+            <button type="button" className="settings-button" onClick={() => onEdit(t.id)}>
               {tx('编辑', 'Edit')}
             </button>
             {t.id !== defaultId && (
@@ -947,11 +966,19 @@ function TemplateEditor({
         if (!trimmed) continue;
         const eqIdx = trimmed.indexOf('=');
         if (eqIdx <= 0) {
-          throw new Error(tx(`环境变量行格式错: "${line}" 应为 KEY=VALUE`, `Invalid env line "${line}", expected KEY=VALUE`));
+          throw new Error(
+            tx(
+              `环境变量行格式错: "${line}" 应为 KEY=VALUE`,
+              `Invalid env line "${line}", expected KEY=VALUE`,
+            ),
+          );
         }
         const key = trimmed.slice(0, eqIdx).trim();
         const value = trimmed.slice(eqIdx + 1);
-        if (!key) throw new Error(tx(`环境变量名不能为空: "${line}"`, `Env var name cannot be empty: "${line}"`));
+        if (!key)
+          throw new Error(
+            tx(`环境变量名不能为空: "${line}"`, `Env var name cannot be empty: "${line}"`),
+          );
         parsedEnv[key] = value;
       }
 
@@ -1006,10 +1033,15 @@ function TemplateEditor({
         >
           {tx('< 返回', '< Back')}
         </button>
-        {isCreate ? tx('新建模板', 'New template') : tx(`编辑模板:${draft.name}`, `Edit template: ${draft.name}`)}
+        {isCreate
+          ? tx('新建模板', 'New template')
+          : tx(`编辑模板:${draft.name}`, `Edit template: ${draft.name}`)}
         {draft.isBuiltin && (
           <span className="template-list-tag" style={{ marginLeft: 8 }}>
-            {tx('内置(可改 name/icon/command/args/env,不可删)', 'Built-in (editable, not deletable)')}
+            {tx(
+              '内置(可改 name/icon/command/args/env,不可删)',
+              'Built-in (editable, not deletable)',
+            )}
           </span>
         )}
       </h2>
@@ -1036,7 +1068,13 @@ function TemplateEditor({
         />
       </SettingRow>
 
-      <SettingRow label={tx('命令', 'Command')} hint={tx('留空表示启动纯 shell;不要写 shell 路径,Ceteris 会自动注入 shell', 'Leave empty for plain shell; do not specify the shell binary, Ceteris injects it')}>
+      <SettingRow
+        label={tx('命令', 'Command')}
+        hint={tx(
+          '留空表示启动纯 shell;不要写 shell 路径,Ceteris 会自动注入 shell',
+          'Leave empty for plain shell; do not specify the shell binary, Ceteris injects it',
+        )}
+      >
         <input
           type="text"
           className="settings-input"
@@ -1046,7 +1084,13 @@ function TemplateEditor({
         />
       </SettingRow>
 
-      <SettingRow label={tx('参数', 'Arguments')} hint={tx('空格分隔(简单 shell quoting,有空格的参数请避免)', 'Space-separated (avoid args with spaces — simple shell quoting only)')}>
+      <SettingRow
+        label={tx('参数', 'Arguments')}
+        hint={tx(
+          '空格分隔(简单 shell quoting,有空格的参数请避免)',
+          'Space-separated (avoid args with spaces — simple shell quoting only)',
+        )}
+      >
         <input
           type="text"
           className="settings-input"
@@ -1058,14 +1102,20 @@ function TemplateEditor({
 
       <SettingRow
         label={tx('环境变量', 'Environment variables')}
-        hint={tx('每行一个 KEY=VALUE。默认遮罩,点👁切显示(防被旁人看到 API key)', 'One KEY=VALUE per line. Masked by default; click 👁 to reveal (avoid leaking API keys)')}
+        hint={tx(
+          '每行一个 KEY=VALUE。默认遮罩,点👁切显示(防被旁人看到 API key)',
+          'One KEY=VALUE per line. Masked by default; click 👁 to reveal (avoid leaking API keys)',
+        )}
       >
         <EnvTextarea value={envText} onChange={setEnvText} />
       </SettingRow>
 
       <SettingRow
         label={tx('启动方式', 'Launch mode')}
-        hint={tx('"先启动 shell"让命令退出后用户能继续看到 shell 提示符;"直接运行命令"启动更快', '"Shell first" keeps a prompt visible after the command exits; "Run command directly" is faster to start')}
+        hint={tx(
+          '"先启动 shell"让命令退出后用户能继续看到 shell 提示符;"直接运行命令"启动更快',
+          '"Shell first" keeps a prompt visible after the command exits; "Run command directly" is faster to start',
+        )}
       >
         <div className="settings-radio-group">
           <label className="settings-radio">
@@ -1121,9 +1171,7 @@ function TemplateEditor({
               type="radio"
               name="post-exit"
               checked={draft.postExitAction === 'hold'}
-              onChange={() =>
-                setDraft({ ...draft, postExitAction: 'hold' as PostExitAction })
-              }
+              onChange={() => setDraft({ ...draft, postExitAction: 'hold' as PostExitAction })}
             />
             {tx('保留显示,等待用户手动关闭', 'Hold view until user closes manually')}
           </label>
@@ -1156,11 +1204,7 @@ function TemplateEditor({
 // 行为分类
 // ──────────────────────────────────────────────────────────────────
 
-function BehaviorPanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function BehaviorPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const b = state.settings.behavior;
@@ -1173,7 +1217,10 @@ function BehaviorPanel({
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('行为', 'Behavior')}</h2>
 
-      <SettingRow label={tx('启动时行为', 'Startup behavior')} hint={tx('配开机启动用', 'Used together with auto-start at login')}>
+      <SettingRow
+        label={tx('启动时行为', 'Startup behavior')}
+        hint={tx('配开机启动用', 'Used together with auto-start at login')}
+      >
         <div className="settings-radio-group">
           <label className="settings-radio">
             <input
@@ -1218,33 +1265,36 @@ function BehaviorPanel({
 
       <SettingRow
         label={tx('完全退出前确认', 'Confirm before full quit')}
-        hint={tx('托盘点"完全退出"且有 session 在跑时弹确认。关单窗口永远不弹', 'Asks for confirmation when quitting from the tray with active sessions. Never asked when closing a single window.')}
+        hint={tx(
+          '托盘点"完全退出"且有 session 在跑时弹确认。关单窗口永远不弹',
+          'Asks for confirmation when quitting from the tray with active sessions. Never asked when closing a single window.',
+        )}
       >
         <label className="settings-checkbox">
           <input
             type="checkbox"
             checked={confirmOnQuit}
             onChange={(e) =>
-              void updateSettings(
-                { behavior: { confirmOnQuit: e.target.checked } },
-                setError,
-              )
+              void updateSettings({ behavior: { confirmOnQuit: e.target.checked } }, setError)
             }
           />
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
 
-      <SettingRow label={tx('选中即复制', 'Copy on select')} hint={tx('终端选中文本自动复制(类 Linux)', 'Automatically copy selected text in terminal (Linux style)')}>
+      <SettingRow
+        label={tx('选中即复制', 'Copy on select')}
+        hint={tx(
+          '终端选中文本自动复制(类 Linux)',
+          'Automatically copy selected text in terminal (Linux style)',
+        )}
+      >
         <label className="settings-checkbox">
           <input
             type="checkbox"
             checked={selectOnCopy}
             onChange={(e) =>
-              void updateSettings(
-                { behavior: { selectOnCopy: e.target.checked } },
-                setError,
-              )
+              void updateSettings({ behavior: { selectOnCopy: e.target.checked } }, setError)
             }
           />
           <span>{tx('启用', 'Enable')}</span>
@@ -1253,14 +1303,20 @@ function BehaviorPanel({
 
       <SettingRow
         label={tx('快捷启动', 'Quick launch')}
-        hint={tx('显示在标签栏末尾、+ 号旁边,点一下即启动', 'Shown next to the + at the end of the tab bar, one click to start')}
+        hint={tx(
+          '显示在标签栏末尾、+ 号旁边,点一下即启动',
+          'Shown next to the + at the end of the tab bar, one click to start',
+        )}
       >
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}
         />
       </SettingRow>
 
-      <SettingRow label={tx('终端右键行为', 'Terminal right-click action')} hint={tx('弹菜单 或 直接粘贴', 'Show menu or paste directly')}>
+      <SettingRow
+        label={tx('终端右键行为', 'Terminal right-click action')}
+        hint={tx('弹菜单 或 直接粘贴', 'Show menu or paste directly')}
+      >
         <div className="settings-radio-group">
           <label className="settings-radio">
             <input
@@ -1323,9 +1379,7 @@ function KeybindingsReference(): JSX.Element {
   const isMac = navigator.platform.toLowerCase().includes('mac');
   return (
     <div className="settings-keybindings-card">
-      <h3 className="settings-keybindings-title">
-        {tx('终端快捷键速查', 'Terminal keybindings')}
-      </h3>
+      <h3 className="settings-keybindings-title">{tx('终端快捷键速查', 'Terminal keybindings')}</h3>
       <p className="settings-keybindings-hint">
         {tx(
           '此清单为唯一权威。Ceteris 不支持其他应用内快捷键(spec §7.1)。',
@@ -1367,17 +1421,15 @@ const formatSize = (bytes: number): string => {
  * Carry a setup to another PC as one folder. Ceteris's own data always goes and stays
  * small; each agent's chats are optional because they can run to gigabytes.
  */
-function MoveToPcSection({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function MoveToPcSection({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const toast = useToast();
   const modal = useModal();
   const state = useAppState();
   const dispatch = useAppDispatch();
-  const [sizes, setSizes] = useState<{ claude: DataAgentStats; codex: DataAgentStats } | null>(null);
+  const [sizes, setSizes] = useState<{ claude: DataAgentStats; codex: DataAgentStats } | null>(
+    null,
+  );
   const [claude, setClaude] = useState(false);
   const [codex, setCodex] = useState(false);
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
@@ -1437,7 +1489,10 @@ function MoveToPcSection({
       );
       if (!found) return;
       const lines = [
-        tx(`来自 ${found.hostname} 的导出,将导入:`, `Export from ${found.hostname}. This will import:`),
+        tx(
+          `来自 ${found.hostname} 的导出,将导入:`,
+          `Export from ${found.hostname}. This will import:`,
+        ),
         tx(
           '· Ceteris 设置和文件夹(替换当前的,你的 API Key 和远程访问设置保持不变)',
           '· Ceteris settings and bookmarks (replacing the current ones; your API keys and remote access setup stay)',
@@ -1494,7 +1549,10 @@ function MoveToPcSection({
       toast.push({
         kind: res.missingTabs > 0 ? 'warn' : 'success',
         message:
-          tx(`导入完成,已打开 ${res.tabs.length} 个标签页`, `Imported. Opened ${res.tabs.length} tabs`) +
+          tx(
+            `导入完成,已打开 ${res.tabs.length} 个标签页`,
+            `Imported. Opened ${res.tabs.length} tabs`,
+          ) +
           (res.missingTabs > 0
             ? tx(
                 `,${res.missingTabs} 个的文件夹在这台电脑上不存在`,
@@ -1568,11 +1626,7 @@ function MoveToPcSection({
   );
 }
 
-function DataPanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function DataPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
@@ -1604,10 +1658,7 @@ function DataPanel({
   useEffect(() => {
     let cancelled = false;
     window.api
-      .invoke<unknown, ListShellsResponse>(
-        COMMAND_CHANNELS.SETTINGS_LIST_SHELLS,
-        {},
-      )
+      .invoke<unknown, ListShellsResponse>(COMMAND_CHANNELS.SETTINGS_LIST_SHELLS, {})
       .then((res) => {
         if (cancelled) return;
         const distros = res.shells
@@ -1629,11 +1680,9 @@ function DataPanel({
 
   const handleOpenDataDir = (): void => {
     setError(null);
-    window.api
-      .invoke(COMMAND_CHANNELS.SYSTEM_OPEN_DATA_DIR, {})
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
+    window.api.invoke(COMMAND_CHANNELS.SYSTEM_OPEN_DATA_DIR, {}).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
   };
 
   const handleExport = async (): Promise<void> => {
@@ -1662,7 +1711,12 @@ function DataPanel({
         {},
       );
       if (res.status === 'error') {
-        setError(tx(`导入失败:${res.errorMessage ?? '未知错误'}`, `Import failed: ${res.errorMessage ?? 'unknown error'}`));
+        setError(
+          tx(
+            `导入失败:${res.errorMessage ?? '未知错误'}`,
+            `Import failed: ${res.errorMessage ?? 'unknown error'}`,
+          ),
+        );
       }
       // 'imported' / 'cancelled' 不需提示;'imported' 之后 main 会立即 relaunch
     } catch (err: unknown) {
@@ -1675,24 +1729,24 @@ function DataPanel({
   const handleAddWslBookmark = async (): Promise<void> => {
     setError(null);
     try {
-      const distro = wslDistroId.startsWith('wsl:')
-        ? wslDistroId.slice('wsl:'.length)
-        : '';
+      const distro = wslDistroId.startsWith('wsl:') ? wslDistroId.slice('wsl:'.length) : '';
       if (!distro) {
         setError(tx('请先选择 WSL 发行版', 'Select a WSL distro first'));
         return;
       }
       const normalizedPath = wslPath.trim().replaceAll('\\', '/');
       const usePickedUnc =
-        wslPickedUncPath !== null &&
-        formatDisplayPath(wslPickedUncPath) === normalizedPath;
+        wslPickedUncPath !== null && formatDisplayPath(wslPickedUncPath) === normalizedPath;
       if (!normalizedPath.startsWith('/') && !usePickedUnc) {
-        setError(tx('WSL 路径必须是 Linux 绝对路径,例如 /home/user/project', 'WSL path must be an absolute Linux path, for example /home/user/project'));
+        setError(
+          tx(
+            'WSL 路径必须是 Linux 绝对路径,例如 /home/user/project',
+            'WSL path must be an absolute Linux path, for example /home/user/project',
+          ),
+        );
         return;
       }
-      const uncPath = usePickedUnc
-        ? wslPickedUncPath
-        : toWslUncPath(distro, normalizedPath);
+      const uncPath = usePickedUnc ? wslPickedUncPath : toWslUncPath(distro, normalizedPath);
       await window.api.invoke(COMMAND_CHANNELS.BOOKMARK_ADD, {
         path: uncPath,
         ...(wslName.trim() ? { displayName: wslName.trim() } : {}),
@@ -1708,9 +1762,7 @@ function DataPanel({
   const handlePickWslFolder = async (): Promise<void> => {
     setError(null);
     try {
-      const distro = wslDistroId.startsWith('wsl:')
-        ? wslDistroId.slice('wsl:'.length)
-        : '';
+      const distro = wslDistroId.startsWith('wsl:') ? wslDistroId.slice('wsl:'.length) : '';
       if (!distro) {
         setError(tx('请先选择 WSL 发行版', 'Select a WSL distro first'));
         return;
@@ -1734,7 +1786,10 @@ function DataPanel({
 
       <SettingRow
         label={tx('WSL 文件夹', 'WSL folder')}
-        hint={tx('选择 WSL 发行版并填写 Linux 绝对路径;添加后会出现在左侧对应 WSL 分组', 'Pick a WSL distro and enter an absolute Linux path; it appears under the matching WSL group in the sidebar')}
+        hint={tx(
+          '选择 WSL 发行版并填写 Linux 绝对路径;添加后会出现在左侧对应 WSL 分组',
+          'Pick a WSL distro and enter an absolute Linux path; it appears under the matching WSL group in the sidebar',
+        )}
       >
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <select
@@ -1762,19 +1817,38 @@ function DataPanel({
             }}
             placeholder="/home/user/project"
           />
-          <input className="settings-input" value={wslName} onChange={(e) => setWslName(e.target.value)} placeholder={tx('显示名(可选)', 'Display name (optional)')} />
-          <button type="button" className="settings-button" onClick={() => void handleAddWslBookmark()} disabled={wslDistros.length === 0}>
+          <input
+            className="settings-input"
+            value={wslName}
+            onChange={(e) => setWslName(e.target.value)}
+            placeholder={tx('显示名(可选)', 'Display name (optional)')}
+          />
+          <button
+            type="button"
+            className="settings-button"
+            onClick={() => void handleAddWslBookmark()}
+            disabled={wslDistros.length === 0}
+          >
             {tx('加入 WSL', 'Add WSL')}
           </button>
-          <button type="button" className="settings-button" onClick={() => void handlePickWslFolder()}>
+          <button
+            type="button"
+            className="settings-button"
+            onClick={() => void handlePickWslFolder()}
+          >
             {tx('选择文件夹', 'Pick folder')}
           </button>
         </div>
       </SettingRow>
 
-      <SettingRow label={tx('数据目录', 'Data directory')} hint={tx('所有 Ceteris 配置文件存放处', 'Where all Ceteris configuration files live')}>
+      <SettingRow
+        label={tx('数据目录', 'Data directory')}
+        hint={tx('所有 Ceteris 配置文件存放处', 'Where all Ceteris configuration files live')}
+      >
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span className="settings-info-text" title={dataDir}>{dataDir}</span>
+          <span className="settings-info-text" title={dataDir}>
+            {dataDir}
+          </span>
           <button type="button" className="settings-button" onClick={handleOpenDataDir}>
             {tx('在文件管理器中打开', 'Open in file manager')}
           </button>
@@ -1783,7 +1857,10 @@ function DataPanel({
 
       <SettingRow
         label={tx('导出设置', 'Export settings')}
-        hint={tx('把全部配置(文件夹 / 模板 / 设置)导出为 JSON 文件', 'Export everything (folders / templates / settings) to a JSON file')}
+        hint={tx(
+          '把全部配置(文件夹 / 模板 / 设置)导出为 JSON 文件',
+          'Export everything (folders / templates / settings) to a JSON file',
+        )}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <button
@@ -1804,7 +1881,10 @@ function DataPanel({
 
       <SettingRow
         label={tx('导入设置', 'Import settings')}
-        hint={tx('选择导出文件,二次确认后整体替换并重启应用', 'Pick an export file; after a confirm, everything is replaced and the app restarts')}
+        hint={tx(
+          '选择导出文件,二次确认后整体替换并重启应用',
+          'Pick an export file; after a confirm, everything is replaced and the app restarts',
+        )}
       >
         <button
           type="button"
@@ -1829,11 +1909,7 @@ function DataPanel({
  * Both ways of reaching another machine in one place. A tab each, because the two pages are
  * long and most people use only one of them. The title bar badge opens the matching tab.
  */
-function RemoteCategory({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function RemoteCategory({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const requested = useAppState().settingsCategory;
   const [tab, setTab] = useState<'link' | 'ssh'>(requested === 'remote' ? 'ssh' : 'link');
@@ -1864,11 +1940,7 @@ function RemoteCategory({
   );
 }
 
-function RemotePanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function RemotePanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const [sshName, setSshName] = useState('');
@@ -2067,7 +2139,6 @@ function RemotePanel({
 
   return (
     <section className="settings-panel" data-testid="settings-remote-panel">
-
       <SettingRow
         label={tx('SSH 服务器', 'SSH servers')}
         hint={tx(
@@ -2132,9 +2203,7 @@ function RemotePanel({
             <select
               className="settings-input"
               value={sshAuthType}
-              onChange={(e) =>
-                setSshAuthType(e.target.value as 'keyFile' | 'password')
-              }
+              onChange={(e) => setSshAuthType(e.target.value as 'keyFile' | 'password')}
             >
               <option value="password">{tx('密码', 'Password')}</option>
               <option value="keyFile">{tx('密钥文件', 'Key file')}</option>
@@ -2177,10 +2246,7 @@ function RemotePanel({
                 onChange={(e) => setSshPassword(e.target.value)}
                 placeholder={
                   editingProfileId
-                    ? tx(
-                        '新密码(留空则保留旧密码)',
-                        'New password (leave blank to keep existing)',
-                      )
+                    ? tx('新密码(留空则保留旧密码)', 'New password (leave blank to keep existing)')
                     : tx(
                         '密码(可选,留空则连接时手动输入)',
                         'Password (optional; leave blank to type at connect time)',
@@ -2214,16 +2280,10 @@ function RemotePanel({
               className="settings-button"
               onClick={() => void handleSubmitSshProfile()}
             >
-              {editingProfileId
-                ? tx('保存修改', 'Save changes')
-                : tx('添加服务器', 'Add server')}
+              {editingProfileId ? tx('保存修改', 'Save changes') : tx('添加服务器', 'Add server')}
             </button>
             {editingProfileId && (
-              <button
-                type="button"
-                className="settings-button"
-                onClick={resetSshForm}
-              >
+              <button type="button" className="settings-button" onClick={resetSshForm}>
                 {tx('取消', 'Cancel')}
               </button>
             )}
@@ -2306,15 +2366,9 @@ function RemotePanel({
               )}
             </>
           ) : (
-            <span className="ssh-agent-status-line warn">
-              ⚠️ {agentStatus.message}
-            </span>
+            <span className="ssh-agent-status-line warn">⚠️ {agentStatus.message}</span>
           )}
-          <button
-            type="button"
-            className="settings-button"
-            onClick={refreshAgent}
-          >
+          <button type="button" className="settings-button" onClick={refreshAgent}>
             {tx('刷新', 'Refresh')}
           </button>
         </div>
@@ -2333,18 +2387,20 @@ function RemotePanel({
               type="checkbox"
               checked={includeSshConfig}
               onChange={(e) =>
-                void updateSettings(
-                  { advanced: { includeSshConfig: e.target.checked } },
-                  setError,
-                )
+                void updateSettings({ advanced: { includeSshConfig: e.target.checked } }, setError)
               }
             />
-            <span>{tx('合并 ~/.ssh/config 到 profile 列表', 'Merge ~/.ssh/config into profile list')}</span>
+            <span>
+              {tx('合并 ~/.ssh/config 到 profile 列表', 'Merge ~/.ssh/config into profile list')}
+            </span>
           </label>
           {includeSshConfig && (
             <>
               <span className="settings-info-text">
-                {tx(`发现 ${sshConfigEntries.length} 条 Host`, `Discovered ${sshConfigEntries.length} Host entries`)}
+                {tx(
+                  `发现 ${sshConfigEntries.length} 条 Host`,
+                  `Discovered ${sshConfigEntries.length} Host entries`,
+                )}
               </span>
               {sshConfigEntries.length > 0 && (
                 <ul className="ssh-config-list">
@@ -2354,7 +2410,8 @@ function RemotePanel({
                       {e.hostName}:{e.port}
                       {e.proxyJump.length > 0 && (
                         <span className="ssh-config-hint">
-                          {' '}· {tx('via', 'via')} {e.proxyJump.join(',')}
+                          {' '}
+                          · {tx('via', 'via')} {e.proxyJump.join(',')}
                         </span>
                       )}
                     </li>
@@ -2369,11 +2426,7 @@ function RemotePanel({
                   )}
                 </ul>
               )}
-              <button
-                type="button"
-                className="settings-button"
-                onClick={refreshSshConfig}
-              >
+              <button type="button" className="settings-button" onClick={refreshSshConfig}>
                 {tx('重新加载 ssh_config', 'Reload ssh_config')}
               </button>
             </>
@@ -2393,10 +2446,7 @@ function RemotePanel({
             type="checkbox"
             checked={enableControlMaster}
             onChange={(e) =>
-              void updateSettings(
-                { advanced: { enableControlMaster: e.target.checked } },
-                setError,
-              )
+              void updateSettings({ advanced: { enableControlMaster: e.target.checked } }, setError)
             }
           />
           <span>{tx('启用 ControlMaster(推荐)', 'Enable ControlMaster (recommended)')}</span>
@@ -2419,7 +2469,8 @@ function RemotePanel({
                 <ul className="ssh-known-hosts-changes">
                   {knownHosts.changes.map((c) => (
                     <li key={`${c.host}:${c.newFingerprint}`}>
-                      ⚠️ <strong>{c.host}</strong> {c.keyType} {tx('指纹已变化', 'fingerprint changed')}:
+                      ⚠️ <strong>{c.host}</strong> {c.keyType}{' '}
+                      {tx('指纹已变化', 'fingerprint changed')}:
                       <br />
                       &nbsp;&nbsp;{tx('原', 'was')}: <code>{c.previousFingerprint}</code>
                       <br />
@@ -2435,8 +2486,8 @@ function RemotePanel({
                 <ul className="ssh-known-hosts-list">
                   {knownHosts.entries.slice(0, 10).map((e) => (
                     <li key={`${e.hosts}#${e.fingerprint}`}>
-                      <strong>{e.isHashed ? '(hashed)' : e.hosts}</strong> · {e.keyType}{' '}
-                      · <code>{e.fingerprint}</code>
+                      <strong>{e.isHashed ? '(hashed)' : e.hosts}</strong> · {e.keyType} ·{' '}
+                      <code>{e.fingerprint}</code>
                     </li>
                   ))}
                   {knownHosts.entries.length > 10 && (
@@ -2449,11 +2500,7 @@ function RemotePanel({
                   )}
                 </ul>
               )}
-              <button
-                type="button"
-                className="settings-button"
-                onClick={refreshKnownHosts}
-              >
+              <button type="button" className="settings-button" onClick={refreshKnownHosts}>
                 {tx('刷新', 'Refresh')}
               </button>
             </>
@@ -2503,10 +2550,7 @@ function SystemIntegrationPanel({
     void refreshStatus();
   }, [refreshStatus]);
 
-  const handleSet = async (
-    kind: 'classic' | 'modern',
-    enabled: boolean,
-  ): Promise<void> => {
+  const handleSet = async (kind: 'classic' | 'modern', enabled: boolean): Promise<void> => {
     setError(null);
     setBusy(kind);
     try {
@@ -2514,10 +2558,10 @@ function SystemIntegrationPanel({
         kind === 'classic'
           ? COMMAND_CHANNELS.EXPLORER_INTEGRATION_SET_CLASSIC
           : COMMAND_CHANNELS.EXPLORER_INTEGRATION_SET_MODERN;
-      const res = await window.api.invoke<
-        { enabled: boolean },
-        SetExplorerIntegrationResponse
-      >(channel, { enabled });
+      const res = await window.api.invoke<{ enabled: boolean }, SetExplorerIntegrationResponse>(
+        channel,
+        { enabled },
+      );
       setStatus(res.status);
       if (!res.ok) {
         setError(res.message || `操作失败 (${kind})`);
@@ -2527,7 +2571,10 @@ function SystemIntegrationPanel({
         // 按钮(用户选了最保守的方案)。详见 docs/known-issues.md。
         toast.push({
           kind: 'info',
-          message: tx('右键菜单已更新,确保设置生效请重启计算机', 'Context menu updated. Restart the computer to ensure the change takes effect.'),
+          message: tx(
+            '右键菜单已更新,确保设置生效请重启计算机',
+            'Context menu updated. Restart the computer to ensure the change takes effect.',
+          ),
         });
       }
     } catch (err) {
@@ -2543,17 +2590,17 @@ function SystemIntegrationPanel({
 
       <SettingRow
         label={tx('开机启动', 'Launch on login')}
-        hint={tx('系统启动时自动启动 Ceteris', 'Automatically start Ceteris when the system starts')}
+        hint={tx(
+          '系统启动时自动启动 Ceteris',
+          'Automatically start Ceteris when the system starts',
+        )}
       >
         <label className="settings-checkbox">
           <input
             type="checkbox"
             checked={autoStart}
             onChange={(e) =>
-              void updateSettings(
-                { behavior: { autoStart: e.target.checked } },
-                setError,
-              )
+              void updateSettings({ behavior: { autoStart: e.target.checked } }, setError)
             }
           />
           <span>{tx('开机启动', 'Launch on login')}</span>
@@ -2563,7 +2610,10 @@ function SystemIntegrationPanel({
       {/* —— Win11 新菜单卡片 —— */}
       <ExplorerIntegrationCard
         title={tx('Win11 新菜单', 'Win11 modern menu')}
-        subtitle={tx('圆角右键菜单,无需展开「显示更多选项」;走 IExplorerCommand,需 MSIX 包 + 证书', 'Modern right-click menu; uses IExplorerCommand, requires MSIX package + cert')}
+        subtitle={tx(
+          '圆角右键菜单,无需展开「显示更多选项」;走 IExplorerCommand,需 MSIX 包 + 证书',
+          'Modern right-click menu; uses IExplorerCommand, requires MSIX package + cert',
+        )}
         status={status?.modern}
         unsupportedReason={status?.modernUnsupportedReason ?? null}
         busy={busy === 'modern'}
@@ -2572,7 +2622,8 @@ function SystemIntegrationPanel({
           status?.modern === 'enabled' && status.package ? (
             <div className="explorer-integration-meta">
               <div>
-                <strong>{tx('包:', 'Package:')}</strong> {status.package.name} {status.package.version}
+                <strong>{tx('包:', 'Package:')}</strong> {status.package.name}{' '}
+                {status.package.version}
               </div>
               <div className="text-muted" style={{ wordBreak: 'break-all' }}>
                 {status.package.installLocation}
@@ -2586,7 +2637,10 @@ function SystemIntegrationPanel({
       {/* —— 经典右键菜单卡片 —— */}
       <ExplorerIntegrationCard
         title={tx('经典右键菜单', 'Classic right-click menu')}
-        subtitle={tx('HKCU 注册表项,藏在「显示更多选项」内;Win10 / Win11 通用,无 UAC、无证书', 'HKCU registry entries, under "Show more options"; works on Win10 / Win11, no UAC or cert needed')}
+        subtitle={tx(
+          'HKCU 注册表项,藏在「显示更多选项」内;Win10 / Win11 通用,无 UAC、无证书',
+          'HKCU registry entries, under "Show more options"; works on Win10 / Win11, no UAC or cert needed',
+        )}
         status={status?.classic}
         unsupportedReason={status?.classicUnsupportedReason ?? null}
         busy={busy === 'classic'}
@@ -2607,7 +2661,10 @@ function SystemIntegrationPanel({
       {/* —— 打开方式(纯偏好,保留在 settings.json) —— */}
       <SettingRow
         label={tx('打开方式', 'Open in')}
-        hint={tx('Ceteris 已在运行时,从 Explorer 触发的新会话开在哪里', 'When Ceteris is already running, where new sessions from the file manager appear')}
+        hint={tx(
+          'Ceteris 已在运行时,从 Explorer 触发的新会话开在哪里',
+          'When Ceteris is already running, where new sessions from the file manager appear',
+        )}
       >
         <div className="settings-radio-group">
           <label className="settings-radio">
@@ -2711,12 +2768,12 @@ function ExplorerIntegrationCard({
             <strong>{tx('证书:', 'Cert:')}</strong> {certInfo.subject}
           </div>
           <div className="text-muted">
-            {tx('指纹', 'Fingerprint')} {certInfo.thumbprint.slice(0, 8)}…{certInfo.thumbprint.slice(-4)} · {tx('至', 'until')}{' '}
+            {tx('指纹', 'Fingerprint')} {certInfo.thumbprint.slice(0, 8)}…
+            {certInfo.thumbprint.slice(-4)} · {tx('至', 'until')}{' '}
             {new Date(certInfo.notAfter).toISOString().slice(0, 10)} · {tx('已信任', 'trusted')}
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -2725,11 +2782,7 @@ function ExplorerIntegrationCard({
 // AI 助手分类(BETA-031)
 // ──────────────────────────────────────────────────────────────────
 
-function AiPanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function AiPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const toast = useToast();
@@ -2748,7 +2801,10 @@ function AiPanel({
   const [habits, setHabits] = useState<FrequentPrompt[] | null>(null);
   useEffect(() => {
     window.api
-      .invoke<undefined, GetFrequentPromptsResponse>(COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS, undefined)
+      .invoke<undefined, GetFrequentPromptsResponse>(
+        COMMAND_CHANNELS.AI_GET_FREQUENT_PROMPTS,
+        undefined,
+      )
       .then((res) => setHabits(res.prompts))
       .catch((err) => console.error('[Settings] read frequent prompts failed', err));
   }, []);
@@ -2808,7 +2864,10 @@ function AiPanel({
           connected={nextPrompt.keySaved}
           onError={(msg) => toast.push({ kind: 'error', message: msg })}
           onConnected={() =>
-            toast.push({ kind: 'success', message: tx('已连接 OpenRouter', 'Connected to OpenRouter') })
+            toast.push({
+              kind: 'success',
+              message: tx('已连接 OpenRouter', 'Connected to OpenRouter'),
+            })
           }
         />
       </SettingRow>
@@ -2933,7 +2992,10 @@ function AiPanel({
       </SettingRow>
 
       {usage && usage.calls > 0 && (
-        <SettingRow label={tx('每日花费', 'Daily cost')} hint={tx('把鼠标移到某一天上看当天的金额和次数', 'Hover a day to see its cost and calls')}>
+        <SettingRow
+          label={tx('每日花费', 'Daily cost')}
+          hint={tx('把鼠标移到某一天上看当天的金额和次数', 'Hover a day to see its cost and calls')}
+        >
           <NextPromptCostChart usage={usage} />
         </SettingRow>
       )}
@@ -3038,11 +3100,7 @@ function AgentTitleSettings({
 // 扩展分类 (ADR-019):可选功能,默认关,只影响打开之后新建的终端
 // ──────────────────────────────────────────────────────────────────
 
-function ExtensionsPanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
@@ -3053,13 +3111,15 @@ function ExtensionsPanel({
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
   const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
 
+  // The ceteris-tabs install row is always shown (ADR-033: open_file needs no switch), so the
+  // directory is fetched as soon as the panel opens.
   useEffect(() => {
-    if ((!enabled && !tabControl) || marketplaceDir) return;
+    if (marketplaceDir) return;
     window.api
       .invoke<unknown, { dir: string }>(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, {})
       .then((res) => setMarketplaceDir(res.dir))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, [enabled, tabControl, marketplaceDir, setError]);
+  }, [marketplaceDir, setError]);
 
   /** 开一个新终端,把命令敲进去但不按 Enter (见 type-into-terminal.ts) */
   const typeIntoNewTerminal = async (buildLine: (shellId: string) => string): Promise<void> => {
@@ -3176,10 +3236,62 @@ function ExtensionsPanel({
       )}
 
       <SettingRow
+        label={tx('Claude Code 的 ceteris-tabs 插件', 'The ceteris-tabs plugin for Claude Code')}
+        hint={tx(
+          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、json、tex、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
+          'Ships with Ceteris. Once installed, Claude Code in any tab can show a file it wrote (md, txt, json, tex, pdf, image) beside its own tab: say "write the answer as md and open it in Ceteris". No switch below needed for that. Run these two commands once in a terminal, then start a new Claude Code.',
+        )}
+      >
+        <div className="settings-code-stack">
+          <pre className="settings-code-block">
+            <code>{marketplaceDir ? tabControlInstallLines(marketplaceDir) : '…'}</code>
+          </pre>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={preparing || !marketplaceDir}
+            onClick={handlePrepareTabControl}
+            title={tx(
+              '打开一个新终端并输入这两条命令,不会自动执行',
+              'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+            )}
+          >
+            {tx('在新终端里输入命令', 'Type them in a new terminal')}
+          </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('旧版装过插件?', 'Installed it from an older Ceteris?')}
+        hint={tx(
+          'Claude Code 保存着自己那份插件副本,Ceteris 更新了插件它也不会跟着变。更新 Ceteris 后跑一次这条命令,再新开 Claude Code。',
+          'Claude Code keeps its own copy of the plugin, so a Ceteris update does not change it. After updating Ceteris, run this once, then start a new Claude Code.',
+        )}
+      >
+        <div className="settings-code-stack">
+          <pre className="settings-code-block">
+            <code>{TAB_CONTROL_UPDATE_COMMAND}</code>
+          </pre>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={preparing}
+            onClick={() => void typeIntoNewTerminal(() => TAB_CONTROL_UPDATE_COMMAND)}
+            title={tx(
+              '打开一个新终端并输入这条命令,不会自动执行',
+              'Opens a new terminal with the command typed in; nothing runs until you press Enter',
+            )}
+          >
+            {tx('在新终端里输入命令', 'Type it in a new terminal')}
+          </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
         label={tx('协调者控制标签页', 'Coordinator tab control')}
         hint={tx(
-          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。',
-          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once.',
+          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。需要上面的插件;右键标签,勾选"协调者"。',
+          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once. Needs the plugin above; right-click a tab and tick Coordinator.',
         )}
       >
         <label className="settings-checkbox">
@@ -3193,34 +3305,6 @@ function ExtensionsPanel({
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
-
-      {tabControl && (
-        <SettingRow
-          label={tx('还需要的插件', 'Plugin you also need')}
-          hint={tx(
-            'Claude Code 通过随 Ceteris 安装的 ceteris-tabs 插件拿到这些工具。在终端里跑一次下面两条命令,然后在协调者标签里新开 Claude Code。右键标签,勾选"协调者"。',
-            'Claude Code gets these tools from the ceteris-tabs plugin, which ships with Ceteris. Run these two commands once in a terminal, then start Claude Code in the coordinator tab. Right-click a tab and tick Coordinator.',
-          )}
-        >
-          <div className="settings-code-stack">
-            <pre className="settings-code-block">
-              <code>{marketplaceDir ? tabControlInstallLines(marketplaceDir) : '…'}</code>
-            </pre>
-            <button
-              type="button"
-              className="settings-button"
-              disabled={preparing || !marketplaceDir}
-              onClick={handlePrepareTabControl}
-              title={tx(
-                '打开一个新终端并输入这两条命令,不会自动执行',
-                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
-              )}
-            >
-              {tx('在新终端里输入命令', 'Type them in a new terminal')}
-            </button>
-          </div>
-        </SettingRow>
-      )}
     </section>
   );
 }
@@ -3229,11 +3313,7 @@ function ExtensionsPanel({
 // 高级分类
 // ──────────────────────────────────────────────────────────────────
 
-function AdvancedPanel({
-  setError,
-}: {
-  setError: (msg: string | null) => void;
-}): JSX.Element {
+function AdvancedPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const adv = state.settings.advanced;
@@ -3244,11 +3324,9 @@ function AdvancedPanel({
 
   const handleOpenLogs = (): void => {
     setError(null);
-    window.api
-      .invoke(COMMAND_CHANNELS.SYSTEM_OPEN_LOGS_DIR, {})
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
+    window.api.invoke(COMMAND_CHANNELS.SYSTEM_OPEN_LOGS_DIR, {}).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
   };
 
   const handleReset = (): void => {
@@ -3267,7 +3345,13 @@ function AdvancedPanel({
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('高级', 'Advanced')}</h2>
 
-      <SettingRow label={tx('日志级别', 'Log level')} hint={tx('DEBUG 会记录所有 IPC 与 PTY 字节(性能影响)', 'DEBUG logs all IPC and PTY bytes (performance impact)')}>
+      <SettingRow
+        label={tx('日志级别', 'Log level')}
+        hint={tx(
+          'DEBUG 会记录所有 IPC 与 PTY 字节(性能影响)',
+          'DEBUG logs all IPC and PTY bytes (performance impact)',
+        )}
+      >
         <div className="settings-radio-group">
           <label className="settings-radio">
             <input
@@ -3275,12 +3359,7 @@ function AdvancedPanel({
               name="loglevel"
               value="INFO"
               checked={logLevel === 'INFO'}
-              onChange={() =>
-                void updateSettings(
-                  { advanced: { logLevel: 'INFO' } },
-                  setError,
-                )
-              }
+              onChange={() => void updateSettings({ advanced: { logLevel: 'INFO' } }, setError)}
             />
             INFO
           </label>
@@ -3290,19 +3369,17 @@ function AdvancedPanel({
               name="loglevel"
               value="DEBUG"
               checked={logLevel === 'DEBUG'}
-              onChange={() =>
-                void updateSettings(
-                  { advanced: { logLevel: 'DEBUG' } },
-                  setError,
-                )
-              }
+              onChange={() => void updateSettings({ advanced: { logLevel: 'DEBUG' } }, setError)}
             />
             DEBUG
           </label>
         </div>
       </SettingRow>
 
-      <SettingRow label={tx('日志目录', 'Log directory')} hint={tx('用户数据目录下的 logs/ 子目录', 'logs/ under the user data directory')}>
+      <SettingRow
+        label={tx('日志目录', 'Log directory')}
+        hint={tx('用户数据目录下的 logs/ 子目录', 'logs/ under the user data directory')}
+      >
         <button type="button" className="settings-button" onClick={handleOpenLogs}>
           {tx('打开日志目录', 'Open log directory')}
         </button>
@@ -3322,10 +3399,7 @@ function AdvancedPanel({
             void updateSettings(
               {
                 advanced: {
-                  terminalRenderer: e.target.value as
-                    | 'auto'
-                    | 'webgl'
-                    | 'dom',
+                  terminalRenderer: e.target.value as 'auto' | 'webgl' | 'dom',
                 },
               },
               setError,
@@ -3340,7 +3414,10 @@ function AdvancedPanel({
 
       <SettingRow
         label={tx('重置所有设置', 'Reset all settings')}
-        hint={tx('把所有设置回到出厂默认。文件夹 / 模板不受影响', 'Reset all settings to factory default. Folders / templates are unaffected.')}
+        hint={tx(
+          '把所有设置回到出厂默认。文件夹 / 模板不受影响',
+          'Reset all settings to factory default. Folders / templates are unaffected.',
+        )}
       >
         {!confirmingReset ? (
           <button
@@ -3355,11 +3432,7 @@ function AdvancedPanel({
             <span style={{ color: 'var(--color-danger, #f0f)', fontSize: 12 }}>
               {tx('确认重置?', 'Confirm reset?')}
             </span>
-            <button
-              type="button"
-              className="settings-button danger"
-              onClick={handleReset}
-            >
+            <button type="button" className="settings-button danger" onClick={handleReset}>
               {tx('确认', 'Confirm')}
             </button>
             <button
@@ -3391,7 +3464,11 @@ const ACKNOWLEDGEMENTS: Array<{ name: string; url: string; tone: string }> = [
   { name: 'node-pty', url: 'https://github.com/microsoft/node-pty', tone: 'PTY 绑定 (MIT)' },
   { name: 'Material Symbols', url: 'https://fonts.google.com/icons', tone: 'UI 图标 (Apache 2.0)' },
   { name: 'Rose Pine theme', url: 'https://rosepinetheme.com/', tone: '默认主题灵感 (MIT)' },
-  { name: '霞鹜文楷 (LXGW WenKai)', url: 'https://github.com/lxgw/LxgwWenKai', tone: '中文字体 (OFL)' },
+  {
+    name: '霞鹜文楷 (LXGW WenKai)',
+    url: 'https://github.com/lxgw/LxgwWenKai',
+    tone: '中文字体 (OFL)',
+  },
 ];
 
 /**
@@ -3417,13 +3494,19 @@ function describeUpdateStatus(
           )
         : checked;
     case 'up-to-date':
-      return tx(`已是最新(v${status.currentVersion})。`, `Up to date (v${status.currentVersion}). `) + checked;
+      return (
+        tx(`已是最新(v${status.currentVersion})。`, `Up to date (v${status.currentVersion}). `) +
+        checked
+      );
     case 'error': {
       const reason =
         status.error === 'rate-limited'
           ? tx('GitHub 访问次数超限,稍后会自动重试', 'GitHub rate limit reached; it retries later')
           : status.error === 'network'
-            ? tx('连不上 GitHub,检查网络或代理', 'Could not reach GitHub; check the network or proxy')
+            ? tx(
+                '连不上 GitHub,检查网络或代理',
+                'Could not reach GitHub; check the network or proxy',
+              )
             : tx('GitHub 返回的内容无法识别', 'Unexpected answer from GitHub');
       return `${reason}。${checked}`;
     }
@@ -3440,14 +3523,8 @@ function AboutPanel({ setError }: { setError: (msg: string | null) => void }): J
   const update = updateStatus?.state === 'available' ? updateStatus.update : null;
   // build define 在 dev 模式可能未定义,做个兜底
   // (vite 实际上 dev 时也会做 string 替换,但为了万无一失)
-  const commit =
-    typeof __CETERIS_BUILD_COMMIT__ !== 'undefined'
-      ? __CETERIS_BUILD_COMMIT__
-      : 'dev';
-  const builtAt =
-    typeof __CETERIS_BUILD_TIME__ !== 'undefined'
-      ? __CETERIS_BUILD_TIME__
-      : 'dev';
+  const commit = typeof __CETERIS_BUILD_COMMIT__ !== 'undefined' ? __CETERIS_BUILD_COMMIT__ : 'dev';
+  const builtAt = typeof __CETERIS_BUILD_TIME__ !== 'undefined' ? __CETERIS_BUILD_TIME__ : 'dev';
 
   // app 版本号通过 handshake 已经拿到,从 store 读不太合适 (store 里没存)
   // 走一次 getProtocolVersion 就够,这里 inline state
@@ -3549,11 +3626,7 @@ function AboutPanel({ setError }: { setError: (msg: string | null) => void }): J
       </SettingRow>
 
       <SettingRow label={tx('GitHub 仓库', 'GitHub repository')}>
-        <button
-          type="button"
-          className="settings-button"
-          onClick={() => openExternal(GITHUB_REPO)}
-        >
+        <button type="button" className="settings-button" onClick={() => openExternal(GITHUB_REPO)}>
           {GITHUB_REPO}
         </button>
       </SettingRow>
@@ -3562,7 +3635,10 @@ function AboutPanel({ setError }: { setError: (msg: string | null) => void }): J
         <span className="settings-info-text">MIT</span>
       </SettingRow>
 
-      <SettingRow label={tx('致谢', 'Acknowledgements')} hint={tx('Ceteris 站在这些项目的肩上', 'Ceteris stands on the shoulders of these projects')}>
+      <SettingRow
+        label={tx('致谢', 'Acknowledgements')}
+        hint={tx('Ceteris 站在这些项目的肩上', 'Ceteris stands on the shoulders of these projects')}
+      >
         <ul className="acknowledgements-list">
           {ACKNOWLEDGEMENTS.map((a) => (
             <li key={a.name}>
@@ -3772,11 +3848,7 @@ function FontPicker({ value, fonts, onChange }: FontPickerProps): JSX.Element {
           onBlur={() => onChange(customText)}
           placeholder={tx("例如 'My Font', monospace", "e.g. 'My Font', monospace")}
         />
-        <button
-          type="button"
-          className="settings-button"
-          onClick={() => setIsCustom(false)}
-        >
+        <button type="button" className="settings-button" onClick={() => setIsCustom(false)}>
           {tx('切回下拉', 'Back to dropdown')}
         </button>
       </span>
@@ -3808,7 +3880,9 @@ function FontPicker({ value, fonts, onChange }: FontPickerProps): JSX.Element {
         ))}
       </optgroup>
       {others.length > 0 && (
-        <optgroup label={tx(`系统已安装 (${others.length})`, `Installed on system (${others.length})`)}>
+        <optgroup
+          label={tx(`系统已安装 (${others.length})`, `Installed on system (${others.length})`)}
+        >
           {others.map((f) => (
             <option
               key={f.family}

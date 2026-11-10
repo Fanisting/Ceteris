@@ -20,6 +20,7 @@
  * - Do not decide who may do what here; that is tab-control-server.ts.
  */
 import { latexMathMarketplaceCommand } from './claude-math-images';
+import type { FileViewKind } from './file-tree';
 import type { AgentPhase, SessionState } from './types';
 
 /** Env names set in every tab. Listed so a Ceteris started from a tab does not inherit them. */
@@ -51,7 +52,8 @@ export type TabControlOp =
   | 'close'
   | 'input'
   | 'read'
-  | 'rename';
+  | 'rename'
+  | 'open-file';
 
 export const TAB_CONTROL_OPS: readonly TabControlOp[] = [
   'list',
@@ -62,6 +64,7 @@ export const TAB_CONTROL_OPS: readonly TabControlOp[] = [
   'input',
   'read',
   'rename',
+  'open-file',
 ];
 
 /** Named keys an input request may press, and the bytes each one sends. */
@@ -117,6 +120,15 @@ export interface TabSummary {
   exitCode?: number;
 }
 
+/** Reply of `open-file`: the file now shown beside a tab. */
+export interface TabControlOpenFileResult {
+  tab: TabSummary;
+  /** Absolute path as resolved against the tab's current directory */
+  path: string;
+  name: string;
+  kind: FileViewKind;
+}
+
 /**
  * Parses one request line. Returns null for anything malformed, so the server answers
  * bad-request without throwing.
@@ -150,6 +162,12 @@ export function encodeTabControlReply(reply: TabControlReply): string {
 
 /** The marketplace that ships with Ceteris (extensions/.claude-plugin/marketplace.json). */
 export const TAB_CONTROL_INSTALL_COMMAND = 'claude plugin install ceteris-tabs@ceteris';
+
+/**
+ * Claude Code keeps its own copy of an installed plugin, so a Ceteris update that ships a newer
+ * plugin changes nothing until the user runs this (ADR-033: open_file arrived in 0.2.0).
+ */
+export const TAB_CONTROL_UPDATE_COMMAND = 'claude plugin update ceteris-tabs@ceteris';
 
 /** Both install commands, one per line, for display. */
 export function tabControlInstallLines(dir: string): string {

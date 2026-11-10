@@ -298,6 +298,22 @@ export class AgentVersionChecker {
     this.installed.delete(templateId);
   }
 
+  /**
+   * 哪些内置 agent 在 PATH 上 (ADR-034:新建页只显示装了的)。只扫 PATH,不跑
+   * --version、不联网,所以几毫秒就回来,新建页不用等 list() 的慢路径。
+   * 有新鲜的 list() 缓存时直接用它,结论一致。
+   */
+  listInstalled(): { templateId: string; installed: boolean }[] {
+    return AGENT_UPDATE_SPECS.map((spec) => {
+      const hit = this.installed.get(spec.templateId);
+      const fresh = hit && this.now() - hit.at < INSTALLED_TTL_MS;
+      const installed = fresh
+        ? hit.value.path !== null
+        : this.deps.findOnPath(spec.command).length > 0;
+      return { templateId: spec.templateId, installed };
+    });
+  }
+
   private async checkOne(spec: AgentUpdateSpec): Promise<AgentVersionInfo> {
     const [inst, latest] = await Promise.all([this.getInstalled(spec), this.getLatest(spec)]);
     const info: AgentVersionInfo = {
@@ -381,6 +397,8 @@ export function findOnPath(command: string, env: Record<string, string | undefin
 
 const VERSION_TIMEOUT_MS = 10_000;
 const FETCH_TIMEOUT_MS = 8_000;
+/** 一轮检查内复用刷新过的 PATH;装完新 CLI 几秒后再开新建页就能看到 */
+const ENV_CACHE_MS = 5_000;
 
 /**
  * 生产用的 checker:PATH 取平台层刷新后的值 (装完新 CLI 不用重启 Ceteris),
@@ -388,7 +406,7 @@ const FETCH_TIMEOUT_MS = 8_000;
  * 不能直接 execFile。exe 路径来自 PATH 扫描,不是用户输入。
  */
 export function createAgentVersionChecker(adapter: PlatformAdapter): AgentVersionChecker {
-  const buildEnv = (): Record<string, string> => {
+  const readEnv = (): Record<string, string> => {
     const env: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) if (typeof v === 'string') env[k] = v;
     const path = adapter.getRefreshedPath();
@@ -398,6 +416,15 @@ export function createAgentVersionChecker(adapter: PlatformAdapter): AgentVersio
     }
     adapter.normalizeSpawnEnv(env);
     return env;
+  };
+  // getRefreshedPath 在 Windows 上要 spawn 两次 reg.exe。一轮检查对每个 agent 都要 PATH,
+  // 几秒内复用同一份,否则一次 list() 就是十几次 reg 查询。
+  let envCache: { value: Record<string, string>; at: number } | null = null;
+  const buildEnv = (): Record<string, string> => {
+    if (!envCache || Date.now() - envCache.at > ENV_CACHE_MS) {
+      envCache = { value: readEnv(), at: Date.now() };
+    }
+    return envCache.value;
   };
   return new AgentVersionChecker({
     findOnPath: (command) => findOnPath(command, buildEnv()),

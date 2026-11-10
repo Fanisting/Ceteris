@@ -13,6 +13,7 @@
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
 import type { SessionRole } from './session-role';
+import type { TemplateUsageEntry } from './template-usage';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
 import type {
@@ -147,6 +148,8 @@ export const COMMAND_CHANNELS = {
   TEMPLATE_UPDATE: 'cmd:template:update',
   TEMPLATE_DELETE: 'cmd:template:delete',
   TEMPLATE_SET_DEFAULT: 'cmd:template:set-default',
+  /** 新建页各按钮的启动次数 (ADR-034),renderer 据此标出常用选项 */
+  TEMPLATE_USAGE_LIST: 'cmd:template:usage-list',
 
   // Agent CLI 版本 (新建页的状态点)
   /** 查本机各 agent CLI 的已装版本和最新版本 */
@@ -169,6 +172,8 @@ export const COMMAND_CHANNELS = {
    * 恢复对话;关闭时在跑的终端收到 "continue"。立即返回,进度走 evt:agent:update-notice。
    */
   AGENT_RELOAD: 'cmd:agent:reload',
+  /** 只扫 PATH 看哪些内置 agent 装了 (ADR-034),新建页据此隐藏没装的;毫秒级,不跑 --version */
+  AGENT_LIST_INSTALLED: 'cmd:agent:list-installed',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -967,6 +972,15 @@ export interface ListAgentVersionsPayload {
 
 export interface ListAgentVersionsResponse {
   agents: AgentVersionInfo[];
+}
+
+export interface ListInstalledAgentsResponse {
+  /** 每个有检测规则的内置 agent 一项;没有规则的模板 (自定义) 不在里面,新建页照常显示 */
+  agents: { templateId: string; installed: boolean }[];
+}
+
+export interface ListTemplateUsageResponse {
+  entries: TemplateUsageEntry[];
 }
 
 /**

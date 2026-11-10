@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  AGENT_UPDATE_SPECS,
   AgentVersionChecker,
   agentStatus,
   compareVersions,
@@ -116,5 +117,31 @@ describe('agent-versions', () => {
     checker.invalidate('gemini-cli');
     await checker.list();
     expect(runVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it('lists which agents are on PATH without running --version or going online', async () => {
+    const runVersion = vi.fn(async () => '1.0.0');
+    const fetchJson = vi.fn(async () => ({ version: '1.0.0' }));
+    const findOnPath = vi.fn((cmd: string) =>
+      cmd === 'claude' ? ['C:\\u\\.local\\bin\\claude.exe'] : [],
+    );
+    const checker = new AgentVersionChecker({
+      findOnPath,
+      realPath: (p) => p,
+      probe: noFiles,
+      runVersion,
+      fetchJson,
+    });
+    const installed = checker.listInstalled();
+    expect(installed.find((a) => a.templateId === 'claude-code')?.installed).toBe(true);
+    expect(installed.find((a) => a.templateId === 'codex')?.installed).toBe(false);
+    expect(installed).toHaveLength(AGENT_UPDATE_SPECS.length);
+    expect(runVersion).not.toHaveBeenCalled();
+    expect(fetchJson).not.toHaveBeenCalled();
+    // A fresh list() cache answers without another PATH scan.
+    await checker.list();
+    findOnPath.mockClear();
+    expect(checker.listInstalled().find((a) => a.templateId === 'claude-code')?.installed).toBe(true);
+    expect(findOnPath).not.toHaveBeenCalled();
   });
 });

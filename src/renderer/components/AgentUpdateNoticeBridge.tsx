@@ -174,12 +174,26 @@ export function AgentUpdateNoticeBridge(): null {
           const tabs = n.tabs ?? 0;
           const back = tx(
             `${tabs} 个 ${n.name} 终端已开回来` +
-              (n.continued ? `,${n.continued} 个已收到 continue` : '') +
+              (n.continued ? `,已自动向 ${n.continued} 个发送 "continue"` : '') +
               (n.failedTabs ? `,${n.failedTabs} 个没开回来` : ''),
             `${tabs} ${n.name} ${tabs === 1 ? 'tab is' : 'tabs are'} back` +
-              (n.continued ? `, ${n.continued} told to continue` : '') +
+              (n.continued ? `, "continue" sent to ${n.continued} automatically` : '') +
               (n.failedTabs ? `, ${n.failedTabs} could not be reopened` : ''),
           );
+          // 指向第一个收到 continue 的终端,用户一眼能确认它接着干了
+          const sessionId = n.sessionId;
+          const pathId = n.pathId;
+          const actions =
+            sessionId && pathId
+              ? [
+                  {
+                    label: n.continued
+                      ? tx('看看它', 'Check the tab')
+                      : tx('打开终端', 'Open terminal'),
+                    onClick: () => openTerminal(sessionId, pathId),
+                  },
+                ]
+              : [];
           toast.push(
             n.updated
               ? {
@@ -188,7 +202,8 @@ export function AgentUpdateNoticeBridge(): null {
                     `${n.name} 已更新到 ${n.to ?? '最新版'}。${back}`,
                     `${n.name} updated to ${n.to ?? 'the latest version'}. ${back}`,
                   ),
-                  durationMs: 12_000,
+                  durationMs: 15_000,
+                  actions,
                 }
               : {
                   kind: 'warn',
@@ -197,6 +212,7 @@ export function AgentUpdateNoticeBridge(): null {
                     `${back}, but ${n.name} did not update (still ${n.to ?? n.from ?? 'the old version'})`,
                   ),
                   durationMs: 20_000,
+                  actions,
                 },
           );
           break;

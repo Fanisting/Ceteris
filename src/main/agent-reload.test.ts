@@ -6,6 +6,7 @@ import {
   AgentReloader,
   CONTINUE_PROMPT,
   EARLY_EXIT_MS,
+  PROMPT_QUIET_MS,
   READY_TIMEOUT_MS,
   RESUME_ARGS,
   type AgentReloadDeps,
@@ -53,6 +54,8 @@ interface Harness {
   /** 让某个开回来的终端到提示符 */
   ready: (sessionId: string) => void;
   exit: (sessionId: string) => void;
+  /** 终端吐了一点输出 */
+  output: (sessionId: string) => void;
   version: { installed: string; status: AgentVersionInfo['status'] };
 }
 
@@ -105,10 +108,12 @@ function setup(
       s.state = 'exited';
       events.emit('sessionExited', { sessionId: id, exitCode: 1 });
     },
+    output: (id) => events.emit('sessionOutput', { sessionId: id, data: 'eA==', seq: 1 }),
   };
   h.reloader = new AgentReloader({
     sessions: () => sessions,
-    screenOf: () => '',
+    // 开回来的终端默认已经画出 Claude Code 的输入框
+    screenOf: () => '> \n? for shortcuts',
     isLocal: (pathId) => !pathId.startsWith('ssh:'),
     hasWindow: (id) => id === 'w1',
     close: (id) => {
@@ -289,6 +294,46 @@ describe('AgentReloader.reload', () => {
       updated: true,
       to: '1.1.0',
     });
+  });
+
+  it('waits for the prompt to be quiet: output during the quiet window delays continue', async () => {
+    const h = setup([session({ id: 'a', agentPhase: 'working' })]);
+    const r = h.reloader.reload('claude-code', ctx);
+    await flush();
+    h.ready('n1');
+    await vi.advanceTimersByTimeAsync(PROMPT_QUIET_MS - 100);
+    h.output('n1');
+    await vi.advanceTimersByTimeAsync(PROMPT_QUIET_MS - 100);
+    expect(h.written).toEqual([]);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(h.written.map(([, t]) => t)).toEqual([CONTINUE_PROMPT, '\r']);
+    expect((await finish(r.done)).continued).toBe(1);
+  });
+
+  it('waits until the input box is on screen, not just the phase', async () => {
+    let screen = 'Welcome to Claude Code';
+    const h = setup([session({ id: 'a', agentPhase: 'working' })], { screenOf: () => screen });
+    const r = h.reloader.reload('claude-code', ctx);
+    await flush();
+    h.ready('n1');
+    await vi.advanceTimersByTimeAsync(PROMPT_QUIET_MS * 2 + 10);
+    expect(h.written).toEqual([]);
+    screen = '> \n? for shortcuts';
+    await vi.advanceTimersByTimeAsync(PROMPT_QUIET_MS * 2 + 10);
+    expect(h.written.map(([, t]) => t)).toEqual([CONTINUE_PROMPT, '\r']);
+    expect((await finish(r.done)).continued).toBe(1);
+  });
+
+  it('names the first continued tab in the reloaded notice so the user can check it', async () => {
+    const h = setup([
+      session({ id: 'a', agentPhase: 'done' }),
+      session({ id: 'b', agentPhase: 'working' }),
+    ]);
+    const r = h.reloader.reload('claude-code', ctx);
+    await flush();
+    h.ready('n2');
+    await finish(r.done);
+    expect(h.notices.at(-1)).toMatchObject({ kind: 'reloaded', continued: 1, sessionId: 'n2' });
   });
 
   it('does not send continue to a tab that was blocked or that never reaches its prompt', async () => {

@@ -63,6 +63,12 @@ export const READY_TIMEOUT_MS = 90_000;
 export const EARLY_EXIT_MS = 8_000;
 /** 敲完提示到按 Enter 的间隔,与 tab-control-server 的 SUBMIT_DELAY_MS 一致 */
 export const SUBMIT_DELAY_MS = 150;
+/**
+ * 到提示符后还要安静这么久才敲 continue。刚 spawn 的终端处于启动宽限期,state 一直是 idle,
+ * agentPhase 在第一次读屏时就报 done,但 Claude Code 还在画横幅、恢复对话;那时敲进去的字
+ * 会丢 (2026-11-10 实测:spawn 后 0.4 秒发的 continue 没被收下)。
+ */
+export const PROMPT_QUIET_MS = 1500;
 /** plan 里判断纯 shell 是否在跑该 agent 时读的屏幕行数 */
 const SCREEN_ROWS = 40;
 
@@ -97,7 +103,7 @@ export interface AgentReloadDeps {
   setRole: (sessionId: string, role: SessionRole | null) => void;
   /** 往终端写文本;终端不在了返回 false */
   write: (sessionId: string, text: string) => boolean;
-  /** 'sessionStateChanged' / 'sessionExited' / 'sessionDestroyed' 的来源 (SessionManager) */
+  /** 'sessionStateChanged' / 'sessionOutput' / 'sessionExited' / 'sessionDestroyed' 的来源 (SessionManager) */
   events: Pick<EventEmitter, 'on' | 'off'>;
   /** 在可见终端里跑升级,resolve 为退出码;超时或被用户关掉为 null */
   upgrade: (templateId: string, ctx: ReloadContext) => Promise<number | null>;
@@ -138,6 +144,12 @@ type WaitOutcome =
   | { kind: 'phase'; phase: AgentPhase }
   | { kind: 'exited'; elapsedMs: number }
   | { kind: 'timeout' };
+
+interface Settled {
+  session: SessionInfo;
+  alive: boolean;
+  continued: boolean;
+}
 
 export class AgentReloader {
   /** 正在重载的 agent,同一个 agent 不许并发 */
@@ -253,6 +265,8 @@ export class AgentReloader {
       continued: settled.filter((s) => s.continued).length,
       updated,
     };
+    // 通知上的"打开终端"指向第一个收到 continue 的终端,没有就指向第一个开回来的
+    const showcase = settled.find((s) => s.continued) ?? settled.find((s) => s.alive);
     this.deps.notify(
       this.notice('reloaded', templateId, name, {
         tabs: result.reopened,
@@ -261,6 +275,8 @@ export class AgentReloader {
         updated,
         from,
         to: after?.installed,
+        sessionId: showcase?.session.id,
+        pathId: showcase?.session.pathId,
       }),
     );
     logger.info(
@@ -297,46 +313,105 @@ export class AgentReloader {
   }
 
   /**
-   * 开回来之后:太快退出就不带恢复参数重开;关闭时在跑的等到提示符再发 continue。
+   * 开回来之后:太快退出就不带恢复参数重开;关闭时在跑的等到提示符安静下来再发 continue。
    */
   private async settle(
     templateId: string,
     session: SessionInfo,
     tab: TabRecord,
     resumeArgs: string[],
-  ): Promise<{ alive: boolean; continued: boolean }> {
-    const phases: AgentPhase[] = tab.continue ? ['done', 'blocked'] : [];
+  ): Promise<Settled> {
     let current = session;
-    let outcome = await this.waitFor(
-      current.id,
-      phases,
-      tab.continue ? READY_TIMEOUT_MS : EARLY_EXIT_MS,
-    );
+    let outcome = tab.continue
+      ? await this.waitForPrompt(templateId, current.id)
+      : await this.waitFor(current.id, [], EARLY_EXIT_MS);
     if (outcome.kind === 'exited' && outcome.elapsedMs < EARLY_EXIT_MS && resumeArgs.length > 0) {
       logger.warn(
         'AgentReloader',
         `${templateId} exited ${outcome.elapsedMs}ms after "${resumeArgs.join(' ')}"; reopening without it`,
       );
       const again = await this.open(templateId, tab, []);
-      if (!again) return { alive: false, continued: false };
+      if (!again) return { session: current, alive: false, continued: false };
       current = again;
-      if (!tab.continue) return { alive: true, continued: false };
-      outcome = await this.waitFor(current.id, phases, READY_TIMEOUT_MS);
+      if (!tab.continue) return { session: current, alive: true, continued: false };
+      outcome = await this.waitForPrompt(templateId, current.id);
     }
-    if (outcome.kind === 'exited') return { alive: false, continued: false };
-    if (!tab.continue) return { alive: true, continued: false };
+    if (outcome.kind === 'exited') return { session: current, alive: false, continued: false };
+    if (!tab.continue) return { session: current, alive: true, continued: false };
     if (outcome.kind !== 'phase' || outcome.phase !== 'done') {
       logger.info(
         'AgentReloader',
         `${templateId} sid=${current.id} not at its prompt (${outcome.kind}); continue not sent`,
       );
-      return { alive: true, continued: false };
+      return { session: current, alive: true, continued: false };
     }
-    if (!this.deps.write(current.id, CONTINUE_PROMPT)) return { alive: false, continued: false };
+    if (!this.deps.write(current.id, CONTINUE_PROMPT)) {
+      return { session: current, alive: false, continued: false };
+    }
     await this.sleep(SUBMIT_DELAY_MS);
     const sent = this.deps.write(current.id, '\r');
     logger.info('AgentReloader', `${templateId} sid=${current.id} told to continue: ${sent}`);
-    return { alive: sent, continued: sent };
+    return { session: current, alive: sent, continued: sent };
+  }
+
+  /**
+   * 等 agent 真的能收输入:agentPhase 为 done,之后 PROMPT_QUIET_MS 内没有任何输出或状态
+   * 变化,而且 (Claude Code / Codex) 屏幕上有它的输入框标记。刚 spawn 时 phase 就是 done
+   * 但横幅还在画,所以只看 phase 不够。总共最多等 READY_TIMEOUT_MS。
+   */
+  private async waitForPrompt(templateId: string, sessionId: string): Promise<WaitOutcome> {
+    const startedAt = this.now();
+    const deadline = startedAt + READY_TIMEOUT_MS;
+    // 模板本身就是 claude-code / codex 时 detectAgent 不看屏幕;用 'shell' 问一遍才真的看标记
+    const knowsPrompt = detectAgent(templateId, '') !== null;
+    for (;;) {
+      const remaining = deadline - this.now();
+      if (remaining <= 0) return { kind: 'timeout' };
+      const outcome = await this.waitFor(sessionId, ['done', 'blocked'], remaining);
+      if (outcome.kind === 'exited') {
+        return { kind: 'exited', elapsedMs: this.now() - startedAt };
+      }
+      if (outcome.kind !== 'phase' || outcome.phase !== 'done') return outcome;
+      const quiet = await this.waitQuiet(sessionId, Math.min(PROMPT_QUIET_MS, remaining));
+      if (quiet === 'exited') return { kind: 'exited', elapsedMs: this.now() - startedAt };
+      if (quiet === 'output') continue;
+      if (
+        knowsPrompt &&
+        detectAgent('shell', this.deps.screenOf(sessionId, SCREEN_ROWS)) === null
+      ) {
+        // 安静了但输入框还没画出来 (比如在问 trust folder 之外的启动问题):再等一轮输出
+        const again = await this.waitQuiet(sessionId, Math.min(PROMPT_QUIET_MS, remaining));
+        if (again === 'exited') return { kind: 'exited', elapsedMs: this.now() - startedAt };
+        continue;
+      }
+      return outcome;
+    }
+  }
+
+  /** 这段时间内终端有没有输出或状态变化。 */
+  private waitQuiet(sessionId: string, ms: number): Promise<'quiet' | 'output' | 'exited'> {
+    return new Promise((resolve) => {
+      const onOutput = (p: { sessionId: string }): void => {
+        if (p.sessionId === sessionId) finish('output');
+      };
+      const onExit = (p: { sessionId: string }): void => {
+        if (p.sessionId === sessionId) finish('exited');
+      };
+      const timer = setTimeout(() => finish('quiet'), ms);
+      timer.unref?.();
+      const finish = (r: 'quiet' | 'output' | 'exited'): void => {
+        clearTimeout(timer);
+        this.deps.events.off('sessionOutput', onOutput);
+        this.deps.events.off('sessionStateChanged', onOutput);
+        this.deps.events.off('sessionExited', onExit);
+        this.deps.events.off('sessionDestroyed', onExit);
+        resolve(r);
+      };
+      this.deps.events.on('sessionOutput', onOutput);
+      this.deps.events.on('sessionStateChanged', onOutput);
+      this.deps.events.on('sessionExited', onExit);
+      this.deps.events.on('sessionDestroyed', onExit);
+    });
   }
 
   /**

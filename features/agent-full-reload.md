@@ -6,7 +6,7 @@ An agent such as Claude Code has to stop before it can be updated. On Windows th
 
 Open the new tab page of a folder. The yellow dot beside an agent means a new version exists. Click it while that agent has tabs open and Ceteris asks:
 
-- **Full reload** closes every tab of that agent, runs the update in a terminal, then reopens each tab in the same folder with its last conversation. Tabs that were working when they closed are told to continue once they reach their prompt. Tab names you set yourself, and roles such as Coordinator, are restored.
+- **Full reload** closes every tab of that agent, runs the update in a terminal, then reopens each tab in the same folder with its last conversation. Tabs that were working when they closed are sent `continue` automatically once their prompt is back and quiet, so you type nothing; the final notice has a button that opens the first such tab so you can check it carried on. Tab names you set yourself, and roles such as Coordinator, are restored.
 - **Update only** just runs the update command in a new tab, as before.
 - **Cancel** does nothing.
 

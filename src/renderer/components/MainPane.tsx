@@ -408,8 +408,8 @@ function reloadQuestion(
   lines.push(
     plan.resumes
       ? tx(
-          `"关掉再开回来"会关掉这些终端,更新 ${name},再把每个终端开回来并接上它上次的对话;刚才在跑的会收到 "continue" 接着干。`,
-          `"Full reload" closes these tabs, updates ${name}, then reopens each tab with its last conversation; tabs that were running are told to continue.`,
+          `"关掉再开回来"会关掉这些终端,更新 ${name},再把每个终端开回来并接上它上次的对话。正在跑的 ${plan.running} 个会在回到提示符后自动收到 "continue",不用你再输入;结束时的通知里可以点开确认。`,
+          `"Full reload" closes these tabs, updates ${name}, then reopens each tab with its last conversation. The ${plan.running} running ${plan.running === 1 ? 'tab' : 'tabs'} will be sent "continue" automatically once back at the prompt, nothing to type; the final notice lets you check the tab.`,
         )
       : tx(
           `"关掉再开回来"会关掉这些终端,更新 ${name},再把每个终端开回来。${name} 不支持从命令行接上对话,开回来的是新对话。`,

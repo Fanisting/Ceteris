@@ -18,6 +18,6 @@ Usage numbers (5 hour and weekly limits, context) are not shown here; the OMC st
 
 ## Limits
 
-Only Claude Code and Codex, and only local folders: SSH tabs show the model but cannot switch. Text you typed but did not send is cleared when a tab switches model. Codex prints a startup warning when an effort is set, because its `-c` flag makes it skip the shared background server; it works normally.
+Only Claude Code and Codex, and only local folders: SSH tabs show the model but cannot switch. Text you typed but did not send is cleared when a tab switches model (the agent's Ctrl+Y brings it back). If Ceteris cannot clear it, it sends nothing and asks you to clear the input box yourself. Codex prints a startup warning when an effort is set, because its `-c` flag makes it skip the shared background server; it works normally.
 
 Related: [Software definition](../docs/软件定义书.md) (ADR-038), [Full reload on agent update](agent-full-reload.md).

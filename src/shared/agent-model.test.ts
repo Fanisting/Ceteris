@@ -8,6 +8,8 @@ import {
   effortLevel,
   exitResumeId,
   folderDefaultFor,
+  INPUT_LINE_ROWS,
+  inputLineReads,
   sanitizeFolderDefaults,
   isValidFolderAgentDefaults,
   launchArgs,
@@ -162,6 +164,39 @@ describe('shellCommandLine', () => {
     ]) {
       expect(() => shellCommandLine('claude', [bad])).toThrow(/not a plain word/);
     }
+  });
+});
+
+describe('inputLineReads', () => {
+  const rule = '─'.repeat(20);
+
+  it('reads Claude Code and Codex input rows that hold exactly the text', () => {
+    expect(inputLineReads(`${rule}\n❯ /exit\n${rule}\n  ❯ /exit     Exit the CLI`, '/exit')).toBe(
+      true,
+    );
+    expect(inputLineReads('› /exit\n  GPT low · ~\\p', '/exit')).toBe(true);
+  });
+
+  it('takes the no-break space Claude Code draws after its glyph', () => {
+    expect(inputLineReads(`${rule}\n❯\u00a0/exit\n${rule}`, '/exit')).toBe(true);
+    expect(inputLineReads(`${rule}\n❯\u00a0http://x/#/home//exit\n${rule}`, '/exit')).toBe(false);
+  });
+
+  it('is false while a draft is still in front of the text', () => {
+    expect(inputLineReads(`${rule}\n❯ http://x/#/home//exit\n${rule}`, '/exit')).toBe(false);
+    // a wrapped draft: the glyph row holds its start, "/exit" ends a later row
+    expect(inputLineReads(`❯ http://x/aaaa\n  aaaa#/home//exit\n${rule}`, '/exit')).toBe(false);
+    expect(inputLineReads('› /exitfirst line\n  second', '/exit')).toBe(false);
+  });
+
+  it('ignores suggestion rows: indented (Claude Code) or with a description (Codex)', () => {
+    expect(inputLineReads(`❯ /ex\n${rule}\n  ❯ /exit     Exit the CLI`, '/exit')).toBe(false);
+    expect(inputLineReads('› /exit  exit Codex\n› /ex', '/exit')).toBe(false);
+  });
+
+  it('looks only at the last rows of the screen', () => {
+    const old = ['❯ /exit', ...Array.from({ length: INPUT_LINE_ROWS }, () => 'text')].join('\n');
+    expect(inputLineReads(old, '/exit')).toBe(false);
   });
 });
 

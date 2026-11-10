@@ -1041,6 +1041,8 @@ export interface AgentSwitchModelResponse {
    * busy: mid-turn, waiting on an approval, or a switch already running;
    * cannot-restart: SSH tab, or a template that does not keep a shell after the agent;
    * exit-timeout: the agent did not exit after /exit, nothing else was typed;
+   * input-not-clear: the input box did not read exactly "/exit" after clearing it, so Enter
+   *   was not pressed and the typed "/exit" was erased again;
    * not-agent / exited / session-not-found as named.
    */
   reason?:
@@ -1049,7 +1051,8 @@ export interface AgentSwitchModelResponse {
     | 'exited'
     | 'busy'
     | 'cannot-restart'
-    | 'exit-timeout';
+    | 'exit-timeout'
+    | 'input-not-clear';
 }
 
 export interface AgentUsagePayload {

@@ -23,7 +23,10 @@
  *   /resume too. Only when nothing is printed does a file-based id count, and only one known
  *   for certain (Claude Code's launch id). Never a newest-file guess: that can be another
  *   tab's conversation. No id at all = a new conversation, reported as resumed: false.
- * - Ctrl-U before /exit clears a draft in the input line (the draft is lost; said in the docs).
+ * - Before /exit a draft in the input box is cleared (Ctrl-K and Ctrl-U, many times; the
+ *   agent's Ctrl-Y brings it back). Enter is pressed only when the box then reads exactly
+ *   "/exit" on screen; otherwise the typed text is erased and the switch stops
+ *   ('input-not-clear'). Never send anything the agent could take as a prompt.
  * - Command words must be plain (shellCommandLine). Otherwise the switch is refused before
  *   the agent is touched.
  * - Refused while the agent is mid-turn or waiting on an approval, for SSH tabs (the remote
@@ -42,6 +45,8 @@ import type { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import {
   exitResumeId,
+  INPUT_LINE_ROWS,
+  inputLineReads,
   modelAgentOf,
   relaunchArgs,
   shellCommandLine,
@@ -59,8 +64,27 @@ export const SUBMIT_DELAY_MS = 150;
 export const PROMPT_SETTLE_MS = 300;
 /** Screen rows searched for the id the agent prints on exit */
 const SCREEN_ROWS = 60;
-/** Ctrl-U: Claude Code and Codex both clear the input line with it */
-const CLEAR_LINE = '\x15';
+/**
+ * Clears a draft in the input box wherever the cursor is: Ctrl-K deletes to the end of the
+ * line (and the line break after it), Ctrl-U to its start. In Claude Code each press reaches
+ * only one wrapped row, so one Ctrl-U left most of a long pasted link in place (2026-11-10).
+ * Pressed many times; on an empty box both keys do nothing. Checked in Claude Code 2.1.322
+ * and Codex 0.167 with a three-line draft and the cursor at its start.
+ * One key per write with a short gap: 80 keys in a single write reached Claude Code as one
+ * paste and cleared nothing (2026-11-10).
+ */
+export const CLEAR_PRESSES = 30;
+export const CLEAR_KEYS: readonly string[] = [
+  ...Array<string>(CLEAR_PRESSES).fill('\x0b'),
+  ...Array<string>(CLEAR_PRESSES).fill('\x15'),
+];
+const CLEAR_KEY_GAP_MS = 12;
+/** How long the typed "/exit" gets to show in the input box before the switch gives up */
+export const INPUT_CHECK_MS = 2_000;
+const INPUT_POLL_MS = 100;
+/** Backspace, to take the typed "/exit" back out when Enter is not pressed */
+const BACKSPACE = '\x7f';
+const EXIT_COMMAND = '/exit';
 /** Stands in for a real id while checking that the line can be typed at all */
 const PLACEHOLDER_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -143,10 +167,25 @@ export class AgentModelSwitcher {
         return { applied: false, reason: 'cannot-restart' };
       }
 
-      // Listen before typing, so a fast exit is not missed. Ctrl-U first clears a draft in
-      // the input line, which would otherwise turn "/exit" into the end of a prompt.
+      // Clear any draft, type "/exit", and press Enter only once the input box reads exactly
+      // "/exit": a draft left in place would turn it into the end of a prompt the agent then
+      // acts on. Listen for the prompt before Enter, so a fast exit is not missed.
+      for (const key of CLEAR_KEYS) {
+        if (!this.deps.write(sessionId, key)) return { applied: false, reason: 'exited' };
+        await this.sleep(CLEAR_KEY_GAP_MS);
+      }
+      if (!this.deps.write(sessionId, EXIT_COMMAND)) return { applied: false, reason: 'exited' };
+      if (!(await this.waitForInput(sessionId, EXIT_COMMAND))) {
+        this.deps.write(sessionId, BACKSPACE.repeat(EXIT_COMMAND.length));
+        logger.warn(
+          'AgentModelSwitcher',
+          `sid=${sessionId} ${agent}: input box did not read "${EXIT_COMMAND}" after clearing; Enter not pressed. Screen end:\n${this.deps.screenOf(sessionId, 8)}`,
+        );
+        return { applied: false, reason: 'input-not-clear' };
+      }
       const back = this.waitForPrompt(sessionId);
-      if (!this.deps.write(sessionId, CLEAR_LINE) || !(await this.type(sessionId, '/exit'))) {
+      await this.sleep(SUBMIT_DELAY_MS);
+      if (!this.deps.write(sessionId, '\r')) {
         back.cancel();
         return { applied: false, reason: 'exited' };
       }
@@ -177,6 +216,15 @@ export class AgentModelSwitcher {
     } finally {
       this.inFlight.delete(sessionId);
     }
+  }
+
+  /** Polls the screen until the input box reads exactly `text`; false after INPUT_CHECK_MS. */
+  private async waitForInput(sessionId: string, text: string): Promise<boolean> {
+    for (let waited = 0; waited <= INPUT_CHECK_MS; waited += INPUT_POLL_MS) {
+      if (inputLineReads(this.deps.screenOf(sessionId, INPUT_LINE_ROWS), text)) return true;
+      await this.sleep(INPUT_POLL_MS);
+    }
+    return false;
   }
 
   private async type(sessionId: string, text: string): Promise<boolean> {

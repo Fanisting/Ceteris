@@ -1,6 +1,7 @@
 /**
  * @file src/main/agent-model-switch.test.ts
- * @purpose Rules of AgentModelSwitcher (ADR-038): clear the line, /exit, wait for the shell
+ * @purpose Rules of AgentModelSwitcher (ADR-038): clear the input, check it reads /exit before
+ *   Enter (a draft left in place is never sent), wait for the shell
  *   prompt, read the id the agent printed, type the relaunch line; the certain-id fallback;
  *   a new conversation when there is no id; every refusal; nothing typed after a timeout.
  *   All deps are fakes; no PTY, no files.
@@ -8,11 +9,20 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionInfo, Template } from '@shared/types';
-import { AgentModelSwitcher, EXIT_TIMEOUT_MS, type ModelSwitchDeps } from './agent-model-switch';
+import {
+  AgentModelSwitcher,
+  CLEAR_KEYS,
+  EXIT_TIMEOUT_MS,
+  type ModelSwitchDeps,
+} from './agent-model-switch';
 
 const PRINTED = '7ad8b104-47e5-4db9-a802-25da7c8ee1c0';
 const KNOWN = '13208c32-d229-4a96-aba2-42d521ce729b';
-const CLEAR = '\x15';
+/** Ctrl-K and Ctrl-U, one key per write */
+const CLEAR = CLEAR_KEYS;
+const N = CLEAR_KEYS.length;
+/** Claude Code's screen once "/exit" is typed into an empty input box */
+const EXIT_TYPED = '──────\n❯ /exit\n──────\n  ❯ /exit      Exit the CLI';
 
 function session(over: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -65,6 +75,8 @@ function harness(
     local?: boolean;
     /** What the screen shows after the agent exits */
     screen?: string;
+    /** What the input box shows once "/exit" is typed (default: exactly "/exit") */
+    inputScreen?: string;
     /** The certain id from files; default none */
     knownId?: string | null;
     /** Emit the prompt report as soon as /exit + Enter is typed */
@@ -94,7 +106,9 @@ function harness(
       return true;
     },
     events,
-    screenOf: () => opts.screen ?? '',
+    // Before Enter the screen shows the input box; after it, what the agent printed on exit
+    screenOf: () =>
+      written.includes('\r') ? (opts.screen ?? '') : (opts.inputScreen ?? EXIT_TYPED),
     resumeIdOf: async () => opts.knownId ?? null,
     setPick: (_id, pick) => picks.push(pick),
     forgetUsage: (id) => forgotten.push(id),
@@ -107,14 +121,14 @@ function harness(
 const claudeExit = `Resume this session with:\nclaude --model opus --effort high --resume ${PRINTED}\nPS C:\\p>`;
 
 describe('AgentModelSwitcher', () => {
-  it('clears the line, exits, and resumes the conversation the agent printed', async () => {
+  it('clears the input, exits, and resumes the conversation the agent printed', async () => {
     const h = harness({ screen: claudeExit, knownId: KNOWN });
     expect(await h.switcher.switch('s1', { model: 'sonnet' })).toEqual({
       applied: true,
       resumed: true,
     });
     expect(h.written).toEqual([
-      CLEAR,
+      ...CLEAR,
       '/exit',
       '\r',
       `claude --resume ${PRINTED} --model sonnet --effort high`,
@@ -130,13 +144,15 @@ describe('AgentModelSwitcher', () => {
       screen: `To continue this session, run:\n  codex resume ${PRINTED}\n`,
     });
     await h.switcher.switch('s1', { model: 'gpt-x', effort: 'xhigh' });
-    expect(h.written[3]).toBe(`codex resume ${PRINTED} -m gpt-x -c model_reasoning_effort=xhigh`);
+    expect(h.written[N + 2]).toBe(
+      `codex resume ${PRINTED} -m gpt-x -c model_reasoning_effort=xhigh`,
+    );
   });
 
   it('falls back to the certain id from files when the agent printed none', async () => {
     const h = harness({ knownId: KNOWN });
     await h.switcher.switch('s1', { model: 'haiku' });
-    expect(h.written[3]).toBe(`claude --resume ${KNOWN} --model haiku --effort high`);
+    expect(h.written[N + 2]).toBe(`claude --resume ${KNOWN} --model haiku --effort high`);
   });
 
   it('starts a new conversation, and says so, when no id is printed or known', async () => {
@@ -145,14 +161,26 @@ describe('AgentModelSwitcher', () => {
       applied: true,
       resumed: false,
     });
-    expect(h.written[3]).toBe('claude --session-id new-id --model opus --effort max');
+    expect(h.written[N + 2]).toBe('claude --session-id new-id --model opus --effort max');
     expect(h.picks).toEqual([{ model: 'opus', effort: 'max', launchId: 'new-id' }]);
   });
 
   it('keeps plain template arguments in front', async () => {
     const h = harness({ t: template({ args: ['--verbose'] }), screen: claudeExit });
     await h.switcher.switch('s1', { model: 'haiku' });
-    expect(h.written[3]).toBe(`claude --verbose --resume ${PRINTED} --model haiku --effort high`);
+    expect(h.written[N + 2]).toBe(
+      `claude --verbose --resume ${PRINTED} --model haiku --effort high`,
+    );
+  });
+
+  it('never presses Enter while a draft is left in the input box, and erases its /exit', async () => {
+    const h = harness({ inputScreen: '──────\n❯ http://example.invalid/#/home//exit\n──────' });
+    expect(await h.switcher.switch('s1', { model: 'sonnet' })).toEqual({
+      applied: false,
+      reason: 'input-not-clear',
+    });
+    expect(h.written).toEqual([...CLEAR, '/exit', '\x7f'.repeat(5)]);
+    expect(h.picks).toEqual([]);
   });
 
   describe('refusals type nothing', () => {
@@ -201,7 +229,7 @@ describe('AgentModelSwitcher', () => {
       const done = h.switcher.switch('s1', { model: 'sonnet' });
       await vi.advanceTimersByTimeAsync(EXIT_TIMEOUT_MS + 10);
       expect(await done).toEqual({ applied: false, reason: 'exit-timeout' });
-      expect(h.written).toEqual([CLEAR, '/exit', '\r']);
+      expect(h.written).toEqual([...CLEAR, '/exit', '\r']);
     });
 
     it('answers busy to a second click while the first is running', async () => {

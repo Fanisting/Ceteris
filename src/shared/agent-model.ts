@@ -195,6 +195,30 @@ export function shellCommandLine(command: string, args: readonly string[]): stri
   return words.join(' ');
 }
 
+/** Rows at the end of the screen searched for the agent's input line */
+export const INPUT_LINE_ROWS = 20;
+
+/**
+ * Whether the agent's input box reads exactly `text`, from the end of its screen.
+ *
+ * The input row starts at column 0 with the agent's prompt glyph and a space: Claude Code `❯`
+ * plus a no-break space (U+00A0), Codex `› ` (checked 2026-11-10 on the headless screen,
+ * Claude Code 2.1.322 and Codex 0.167). Only the first row of the input
+ * carries the glyph, so a draft that was not cleared shows up as `❯ <draft>…` there and never
+ * reads exactly `text`. Rows that look alike but are not the input do not match either:
+ * Claude Code's suggestion list is indented (`  ❯ /exit   Exit the CLI`) and Codex's popup
+ * adds a description (`› /exit  exit Codex`).
+ *
+ * Why this check exists: Ctrl-U deletes only one wrapped row in Claude Code, so a long pasted
+ * link survived it and "/exit" plus Enter sent `<link>/exit` to the agent as a prompt
+ * (2026-11-10). Enter is pressed only after this check passes.
+ */
+export function inputLineReads(screen: string, text: string): boolean {
+  const rows = screen.split('\n').slice(-INPUT_LINE_ROWS);
+  // Claude Code draws a no-break space after its glyph, Codex a plain one
+  return rows.some((row) => /^[❯›][ \u00a0]/.test(row) && row.slice(2).trimEnd() === text);
+}
+
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
 /**

@@ -446,7 +446,12 @@ export function AgentStatusLine(): JSX.Element | null {
                     'agent 没有在 20 秒内退出,没有再输入任何内容。',
                     'The agent did not exit within 20 seconds. Nothing else was typed.',
                   )
-                : tx('这个终端已经不在了。', 'This tab is no longer running.');
+                : res.reason === 'input-not-clear'
+                  ? tx(
+                      '没能清空 agent 输入框里的文字,所以什么都没发送。请先清空输入框再换。',
+                      'Could not clear the text in the agent’s input box, so nothing was sent. Clear the input box, then try again.',
+                    )
+                  : tx('这个终端已经不在了。', 'This tab is no longer running.');
         toast.push({ kind: 'warn', message: why });
       }
     } catch (err) {

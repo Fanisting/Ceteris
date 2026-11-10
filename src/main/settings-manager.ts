@@ -102,6 +102,8 @@ export const DEFAULT_SETTINGS: Settings = {
     autoUpdateAgents: false,
     // ADR-036:自动收纳默认关;标签菜单仍可手动收纳
     shelveIdleAfterHours: 0,
+    // ADR-039:启动时把上次开着的标签开回来,默认开
+    restoreTabsOnLaunch: true,
   },
   systemIntegration: {
     explorerOpenIn: 'new-window',

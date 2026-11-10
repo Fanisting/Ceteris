@@ -307,3 +307,26 @@ describe('ShelfManager restore, forget, clear and persistence', () => {
     expect(shelf.list()).toEqual([]);
   });
 });
+
+describe('ShelfManager putBack (ADR-039)', () => {
+  it('adds a launch tab with reason restore, saves it and announces it', async () => {
+    const { shelf, store, events } = await make(fake([]));
+    const entry = shelf.putBack({
+      sessionId: '',
+      pathId: 'ssh:p1:%2Fhome',
+      templateId: 'shell',
+      displayName: 'box',
+      cwd: '/home',
+      createdAt: NOW - HOUR,
+      lastActivityAt: NOW - HOUR,
+      resume: null,
+    });
+    expect(entry).toMatchObject({ reason: 'restore', shelvedAt: NOW, displayName: 'box' });
+    expect(events.at(-1)!.entries[0]!.id).toBe(entry.id);
+    await store.flush();
+    const reloaded = new ShelfManager(store, fake([]).host);
+    managers.push(reloaded);
+    await reloaded.initialize();
+    expect(reloaded.list()[0]!.reason).toBe('restore');
+  });
+});

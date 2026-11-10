@@ -210,6 +210,7 @@ function makeStubSettingsManager(
       autoCheckAgents: true,
       autoUpdateAgents: false,
       shelveIdleAfterHours: 0,
+      restoreTabsOnLaunch: true,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {

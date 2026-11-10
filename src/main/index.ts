@@ -34,6 +34,9 @@ import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-
 import { SecretStore, type SecretsFile } from './secret-store';
 import { ShelfManager } from './shelf-manager';
 import type { ShelfFile } from '@shared/shelf';
+import { SessionRestorer } from './session-restore';
+import type { RestoreFile } from '@shared/session-restore';
+import { RESUME_ARGS } from './agent-reload';
 import {
   broadcastLinkStatus,
   broadcastAccentColor,
@@ -369,6 +372,32 @@ function bootstrap(): void {
     template: (id) => templatesManager.resolve(id),
     idleHours: () => settingsManager.get().behavior.shelveIdleAfterHours ?? 0,
   });
+  // Set in whenReady; the restorer waits for it before putting tabs in the shelf, or the
+  // shelf's own load would overwrite them.
+  let shelfReady: Promise<void> = Promise.resolve();
+  // ADR-039:启动时把上次的标签开回来。规则在 @shared/session-restore,这里只接线。
+  // ADR-039:上次开着的标签,下次启动开回来
+  const restoreStore = new JsonStore<RestoreFile>(join(dataDir, 'restore.json'));
+  const sessionRestorer = new SessionRestorer(restoreStore, {
+    events: sessionManager,
+    listSessions: () => sessionManager.list(),
+    lastActivityAt: (id) => sessionManager.getLastActivityAt(id),
+    lastEnterAt: (id) => sessionManager.getLastEnterAt(id),
+    agentSession: (id) => sessionManager.getAgentSession(id),
+    isManuallyRenamed: (id) => sessionManager.isManuallyRenamed(id),
+    template: (id) => templatesManager.get(id) ?? null,
+    isSshPath: (pathId) => pathId.startsWith('ssh:'),
+    create: (input) => sessionManager.createSession(input),
+    rename: (id, name) => sessionManager.renameSession(id, name),
+    setRole: (id, role) => sessionManager.setRole(id, role),
+    setAgentSession: (id, agent, agentId) => sessionManager.setAgentSession(id, agent, agentId),
+    shelve: async (tab) => {
+      await shelfReady;
+      shelfManager.putBack(tab);
+    },
+    enabled: () => settingsManager.get().behavior.restoreTabsOnLaunch !== false,
+    folderResumeArgs: RESUME_ARGS,
+  });
   // ADR-029:agent 标签每跑完一轮,用 next prompt 的 API 和模型写一个短标题
   new AgentTitler({
     onSessionChanged: (fn) =>
@@ -685,7 +714,7 @@ function bootstrap(): void {
       });
       updateChecker.refreshSchedule();
       // 读不到 shelf.json 只是盒子空着,不影响启动
-      shelfManager
+      shelfReady = shelfManager
         .initialize()
         .catch((err) => logger.warn('shelf', 'shelf store load failed', err))
         .finally(() => shelfManager.startSweep());
@@ -884,10 +913,29 @@ function bootstrap(): void {
         startupOpenHere !== null ||
         settingsManager.get().behavior.startupBehavior !== 'tray-only' ||
         smokeInteractive;
+      // ADR-039:把上次的标签开回来。冒烟测试和简易模式不开;Explorer 冷启动打开的
+      // 文件夹自己占着窗口,开回来的标签都不进窗口。
+      const restoreTabs = !smokeInteractive && !startupSimpleMode;
+      const runRestore = (focusWindowId: string | null): void => {
+        void sessionRestorer
+          .restore(focusWindowId)
+          .catch((err) => logger.error('main', 'session restore failed', err));
+      };
       if (wantWindow) {
         const win = windowManager.createWindowFromFactory({
           simpleMode: startupSimpleMode,
         });
+        // 等 renderer 订阅好事件再开,evt:session:created 才不会落空
+        if (restoreTabs) {
+          const firstWindow = windowManager.getById(win.id);
+          if (firstWindow) {
+            firstWindow.webContents.once('did-finish-load', () =>
+              runRestore(startupOpenHere === null ? win.id : null),
+            );
+          } else {
+            runRestore(null);
+          }
+        }
         if (startupOpenHere !== null) {
           // 冷启动:在刚创建的窗口里起 session(忽略 explorerOpenIn=recent-window-tab,
           // 此时没有"最近"可用)。等 did-finish-load 后再 createSession,
@@ -903,7 +951,10 @@ function bootstrap(): void {
             });
           }
         }
+      } else if (restoreTabs) {
+        runRestore(null);
       }
+      if (!restoreTabs) sessionRestorer.start();
     } catch (err) {
       logger.error('main', 'bootstrap failed', err);
       // 启动失败不应让用户看到空白进程,直接退出
@@ -916,6 +967,8 @@ function bootstrap(): void {
     if (!isQuitting) return; // 防御性:不该走到这,因为 before-quit 已 set
     logger.info('main', 'will-quit: shutting down session manager + flushing stores');
     shelfManager.stopSweep();
+    // ADR-039:先记下最后的标签,再让 shutdown 把它们全关掉
+    sessionRestorer.freeze();
     sessionManager.shutdown();
     sftpPool.shutdown();
     void askpassServer.stop();
@@ -938,6 +991,7 @@ function bootstrap(): void {
         secretStore.flush(),
         sshProfileManager.flush(),
         shelfManager.flush(),
+        sessionRestorer.flush(),
         knownHostsManager.flush(),
         templatesManager.flush(),
         logger.flush(),

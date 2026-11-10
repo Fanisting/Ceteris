@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeProjectSlug } from '@shared/shelf';
 import {
+  agentSessionExists,
   codexDayFolders,
   findAgentSessionId,
   readCodexMeta,
@@ -189,5 +190,32 @@ describe('sameDirectory', () => {
   it('ignores trailing slashes and slash direction', () => {
     expect(sameDirectory('C:\\a\\b\\', 'C:/a/b')).toBe(true);
     expect(sameDirectory('/x/y', '/x/z')).toBe(false);
+  });
+});
+
+describe('agentSessionExists (ADR-039)', () => {
+  it('Claude Code: true only for a transcript in one of the given folders', async () => {
+    await claudeFile(ID_A, T0);
+    await claudeFile(ID_B, T0, join(home, 'elsewhere'));
+    const ask = (sessionId: string) =>
+      agentSessionExists({ agent: 'claude-code', homeDir: home, cwds: [cwd()], sessionId });
+    expect(await ask(ID_A)).toBe(true);
+    expect(await ask(ID_B)).toBe(false);
+    expect(await ask(ID_C)).toBe(false);
+    expect(await ask('not-a-uuid')).toBe(false);
+  });
+
+  it('Codex: true for a rollout with that id in any day folder', async () => {
+    await codexFile(ID_A, T0 - 40 * 24 * HOUR, join(home, 'other'));
+    const ask = (sessionId: string) =>
+      agentSessionExists({ agent: 'codex', homeDir: home, cwds: [cwd()], sessionId });
+    expect(await ask(ID_A)).toBe(true);
+    expect(await ask(ID_B)).toBe(false);
+  });
+
+  it('false when the agent folder does not exist', async () => {
+    expect(
+      await agentSessionExists({ agent: 'codex', homeDir: home, cwds: [], sessionId: ID_A }),
+    ).toBe(false);
   });
 });

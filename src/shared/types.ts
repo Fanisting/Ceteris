@@ -527,6 +527,12 @@ export interface Settings {
      * tab a window is showing are never shelved.
      */
     shelveIdleAfterHours: number;
+    /**
+     * ADR-039:reopen the tabs that were open when Ceteris last stopped (quit, update, crash).
+     * Shells and built-in agents start again, Claude Code and Codex in their own conversation;
+     * custom commands, SSH and the Admin Shell wait in the shelf. Default true.
+     */
+    restoreTabsOnLaunch: boolean;
   };
 
   systemIntegration: {

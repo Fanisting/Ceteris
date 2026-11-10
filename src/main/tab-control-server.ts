@@ -47,7 +47,9 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { fileViewKind } from '@shared/file-tree';
+import { UUID_PATTERN, type ResumableAgent } from '@shared/shelf';
 import {
+  TAB_CONTROL_ANY_TAB_OPS,
   TAB_CONTROL_ENV,
   TAB_CONTROL_KEYS,
   TAB_CONTROL_MAX_INPUT_CHARS,
@@ -100,6 +102,11 @@ export interface TabControlHost {
   isFile(path: string): Promise<boolean>;
   /** Asks every window to show the file in the viewer beside the tab (ADR-033). */
   showFile(input: { sessionId: string; name: string; path: string }): void;
+  /**
+   * The agent in a tab told us its own session id (ADR-036), from the plugin's SessionStart
+   * hook. The shelf resumes the tab with it. SessionManager.setAgentSession.
+   */
+  setAgentSession(sessionId: string, agent: ResumableAgent, agentSessionId: string): void;
 }
 
 class RequestError extends Error {
@@ -186,7 +193,7 @@ export class TabControlService {
         `protocol version ${request.v} is not ${TAB_CONTROL_VERSION}; update the ceteris-tabs plugin to match this Ceteris`,
       );
     }
-    const anyTab = request.op === 'open-file';
+    const anyTab = TAB_CONTROL_ANY_TAB_OPS.includes(request.op);
     if (!anyTab && !this.host.enabled()) {
       throw new RequestError(
         'disabled',
@@ -246,6 +253,8 @@ export class TabControlService {
         return this.input(caller, args);
       case 'open-file':
         return this.openFile(caller, args);
+      case 'agent-session':
+        return this.agentSession(caller, args);
       case 'read': {
         const target = this.target(caller, args.tab, { allowSelf: true });
         const lines = clampInt(args.lines, DEFAULT_READ_LINES, 1, TAB_CONTROL_MAX_READ_LINES);
@@ -371,6 +380,28 @@ export class TabControlService {
     this.host.showFile({ sessionId: target.id, name, path });
     logger.info('TabControl', `open-file sid=${target.id} path=${path} by tab ${caller.id}`);
     return { tab: summarize(target, caller.id), path, name, kind };
+  }
+
+  /**
+   * ADR-036: the calling tab's agent names its own session, so the shelf can resume it later.
+   * Only the caller's own tab; a hook never speaks for another tab. The id must look like
+   * a UUID, which is what both agents use, so a stray string cannot end up on a command line.
+   */
+  private agentSession(
+    caller: SessionInfo,
+    args: Record<string, unknown>,
+  ): { tab: string; agent: ResumableAgent; sessionId: string } {
+    const agent = args.agent;
+    if (agent !== 'claude-code' && agent !== 'codex') {
+      throw new RequestError('bad-request', 'agent must be "claude-code" or "codex"');
+    }
+    const id = typeof args.sessionId === 'string' ? args.sessionId.trim() : '';
+    if (!UUID_PATTERN.test(id)) {
+      throw new RequestError('bad-request', 'sessionId must be a UUID');
+    }
+    this.host.setAgentSession(caller.id, agent, id);
+    logger.debug('TabControl', `agent-session sid=${caller.id} ${agent}=${id}`);
+    return { tab: caller.id, agent, sessionId: id };
   }
 
   private async input(

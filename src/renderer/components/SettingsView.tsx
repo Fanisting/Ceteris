@@ -49,6 +49,7 @@ import {
   type UpdateTemplateResponse,
 } from '@shared/protocol';
 import { formatDisplayPath, toWslUncPath } from '@shared/path-display';
+import { SHELVE_AFTER_HOURS_CHOICES } from '@shared/shelf';
 import type {
   NewTerminalShellPolicy,
   PostExitAction,
@@ -1212,6 +1213,7 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
   const confirmOnQuit = b?.confirmOnQuit ?? true;
   const selectOnCopy = b?.selectOnCopy ?? true;
   const terminalRightClick = b?.terminalRightClick ?? 'menu';
+  const shelveIdleAfterHours = b?.shelveIdleAfterHours ?? 0;
 
   return (
     <section className="settings-panel">
@@ -1311,6 +1313,43 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}
         />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('自动收纳闲置标签', 'Shelve idle tabs')}
+        hint={tx(
+          '一个标签这么久没有输出、没有按键,就结束它的进程,放进标签栏最左边的收纳盒;点开收纳盒随时拿回来,Claude Code 和 Codex 会接着上次的对话。正在工作的 agent、有角色的标签和窗口正在显示的标签不会被收纳。右键标签也可以手动收纳。',
+          'A tab with no output and no key presses for this long ends its process and waits in the shelf at the left end of the tab row. Open the shelf to bring it back; Claude Code and Codex continue their conversation. Working agents, tabs with a role and the tab a window is showing are never shelved. The tab menu can shelve by hand too.',
+        )}
+      >
+        <select
+          className="settings-input"
+          value={String(shelveIdleAfterHours)}
+          onChange={(e) =>
+            void updateSettings(
+              { behavior: { shelveIdleAfterHours: Number(e.target.value) } },
+              setError,
+            )
+          }
+        >
+          {SHELVE_AFTER_HOURS_CHOICES.map((h) => (
+            <option key={h} value={String(h)}>
+              {h === 0
+                ? tx('关闭', 'Off')
+                : h < 24
+                  ? tx(`闲置 ${h} 小时后`, `After ${h} hour${h === 1 ? '' : 's'} idle`)
+                  : tx(`闲置 ${h / 24} 天后`, `After ${h / 24} day${h === 24 ? '' : 's'} idle`)}
+            </option>
+          ))}
+          {!SHELVE_AFTER_HOURS_CHOICES.includes(shelveIdleAfterHours) && (
+            <option value={String(shelveIdleAfterHours)}>
+              {tx(
+                `闲置 ${shelveIdleAfterHours} 小时后`,
+                `After ${shelveIdleAfterHours} hours idle`,
+              )}
+            </option>
+          )}
+        </select>
       </SettingRow>
 
       <SettingRow

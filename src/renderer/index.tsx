@@ -45,6 +45,7 @@ import './styles/coordinator-bar.css';
 import './styles/celebrations.css';
 import './styles/coordinator-tour.css';
 import './styles/ghost-tab.css';
+import './styles/shelf.css';
 // 动效层最后加载:它覆写前面各文件里同名选择器的 transition 和 animation
 import './styles/motion.css';
 import { initCustomThemes } from './custom-themes';

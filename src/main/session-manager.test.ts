@@ -209,6 +209,7 @@ function makeStubSettingsManager(
       autoCheckUpdates: true,
       autoCheckAgents: true,
       autoUpdateAgents: false,
+      shelveIdleAfterHours: 0,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {

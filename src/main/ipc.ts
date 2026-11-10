@@ -176,8 +176,14 @@ import {
   type LinkStatusChangedPayload,
   type FileViewOpenRequestedPayload,
   type LinkStatusResponse,
+  type ShelfChangedPayload,
+  type ShelfPutPayload,
+  type ShelfRemovePayload,
+  type ShelfRestorePayload,
+  type ShelfRestoreResponse,
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
+import type { ShelfManager } from './shelf-manager';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -274,6 +280,8 @@ export interface IpcLayerDeps {
   updateChecker?: UpdateChecker;
   /** 用户主题文件夹(ADR-026)。可选:单测不带它,此时列表为空,其余主题命令抛错 */
   customThemes?: CustomThemeStore;
+  /** 收纳盒(ADR-036)。可选:单测不带它,此时 snapshot.shelf 为空,cmd:shelf:* 抛错 */
+  shelfManager?: ShelfManager;
 }
 
 let installed = false;
@@ -799,6 +807,96 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       return warning ? { session, pathTreeChanged, warning } : { session, pathTreeChanged };
     },
   );
+
+  // ── Tab shelf (ADR-036) ──
+  const shelf = (): ShelfManager => {
+    if (!deps.shelfManager) {
+      throw makeIpcError(
+        'ShelfUnavailable',
+        'The tab shelf is not set up in this main process (no ShelfManager injected). ' +
+          'In the app this means bootstrap failed before the shelf was built; check main.log.',
+      );
+    }
+    return deps.shelfManager;
+  };
+
+  handleCommand(
+    COMMAND_CHANNELS.SHELF_PUT,
+    async (_e, envelope: CommandEnvelope<ShelfPutPayload>): Promise<void> => {
+      await shelf().shelve(envelope.payload.sessionId, 'manual');
+    },
+  );
+
+  // Restoring launches like cmd:session:create in the calling window. SSH folders need the
+  // profile and password handling above, so the launch stays here and the shelf only plans it.
+  handleCommand(
+    COMMAND_CHANNELS.SHELF_RESTORE,
+    async (_e, envelope: CommandEnvelope<ShelfRestorePayload>): Promise<ShelfRestoreResponse> => {
+      const { entryId, cols, rows } = envelope.payload;
+      const plan = shelf().planRestore(entryId);
+      const pathRef = pathRefFromId(plan.pathId);
+      const sshProfile =
+        pathRef.kind === 'ssh' && pathRef.sshProfileId
+          ? sshProfileManager?.getInternal(pathRef.sshProfileId)
+          : null;
+      if (pathRef.kind === 'ssh' && !sshProfile) {
+        throw makeIpcError(
+          'SshProfileNotFound',
+          `shelf restore: the SSH profile "${pathRef.sshProfileId}" of "${plan.entry.displayName}" ` +
+            `no longer exists. Add the profile again or remove the entry from the shelf.`,
+        );
+      }
+      const sshProfileForLaunch = sshProfile
+        ? {
+            ...sshProfile,
+            tmuxMode: 'disabled' as const,
+            tmuxOnMissing: 'fallback-shell' as const,
+            ...(sshProfile.passwordEncrypted
+              ? decryptStoredPassword(sshProfile.passwordEncrypted)
+              : {}),
+          }
+        : null;
+      if (sshProfileForLaunch) {
+        delete (sshProfileForLaunch as { passwordEncrypted?: string }).passwordEncrypted;
+      }
+      const session = await sessionManager.createSession({
+        pathId: plan.pathId,
+        templateId: plan.templateId,
+        ownerWindowId: envelope.windowId,
+        cols,
+        rows,
+        ...(plan.extraArgs.length > 0 ? { extraArgs: plan.extraArgs } : {}),
+        ...(sshProfileForLaunch ? { sshProfile: sshProfileForLaunch } : {}),
+      });
+      // Only now: a failed launch above keeps the entry, so nothing is lost.
+      shelf().forget(entryId);
+      if (plan.extraArgs.length > 0 && plan.entry.resume) {
+        sessionManager.setAgentSession(
+          session.id,
+          plan.entry.resume.agent,
+          plan.entry.resume.sessionId,
+        );
+      }
+      // The name the user knew it by. A fresh agent would otherwise overwrite it with its
+      // own title at once; an AI title still follows the next finished turn (ADR-029).
+      if (plan.entry.displayName) sessionManager.renameSession(session.id, plan.entry.displayName);
+      return {
+        session: sessionManager.get(session.id) ?? session,
+        resumed: plan.extraArgs.length > 0,
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SHELF_REMOVE,
+    (_e, envelope: CommandEnvelope<ShelfRemovePayload>): void => {
+      shelf().forget(envelope.payload.entryId);
+    },
+  );
+
+  handleCommand(COMMAND_CHANNELS.SHELF_CLEAR, (): void => {
+    shelf().clear();
+  });
 
   handleCommand(
     COMMAND_CHANNELS.SESSION_CLOSE,
@@ -2611,6 +2709,11 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
     broadcastAppState(deps);
   });
 
+  // ADR-036: the shelf announces before it destroys, so this reaches the windows first.
+  deps.shelfManager?.on('changed', (payload: ShelfChangedPayload) => {
+    broadcastEvent<ShelfChangedPayload>(EVENT_CHANNELS.SHELF_CHANGED, payload);
+  });
+
   // Session output → 仅推 owner
   //
   // Ceteris Link 之后 owner 可能是一个远程客户端(虚拟窗口)。走
@@ -2667,6 +2770,7 @@ function buildSnapshot(deps: IpcLayerDeps, myWindowId: string): AppSnapshot {
     templates: deps.templatesManager.list(),
     defaultTemplateId: deps.templatesManager.getDefaultTemplateId(),
     settings: deps.settingsManager.get(),
+    shelf: deps.shelfManager?.list() ?? [],
     myWindowId,
   };
 }

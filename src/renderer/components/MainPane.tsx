@@ -21,6 +21,7 @@
  * @对应文档章节: 软件定义书.md 6.3 (右侧标签页)、6.4 (终端区域)
  */
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -78,6 +79,7 @@ import {
 } from './launch-options';
 import { QuickLaunchTip } from './QuickLaunchTip';
 import { GhostTab } from './GhostTab';
+import { ShelfBox, ShelfGhostTab } from './ShelfBox';
 import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
@@ -870,16 +872,31 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   // 用户当前持有/查看其他 session 时点击即切换到 EmptyPathState,这与 Chrome
   // 的 new-tab 行为一致(不在被点之前消耗资源);自动选中只在已无 displayable
   // 时才发生(showBlankTab=true)。
+  // ADR-036:tabs on their way into the shelf stay where they were for the animation.
+  // Ghosts whose folder is not on screen are not drawn; they time out on their own.
+  const ghosts = state.shelfGhosts.filter((g) => g.session.pathId === state.selectedPathId);
+  const ghostsAfter = (id: string | null): JSX.Element[] =>
+    ghosts
+      .filter((g) => g.afterId === id)
+      .map((g) => <ShelfGhostTab key={`ghost-${g.session.id}`} ghost={g} />);
+  // A ghost whose predecessor is gone too (two tabs shelved in one sweep) goes at the end.
+  const orphanGhosts = ghosts.filter(
+    (g) => g.afterId !== null && !folderTabs.some((t) => t.id === g.afterId),
+  );
   const tabBar = (
     <div className="tab-bar">
       <div className="tab-list">
+        {/* The shelf box sits at the left end of the worker row, only while it holds tabs */}
+        <ShelfBox />
+        {ghostsAfter(null)}
         {folderTabs.map((s) => (
-          <Tab
-            key={s.id}
-            session={s}
-            myWindowId={state.myWindowId}
-            selected={s.id === selectedSessionId}
-          />
+          <Fragment key={s.id}>
+            <Tab session={s} myWindowId={state.myWindowId} selected={s.id === selectedSessionId} />
+            {ghostsAfter(s.id)}
+          </Fragment>
+        ))}
+        {orphanGhosts.map((g) => (
+          <ShelfGhostTab key={`ghost-${g.session.id}`} ghost={g} />
         ))}
         {/* 幽灵标签:快捷启动的 agent 图标 + 原来的新建按钮,见 GhostTab.tsx */}
         <GhostTab pathId={state.selectedPathId}>

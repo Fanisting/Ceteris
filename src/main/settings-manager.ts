@@ -37,6 +37,7 @@ import {
   LEGADO_PALETTE_STYLES,
 } from '@shared/legado-dynamic-ids';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
+import { SHELVE_AFTER_HOURS_MAX } from '@shared/shelf';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
   QUICK_LAUNCH_MAX_ITEMS,
@@ -99,6 +100,8 @@ export const DEFAULT_SETTINGS: Settings = {
     // 新建页 agent 状态点:后台检查默认开,自动升级默认关 (升级前总会先通知)
     autoCheckAgents: true,
     autoUpdateAgents: false,
+    // ADR-036:自动收纳默认关;标签菜单仍可手动收纳
+    shelveIdleAfterHours: 0,
   },
   systemIntegration: {
     explorerOpenIn: 'new-window',
@@ -598,6 +601,12 @@ export function validateSettings(s: Settings): void {
   checkRange('appearance.terminalLineHeight', s.appearance.terminalLineHeight, 1.0, 2.0);
   checkRange('appearance.uiZoom', s.appearance.uiZoom, 0.75, 1.5);
   checkRange('advanced.activeIdleThresholdSeconds', s.advanced.activeIdleThresholdSeconds, 0.1, 60);
+  checkRange(
+    'behavior.shelveIdleAfterHours',
+    s.behavior.shelveIdleAfterHours,
+    0,
+    SHELVE_AFTER_HOURS_MAX,
+  );
   if (!['INFO', 'DEBUG'].includes(s.advanced.logLevel)) {
     throw new SettingsError(
       'InvalidSettings',

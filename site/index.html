@@ -9,17 +9,14 @@
       content="Ceteris is a path-centric, AI-agent-friendly terminal manager for Windows, macOS and Linux. Close every window; your sessions keep running."
     />
     <meta property="og:title" content="Ceteris" />
-    <meta
-      property="og:description"
-      content="Your terminal sessions shouldn't die because you closed the window."
-    />
+    <meta property="og:description" content="Close the window. Keep the sessions." />
     <meta property="og:image" content="https://fanisting.github.io/Ceteris/icon.png" />
     <link rel="icon" href="icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Caveat:wght@400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=swap"
     />
     <style>
       /* Layout: a top app bar, a two-column hero (thesis + live window mock), then stacked
@@ -542,9 +539,11 @@
         }
       }
 
-      /* ---- App window mock ---- */
+      /* ---- App window mock: mirrors the real window (title bar with script wordmark and
+         Local chip, folder view in the sidebar, primary tabs with the agent wave, session
+         header, terminal on the surface colour). Sizes follow the app's desktop density. ---- */
       .mock {
-        background: var(--md-surface-container-lowest);
+        background: var(--md-surface);
         border-radius: var(--shape-lg);
         box-shadow: var(--shadow-3);
         border: 1px solid var(--md-outline-variant);
@@ -552,55 +551,50 @@
         font-size: 12.5px;
         min-width: 0;
         max-width: 100%;
+        color: var(--md-on-surface);
       }
       .mock .titlebar {
-        height: 36px;
+        height: 40px;
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 0 12px;
-        background: var(--md-surface-container);
-        color: var(--md-on-surface-variant);
+        padding: 0 14px;
       }
       .mock .titlebar .sig {
-        font-weight: 500;
-        color: var(--md-on-surface);
+        font-family: 'Segoe Script', 'Ink Free', 'Caveat', cursive;
         font-style: italic;
-        letter-spacing: 0.02em;
+        font-size: 17px;
+        color: var(--md-primary);
+        letter-spacing: 0.01em;
       }
       .mock .titlebar .host {
-        margin-left: auto;
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        padding: 2px 10px;
+        gap: 2px;
+        padding: 3px 6px 3px 10px;
         border-radius: var(--shape-full);
-        background: var(--md-surface-container-highest);
+        background: var(--md-secondary-container);
+        color: var(--md-on-secondary-container);
         font-size: 11px;
+        font-weight: 500;
       }
       .mock .titlebar .host .ms {
         font-size: 14px;
       }
-      .mock .controls {
+      .mock .winctl {
+        margin-left: auto;
         display: flex;
-        gap: 8px;
-        margin-left: 10px;
-      }
-      .mock .controls span {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--md-outline-variant);
+        gap: 18px;
+        color: var(--md-on-surface-variant);
+        font-size: 11px;
       }
       .mock .body {
         display: grid;
-        grid-template-columns: 180px minmax(0, 1fr);
+        grid-template-columns: 190px minmax(0, 1fr);
         min-height: 380px;
       }
       .mock .side {
-        background: var(--md-surface-container-low);
-        border-right: 1px solid var(--md-outline-variant);
-        padding: 10px 8px;
+        padding: 6px 10px 10px 14px;
         display: grid;
         align-content: start;
         gap: 2px;
@@ -608,73 +602,54 @@
       .mock .side .h {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 4px 8px 8px;
+        gap: 6px;
+        padding: 4px 2px 8px;
         color: var(--md-on-surface-variant);
-        font-weight: 500;
-        font-size: 11px;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
       }
       .mock .side .h .ms {
         font-size: 16px;
       }
-      .mock .filters {
-        display: flex;
-        gap: 4px;
-        padding: 0 6px 8px;
+      .mock .side .h .count {
+        color: var(--md-outline);
+        margin-right: auto;
       }
-      .mock .filters span {
-        font-size: 10px;
-        padding: 2px 8px;
-        border-radius: var(--shape-sm);
-        border: 1px solid var(--md-outline-variant);
-        color: var(--md-on-surface-variant);
+      .mock .side .h .ms + .ms {
+        margin-left: 6px;
       }
-      .mock .filters span.on {
-        background: var(--md-secondary-container);
-        color: var(--md-on-secondary-container);
-        border-color: transparent;
-      }
-      .mock .folder {
+      .mock .side .back {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
-        border-radius: var(--shape-full);
+        gap: 8px;
+        padding: 6px 4px 8px 2px;
         color: var(--md-on-surface);
       }
-      .mock .folder.active {
-        background: var(--md-secondary-container);
-        color: var(--md-on-secondary-container);
-      }
-      .mock .folder .ms {
+      .mock .side .back .ms {
         font-size: 16px;
         color: var(--md-on-surface-variant);
       }
-      .mock .folder.active .ms {
-        color: inherit;
-      }
-      .mock .folder .name {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
-      }
-      .mock .folder .tag {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
+      .mock .side .back .ms:last-child {
         margin-left: auto;
-        flex-shrink: 0;
       }
       .mock .sess {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 3px 8px 3px 30px;
+        gap: 8px;
+        height: 28px;
+        padding: 0 10px 0 12px;
+        border-radius: var(--shape-full);
+        border: 1.5px solid transparent;
         color: var(--md-on-surface-variant);
-        font-size: 11.5px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .mock .sess .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+      }
+      .mock .sess.sel {
+        border-color: var(--md-primary);
+        color: var(--md-on-surface);
       }
       .mock .dot {
         width: 7px;
@@ -698,16 +673,16 @@
       .mock .main {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: auto auto minmax(0, 1fr);
         min-width: 0;
+        border-left: 1px solid var(--md-outline-variant);
       }
       .mock .tabs {
         display: flex;
-        align-items: flex-end;
+        align-items: center;
         gap: 2px;
-        padding: 8px 10px 0;
+        padding: 8px 8px 0;
         border-bottom: 1px solid var(--md-outline-variant);
-        background: var(--md-surface-container-lowest);
         overflow: hidden;
         min-width: 0;
       }
@@ -715,16 +690,23 @@
         position: relative;
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 8px 12px 10px;
+        gap: 10px;
+        padding: 6px 10px 12px 14px;
         color: var(--md-on-surface-variant);
-        font-weight: 500;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .mock .tab .t {
+        max-width: 132px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mock .tab .x {
+        font-size: 13px;
+        color: var(--md-on-surface-variant);
       }
       .mock .tab.on {
         color: var(--md-primary);
-      }
-      .mock .tab .ms {
-        font-size: 14px;
       }
       .mock .tab .ind {
         position: absolute;
@@ -737,77 +719,99 @@
       }
       .mock .tab svg {
         position: absolute;
-        left: 8px;
-        right: 8px;
-        bottom: -1px;
-        width: calc(100% - 16px);
+        left: 10px;
+        right: 10px;
+        bottom: 1px;
+        width: calc(100% - 20px);
         height: 8px;
         overflow: hidden;
       }
       .mock .tab svg path {
         fill: none;
         stroke: var(--md-primary);
-        stroke-width: 2.2;
+        stroke-width: 2;
         stroke-linecap: round;
       }
       .mock .tab.wait .ind {
         background: #e0a100;
         animation: breathe 1.6s ease-in-out infinite;
       }
-      .mock .tab .plus {
+      .mock .tab.wait {
+        color: var(--md-on-surface);
+      }
+      .mock .quick {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: 6px;
+        padding-bottom: 6px;
+      }
+      .mock .quick .ms {
+        font-size: 16px;
         color: var(--md-on-surface-variant);
       }
-      .mock .tab .quick {
-        display: inline-flex;
-        gap: 4px;
-        margin-left: 6px;
-      }
-      .mock .tab .quick span {
-        width: 18px;
-        height: 18px;
+      .mock .quick .plus {
+        width: 26px;
+        height: 26px;
         border-radius: 50%;
-        border: 1px dashed var(--md-outline);
         display: grid;
         place-items: center;
-        font-size: 9px;
+        background: var(--md-secondary-container);
+        color: var(--md-on-secondary-container);
+      }
+      .mock .quick .plus .ms {
+        font-size: 16px;
+        color: inherit;
+      }
+      .mock .shead {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 14px;
         color: var(--md-on-surface-variant);
+        font-size: 11.5px;
+      }
+      .mock .shead .ms {
+        font-size: 14px;
+        margin-left: 4px;
       }
       .mock .term {
-        background: var(--term-bg);
-        color: var(--term-fg);
         font-family: var(--font-mono);
         font-size: 12px;
-        line-height: 1.6;
-        padding: 14px 16px;
-        margin: 10px;
-        border-radius: var(--shape-md);
+        line-height: 1.7;
+        padding: 10px 18px 16px;
         overflow: hidden;
         min-width: 0;
+        color: var(--md-on-surface);
       }
       .mock .term .p {
-        color: var(--term-lime);
+        color: var(--md-tertiary);
+        font-weight: 500;
       }
       .mock .term .m {
-        color: var(--term-muted);
+        color: var(--md-on-surface-variant);
       }
       .mock .term .b {
-        color: #c9b6ff;
+        color: var(--md-primary);
+      }
+      .mock .term .k {
+        color: var(--md-secondary);
       }
       .mock .term .cur {
         display: inline-block;
         width: 7px;
         height: 13px;
-        background: var(--term-fg);
+        background: var(--md-on-surface);
         vertical-align: -2px;
         animation: blink 1s steps(2) infinite;
       }
       .mock .term .formula {
         display: inline-block;
-        background: #22233c;
+        background: var(--md-surface-container);
         border-radius: 4px;
-        padding: 2px 8px;
+        padding: 1px 8px;
         font-style: italic;
-        color: #e7e8ff;
       }
       @keyframes blink {
         to {
@@ -838,6 +842,9 @@
         }
         .mock .side {
           display: none;
+        }
+        .mock .main {
+          border-left: 0;
         }
         .mock .term {
           font-size: 11px;
@@ -1163,13 +1170,10 @@
         <div class="hero-grid">
           <div class="hero-copy">
             <span class="eyebrow">Terminal manager · Windows, macOS, Linux</span>
-            <h1 class="display">
-              Your terminal sessions shouldn't die because you closed the window.
-            </h1>
+            <h1 class="display">Close the window. Keep the sessions.</h1>
             <p class="lede body-lg">
-              Ceteris keeps every shell, build and AI coding agent running in the background.
-              Organise them by folder, see which agent is waiting for you, and open or close windows
-              whenever you like.
+              Ceteris keeps every shell, build and AI coding agent running in the background,
+              grouped by folder, with a glance telling you which agent is waiting for you.
             </p>
             <div class="hero-cta">
               <a class="btn filled lg" id="heroDownload" href="#download"
@@ -1194,70 +1198,68 @@
 
           <div class="mock" aria-label="A sketch of the Ceteris window" role="img">
             <div class="titlebar">
-              <div class="controls"><span></span><span></span><span></span></div>
               <span class="sig">Ceteris</span>
-              <span class="host"><span class="ms">computer</span>Local</span>
+              <span class="host">Local<span class="ms">arrow_drop_down</span></span>
+              <span class="winctl"><span>─</span><span>☐</span><span>✕</span></span>
             </div>
             <div class="body">
               <aside class="side">
-                <div class="h"><span>Folders</span><span class="ms">add</span></div>
-                <div class="filters">
-                  <span class="on">running</span><span>waiting</span><span>frontend</span>
+                <div class="h">
+                  <span class="ms">folder</span>Folders <span class="count">12</span
+                  ><span class="ms">view_list</span><span class="ms">add</span>
                 </div>
-                <div class="folder active">
-                  <span class="ms">folder_open</span><span class="name">~/projects/auth</span
-                  ><span class="tag" style="background: #8a3aa8"></span>
+                <div class="back">
+                  <span class="ms">arrow_back</span>auth<span class="ms">folder_open</span>
                 </div>
-                <div class="sess"><span class="dot busy"></span>claude</div>
-                <div class="sess"><span class="dot idle"></span>shell</div>
-                <div class="sess"><span class="dot busy"></span>pytest</div>
-                <div class="sess"><span class="dot wait"></span>codex</div>
-                <div class="folder">
-                  <span class="ms">folder</span><span class="name">~/projects/web</span
-                  ><span class="tag" style="background: #4f6600"></span>
+                <div class="sess">
+                  <span class="dot busy"></span><span class="t">Refresh tokens with backoff</span>
                 </div>
-                <div class="sess"><span class="dot done"></span>codex</div>
-                <div class="folder">
-                  <span class="ms">folder</span><span class="name">~/scripts</span>
+                <div class="sess">
+                  <span class="dot done"></span><span class="t">Run the auth test suite</span>
                 </div>
-                <div class="sess"><span class="dot busy"></span>migrate</div>
-                <div class="folder">
-                  <span class="ms">dns</span><span class="name">prod:~/repo</span
-                  ><span class="tag" style="background: #3b4cc0"></span>
+                <div class="sess sel">
+                  <span class="dot wait"></span><span class="t">Add retry to the login form</span>
                 </div>
-                <div class="sess"><span class="dot idle"></span>tmux</div>
-                <div class="folder">
-                  <span class="ms">folder</span><span class="name">D:\client\report-tool</span>
-                </div>
+                <div class="sess"><span class="dot idle"></span><span class="t">shell</span></div>
               </aside>
               <div class="main">
                 <div class="tabs">
-                  <span class="tab on gen"
-                    ><span class="ms">smart_toy</span>claude<svg
-                      viewBox="0 0 100 8"
-                      preserveAspectRatio="xMinYMid slice"
-                    >
+                  <span class="tab gen"
+                    ><span class="t">Refresh tokens with backoff</span
+                    ><span class="ms x">close</span
+                    ><svg viewBox="0 0 100 8" preserveAspectRatio="xMinYMid slice">
                       <path
                         d="M0 4 Q6 1.5 12 4 T24 4 T36 4 T48 4 T60 4 T72 4 T84 4 T96 4 T108 4 T120 4 T132 4 T144 4"
                       /></svg
                   ></span>
-                  <span class="tab"><span class="ms">terminal</span>shell</span>
-                  <span class="tab"><span class="ms">science</span>pytest</span>
-                  <span class="tab wait"
-                    ><span class="ms">smart_toy</span>codex<span class="ind"></span
-                  ></span>
                   <span class="tab"
-                    ><span class="ms plus">add</span
-                    ><span class="quick"><span>C</span><span>X</span></span></span
+                    ><span class="t">Run the auth test suite</span
+                    ><span class="ms x">close</span></span
+                  >
+                  <span class="tab on wait"
+                    ><span class="t">Add retry to the login form</span
+                    ><span class="ms x">close</span><span class="ind"></span
+                  ></span>
+                  <span class="quick"
+                    ><span class="ms">auto_awesome</span><span class="ms">hub</span
+                    ><span class="plus"><span class="ms">add</span></span></span
+                  >
+                </div>
+                <div class="shead">
+                  <span class="dot wait"></span>Add retry to the login form · pid 37476<span
+                    class="ms"
+                    >open_in_new</span
                   >
                 </div>
                 <div class="term">
                   <div><span class="p">❯</span> claude</div>
-                  <div><span class="b">✻</span> Welcome to Claude Code</div>
-                  <div class="m">cwd: ~/projects/auth</div>
+                  <div>
+                    <span class="b">✻</span> Welcome to Claude Code
+                    <span class="m">· ~/projects/auth</span>
+                  </div>
                   <div>&nbsp;</div>
                   <div>
-                    <span class="p">›</span> Refactor the token refresh so it retries with backoff.
+                    <span class="k">›</span> Add retry with backoff to the login form submit.
                   </div>
                   <div>&nbsp;</div>
                   <div>
@@ -1265,9 +1267,12 @@
                     <span class="formula">t = 2ᵏ · 250 ms</span> for attempt k.
                   </div>
                   <div>
-                    <span class="b">●</span> Updating <span class="m">src/auth/refresh.ts</span>…
+                    <span class="b">●</span> Edit <span class="m">src/auth/LoginForm.tsx</span>
                   </div>
-                  <div><span class="p">❯</span> <span class="cur"></span></div>
+                  <div class="m">
+                    Do you want to make this edit? <span class="k">(y/n)</span>
+                    <span class="cur"></span>
+                  </div>
                 </div>
               </div>
             </div>

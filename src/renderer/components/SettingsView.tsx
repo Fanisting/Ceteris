@@ -116,6 +116,7 @@ import {
   tabControlInstallLines,
 } from '@shared/tab-control';
 import type { CodexMcpStatus } from '@shared/codex-mcp';
+import { EXTENSION_SETUP_OPEN_EVENT } from '@shared/extension-setup';
 import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
@@ -3168,6 +3169,22 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
   return (
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('扩展', 'Extensions')}</h2>
+
+      <SettingRow
+        label={tx('一次装好', 'Set up in one go')}
+        hint={tx(
+          '第一次启动时出现的清单:勾选要用的 Claude Code / Codex 扩展,一次装好。这里可以再打开。',
+          'The checklist from the first start: tick the Claude Code and Codex extensions you use and set them up together. Open it again here.',
+        )}
+      >
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => window.dispatchEvent(new Event(EXTENSION_SETUP_OPEN_EVENT))}
+        >
+          {tx('打开清单', 'Open the list')}
+        </button>
+      </SettingRow>
 
       <SettingRow
         label={tx('Claude Code 公式图片', 'Claude Code formula images')}

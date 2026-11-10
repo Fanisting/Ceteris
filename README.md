@@ -162,6 +162,8 @@ Zoom with the buttons in the header or Ctrl + mouse wheel. Images and markdown f
 
 ## Core Features
 
+Every feature has its own page with what it does and where to find it: see the [features folder](features/README.md).
+
 ### V1 (current alpha)
 
 - ✅ **Runs on Windows, macOS and Linux**: on macOS the app stays in the Dock when its windows close; on Linux it runs as a regular desktop app ([ADR-013](docs/软件定义书.md#adr-013))

@@ -817,6 +817,10 @@ button:focus-visible,
   text-transform: none;
 }
 
+.empty-agents-hint {
+  color: var(--md-on-surface-variant, #f0f);
+}
+
 .template-button {
   gap: 12px;
   padding: 14px 16px;

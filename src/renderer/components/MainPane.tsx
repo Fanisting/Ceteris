@@ -24,6 +24,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type DragEvent,
 } from 'react';
@@ -32,7 +33,9 @@ import {
   type AgentVersionInfo,
   type CreateSessionResponse,
   type ListAgentVersionsResponse,
+  type ListInstalledAgentsResponse,
   type ListShellsResponse,
+  type ListTemplateUsageResponse,
   type UpgradeAgentPayload,
   type AgentReloadPlan,
   type AgentReloadPlanPayload,
@@ -41,6 +44,12 @@ import {
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
+import {
+  frequentChoices,
+  templateUsageKey,
+  type FrequentTier,
+  type TemplateUsageEntry,
+} from '@shared/template-usage';
 import type { SessionInfo, Template } from '@shared/types';
 import {
   findMyOwnedSessionId,
@@ -503,6 +512,49 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
     };
   }, [showAgentDots]);
 
+  // ADR-034:本机路径只显示 PATH 上装了的 agent。null 表示还没问到 (毫秒级,
+  // Agents 区等它再画,免得先全画出来再抽掉几个)。问不到就当全装了,按钮照常。
+  const [missingAgents, setMissingAgents] = useState<Set<string> | null>(
+    () => (showAgentDots ? null : new Set()),
+  );
+  useEffect(() => {
+    if (!showAgentDots) {
+      setMissingAgents(new Set());
+      return;
+    }
+    let cancelled = false;
+    window.api
+      .invoke<unknown, ListInstalledAgentsResponse>(COMMAND_CHANNELS.AGENT_LIST_INSTALLED, {})
+      .then((res) => {
+        if (cancelled) return;
+        setMissingAgents(new Set(res.agents.filter((a) => !a.installed).map((a) => a.templateId)));
+      })
+      .catch((err) => {
+        console.warn('[EmptyPathState] list-installed-agents failed', err);
+        if (!cancelled) setMissingAgents(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAgentDots]);
+
+  // ADR-034:常用选项的小动画。次数来自 main,规则在 shared。拿不到就没有动画。
+  const [usage, setUsage] = useState<TemplateUsageEntry[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    window.api
+      .invoke<unknown, ListTemplateUsageResponse>(COMMAND_CHANNELS.TEMPLATE_USAGE_LIST, {})
+      .then((res) => {
+        if (!cancelled) setUsage(res.entries);
+      })
+      .catch((err) => {
+        console.warn('[EmptyPathState] template-usage-list failed', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /**
    * 状态点被点击。该 agent 有终端开着时先问 (ADR-037):整体重载 (关掉、升级、开回来并
    * 恢复对话) 还是只在新终端里跑升级命令;没有终端开着时直接跑升级命令。
@@ -612,11 +664,25 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
 
   const templates = state.templates.filter((t) => !t.hidden);
   const shellTemplates = templates.filter((t) => SHELL_TEMPLATE_IDS.has(t.id));
-  const agentTemplates = templates.filter((t) => !SHELL_TEMPLATE_IDS.has(t.id));
+  const allAgentTemplates = templates.filter((t) => !SHELL_TEMPLATE_IDS.has(t.id));
+  const agentTemplates = allAgentTemplates.filter((t) => !missingAgents?.has(t.id));
+  const agentsKnown = missingAgents !== null;
   const visibleShells = shells ? filterShellsForWslPath(shells, wslDistroName) : null;
   const wslShellId = isWslPath ? visibleShells?.[0]?.id : undefined;
   // WSL 路径要等 WSL shell 检测出来,模板才有地方跑
   const canLaunchTemplates = isSshPath || !isWslPath || !!wslShellId;
+  const visibleKeys = [
+    ...(visibleShells ?? []).map((s) => templateUsageKey('shell', s.id)),
+    ...shellTemplates.map((t) => t.id),
+    ...agentTemplates.map((t) => t.id),
+  ];
+  const tiers = frequentChoices(usage, visibleKeys, Date.now());
+  // 常用的几个按它们在页面上的先后错开起跳,像一排小动物依次探头
+  const hopOrder = visibleKeys.filter((k) => tiers.has(k));
+  const tierProps = (key: string): { tier?: FrequentTier; hopIndex: number } => {
+    const tier = tiers.get(key);
+    return tier ? { tier, hopIndex: hopOrder.indexOf(key) } : { hopIndex: 0 };
+  };
   const renderTemplate = (t: Template): JSX.Element => (
     <TemplateLaunchButton
       key={t.id}
@@ -625,6 +691,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
       onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
       version={showAgentDots ? agentVersions.get(t.id) : undefined}
       onUpgrade={() => void handleUpgrade(t.id, t.name)}
+      {...tierProps(t.id)}
     />
   );
 
@@ -680,7 +747,8 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
                 <button
                   key={s.id}
                   type="button"
-                  className="template-button"
+                  className={frequentClass('template-button', tierProps(templateUsageKey('shell', s.id)))}
+                  style={frequentStyle(tierProps(templateUsageKey('shell', s.id)))}
                   onClick={() => void handleCreate('shell', s.id)}
                   disabled={creating}
                   title={`${s.displayName}\n${s.executablePath}`}
@@ -696,11 +764,22 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
           </div>
         )}
 
-        {agentTemplates.length > 0 && (
+        {agentsKnown && agentTemplates.length > 0 && (
           <div className="empty-section">
             <div className="empty-section-title">Agents</div>
             <div className="empty-button-grid">
               {canLaunchTemplates && agentTemplates.map(renderTemplate)}
+            </div>
+          </div>
+        )}
+        {agentsKnown && agentTemplates.length === 0 && allAgentTemplates.length > 0 && (
+          <div className="empty-section">
+            <div className="empty-section-title">Agents</div>
+            <div className="empty-agents-hint">
+              {tx(
+                'PATH 上没找到任何 agent 命令。装好 Claude Code、Codex 或别的 agent 后,它会出现在这里。',
+                'No agent command was found on PATH. Install Claude Code, Codex or another agent and it appears here.',
+              )}
             </div>
           </div>
         )}
@@ -712,12 +791,32 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
 /** 内置的纯 shell 模板归到 Shell 区;其余模板 (含自定义) 归到 Agents 区。 */
 const SHELL_TEMPLATE_IDS = new Set(['shell', 'admin-shell']);
 
+/**
+ * ADR-034:常用选项的样式钩子。favorite 是点得最多的那个,frequent 是其余几个;
+ * 动画全在 CSS (global.css "常用选项"),这里只挂类名和起跳的先后顺序。
+ */
+interface FrequentProps {
+  tier?: FrequentTier | undefined;
+  /** 在常用选项里排第几,决定入场起跳的延迟 */
+  hopIndex: number;
+}
+
+function frequentClass(base: string, props: FrequentProps): string {
+  return props.tier ? `${base} ${props.tier}` : base;
+}
+
+function frequentStyle(props: FrequentProps): CSSProperties | undefined {
+  return props.tier ? ({ '--hop-index': props.hopIndex } as CSSProperties) : undefined;
+}
+
 function TemplateLaunchButton({
   template,
   creating,
   onLaunch,
   version,
   onUpgrade,
+  tier,
+  hopIndex,
 }: {
   template: Template;
   creating: boolean;
@@ -725,11 +824,12 @@ function TemplateLaunchButton({
   /** 有值时在卡片右侧显示状态点 */
   version?: AgentVersionInfo | undefined;
   onUpgrade?: () => void;
-}): JSX.Element {
+} & FrequentProps): JSX.Element {
   const button = (
     <button
       type="button"
-      className={`template-button${version ? ' has-dot' : ''}`}
+      className={frequentClass(`template-button${version ? ' has-dot' : ''}`, { tier, hopIndex })}
+      style={frequentStyle({ tier, hopIndex })}
       onClick={onLaunch}
       disabled={creating}
       title={template.command ? `${template.name} — 启动命令: ${template.command}` : template.name}

@@ -91,6 +91,10 @@ import {
   type EventEnvelope,
   type FocusSessionOwnerPayload,
   type FocusSessionOwnerResponse,
+  type ReadChoicePayload,
+  type ReadChoiceResponse,
+  type AnswerChoicePayload,
+  type AnswerChoiceResponse,
   type LinkConnectionStatePayload,
   type FocusWindowPayload,
   type AddTemplatePayload,
@@ -993,6 +997,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       }
       return { windowId: info.id, windowNumber: info.number };
     },
+  );
+
+  // ADR-035:toast 里的选择面板从别的标签或窗口读和回答 agent 的提示。
+  // 两条都不抛错:session 没了或提示变了都是正常时序,面板按 reason 改口。
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_READ_CHOICE,
+    (_e, envelope: CommandEnvelope<ReadChoicePayload>): ReadChoiceResponse => ({
+      prompt: sessionManager.readChoice(envelope.payload.sessionId),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_ANSWER_CHOICE,
+    (_e, envelope: CommandEnvelope<AnswerChoicePayload>): AnswerChoiceResponse =>
+      sessionManager.answerChoice(envelope.payload.sessionId, envelope.payload.index),
   );
 
   handleCommand(

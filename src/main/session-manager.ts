@@ -50,7 +50,7 @@ import type {
   SessionOutputPayload,
   SessionStateChangedPayload,
 } from '@shared/protocol';
-import type { AgentWork, SessionInfo, Template, Settings } from '@shared/types';
+import type { AgentWork, ChoicePrompt, SessionInfo, Template, Settings } from '@shared/types';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import type { TemplatesManager } from './templates-manager';
@@ -89,6 +89,8 @@ import { SESSION_ROLE_NAMES, type SessionRole } from '@shared/session-role';
 import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
 import {
   AGENT_PHASE_SCREEN_ROWS,
+  choiceKeys,
+  readChoicePrompt,
   classifyWork,
   detectAgentPhase,
   readWorkSignals,
@@ -1109,7 +1111,10 @@ export class SessionManager extends EventEmitter {
       managed.info.role = null;
       managed.info.coordinator = false;
     }
-    logger.info('SessionManager', `setRole sid=${sessionId} ${current ?? 'worker'} → ${role ?? 'worker'}`);
+    logger.info(
+      'SessionManager',
+      `setRole sid=${sessionId} ${current ?? 'worker'} → ${role ?? 'worker'}`,
+    );
     this.emitStateChanged(managed, {
       role: managed.info.role,
       coordinator: managed.info.coordinator,
@@ -1215,10 +1220,7 @@ export class SessionManager extends EventEmitter {
     else this.paneSessions.set(windowId, new Set(sessionIds));
   }
 
-  private releaseAllOwnedBy(
-    windowId: string,
-    options?: { exceptSessionId?: string },
-  ): void {
+  private releaseAllOwnedBy(windowId: string, options?: { exceptSessionId?: string }): void {
     const except = options?.exceptSessionId;
     // No exception means the window is going away, so panes are not protected then.
     const panes = except !== undefined ? this.paneSessions.get(windowId) : undefined;
@@ -1319,10 +1321,7 @@ export class SessionManager extends EventEmitter {
     const kind = classifyInput(text);
     managed.recentKeys.push({ ts: now, kind });
     const cutoff = now - RECENT_KEYS_TTL_MS;
-    while (
-      managed.recentKeys.length > 0 &&
-      (managed.recentKeys[0]?.ts ?? Infinity) < cutoff
-    ) {
+    while (managed.recentKeys.length > 0 && (managed.recentKeys[0]?.ts ?? Infinity) < cutoff) {
       managed.recentKeys.shift();
     }
     while (managed.recentKeys.length > RECENT_KEYS_CAP) {
@@ -1338,9 +1337,7 @@ export class SessionManager extends EventEmitter {
     } catch (err) {
       logger.warn(
         'SessionManager',
-        `pty.write failed sid=${sessionId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `pty.write failed sid=${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
       );
       return { accepted: false, reason: 'pty-write-failed' };
     }
@@ -1449,9 +1446,7 @@ export class SessionManager extends EventEmitter {
    *
    * session 不存在返回 { data: '', lastSeq: -1 }。
    */
-  async getScrollbackForReplay(
-    sessionId: string,
-  ): Promise<{ data: string; lastSeq: number }> {
+  async getScrollbackForReplay(sessionId: string): Promise<{ data: string; lastSeq: number }> {
     const managed = this.sessions.get(sessionId);
     if (!managed || !managed.headlessTerm || !managed.serializeAddon) {
       return { data: '', lastSeq: -1 };
@@ -1481,12 +1476,14 @@ export class SessionManager extends EventEmitter {
     // headless _core 内部状态把这两条补到字节流末尾 — 与 master 自身实现
     // 字节级等价,不是猜测。完整背景与删除条件见
     // docs/issues/xterm-serialize-mode-polyfill.md。
-    const core = (term as unknown as {
-      _core?: {
-        coreService?: { isCursorHidden?: boolean };
-        buffer?: { scrollTop?: number; scrollBottom?: number };
-      };
-    })._core;
+    const core = (
+      term as unknown as {
+        _core?: {
+          coreService?: { isCursorHidden?: boolean };
+          buffer?: { scrollTop?: number; scrollBottom?: number };
+        };
+      }
+    )._core;
     if (core?.coreService?.isCursorHidden) {
       ansi += '\x1b[?25l';
     }
@@ -1662,10 +1659,7 @@ export class SessionManager extends EventEmitter {
     if (managed.pendingEmit === null) {
       managed.pendingEmit = { bytes, lastSeq: seq };
     } else {
-      managed.pendingEmit.bytes = Buffer.concat([
-        managed.pendingEmit.bytes,
-        bytes,
-      ]);
+      managed.pendingEmit.bytes = Buffer.concat([managed.pendingEmit.bytes, bytes]);
       managed.pendingEmit.lastSeq = seq;
     }
     if (managed.pendingEmitTimer === null) {
@@ -1765,7 +1759,10 @@ export class SessionManager extends EventEmitter {
 
     // Agent 升级这类一次性命令:成功就关掉 tab;失败留着,让用户看报错
     if (managed.closeOnCleanExit && exitCode === 0) {
-      logger.info('SessionManager', `one-off command finished, closing sessionId=${managed.info.id}`);
+      logger.info(
+        'SessionManager',
+        `one-off command finished, closing sessionId=${managed.info.id}`,
+      );
       this.destroySession(managed, 'pty-exited');
     }
   }
@@ -1795,9 +1792,7 @@ export class SessionManager extends EventEmitter {
       } catch (err) {
         logger.warn(
           'SessionManager',
-          `kill failed sid=${sid}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `kill failed sid=${sid}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
       managed.pty = null;
@@ -1843,18 +1838,12 @@ export class SessionManager extends EventEmitter {
       // 仅在用户开启 statusRecheckEnabled 且 aiClient.isConfigured() 时生效。
       // 失败 / LLM 异常时回退到原行为(直接转 idle),不阻塞主流程。
       const s = this.settingsManager.get();
-      if (
-        s.ai?.statusRecheckEnabled &&
-        this.aiClient &&
-        this.aiClient.isConfigured()
-      ) {
+      if (s.ai?.statusRecheckEnabled && this.aiClient && this.aiClient.isConfigured()) {
         // BETA-006 v2:从 @xterm/headless buffer 拿"已渲染"文本(无 ANSI
         // 噪音 / 无 PSReadLine 重绘残影)。
         // CURSOR-1 后:原 settings.ai.statusRecheckSource='raw' 路径(裸字节
         // ring 末 2KB)已删除,headless 是唯一输入源。screenshot 选项仍预留。
-        const tail = managed.headlessTerm
-          ? this.getHeadlessTail(managed, 40)
-          : '';
+        const tail = managed.headlessTerm ? this.getHeadlessTail(managed, 40) : '';
         // BETA-006 v2.1:把"上次 Enter / 上次任意输入距今多久"喂给 LLM,
         // 帮它区分"长命令在跑"vs"用户打字未按回车"。
         // BETA-006 v2.2:再附最近按键事件 ring buffer(类别+时间,无内容),
@@ -1976,6 +1965,47 @@ export class SessionManager extends EventEmitter {
   getScreenTail(sessionId: string, maxRows: number): string {
     const managed = this.sessions.get(sessionId);
     return managed ? this.getHeadlessTail(managed, maxRows) : '';
+  }
+
+  /**
+   * ADR-035: the prompt an agent stopped at, read from the screen. Null when the session is
+   * unknown, not blocked, or the rows do not read as a prompt.
+   */
+  readChoice(sessionId: string): ChoicePrompt | null {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || managed.info.agentPhase !== 'blocked') return null;
+    return readChoicePrompt(this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS));
+  }
+
+  /**
+   * ADR-035: picks option `index` in the prompt the agent stopped at, for the choice panel
+   * in a toast in another tab or window. Re-reads the screen first: a stale panel must
+   * never type arrow keys and Enter into whatever the agent is doing by now.
+   *
+   * @returns sent=false with a reason instead of throwing: the panel shows the reason and
+   *   offers the tab, nothing here is an error of the caller's
+   */
+  answerChoice(
+    sessionId: string,
+    index: number,
+  ): {
+    sent: boolean;
+    reason?: 'no-prompt' | 'option-gone' | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
+  } {
+    const prompt = this.readChoice(sessionId);
+    if (!prompt) return { sent: false, reason: 'no-prompt' };
+    const pointed = prompt.options.find((o) => o.pointed);
+    const target = prompt.options.find((o) => o.index === index);
+    if (!pointed || !target) return { sent: false, reason: 'option-gone' };
+    logger.info(
+      'SessionManager',
+      `answerChoice sid=${sessionId} option ${index} "${target.label}" from ${pointed.index}`,
+    );
+    const keys = Buffer.from(choiceKeys(pointed.index, target.index), 'utf8').toString('base64');
+    const res = this.sendInput(sessionId, keys);
+    return res.accepted
+      ? { sent: true }
+      : { sent: false, reason: res.reason ?? 'pty-write-failed' };
   }
 
   private getHeadlessTail(managed: ManagedSession, maxRows: number): string {
@@ -2129,10 +2159,7 @@ export class SessionManager extends EventEmitter {
     }
   }
 
-  private emitStateChanged(
-    managed: ManagedSession,
-    changes: Partial<SessionInfo>,
-  ): void {
+  private emitStateChanged(managed: ManagedSession, changes: Partial<SessionInfo>): void {
     const payload: SessionStateChangedPayload = {
       sessionId: managed.info.id,
       changes,
@@ -2147,10 +2174,7 @@ export class SessionManager extends EventEmitter {
 
   private async getShells(): Promise<ShellInfo[]> {
     const now = Date.now();
-    if (
-      this.cachedShells &&
-      now - this.cachedShellsAt < SessionManager.SHELL_CACHE_TTL_MS
-    ) {
+    if (this.cachedShells && now - this.cachedShellsAt < SessionManager.SHELL_CACHE_TTL_MS) {
       return this.cachedShells;
     }
     this.cachedShells = await this.platformAdapter.detectShells();
@@ -2183,11 +2207,7 @@ export class SessionManager extends EventEmitter {
  * override 命中失败 (id 不在 detectShells 结果里) 时回退到 settings 兜底,
  * 不抛错 — 给用户的视觉效果是"用默认 shell 启动",比报错更友好。
  */
-function pickShell(
-  shells: ShellInfo[],
-  settings: Settings,
-  override?: string,
-): ShellInfo {
+function pickShell(shells: ShellInfo[], settings: Settings, override?: string): ShellInfo {
   if (override) {
     const found = shells.find((s) => s.id === override);
     if (found) return found;
@@ -2235,13 +2255,7 @@ export function buildSshLaunchParams(
     controlPath?: string;
   } = {},
 ): { args: string[]; env: Record<string, string> } {
-  const args = [
-    '-tt',
-    '-p',
-    String(profile.port),
-    '-o',
-    'ServerAliveInterval=30',
-  ];
+  const args = ['-tt', '-p', String(profile.port), '-o', 'ServerAliveInterval=30'];
   if (profile.authType === 'keyFile' && profile.keyFilePath) {
     args.push('-i', profile.keyFilePath);
   }
@@ -2258,9 +2272,12 @@ export function buildSshLaunchParams(
   // Windows 版 OpenSSH 不支持,调用方不会在 Windows 上开这个选项。
   if (options.enableControlMaster && options.controlPath) {
     args.push(
-      '-o', 'ControlMaster=auto',
-      '-o', `ControlPath=${options.controlPath}`,
-      '-o', 'ControlPersist=10m',
+      '-o',
+      'ControlMaster=auto',
+      '-o',
+      `ControlPath=${options.controlPath}`,
+      '-o',
+      'ControlPersist=10m',
     );
   }
   args.push(`${profile.username}@${profile.host}`);
@@ -2310,9 +2327,9 @@ function buildRemoteLoginCommand(
     ? buildRemoteTemplateCommand(options.commandToRun)
     : null;
   const launchCommand = commandLine
-    // 远端模板(如 claude/codex)常写在交互式 shell 初始化文件里。
-    // 这里用 `-ic` 让行为尽量贴近用户手动在终端里输入命令的路径。
-    ? `exec "\${SHELL:-/bin/sh}" -ic ${shQuote(`${commandLine}; ${shellCommand}`)}`
+    ? // 远端模板(如 claude/codex)常写在交互式 shell 初始化文件里。
+      // 这里用 `-ic` 让行为尽量贴近用户手动在终端里输入命令的路径。
+      `exec "\${SHELL:-/bin/sh}" -ic ${shQuote(`${commandLine}; ${shellCommand}`)}`
     : shellCommand;
   if (profile.tmuxMode !== 'attach-or-create') {
     return `${cdCommand} && ${launchCommand}`;
@@ -2329,8 +2346,7 @@ function buildRemoteLoginCommand(
   );
   const failCommand =
     'printf %s\\\\n "Ceteris: tmux attach/create failed on the remote host." >&2; exit 127';
-  const fallbackAfterFailure =
-    profile.tmuxOnMissing === 'fail' ? failCommand : launchCommand;
+  const fallbackAfterFailure = profile.tmuxOnMissing === 'fail' ? failCommand : launchCommand;
   // tmux 本身只是远端 shell 里的一个全屏程序,不是 Ceteris session 的终点。
   // 用户在 tmux pane 里输入 exit 后,tmux client 会正常返回;此时必须继续
   // exec 回登录 shell,否则 ssh.exe 会结束,Main 只能把整个 Ceteris session
@@ -2387,9 +2403,8 @@ function buildRemoteTemplateCommand(input: {
     .filter(([key]) => key.length > 0)
     .map(([key, value]) => shQuote(`${key}=${value}`));
   const argv = [input.command, ...input.args].map(shQuote);
-  const runCommand = envPairs.length === 0
-    ? argv.join(' ')
-    : ['env', ...envPairs, ...argv].join(' ');
+  const runCommand =
+    envPairs.length === 0 ? argv.join(' ') : ['env', ...envPairs, ...argv].join(' ');
   return (
     `${runCommand}; ceteris_template_status=$?; ` +
     `if [ "$ceteris_template_status" -eq 127 ]; then ` +
@@ -2400,9 +2415,7 @@ function buildRemoteTemplateCommand(input: {
 
 function defaultTmuxSessionName(remoteCwd: string): string {
   const normalized = remoteCwd.replace(/\/+$/g, '') || '~';
-  const leaf = normalized === '~'
-    ? 'home'
-    : normalized.split('/').filter(Boolean).pop() || 'root';
+  const leaf = normalized === '~' ? 'home' : normalized.split('/').filter(Boolean).pop() || 'root';
   const safe = leaf
     .trim()
     .toLowerCase()

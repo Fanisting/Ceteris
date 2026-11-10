@@ -100,6 +100,28 @@ export type AgentPhase = 'working' | 'blocked' | 'done';
  */
 export type AgentWork = 'generating' | 'tool' | 'waiting';
 
+/** One row of a prompt an agent stopped at (ADR-035): an approval box or an AskUserQuestion. */
+export interface ChoiceOption {
+  /** The number the agent printed before the label, 1-based. */
+  index: number;
+  label: string;
+  /** True on the row the agent's pointer sits on. */
+  pointed: boolean;
+  /**
+   * The option asks for typed text afterwards ("Type something.", "Chat about this", "No,
+   * and tell Claude what to do"), so picking it from a toast would leave the agent waiting
+   * for words; the toast sends the user to the tab for these instead.
+   */
+  freeText: boolean;
+}
+
+/** A prompt read from an agent's screen (ADR-035). */
+export interface ChoicePrompt {
+  /** The question line above the options, box characters stripped; empty when none reads. */
+  question: string;
+  options: ChoiceOption[];
+}
+
 /**
  * 应用整体生命周期状态 (软件定义书 8.1 节)。
  */

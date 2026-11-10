@@ -18,6 +18,7 @@ import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './li
 import type {
   AppSnapshot,
   Bookmark,
+  ChoicePrompt,
   PathTree,
   SessionInfo,
   Settings,
@@ -63,6 +64,10 @@ export const COMMAND_CHANNELS = {
   SESSION_RELEASE: 'cmd:session:release',
   SESSION_FOCUS_OWNER: 'cmd:session:focus-owner',
   SESSION_SEND_INPUT: 'cmd:session:send-input',
+  /** ADR-035:读某 session 屏幕上 agent 停着的提示(问题和选项),没有则 null */
+  SESSION_READ_CHOICE: 'cmd:session:read-choice',
+  /** ADR-035:替用户在那个提示里选一项:main 先核对提示还在,再发方向键和回车 */
+  SESSION_ANSWER_CHOICE: 'cmd:session:answer-choice',
   SESSION_RESIZE: 'cmd:session:resize',
   SESSION_GET_SCROLLBACK: 'cmd:session:get-scrollback',
   /** BETA-028:导出 scrollback 为 UTF-8 字符串,供终端工具栏"复制全部"按钮 */
@@ -576,6 +581,32 @@ export interface SendInputPayload {
   sessionId: string;
   /** 字节流,base64 编码 */
   data: string;
+}
+
+/** cmd:session:read-choice (ADR-035) */
+export interface ReadChoicePayload {
+  sessionId: string;
+}
+
+export interface ReadChoiceResponse {
+  /** null:agent 没停在提示上,或者屏幕上的行读不出问题和选项 */
+  prompt: ChoicePrompt | null;
+}
+
+/** cmd:session:answer-choice (ADR-035) */
+export interface AnswerChoicePayload {
+  sessionId: string;
+  /** 选项前面印的数字 */
+  index: number;
+}
+
+export interface AnswerChoiceResponse {
+  sent: boolean;
+  /**
+   * no-prompt:agent 已经不在提示上;option-gone:提示变了,没有这个编号;
+   * 其余同 cmd:session:send-input。
+   */
+  reason?: 'no-prompt' | 'option-gone' | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
 }
 
 /**

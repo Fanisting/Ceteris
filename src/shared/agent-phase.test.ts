@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { classifyWork, detectAgentPhase, readWorkSignals, updateTokenRate } from './agent-phase';
+import {
+  choiceKeys,
+  classifyWork,
+  detectAgentPhase,
+  readChoicePrompt,
+  readWorkSignals,
+  updateTokenRate,
+} from './agent-phase';
 import type { AgentPhase, SessionState } from './types';
 
 // Rows recorded from Claude Code on 2026-11-08 (HUD lines dropped). The spinner line has no
@@ -154,5 +161,51 @@ describe('agent work and pace', () => {
     expect(b.rate).toBeCloseTo(40);
     expect(updateTokenRate(b, 5, 2000)).toEqual({ tokens: 5, at: 2000, rate: 0 });
     expect(updateTokenRate(b, null, 2000)).toBeNull();
+  });
+});
+
+describe('readChoicePrompt (ADR-035)', () => {
+  it('reads the question and options of each prompt kind', () => {
+    expect(readChoicePrompt(CLAUDE_CHOICE)).toEqual({
+      question: 'Which colour do you prefer?',
+      options: [
+        { index: 1, label: 'Red (Recommended)', pointed: true, freeText: false },
+        { index: 2, label: 'Blue', pointed: false, freeText: false },
+        { index: 3, label: 'Type something.', pointed: false, freeText: true },
+        { index: 4, label: 'Chat about this', pointed: false, freeText: true },
+      ],
+    });
+    expect(readChoicePrompt(CLAUDE_APPROVAL)).toEqual({
+      question: 'Do you want to proceed?',
+      options: [
+        { index: 1, label: 'Yes', pointed: true, freeText: false },
+        {
+          index: 2,
+          label: "Yes, and don't ask again for npm test",
+          pointed: false,
+          freeText: false,
+        },
+        { index: 3, label: 'No, and tell Claude what to do (esc)', pointed: false, freeText: true },
+      ],
+    });
+    expect(readChoicePrompt(CODEX_APPROVAL)?.options.map((o) => o.pointed)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it('refuses rows that are not a live prompt', () => {
+    // A numbered list in prose: no pointer.
+    expect(readChoicePrompt('● Two options:\n  1. Keep it\n  2. Drop it\n❯')).toBeNull();
+    // Numbers out of order are not an option set.
+    expect(readChoicePrompt('Pick:\n❯ 2. Second\n  3. Third')).toBeNull();
+    expect(readChoicePrompt(SHELL)).toBeNull();
+  });
+
+  it('turns an option pick into arrow keys and Enter', () => {
+    expect(choiceKeys(1, 1)).toBe('\r');
+    expect(choiceKeys(1, 3)).toBe('\x1b[B\x1b[B\r');
+    expect(choiceKeys(3, 2)).toBe('\x1b[A\r');
   });
 });

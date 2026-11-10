@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ELECTRON_RUN_AS_NODE=1 \"${CETERIS_CONTROL_NODE:-node}\" \"${CLAUDE_PLUGIN_ROOT}/hooks/announce-session.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -40,6 +40,7 @@ function setup(
   const closed: string[] = [];
   const created: Parameters<TabControlHost['create']>[0][] = [];
   const shown: Parameters<TabControlHost['showFile']>[0][] = [];
+  const announced: { sessionId: string; agent: string; agentSessionId: string }[] = [];
   const host: TabControlHost = {
     enabled: () => opts.enabled ?? true,
     list: () => sessions,
@@ -64,12 +65,14 @@ function setup(
     bracketedPaste: () => opts.paste ?? false,
     isFile: async (path) => (opts.files ?? []).includes(path),
     showFile: (input) => shown.push(input),
+    setAgentSession: (sessionId, agent, agentSessionId) =>
+      announced.push({ sessionId, agent, agentSessionId }),
   };
   const service = new TabControlService(host, { submitMs: 0, keyMs: 0 });
   const tokenOf = (id: string): string => service.issue(id);
   const call = (token: string, op: string, args: Record<string, unknown> = {}) =>
     service.handle({ v: TAB_CONTROL_VERSION, token, op: op as never, args });
-  return { service, tokenOf, call, writes, closed, created, shown };
+  return { service, tokenOf, call, writes, closed, created, shown, announced };
 }
 
 const errorCode = (reply: TabControlReply): string | null => (reply.ok ? null : reply.code);
@@ -234,5 +237,32 @@ describe('TabControlService open-file (ADR-033)', () => {
       { files: [note] },
     );
     expect(errorCode(await call(tokenOf('a'), 'open-file', { path: note }))).toBe('bad-request');
+  });
+});
+
+describe('TabControlService agent-session (ADR-036)', () => {
+  const uuid = '0a4086ef-5f12-425e-a27a-e918b2302170';
+
+  it('records the calling tab agent session from any live tab, extension off', async () => {
+    const { tokenOf, call, announced } = setup([session('w')], { enabled: false });
+    const reply = await call(tokenOf('w'), 'agent-session', {
+      agent: 'claude-code',
+      sessionId: uuid,
+    });
+    expect(reply.ok).toBe(true);
+    expect(announced).toEqual([{ sessionId: 'w', agent: 'claude-code', agentSessionId: uuid }]);
+  });
+
+  it('refuses an unknown agent or a non-uuid id', async () => {
+    const { tokenOf, call, announced } = setup([session('w')]);
+    expect(
+      errorCode(await call(tokenOf('w'), 'agent-session', { agent: 'gemini', sessionId: uuid })),
+    ).toBe('bad-request');
+    expect(
+      errorCode(
+        await call(tokenOf('w'), 'agent-session', { agent: 'codex', sessionId: '; rm -rf' }),
+      ),
+    ).toBe('bad-request');
+    expect(announced).toEqual([]);
   });
 });

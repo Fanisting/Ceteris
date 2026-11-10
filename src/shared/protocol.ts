@@ -16,6 +16,7 @@ import type { SessionRole } from './session-role';
 import type { TemplateUsageEntry } from './template-usage';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
+import type { ShelfEntry } from './shelf';
 import type {
   AppSnapshot,
   Bookmark,
@@ -105,6 +106,16 @@ export const COMMAND_CHANNELS = {
    * 读到目标后 dispatch select-session 自动切到该 session。
    */
   SESSION_OPEN_IN_NEW_WINDOW: 'cmd:session:open-in-new-window',
+
+  // Tab shelf (ADR-036): idle tabs put away with their resume id, see shelf.ts
+  /** Put one session in the shelf now (tab menu). Payload ShelfPutPayload. */
+  SHELF_PUT: 'cmd:shelf:put',
+  /** Open a shelved tab again in the calling window. Payload ShelfRestorePayload. */
+  SHELF_RESTORE: 'cmd:shelf:restore',
+  /** Forget one shelf entry. Payload ShelfRemovePayload. */
+  SHELF_REMOVE: 'cmd:shelf:remove',
+  /** Forget every shelf entry. */
+  SHELF_CLEAR: 'cmd:shelf:clear',
 
   // Bookmark / Path 域
   BOOKMARK_ADD: 'cmd:bookmark:add',
@@ -310,6 +321,12 @@ export const EVENT_CHANNELS = {
   SESSION_EXITED: 'evt:session:exited',
   SESSION_OWNER_CHANGED: 'evt:session:owner-changed',
   SESSION_DESTROYED: 'evt:session:destroyed',
+  /**
+   * The shelf changed (ADR-036): a tab went in, came back or was forgotten. Sent to every
+   * window with the whole list; before the shelved session's evt:session:destroyed, so the
+   * window still has its SessionInfo for the animation. Payload ShelfChangedPayload.
+   */
+  SHELF_CHANGED: 'evt:shelf:changed',
 
   // Path / Bookmark / Settings
   PATH_TREE_UPDATED: 'evt:path:tree-updated',
@@ -522,6 +539,35 @@ export interface SetRolePayload {
   sessionId: string;
   /** null clears the role: the tab becomes a Worker again */
   role: SessionRole | null;
+}
+
+// ── Tab shelf (ADR-036) ──
+
+export interface ShelfPutPayload {
+  sessionId: string;
+}
+
+export interface ShelfRestorePayload {
+  entryId: string;
+  /** Size of the terminal area in the calling window, like cmd:session:create */
+  cols: number;
+  rows: number;
+}
+
+export interface ShelfRestoreResponse {
+  session: SessionInfo;
+  /** True when the tab came back with its conversation (claude --resume / codex resume) */
+  resumed: boolean;
+}
+
+export interface ShelfRemovePayload {
+  entryId: string;
+}
+
+export interface ShelfChangedPayload {
+  entries: ShelfEntry[];
+  /** Set when a session was just put in: it is still alive when this arrives */
+  shelvedSessionId?: string;
 }
 
 export interface CloseSessionPayload {
@@ -1260,7 +1306,7 @@ export interface SessionDestroyedPayload {
    * destroy,而是进入 'exited' 状态 (sessionExited 事件已涵盖),由用户
    * 主动关闭触发 'user-closed' destroy。
    */
-  reason: 'user-closed' | 'app-quit' | 'pty-exited';
+  reason: 'user-closed' | 'app-quit' | 'pty-exited' | 'shelved';
 }
 
 export interface PathTreeUpdatedPayload {

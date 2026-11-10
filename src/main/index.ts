@@ -34,6 +34,8 @@ import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-
 import { TemplateUsageTracker } from './template-usage';
 import type { TemplateUsageFile } from '@shared/template-usage';
 import { SecretStore, type SecretsFile } from './secret-store';
+import { ShelfManager } from './shelf-manager';
+import type { ShelfFile } from '@shared/shelf';
 import {
   broadcastLinkStatus,
   broadcastAccentColor,
@@ -351,6 +353,9 @@ function bootstrap(): void {
           () => false,
         ),
       showFile: broadcastFileViewOpen,
+      // ADR-036: the plugin's SessionStart hook names the agent's session for the shelf.
+      setAgentSession: (sessionId, agent, agentSessionId) =>
+        sessionManager.setAgentSession(sessionId, agent, agentSessionId),
     },
     // The plugin runs its MCP server with this executable and ELECTRON_RUN_AS_NODE=1.
     process.execPath,
@@ -359,6 +364,17 @@ function bootstrap(): void {
   sessionManager.on('sessionDestroyed', (e: { sessionId: string }) =>
     tabControlServer.service.revoke(e.sessionId),
   );
+  // ADR-036:收纳盒。规则在 shelf.ts,扫描每分钟一次,设置改了下一轮就生效。
+  const shelfStore = new JsonStore<ShelfFile>(join(dataDir, 'shelf.json'));
+  const shelfManager = new ShelfManager(shelfStore, {
+    listSessions: () => sessionManager.list(),
+    getSession: (id) => sessionManager.get(id),
+    lastActivityAt: (id) => sessionManager.getLastActivityAt(id),
+    agentSession: (id) => sessionManager.getAgentSession(id),
+    destroy: (id) => sessionManager.shelveSession(id),
+    template: (id) => templatesManager.resolve(id),
+    idleHours: () => settingsManager.get().behavior.shelveIdleAfterHours ?? 0,
+  });
   // ADR-029:agent 标签每跑完一轮,用 next prompt 的 API 和模型写一个短标题
   new AgentTitler({
     onSessionChanged: (fn) =>
@@ -673,8 +689,14 @@ function bootstrap(): void {
         promptBroker,
         updateChecker,
         customThemes,
+        shelfManager,
       });
       updateChecker.refreshSchedule();
+      // 读不到 shelf.json 只是盒子空着,不影响启动
+      shelfManager
+        .initialize()
+        .catch((err) => logger.warn('shelf', 'shelf store load failed', err))
+        .finally(() => shelfManager.startSweep());
       // 主题文件夹读取失败不影响启动,内置主题照常可用
       customThemes
         .start()
@@ -901,6 +923,7 @@ function bootstrap(): void {
   app.on('will-quit', async () => {
     if (!isQuitting) return; // 防御性:不该走到这,因为 before-quit 已 set
     logger.info('main', 'will-quit: shutting down session manager + flushing stores');
+    shelfManager.stopSweep();
     sessionManager.shutdown();
     sftpPool.shutdown();
     void askpassServer.stop();
@@ -923,6 +946,7 @@ function bootstrap(): void {
         templateUsage.flush(),
         secretStore.flush(),
         sshProfileManager.flush(),
+        shelfManager.flush(),
         knownHostsManager.flush(),
         templatesManager.flush(),
         logger.flush(),

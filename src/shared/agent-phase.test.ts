@@ -44,6 +44,23 @@ const CODEX_APPROVAL = [
   '  3. No, and tell Codex what to do differently (esc)',
 ].join('\n');
 
+// Claude Code 2.1.319's AskUserQuestion prompt, recorded on 2026-11-10 (ADR-035).
+const CLAUDE_CHOICE = [
+  '────────────────────────────────────────',
+  ' ☐ Colour ',
+  'Which colour do you prefer?',
+  '❯ 1. Red (Recommended)',
+  '     Choose red.',
+  '  2. Blue',
+  '     Choose blue.',
+  '  3. Type something.',
+  '────────────────────────────────────────',
+  '  4. Chat about this',
+  'Enter to select · ↑/↓ to navigate · Esc to cancel',
+].join('\n');
+// The same prompt in a short terminal: the footer and the chat row scrolled off.
+const CLAUDE_CHOICE_NO_FOOTER = CLAUDE_CHOICE.split('\n').slice(0, 8).join('\n');
+
 const CLAUDE_WORKING = '✻ Thinking… (12s · ↑ 1.2k tokens · esc to interrupt)\n╭───╮\n│ > │\n╰───╯';
 const CLAUDE_IDLE = '● Done.\n╭────────╮\n│ >      │\n╰────────╯\n  ? for shortcuts';
 const SHELL = 'PS C:\\proj> npm install\nadded 12 packages\nPS C:\\proj>';
@@ -62,18 +79,44 @@ describe('detectAgentPhase', () => {
       ['claude-code', CLAUDE_APPROVAL, 'exited', null],
       // A question in the agent's prose is not a prompt without a "Yes" option line.
       ['claude-code', 'Do you want to keep the old API?\n? for shortcuts', 'idle', 'done'],
+      // ADR-035: a choice prompt blocks like an approval, in a plain shell too.
+      ['shell', CLAUDE_CHOICE, 'idle', 'blocked'],
+      ['claude-code', CLAUDE_CHOICE, 'active', 'blocked'],
+      // Without its footer and chat row, the option rows alone are just a numbered list.
+      ['claude-code', CLAUDE_CHOICE_NO_FOOTER, 'idle', 'done'],
+      // A numbered list in the agent's answer, with the pointer on the input line below.
+      [
+        'claude-code',
+        '● Two options:\n  1. Keep it\n  2. Drop it\n❯\n? for shortcuts',
+        'idle',
+        'done',
+      ],
+      // The footer alone (a picker the user opened) is not a prompt without a pointed option.
+      [
+        'claude-code',
+        'Select model\n  Opus\n  Sonnet\nEnter to select · Esc to cancel\n? for shortcuts',
+        'idle',
+        'done',
+      ],
       // The spinner line alone means working, even with no output for a moment.
       ['shell', REC_THINKING, 'idle', 'working'],
       ['shell', `● Done.\n${REC_FOOTER}`, 'idle', 'done'],
     ];
     const wrong = cases
-      .map(([tpl, screen, state, want]) => ({ tpl, state, want, got: detectAgentPhase(tpl, screen, state) }))
+      .map(([tpl, screen, state, want]) => ({
+        tpl,
+        state,
+        want,
+        got: detectAgentPhase(tpl, screen, state),
+      }))
       .filter((c) => c.got !== c.want);
     expect(wrong).toEqual([]);
   });
 
   it('ignores markers that scrolled above the searched rows', () => {
-    const scrolled = [CLAUDE_APPROVAL, ...Array.from({ length: 25 }, (_, i) => `line ${i}`)].join('\n');
+    const scrolled = [CLAUDE_APPROVAL, ...Array.from({ length: 25 }, (_, i) => `line ${i}`)].join(
+      '\n',
+    );
     expect(detectAgentPhase('shell', scrolled, 'idle')).toBeNull();
   });
 });
@@ -99,7 +142,9 @@ describe('agent work and pace', () => {
       // Codex shows no spinner: no work kind, so the plain wave.
       [[{ tool: false, spinner: false, tokens: null }, null], { work: null, pace: null }],
     ];
-    const wrong = cases.filter(([args, want]) => JSON.stringify(classifyWork(...args)) !== JSON.stringify(want));
+    const wrong = cases.filter(
+      ([args, want]) => JSON.stringify(classifyWork(...args)) !== JSON.stringify(want),
+    );
     expect(wrong).toEqual([]);
   });
 

@@ -1303,13 +1303,19 @@ select.settings-input option {
 
 /* ── 通知(snackbar) ───────────────────────────────────────────── */
 
+/*
+ * 画在主题自己那一极的高层容器上,不用 MD3 snackbar 的反色底(ADR-035):深色主题的
+ * 通知是深的,浅色主题的是浅的。反色底在浅色主题上是一块深棕色,里面展开的选择面板
+ * 和页面格格不入;同极的容器加一圈 outline 和投影,在 95 套主题上都看得清又不突兀。
+ */
 :root .toast {
   gap: 10px;
   padding: 10px 12px 10px 16px;
   border-left: none;
+  border: 1px solid var(--md-outline-variant, color-mix(in srgb, currentcolor 20%, transparent));
   border-radius: var(--md-shape-sm, 8px);
-  background-color: var(--md-inverse-surface, #f0f);
-  color: var(--md-inverse-on-surface, #f0f);
+  background-color: var(--md-surface-container-high, #f0f);
+  color: var(--md-on-surface, #f0f);
   font-size: 13px;
   box-shadow: var(--md-elevation-3, none);
   animation: md-snackbar-in var(--md-duration-long, 300ms) var(--md-easing-decelerate, ease-out);
@@ -1327,26 +1333,35 @@ select.settings-input option {
   }
 }
 
-/* inverse surface 上状态色对比度不足,向前景色混合后再用 */
+/* 同极的底上状态色直接用;图标略向前景色混一点,免得在浅色主题上发飘 */
 .toast-info .toast-icon {
-  color: color-mix(in srgb, var(--color-info, #f0f) 45%, var(--md-inverse-on-surface, #f0f));
+  color: color-mix(in srgb, var(--color-info, #f0f) 80%, var(--md-on-surface, #f0f));
 }
 
 .toast-success .toast-icon {
-  color: color-mix(in srgb, var(--color-success, #f0f) 45%, var(--md-inverse-on-surface, #f0f));
+  color: color-mix(in srgb, var(--color-success, #f0f) 80%, var(--md-on-surface, #f0f));
 }
 
 .toast-warn .toast-icon {
-  color: color-mix(in srgb, var(--color-warning, #f0f) 45%, var(--md-inverse-on-surface, #f0f));
+  color: color-mix(in srgb, var(--color-warning, #f0f) 80%, var(--md-on-surface, #f0f));
 }
 
 .toast-error .toast-icon {
-  color: color-mix(in srgb, var(--color-danger, #f0f) 45%, var(--md-inverse-on-surface, #f0f));
+  color: color-mix(in srgb, var(--color-danger, #f0f) 80%, var(--md-on-surface, #f0f));
 }
 
-/* snackbar 是反色底,按钮文字向前景色混合,保证对比度 */
 .toast-action {
-  color: color-mix(in srgb, var(--md-primary, #f0f) 40%, var(--md-inverse-on-surface, #f0f));
+  color: var(--md-primary, #f0f);
+}
+
+.toast-action:hover,
+.toast-close:hover {
+  background-color: color-mix(in srgb, var(--md-on-surface, #f0f) 8%, transparent);
+}
+
+/* ADR-035:选择面板里带指针的那项用主题主色描边 */
+.toast-choice-option.pointed {
+  border-color: var(--md-primary, #f0f);
 }
 
 .toast-action:hover {

@@ -5,7 +5,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  contextLevel,
   effortLevel,
   exitResumeId,
   folderDefaultFor,
@@ -210,12 +209,6 @@ describe('labels and colour steps', () => {
   it('names Claude aliases and keeps Codex slugs', () => {
     expect(modelLabel('claude-code', 'opus')).toBe('Opus');
     expect(modelLabel('codex', 'gpt-6.1-sol')).toBe('gpt-6.1-sol');
-  });
-
-  it('turns context yellow at 70 and red at 85', () => {
-    expect(contextLevel(69)).toBe('ok');
-    expect(contextLevel(70)).toBe('warn');
-    expect(contextLevel(85)).toBe('high');
   });
 
   it('steps effort from low to top', () => {

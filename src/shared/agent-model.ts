@@ -279,16 +279,6 @@ export interface AgentUsage {
   };
 }
 
-/** Context colour steps, the same as the OMC HUD: yellow from 70 %, red from 85 %. */
-export function contextLevel(usedPercent: number): 'ok' | 'warn' | 'high' {
-  if (usedPercent >= 85) return 'high';
-  if (usedPercent >= 70) return 'warn';
-  return 'ok';
-}
-
-/** The HUD suggests compacting from 80 %. */
-export const COMPACT_SUGGEST_PERCENT = 80;
-
 /** One colour step per effort level, lowest to highest. Unknown levels get 'mid'. */
 export function effortLevel(effort: string): 'low' | 'mid' | 'high' | 'top' {
   switch (effort) {

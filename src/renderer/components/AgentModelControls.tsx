@@ -4,13 +4,13 @@
  *   - FolderAgentDefaultsRows: under an opened folder in the sidebar, one row per agent that
  *     has a tab in it, written `CC [Opus] [high]`. Each bracket opens its own choice and sets
  *     what new tabs of that agent in the folder start with.
- *   - AgentStatusLine: at the left of the split-view row under the terminals, for the selected
- *     tab: `Sonnet - high - 3% (5h) - 10% (wk) - 10% (ctx)`. Model and effort each open a
- *     choice; the percentages open the details.
+ *   - AgentStatusLine: in the split-view row under the terminals, the selected tab's model and
+ *     effort as two buttons the size of the split icons. Each opens its choice. Usage numbers
+ *     are not shown here (the user keeps them in the OMC status line).
  *
  * @关键设计:
- * - Plain coloured text, no fills or outlines (the user's 2026-11-10 direction). Clickable
- *   words show a hover underline.
+ * - Coloured text, no fills or outlines at rest; the buttons share the split icons' 32px
+ *   height, corner and hover tint (the user's 2026-11-10 direction).
  * - Folder defaults live in settings.agents.folderDefaults, so every window sees a change at
  *   once and it survives restarts. Default for both fields removes the entry.
  * - A pick for a running tab makes the main process restart the agent in the same tab with
@@ -18,9 +18,9 @@
  *   The agents' own /model is not used: Claude Code saves it as the global default.
  * - Every click answers at once: a menu opens even while the agent is busy (its items are
  *   greyed with the reason), and the line says "switching" until the agent is back.
- * - The status line sits in the existing 34px split-view row, so no terminal is resized.
- * - Usage is polled for the selected tab only: every 5 s while the details are open, every
- *   15 s otherwise. The main process reads only the bytes added since the last poll.
+ * - The buttons sit in the existing 34px split-view row, so no terminal is resized.
+ * - For a tab started with the agent's own default, the model and effort the agent reports
+ *   are read every 15 s (cmd:agent:usage, selected tab only).
  *
  * @对应文档章节: 软件定义书.md ADR-038, 6.2.3; ipc-protocol.md 5.12
  *
@@ -28,11 +28,9 @@
  * - No keyboard shortcut to open the menus (软件定义书 13.2: mouse first).
  * - No file reading or PTY writes here; both belong to the main process.
  */
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import {
   CLAUDE_EFFORTS,
-  COMPACT_SUGGEST_PERCENT,
-  contextLevel,
   effortLevel,
   folderDefaultFor,
   modelAgentOf,
@@ -40,7 +38,6 @@ import {
   withFolderDefault,
   type AgentUsage,
   type ModelAgent,
-  type UsageWindow,
 } from '@shared/agent-model';
 import {
   COMMAND_CHANNELS,
@@ -58,10 +55,8 @@ import { useTranslation } from './LanguageProvider';
 
 const AGENT_SHORT: Record<ModelAgent, string> = { 'claude-code': 'CC', codex: 'CX' };
 const AGENT_NAME: Record<ModelAgent, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
-const DETAILS_POLL_MS = 5_000;
-const LINE_POLL_MS = 15_000;
-
-type Tx = (zh: string, en: string) => string;
+/** How often the selected tab's reported model and effort are read */
+const REPORTED_POLL_MS = 15_000;
 
 // ──────────────────────────────────────────────────────────────────
 // Model options (fetched once per window)
@@ -261,122 +256,51 @@ export function FolderAgentDefaultsRows({
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Status line in the split-view row
+// Model and effort in the split-view row
 // ──────────────────────────────────────────────────────────────────
 
-/** Polls the tab's usage while enabled; other tabs pass enabled=false and never call main. */
-function useAgentUsage(
-  sessionId: string | null,
-  intervalMs: number,
-  enabled: boolean,
-): [AgentUsage | null, () => void] {
+/**
+ * What the agent reports it runs, for tabs started with the agent's own default (Ceteris
+ * then has no record of its own). Polled for the selected tab only.
+ */
+function useReportedModel(sessionId: string | null): AgentUsage | null {
   const [usage, setUsage] = useState<AgentUsage | null>(null);
-  const refresh = useCallback(() => {
-    if (!sessionId) return;
-    window.api
-      .invoke<AgentUsagePayload, AgentUsageResponse>(COMMAND_CHANNELS.AGENT_USAGE, { sessionId })
-      .then((res) => setUsage(res.usage))
-      .catch((err: unknown) => console.warn('[AgentModelControls] usage failed', err));
-  }, [sessionId]);
   useEffect(() => {
     setUsage(null);
-    if (!enabled) return undefined;
-    refresh();
-    const timer = window.setInterval(refresh, intervalMs);
+    if (!sessionId) return undefined;
+    const read = (): void => {
+      window.api
+        .invoke<AgentUsagePayload, AgentUsageResponse>(COMMAND_CHANNELS.AGENT_USAGE, { sessionId })
+        .then((res) => setUsage(res.usage))
+        .catch((err: unknown) => console.warn('[AgentModelControls] model read failed', err));
+    };
+    read();
+    const timer = window.setInterval(read, REPORTED_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [refresh, intervalMs, enabled]);
-  return [usage, refresh];
+  }, [sessionId]);
+  return usage;
 }
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return String(n);
-}
-
-function formatSpan(ms: number): string {
-  const m = Math.max(0, Math.round(ms / 60_000));
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
-}
-
-function limitLevel(p: number): 'ok' | 'warn' | 'high' {
-  return p >= 90 ? 'high' : p >= 70 ? 'warn' : 'ok';
-}
-
-/** "3% (5h)", coloured by level; "— (5h)" when unknown */
-function Share({
-  name,
-  percent,
-  level,
-}: {
-  name: string;
-  percent: number | undefined;
-  level: 'ok' | 'warn' | 'high';
-}): JSX.Element {
-  return (
-    <span className="agent-share">
-      <span className={`agent-share-value ${percent === undefined ? 'none' : level}`}>
-        {percent === undefined ? '—' : `${Math.round(percent)}%`}
-      </span>{' '}
-      <span className="agent-share-name">({name})</span>
-    </span>
-  );
-}
-
-function resetText(name: string, win: UsageWindow | undefined, now: number, tx: Tx): string {
-  if (!win) return tx(`${name}:没有数据`, `${name}: no data`);
-  const reset = win.resetsAt
-    ? tx(
-        `,${formatSpan(win.resetsAt - now)} 后重置`,
-        `, resets in ${formatSpan(win.resetsAt - now)}`,
-      )
-    : '';
-  return `${name}: ${Math.round(win.usedPercent)}%${reset}`;
-}
-
-/** The selected tab's agent line. Renders nothing unless that tab runs Claude Code or Codex. */
+/**
+ * The selected tab's model and effort, two buttons the size of the split-view icons in the
+ * same row. Each opens its choice. Renders nothing unless that tab runs Claude Code or Codex.
+ */
 export function AgentStatusLine(): JSX.Element | null {
   const state = useAppState();
   const session: SessionInfo | null =
     (state.selectedSessionId && state.sessions.get(state.selectedSessionId)) || null;
   const agent = modelAgentOf(session?.templateId);
   const live = !!session && !!agent && session.state !== 'exited';
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [usage, refresh] = useAgentUsage(
-    live ? session.id : null,
-    detailsOpen ? DETAILS_POLL_MS : LINE_POLL_MS,
-    live,
-  );
+  const reported = useReportedModel(live ? session.id : null);
   const options = useModelOptions();
   const [switching, setSwitching] = useState<string | null>(null);
   const ctxMenu = useContextMenuApi();
   const toast = useToast();
   const { tx } = useTranslation();
-  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // Click outside or Escape closes the details
-  useEffect(() => {
-    if (!detailsOpen) return undefined;
-    const onDown = (e: globalThis.MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setDetailsOpen(false);
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setDetailsOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [detailsOpen]);
-  // A different tab never shows the previous tab's switching note or details
+  // A different tab never shows the previous tab's switching note
   useEffect(() => {
     setSwitching(null);
-    setDetailsOpen(false);
   }, [session?.id]);
 
   if (!live || !agent) return null;
@@ -385,17 +309,17 @@ export function AgentStatusLine(): JSX.Element | null {
   const chosenModel = session.agentModel ?? '';
   const modelText = chosenModel
     ? choiceLabel(agent, chosenModel, options)
-    : usage?.model
-      ? choiceLabel(agent, usage.model, options)
+    : reported?.model
+      ? choiceLabel(agent, reported.model, options)
       : tx('默认模型', 'Default model');
-  const effortText = session.agentEffort || usage?.effort || '';
+  const effortText = session.agentEffort || reported?.effort || '';
   const models = options?.[agent].models ?? [];
   const activeModelId =
     chosenModel ||
     models.find((m) =>
       agent === 'codex'
-        ? m.id === usage?.model
-        : usage?.model?.toLowerCase().startsWith(m.label.toLowerCase()),
+        ? m.id === reported?.model
+        : reported?.model?.toLowerCase().startsWith(m.label.toLowerCase()),
     )?.id ||
     '';
   const busy = session.agentPhase === 'working' || session.agentPhase === 'blocked';
@@ -404,9 +328,6 @@ export function AgentStatusLine(): JSX.Element | null {
     : switching
       ? tx('正在切换', 'A switch is running')
       : undefined;
-  const now = Date.now();
-  const ctx = usage?.context;
-  const ctxPct = ctx?.usedPercent;
 
   const pick = async (next: { model?: string; effort?: string }, label: string): Promise<void> => {
     setSwitching(label);
@@ -449,7 +370,6 @@ export function AgentStatusLine(): JSX.Element | null {
                 : tx('这个终端已经不在了。', 'This tab is no longer running.');
         toast.push({ kind: 'warn', message: why });
       }
-      refresh();
     } catch (err) {
       toast.push({
         kind: 'error',
@@ -482,7 +402,7 @@ export function AgentStatusLine(): JSX.Element | null {
       e,
       tx(`这个标签的 ${AGENT_NAME[agent]} effort`, `${AGENT_NAME[agent]} effort for this tab`),
       choiceItems(
-        effortsFor(agent, options, activeModelId || usage?.model || '').map((l) => ({
+        effortsFor(agent, options, activeModelId || reported?.model || '').map((l) => ({
           id: l,
           label: l,
         })),
@@ -493,19 +413,8 @@ export function AgentStatusLine(): JSX.Element | null {
       true,
     );
 
-  const d = usage?.details;
-  const calls = d
-    ? [
-        d.toolCalls !== undefined ? tx(`工具 ${d.toolCalls}`, `tools ${d.toolCalls}`) : null,
-        d.agentCalls !== undefined
-          ? tx(`子 agent ${d.agentCalls}`, `agents ${d.agentCalls}`)
-          : null,
-        d.skillCalls !== undefined ? tx(`skill ${d.skillCalls}`, `skills ${d.skillCalls}`) : null,
-      ].filter(Boolean)
-    : [];
-
   return (
-    <div className="agent-status-line" ref={rootRef}>
+    <div className="agent-status-line">
       {switching ? (
         <span className="agent-status-switching">
           {tx(`正在换成 ${switching}…`, `Switching to ${switching}…`)}
@@ -520,7 +429,6 @@ export function AgentStatusLine(): JSX.Element | null {
           >
             {modelText}
           </button>
-          <span className="agent-status-sep">-</span>
           <button
             type="button"
             className={`agent-status-pick effort-${effortLevel(effortText)}`}
@@ -530,114 +438,6 @@ export function AgentStatusLine(): JSX.Element | null {
             {effortText || tx('默认 effort', 'default effort')}
           </button>
         </>
-      )}
-      <span className="agent-status-sep">-</span>
-      <button
-        type="button"
-        className="agent-status-usage"
-        onClick={() => setDetailsOpen((v) => !v)}
-        aria-expanded={detailsOpen}
-        title={[
-          resetText('5h', usage?.fiveHour, now, tx),
-          resetText('wk', usage?.weekly, now, tx),
-          tx('点开看详情', 'Click for details'),
-        ].join('\n')}
-      >
-        <Share
-          name="5h"
-          percent={usage?.fiveHour?.usedPercent}
-          level={limitLevel(usage?.fiveHour?.usedPercent ?? 0)}
-        />
-        <span className="agent-status-sep">-</span>
-        <Share
-          name="wk"
-          percent={usage?.weekly?.usedPercent}
-          level={limitLevel(usage?.weekly?.usedPercent ?? 0)}
-        />
-        <span className="agent-status-sep">-</span>
-        <Share name="ctx" percent={ctxPct} level={contextLevel(ctxPct ?? 0)} />
-      </button>
-
-      {detailsOpen && (
-        <div className="agent-details" role="dialog" aria-label={tx('用量详情', 'Usage details')}>
-          <div className="agent-details-head">
-            {AGENT_NAME[agent]} · {usage?.model ?? modelText}
-            {effortText ? ` · ${effortText}` : ''}
-          </div>
-          <dl className="agent-details-list">
-            <dt>5h</dt>
-            <dd>{resetText('5h', usage?.fiveHour, now, tx).replace(/^5h: /, '')}</dd>
-            <dt>wk</dt>
-            <dd>{resetText('wk', usage?.weekly, now, tx).replace(/^wk: /, '')}</dd>
-            <dt>ctx</dt>
-            <dd>
-              {ctxPct !== undefined ? `${ctxPct}%` : '—'}
-              {ctx?.usedTokens !== undefined ? ` · ${formatTokens(ctx.usedTokens)}` : ''}
-              {ctx?.windowTokens ? ` / ${formatTokens(ctx.windowTokens)}` : ''}
-              {ctxPct !== undefined && ctxPct >= COMPACT_SUGGEST_PERCENT
-                ? tx(',可以考虑 /compact', '; consider /compact')
-                : ''}
-            </dd>
-            {d?.startedAt !== undefined && (
-              <>
-                <dt>{tx('会话', 'Session')}</dt>
-                <dd>{formatSpan(now - d.startedAt)}</dd>
-              </>
-            )}
-            {d?.lastPromptAt !== undefined && (
-              <>
-                <dt>{tx('上次提问', 'Last prompt')}</dt>
-                <dd>
-                  {new Date(d.lastPromptAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                  {tx(
-                    `(${formatSpan(now - d.lastPromptAt)} 前)`,
-                    ` (${formatSpan(now - d.lastPromptAt)} ago)`,
-                  )}
-                </dd>
-              </>
-            )}
-            {d?.prompts !== undefined && (
-              <>
-                <dt>{tx('提问数', 'Prompts')}</dt>
-                <dd>{d.prompts}</dd>
-              </>
-            )}
-            {calls.length > 0 && (
-              <>
-                <dt>{tx('调用', 'Calls')}</dt>
-                <dd>{calls.join(' · ')}</dd>
-              </>
-            )}
-            {d?.lastSkill && (
-              <>
-                <dt>Skill</dt>
-                <dd>{d.lastSkill}</dd>
-              </>
-            )}
-            {d?.todos && (
-              <>
-                <dt>Todos</dt>
-                <dd>
-                  {d.todos.done}/{d.todos.total}
-                </dd>
-              </>
-            )}
-            {d?.costUsd !== undefined && (
-              <>
-                <dt>{tx('花费', 'Cost')}</dt>
-                <dd>${d.costUsd.toFixed(2)}</dd>
-              </>
-            )}
-            <dt>{tx('来源', 'Source')}</dt>
-            <dd>
-              {d?.source ??
-                tx('发出第一条消息后才有记录', 'nothing recorded before the first message')}
-            </dd>
-          </dl>
-        </div>
       )}
     </div>
   );

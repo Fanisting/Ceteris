@@ -62,11 +62,31 @@ export interface PromptOptions {
   inputType?: 'text' | 'password';
 }
 
+export interface ChoiceButton {
+  /** choose() 返回的值 */
+  id: string;
+  label: string;
+  /** 默认焦点落在它上面;最多一个 */
+  primary?: boolean;
+  danger?: boolean;
+}
+
+/** 两个以上选项的问题 (ADR-037 的"整体重载 / 只更新");Esc 或"取消"返回 null */
+export interface ChooseOptions {
+  title: string;
+  message: string;
+  choices: ChoiceButton[];
+  /** 默认 "取消" */
+  cancelLabel?: string;
+}
+
 export interface ModalApi {
   /** 返回 true=确认 false=取消(同 window.confirm 语义但 async) */
   confirm(opts: ConfirmOptions): Promise<boolean>;
   /** 返回输入字符串,取消返回 null(同 window.prompt 语义) */
   prompt(opts: PromptOptions): Promise<string | null>;
+  /** 返回选中按钮的 id,取消返回 null */
+  choose(opts: ChooseOptions): Promise<string | null>;
   /**
    * 从外部收起当前 modal,按取消处理(confirm → false,prompt → null)。
    * 给"提问方已经不需要答案"的场景用,比如 ssh 连接在用户回答前就断了。
@@ -96,7 +116,18 @@ interface PromptState extends PromptOptions {
   resolve: (v: string | null) => void;
 }
 
-type ModalState = ConfirmState | PromptState;
+interface ChooseState extends ChooseOptions {
+  kind: 'choose';
+  resolve: (v: string | null) => void;
+}
+
+type ModalState = ConfirmState | PromptState | ChooseState;
+
+/** 取消 (Esc / 取消按钮 / dismiss) 时各种 modal 的返回值 */
+function resolveCancel(modal: ModalState): void {
+  if (modal.kind === 'confirm') modal.resolve(false);
+  else modal.resolve(null);
+}
 
 // ──────────────────────────────────────────────────────────────────
 // Provider
@@ -158,11 +189,14 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
         new Promise<string | null>((resolve) => {
           openModal({ kind: 'prompt', ...opts, resolve });
         }),
+      choose: (opts) =>
+        new Promise<string | null>((resolve) => {
+          openModal({ kind: 'choose', ...opts, resolve });
+        }),
       dismiss: () => {
         const current = modalRef.current;
         if (!current) return;
-        if (current.kind === 'confirm') current.resolve(false);
-        else current.resolve(null);
+        resolveCancel(current);
         closeModal();
       },
     }),
@@ -190,8 +224,7 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
       if (!isTop()) return;
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (modal.kind === 'confirm') modal.resolve(false);
-        else modal.resolve(null);
+        resolveCancel(modal);
         closeModal();
       } else if (e.key === 'Enter' && modal.kind === 'confirm') {
         // 仅 confirm modal 走全局 Enter;prompt 让 input onKeyDown 自处理
@@ -252,16 +285,24 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
     if (!modal) return;
     if (modal.kind === 'confirm') {
       modal.resolve(true);
-    } else {
+    } else if (modal.kind === 'prompt') {
       modal.resolve(promptValue);
+    } else {
+      // choose 没有单一的"确定":Enter 由焦点所在的选项按钮自己处理
+      return;
     }
+    closeModal();
+  };
+
+  const handleChoice = (id: string): void => {
+    if (!modal || modal.kind !== 'choose') return;
+    modal.resolve(id);
     closeModal();
   };
 
   const handleCancel = (): void => {
     if (!modal) return;
-    if (modal.kind === 'confirm') modal.resolve(false);
-    else modal.resolve(null);
+    resolveCancel(modal);
     closeModal();
   };
 
@@ -295,6 +336,7 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
                 {shown.preview && <pre className="app-modal-preview">{shown.preview}</pre>}
               </>
             )}
+            {shown.kind === 'choose' && <div className="app-modal-message">{shown.message}</div>}
             {shown.kind === 'prompt' && (
               <>
                 {shown.message && <div className="app-modal-message">{shown.message}</div>}
@@ -318,22 +360,35 @@ export function ModalProvider({ children }: { children: ReactNode }): JSX.Elemen
             )}
             <div className="app-modal-actions">
               <button type="button" className="app-modal-button" onClick={handleCancel}>
-                {shown.kind === 'confirm'
-                  ? (shown.cancelLabel ?? '取消')
-                  : (shown.cancelLabel ?? '取消')}
+                {shown.cancelLabel ?? '取消'}
               </button>
-              <button
-                type="button"
-                className={
-                  'app-modal-button app-modal-button-primary' +
-                  (shown.kind === 'confirm' && shown.danger ? ' danger' : '')
-                }
-                onClick={handleConfirm}
-              >
-                {shown.kind === 'confirm'
-                  ? (shown.confirmLabel ?? '确定')
-                  : (shown.confirmLabel ?? '确定')}
-              </button>
+              {shown.kind === 'choose' ? (
+                shown.choices.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={
+                      'app-modal-button' +
+                      (c.primary ? ' app-modal-button-primary' : '') +
+                      (c.danger ? ' danger' : '')
+                    }
+                    onClick={() => handleChoice(c.id)}
+                  >
+                    {c.label}
+                  </button>
+                ))
+              ) : (
+                <button
+                  type="button"
+                  className={
+                    'app-modal-button app-modal-button-primary' +
+                    (shown.kind === 'confirm' && shown.danger ? ' danger' : '')
+                  }
+                  onClick={handleConfirm}
+                >
+                  {shown.confirmLabel ?? '确定'}
+                </button>
+              )}
             </div>
           </div>
         </div>

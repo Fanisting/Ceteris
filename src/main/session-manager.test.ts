@@ -2665,3 +2665,52 @@ describe('SessionManager — agent tab titles (ADR-029)', () => {
     expect(mgr.get(id)!.displayName).toBe('mine');
   });
 });
+
+describe('SessionManager — extraArgs (ADR-037 reload)', () => {
+  const claude: Template = {
+    id: 'claude-test',
+    name: 'Claude Code',
+    icon: 'C',
+    isBuiltin: true,
+    command: 'claude',
+    args: ['--verbose'],
+    env: {},
+    shellFirst: false,
+    postExitAction: 'keep_shell',
+  };
+  const shellOnly: Template = { ...claude, id: 'shell-test', name: 'Shell', command: '', args: [] };
+
+  it('appends extraArgs after the template args and leaves the template alone', async () => {
+    const adapter = makeFakeAdapter();
+    const spy = vi.spyOn(adapter, 'buildShellLaunchParams');
+    const { mgr } = makeManager({ adapter, templates: [claude] });
+    await mgr.createSession({
+      pathId: '/p',
+      templateId: 'claude-test',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+      extraArgs: ['--continue'],
+    });
+    expect(spy.mock.calls[0]![2]).toMatchObject({
+      command: 'claude',
+      args: ['--verbose', '--continue'],
+    });
+    expect(claude.args).toEqual(['--verbose']);
+  });
+
+  it('ignores extraArgs for a plain shell template', async () => {
+    const adapter = makeFakeAdapter();
+    const spy = vi.spyOn(adapter, 'buildShellLaunchParams');
+    const { mgr } = makeManager({ adapter, templates: [shellOnly] });
+    await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell-test',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+      extraArgs: ['--continue'],
+    });
+    expect(spy.mock.calls[0]![2]).toBeUndefined();
+  });
+});

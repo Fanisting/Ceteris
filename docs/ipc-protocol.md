@@ -1433,6 +1433,33 @@ interface GetPsCommandsResponse {
 
 ---
 
+### 5.11 Agent 更新时关掉再开回来 (ADR-037)
+
+agent CLI 的版本检查和升级命令(`cmd:agent:list-versions`、`cmd:agent:upgrade`、`cmd:agent:check-now`、`cmd:agent:notice-action`、`cmd:agent:notices-ready`)的类型都在 `src/shared/protocol.ts` 的注释里。这一节只写整体重载加的两条命令。实现在 `src/main/agent-reload.ts`。
+
+#### `cmd:agent:reload-plan`
+```typescript
+interface AgentReloadPlanPayload { templateId: string }
+interface AgentReloadPlan {
+  tabs: number;        // 该 agent 模板的本机终端数 (不算 SSH 和已退出的),全部会关掉再开回来
+  running: number;     // 其中 agentPhase 为 working 的,开回来后会收到 "continue"
+  blocked: number;     // 其中在等用户批准的;不发 continue
+  otherTabs: number;   // 别的模板 (纯 shell) 里手动跑着同一个 agent 的终端数;不动,只提醒
+  resumes: boolean;    // 这个 agent 有恢复对话的命令行参数
+  inProgress: boolean; // 同一个 agent 的重载还在进行
+}
+```
+renderer 在弹对话框前调,把数字写进正文。**Errors**:`TemplateNotFound`(不是内置 agent)。
+
+#### `cmd:agent:reload`
+```typescript
+interface ReloadAgentPayload { templateId: string; pathId: string; cols: number; rows: number }
+interface ReloadAgentResponse { started: boolean; tabs: number }
+```
+立即返回;之后的进度走 `evt:agent:update-notice`:`reloading`(tabs 关掉的终端数)→ `reloaded`(tabs 开回来的数、continued 收到 continue 的数、failedTabs 没开回来的数、updated 升级是否生效、to 重查后的已装版本)。升级终端开在 `pathId` 下、显示在发起窗口里(与 `cmd:agent:upgrade` 一样)。`cmd:agent:notice-action` 的 `action: 'reload'` 做同样的事,升级终端开在 home 目录。
+
+**Errors**:`TemplateNotFound`;`InvalidPayload`(`pathId` 是 SSH 路径);`AgentBusy`(后台自动升级正在跑这个 agent)。同一个 agent 已在重载时不报错,`started=false`。
+
 ## 6. 事件清单 (Main → Renderer)
 
 ### 6.1 应用与窗口
@@ -2079,7 +2106,7 @@ async function handleSessionTabClick(sessionId: string) {
 
 ---
 
-## 附录 D:Tab control pipe(ADR-024)
+## 附录 D:Tab control pipe(ADR-024、ADR-033)
 
 这条通道不走 Electron IPC,是 main 与 ceteris-tabs 插件的 MCP 服务器之间的命名管道。格式定义在 `src/shared/tab-control.ts`,插件 `extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs` 里有一份相同的纯 JS 实现,`tab-control-mcp.test.ts` 检查两边一致。
 
@@ -2091,7 +2118,7 @@ async function handleSessionTabClick(sessionId: string) {
 interface TabControlRequest {
   v: 1;
   token: string;
-  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename';
+  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename' | 'open-file';
   args: Record<string, unknown>;
 }
 ```
@@ -2108,10 +2135,13 @@ interface TabControlRequest {
 | `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
 | `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
 | `rename` | `tab`、`name` | `TabSummary` |
+| `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者,也不要求扩展打开 |
 
 `tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
 
-**授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。
+`open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path }`)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
+
+**授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 只检查令牌对应的标签存在且未退出(ADR-033)。
 
 **协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件,`detail.sessionId` 是被勾选的标签。角色走 `cmd:session:set-role`,payload `{ sessionId, role }`,role 为 `'coordinator'`、`'fintuner'` 或 null(回到 Worker);main 改名、设 `coordinator` 并广播 sessionStateChanged(changes 含 role、coordinator、displayName)。导览靠 DOM 属性找目标:`data-guide="ghost-tab"`、`data-quick-key`、`data-guide="new-tab"`、`data-session-id`、`data-guide="role"`、`data-guide="role-coordinator"`、`data-guide="coordinator-bar"`。
 

@@ -111,7 +111,11 @@ import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import type { UpdateStatus } from '@shared/update-check';
 import { TERMINAL_KEYBINDINGS } from '@shared/terminal-keybindings';
 import { latexMathInstallLine, latexMathInstallLines } from '@shared/claude-math-images';
-import { tabControlInstallLine, tabControlInstallLines } from '@shared/tab-control';
+import {
+  TAB_CONTROL_UPDATE_COMMAND,
+  tabControlInstallLine,
+  tabControlInstallLines,
+} from '@shared/tab-control';
 import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
@@ -3110,13 +3114,15 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
   const [marketplaceDir, setMarketplaceDir] = useState<string | null>(null);
 
+  // The ceteris-tabs install row is always shown (ADR-033: open_file needs no switch), so the
+  // directory is fetched as soon as the panel opens.
   useEffect(() => {
-    if ((!enabled && !tabControl) || marketplaceDir) return;
+    if (marketplaceDir) return;
     window.api
       .invoke<unknown, { dir: string }>(COMMAND_CHANNELS.EXTENSIONS_GET_MARKETPLACE_DIR, {})
       .then((res) => setMarketplaceDir(res.dir))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  }, [enabled, tabControl, marketplaceDir, setError]);
+  }, [marketplaceDir, setError]);
 
   /** 开一个新终端,把命令敲进去但不按 Enter (见 type-into-terminal.ts) */
   const typeIntoNewTerminal = async (buildLine: (shellId: string) => string): Promise<void> => {
@@ -3233,10 +3239,62 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
       )}
 
       <SettingRow
+        label={tx('Claude Code 的 ceteris-tabs 插件', 'The ceteris-tabs plugin for Claude Code')}
+        hint={tx(
+          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、json、tex、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
+          'Ships with Ceteris. Once installed, Claude Code in any tab can show a file it wrote (md, txt, json, tex, pdf, image) beside its own tab: say "write the answer as md and open it in Ceteris". No switch below needed for that. Run these two commands once in a terminal, then start a new Claude Code.',
+        )}
+      >
+        <div className="settings-code-stack">
+          <pre className="settings-code-block">
+            <code>{marketplaceDir ? tabControlInstallLines(marketplaceDir) : '…'}</code>
+          </pre>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={preparing || !marketplaceDir}
+            onClick={handlePrepareTabControl}
+            title={tx(
+              '打开一个新终端并输入这两条命令,不会自动执行',
+              'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
+            )}
+          >
+            {tx('在新终端里输入命令', 'Type them in a new terminal')}
+          </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('旧版装过插件?', 'Installed it from an older Ceteris?')}
+        hint={tx(
+          'Claude Code 保存着自己那份插件副本,Ceteris 更新了插件它也不会跟着变。更新 Ceteris 后跑一次这条命令,再新开 Claude Code。',
+          'Claude Code keeps its own copy of the plugin, so a Ceteris update does not change it. After updating Ceteris, run this once, then start a new Claude Code.',
+        )}
+      >
+        <div className="settings-code-stack">
+          <pre className="settings-code-block">
+            <code>{TAB_CONTROL_UPDATE_COMMAND}</code>
+          </pre>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={preparing}
+            onClick={() => void typeIntoNewTerminal(() => TAB_CONTROL_UPDATE_COMMAND)}
+            title={tx(
+              '打开一个新终端并输入这条命令,不会自动执行',
+              'Opens a new terminal with the command typed in; nothing runs until you press Enter',
+            )}
+          >
+            {tx('在新终端里输入命令', 'Type it in a new terminal')}
+          </button>
+        </div>
+      </SettingRow>
+
+      <SettingRow
         label={tx('协调者控制标签页', 'Coordinator tab control')}
         hint={tx(
-          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。',
-          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once.',
+          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。需要上面的插件;右键标签,勾选"协调者"。',
+          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once. Needs the plugin above; right-click a tab and tick Coordinator.',
         )}
       >
         <label className="settings-checkbox">
@@ -3250,34 +3308,6 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
-
-      {tabControl && (
-        <SettingRow
-          label={tx('还需要的插件', 'Plugin you also need')}
-          hint={tx(
-            'Claude Code 通过随 Ceteris 安装的 ceteris-tabs 插件拿到这些工具。在终端里跑一次下面两条命令,然后在协调者标签里新开 Claude Code。右键标签,勾选"协调者"。',
-            'Claude Code gets these tools from the ceteris-tabs plugin, which ships with Ceteris. Run these two commands once in a terminal, then start Claude Code in the coordinator tab. Right-click a tab and tick Coordinator.',
-          )}
-        >
-          <div className="settings-code-stack">
-            <pre className="settings-code-block">
-              <code>{marketplaceDir ? tabControlInstallLines(marketplaceDir) : '…'}</code>
-            </pre>
-            <button
-              type="button"
-              className="settings-button"
-              disabled={preparing || !marketplaceDir}
-              onClick={handlePrepareTabControl}
-              title={tx(
-                '打开一个新终端并输入这两条命令,不会自动执行',
-                'Opens a new terminal with both commands typed in; nothing runs until you press Enter',
-              )}
-            >
-              {tx('在新终端里输入命令', 'Type them in a new terminal')}
-            </button>
-          </div>
-        </SettingRow>
-      )}
     </section>
   );
 }

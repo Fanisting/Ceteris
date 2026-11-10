@@ -609,6 +609,11 @@ export interface Settings {
      * on the next launch, and again the first time they tick Coordinator until they close it.
      */
     tabControlGuideSeen: boolean;
+    /**
+     * Whether the one-time agent extension setup card (ADR-034) was answered with Set up or
+     * Later. Default false, and older settings files get false too, so everyone sees it once.
+     */
+    setupSeen: boolean;
   };
 
   /**

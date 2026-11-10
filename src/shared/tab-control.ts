@@ -202,6 +202,8 @@ export function isClaudePluginInstalled(registry: unknown, pluginId: string): bo
 export interface TabControlStatus {
   /** Claude Code lists ceteris-tabs@ceteris as installed in at least one scope. */
   pluginInstalled: boolean;
+  /** Claude Code's config folder exists, so Claude Code has run on this machine (ADR-034). */
+  claudeInstalled: boolean;
 }
 
 /**

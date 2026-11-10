@@ -925,21 +925,33 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 读不了或不是 JSON 都当没装,引导就继续显示安装那一步。
       const configDir = process.env.CLAUDE_CONFIG_DIR || joinPath(homedir(), '.claude');
       const file = joinPath(configDir, 'plugins', 'installed_plugins.json');
+      const claudeInstalled = await fs.stat(configDir).then(
+        (st) => st.isDirectory(),
+        () => false,
+      );
       try {
         const registry: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
-        return { pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID) };
+        return {
+          pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID),
+          claudeInstalled,
+        };
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') logger.warn('ipc', `tab control status: cannot read ${file}`, err);
-        return { pluginInstalled: false };
+        return { pluginInstalled: false, claudeInstalled };
       }
     },
   );
 
   // ADR-033:Codex 没有插件市场,MCP 服务器写在 ~/.codex/config.toml(CODEX_HOME 可改目录)。
   // 服务器就是 Claude Code 插件里那个脚本,用 Ceteris 自己的可执行文件当 Node 跑。
-  const codexConfigPath = (): string =>
-    joinPath(process.env.CODEX_HOME || joinPath(homedir(), '.codex'), 'config.toml');
+  const codexHome = (): string => process.env.CODEX_HOME || joinPath(homedir(), '.codex');
+  const codexConfigPath = (): string => joinPath(codexHome(), 'config.toml');
+  const codexInstalled = (): Promise<boolean> =>
+    fs.stat(codexHome()).then(
+      (st) => st.isDirectory(),
+      () => false,
+    );
   const codexBlock = (): string =>
     codexMcpBlock({
       command: process.execPath,
@@ -970,7 +982,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, async (): Promise<CodexMcpStatus> => {
     const configPath = codexConfigPath();
     const text = await readCodexConfig(configPath);
-    return { configPath, configured: hasCodexMcpBlock(text), block: codexBlock() };
+    return {
+      configPath,
+      configured: hasCodexMcpBlock(text),
+      codexInstalled: await codexInstalled(),
+      block: codexBlock(),
+    };
   });
 
   handleCommand(
@@ -985,7 +1002,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       await fs.writeFile(tmp, next, 'utf8');
       await fs.rename(tmp, configPath);
       logger.info('ipc', `codex mcp entry written to ${configPath}`);
-      return { configPath, configured: true, block };
+      return { configPath, configured: true, codexInstalled: true, block };
     },
   );
 

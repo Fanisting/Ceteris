@@ -1446,6 +1446,48 @@ interface ReloadAgentResponse { started: boolean; tabs: number }
 
 **Errors**:`TemplateNotFound`;`InvalidPayload`(`pathId` 是 SSH 路径);`AgentBusy`(后台自动升级正在跑这个 agent)。同一个 agent 已在重载时不报错,`started=false`。
 
+### 5.12 模型、effort 与用量 (ADR-038)
+
+只对 Claude Code (`claude-code`) 和 Codex (`codex`) 模板的标签。文件夹默认值不走新命令:renderer 用 `cmd:settings:update` 整体替换 `agents.folderDefaults`(`{ pathId, agent, model, effort }[]`,`''` 表示 agent 自己的默认)。类型在 `src/shared/agent-model.ts`,实现在 `src/main/agent-usage.ts` 和 `src/main/agent-model-switch.ts`。
+
+#### `cmd:agent:model-options`
+```typescript
+// payload: undefined
+interface AgentModelOptionsResponse {
+  'claude-code': { models: ModelChoice[]; efforts: string[] }; // 别名 fable / opus / sonnet / haiku
+  codex: { models: ModelChoice[]; efforts: string[] };         // 读 ~/.codex/models_cache.json,读不到时 models 为空
+}
+interface ModelChoice { id: string; label: string; efforts: string[] }
+```
+
+#### `cmd:agent:switch-model`
+```typescript
+interface AgentSwitchModelPayload { sessionId: string; model?: string; effort?: string } // 省略的保持当前值
+interface AgentSwitchModelResponse {
+  applied: boolean;
+  reason?: 'session-not-found' | 'not-agent' | 'exited' | 'busy' | 'cannot-restart' | 'exit-timeout';
+}
+```
+在同一个标签里敲 `/exit`,等到 shell 钩子的提示符报告(OSC 1337),再敲模板命令加 `--resume <id>` / `resume <id>` 和新的启动参数。成功后标签的 `agentModel` / `agentEffort`(以及 Claude Code 新开时的 `agentLaunchId`)走 `evt:session:state-changed`。整个过程几秒,resolve 时新命令已经敲进去。`busy`:agent 正在干活、在等批准,或这个标签的切换还没完;`cannot-restart`:SSH 标签,或模板在 agent 退出后不保留 shell;`exit-timeout`:20 秒内 agent 没退出,之后什么都没敲。
+
+**Errors**:`InvalidPayload`(model / effort 含字母、数字、`. _ - [ ]` 以外的字符)。
+
+#### `cmd:agent:usage`
+```typescript
+interface AgentUsagePayload { sessionId: string }
+interface AgentUsageResponse { usage: AgentUsage | null } // agent 还没写任何记录时为 null;SSH 标签恒为 null
+interface AgentUsage {
+  agent: 'claude-code' | 'codex';
+  model?: string; effort?: string;
+  context?: { usedPercent?: number; usedTokens?: number; windowTokens?: number };
+  fiveHour?: { usedPercent: number; resetsAt?: number }; // resetsAt 为 Unix ms
+  weekly?: { usedPercent: number; resetsAt?: number };
+  details: { startedAt?; lastPromptAt?; prompts?; toolCalls?; agentCalls?; skillCalls?; lastSkill?;
+             todos?: { done: number; total: number }; costUsd?; source: string };
+}
+```
+renderer 面板打开时每 5 秒、关着时每 30 秒调一次;main 每次只读文件新增的字节。从不抛错,读失败记 warn 返回 null。
+
 ## 6. 事件清单 (Main → Renderer)
 
 ### 6.1 应用与窗口

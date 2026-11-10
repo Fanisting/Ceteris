@@ -49,6 +49,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Celebrations](celebrations.md) | A small burst when an agent finishes, and an optional title bar pebble | 0.4.1 |
 | [Next prompt suggestions](next-prompt-suggestions.md) | A suggested next message that learns your habits | 0.3.0 |
 | [Agent tab titles](agent-tab-titles.md) | Short, readable titles, optionally written by a model | 0.4.1 |
+| [Model and effort](agent-model-effort.md) | Folder defaults, per tab switching and usage for Claude Code and Codex | Next |
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar | 0.4.1 |
 | [Coordinator tour](coordinator-tour.md) | An animated guide to roles and tab control | 0.4.1 |
 | [Tab control plugin](tab-control-plugin.md) | A Coordinator opens, reads and drives other tabs | 0.4.1 |

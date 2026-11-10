@@ -163,6 +163,12 @@ export function encodeTabControlReply(reply: TabControlReply): string {
 /** The marketplace that ships with Ceteris (extensions/.claude-plugin/marketplace.json). */
 export const TAB_CONTROL_INSTALL_COMMAND = 'claude plugin install ceteris-tabs@ceteris';
 
+/**
+ * Claude Code keeps its own copy of an installed plugin, so a Ceteris update that ships a newer
+ * plugin changes nothing until the user runs this (ADR-033: open_file arrived in 0.2.0).
+ */
+export const TAB_CONTROL_UPDATE_COMMAND = 'claude plugin update ceteris-tabs@ceteris';
+
 /** Both install commands, one per line, for display. */
 export function tabControlInstallLines(dir: string): string {
   return `${latexMathMarketplaceCommand(dir, 'cmd')}\n${TAB_CONTROL_INSTALL_COMMAND}`;

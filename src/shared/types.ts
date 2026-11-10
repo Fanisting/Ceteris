@@ -272,6 +272,13 @@ export interface SessionInfo {
   /** While generating: how fast, 0.25 to 1 in quarter steps, from the token counter. */
   agentPace?: number | null;
   /**
+   * A shell command is running: true from the Enter the user sends until the shell hook
+   * reports the next prompt (OSC 1337 CurrentDir), false while the shell sits at its prompt
+   * (ADR-023). null or absent until the first prompt report, so a shell without the hook
+   * keeps the output-driven rule.
+   */
+  shellBusy?: boolean | null;
+  /**
    * The user marked this session as a coordinator: its tab sits in a row of its own above
    * the folder's tabs, whichever folder is open (ADR-023). Lives as long as the session.
    */

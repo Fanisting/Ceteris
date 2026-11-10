@@ -1563,6 +1563,8 @@ interface SessionStateChangedPayload {
 }
 ```
 
+`changes.shellBusy`(ADR-023 修订):shell hook 报提示符时为 false,之后用户按 Enter 为 true,进程退出时为 null。没有 hook 的 shell 从不带这个字段。
+
 **频率**:Main 做 throttle(50ms)。状态在 active/idle 间频繁切换时聚合。
 
 ---

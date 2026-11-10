@@ -1158,6 +1158,43 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     expect(mgr.get(info.id)?.agentPhase).toBeNull();
   });
 
+  it('marks a shell busy from Enter at its prompt until the next prompt report (ADR-023)', async () => {
+    const { mgr } = makeManager();
+    const changes: Array<{ shellBusy?: boolean | null }> = [];
+    mgr.on('sessionStateChanged', (e: { changes: { shellBusy?: boolean | null } }) => {
+      if ('shellBusy' in e.changes) changes.push({ shellBusy: e.changes.shellBusy });
+    });
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+    const fp = FakePty.instances[0]!;
+    const type = (s: string) => mgr.sendInput(info.id, Buffer.from(s, 'utf8').toString('base64'));
+    const prompt = '\x1b]1337;CurrentDir=/p\x07PS /p> ';
+
+    // Before the first prompt report the shell may have no hook: stay unknown.
+    type('ls\r');
+    expect(mgr.get(info.id)?.shellBusy).toBeUndefined();
+
+    fp.emitData(prompt);
+    expect(mgr.get(info.id)?.shellBusy).toBe(false);
+    // Typing without Enter runs nothing.
+    type('npm run dev');
+    expect(mgr.get(info.id)?.shellBusy).toBe(false);
+    type('\r');
+    expect(mgr.get(info.id)?.shellBusy).toBe(true);
+    // Enter inside the running program is not a new command and emits nothing.
+    type('\r');
+    fp.emitData(prompt);
+    expect(mgr.get(info.id)?.shellBusy).toBe(false);
+    fp.emitExit(0);
+    expect(mgr.get(info.id)?.shellBusy).toBeNull();
+    expect(changes.map((c) => c.shellBusy)).toEqual([false, true, false, null]);
+  });
+
   it('resize 后 quiet 窗口内 ConPTY 重绘字节不触发 markActive (CP-3 勘误 #3 v2)', async () => {
     const settings = makeStubSettingsManager({ activeIdleThresholdSeconds: 1 });
     const { mgr } = makeManager({ settings, resizeQuietMs: 500 });

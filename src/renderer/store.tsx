@@ -115,6 +115,7 @@ export interface AppState {
 
   /**
    * ADR-021:agent 跑完一轮 (agentPhase working → done) 时用户没在看的 session。
+   * ADR-023:shell 跑完一条命令 (shellBusy true → false) 也算。侧栏"等你处理"读它。
    * Tab 和侧栏在这些 session 上显示圆点,直到用户选中它。放在 store 而不是 Tab
    * 组件里:Tab 只为当前 path 挂载,别的文件夹里跑完的 agent 也要记住。
    */
@@ -298,9 +299,16 @@ function reducer(state: AppState, action: AppAction): AppState {
       sessions.set(action.sessionId, merged);
       // ADR-021:只有 working → done 才算"跑完了没看";启动时 null → done
       // (agent 刚打开、还没干活) 不亮圆点。屏幕上可见 = 选中或在分屏里。
+      // ADR-023:shell 的一轮是一条命令,shellBusy true → false 同样算跑完;
+      // 第一次报提示符 (undefined → false) 不算,那只是 shell 刚启动好。
       let unseenDoneSessionIds = state.unseenDoneSessionIds;
       const phase = action.changes.agentPhase;
-      if (phase === 'done' && existing.agentPhase === 'working') {
+      const busy = action.changes.shellBusy;
+      const finishedRound =
+        (phase === 'done' && existing.agentPhase === 'working') ||
+        (busy === false && existing.shellBusy === true);
+      const startedRound = (phase !== undefined && phase !== 'done') || busy === true;
+      if (finishedRound) {
         const visible =
           state.selectedSessionId === action.sessionId ||
           (getEffectivePaneLayout(state) !== 'single' &&
@@ -309,7 +317,7 @@ function reducer(state: AppState, action: AppAction): AppState {
           unseenDoneSessionIds = new Set(unseenDoneSessionIds);
           unseenDoneSessionIds.add(action.sessionId);
         }
-      } else if (phase !== undefined && phase !== 'done') {
+      } else if (startedRound) {
         unseenDoneSessionIds = withoutId(unseenDoneSessionIds, action.sessionId);
       }
       return { ...state, sessions, unseenDoneSessionIds };

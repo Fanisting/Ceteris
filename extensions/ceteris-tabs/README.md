@@ -35,6 +35,22 @@ claude plugin install ceteris-tabs@ceteris
 
 Then start Claude Code in the coordinator tab.
 
+## Codex
+
+Codex can run the same server. In Ceteris, Settings, Extensions, "Using Codex too?" writes this into `~/.codex/config.toml` (paths are those of your Ceteris install):
+
+```toml
+[mcp_servers.ceteris-tabs]
+command = 'C:\...\Ceteris.exe'
+args = ['C:\...\resources\extensions\ceteris-tabs\server\ceteris-tabs-mcp.mjs']
+env_vars = ["CETERIS_CONTROL_PIPE", "CETERIS_CONTROL_TOKEN"]
+
+[mcp_servers.ceteris-tabs.env]
+ELECTRON_RUN_AS_NODE = "1"
+```
+
+`env_vars` matters: Codex hands an MCP server only the variables named there, and the tab's pipe name and token are how the server finds Ceteris.
+
 ## How it works
 
 Ceteris listens on a private named pipe and gives every tab the pipe name and its own token in `CETERIS_CONTROL_PIPE` and `CETERIS_CONTROL_TOKEN`. The MCP server in `server/` forwards each tool call over that pipe. It has no dependencies and runs on Ceteris's own executable (`CETERIS_CONTROL_NODE` with `ELECTRON_RUN_AS_NODE=1`), so no separate Node.js is needed. Outside Ceteris it offers no tools.

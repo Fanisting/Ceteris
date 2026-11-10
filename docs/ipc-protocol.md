@@ -2102,6 +2102,8 @@ interface TabControlRequest {
 
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 只检查令牌对应的标签存在且未退出(ADR-033)。
 
+**Codex 用的 IPC**(ADR-033):`cmd:extensions:codex-mcp-status` 和 `cmd:extensions:codex-mcp-install`,payload 都为空,都回复 `CodexMcpStatus`(`{ configPath, configured, block }`)。`configPath` 是 `<CODEX_HOME 或 ~/.codex>/config.toml`;`block` 是 Ceteris 要写的 TOML(`src/shared/codex-mcp.ts`:`[mcp_servers.ceteris-tabs]` 用 Ceteris 自己的可执行文件加 `ELECTRON_RUN_AS_NODE=1` 跑插件里的服务器脚本,`env_vars` 转发 `CETERIS_CONTROL_PIPE` 和 `CETERIS_CONTROL_TOKEN`)。install 把文件里这个服务器已有的表全部删掉再追加新的,其余内容原样保留,先写临时文件再 rename。
+
 **协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件,`detail.sessionId` 是被勾选的标签。角色走 `cmd:session:set-role`,payload `{ sessionId, role }`,role 为 `'coordinator'`、`'fintuner'` 或 null(回到 Worker);main 改名、设 `coordinator` 并广播 sessionStateChanged(changes 含 role、coordinator、displayName)。导览靠 DOM 属性找目标:`data-guide="ghost-tab"`、`data-quick-key`、`data-guide="new-tab"`、`data-session-id`、`data-guide="role"`、`data-guide="role-coordinator"`、`data-guide="coordinator-bar"`。
 
 ---

@@ -42,6 +42,7 @@ import {
   QUICK_LAUNCH_MAX_ITEMS,
   isValidQuickLaunchItems,
 } from '@shared/quick-launch';
+import { isValidFolderAgentDefaults, sanitizeFolderDefaults } from '@shared/agent-model';
 import type { BuiltinThemeId, Settings } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
@@ -154,6 +155,8 @@ export const DEFAULT_SETTINGS: Settings = {
     hostToken: '',
     savedHosts: [],
   },
+  // ADR-038:没有文件夹默认值 = 每个 agent 用自己的配置
+  agents: { folderDefaults: [] },
 };
 
 const VALID_THEMES: BuiltinThemeId[] = [
@@ -237,6 +240,8 @@ export class SettingsManager extends EventEmitter {
     const migrated = stripUnknownLegacyFields(result.value);
     // 不论从哪加载,都要走一遍 deep merge 防止用户文件少字段
     const merged = deepMerge(this.defaults, migrated as DeepPartial<Settings>);
+    // ADR-038:手改坏的文件夹默认值只丢掉坏的那几项;否则之后任何一次 update 都会校验失败
+    merged.agents = { folderDefaults: sanitizeFolderDefaults(merged.agents?.folderDefaults) };
     // 版本不兼容直接拒绝 (CP-4 加迁移逻辑;CP-2 简单粗暴)
     if (merged.version !== 1) {
       throw new SettingsError(
@@ -305,6 +310,7 @@ export class SettingsManager extends EventEmitter {
   replaceAll(newSettings: Partial<Settings>): void {
     const cleaned = stripUnknownLegacyFields(newSettings);
     const merged = deepMerge(this.defaults, cleaned as DeepPartial<Settings>);
+    merged.agents = { folderDefaults: sanitizeFolderDefaults(merged.agents?.folderDefaults) };
     if (merged.version !== 1) {
       throw new SettingsError(
         'IncompatibleVersion',
@@ -679,6 +685,14 @@ export function validateSettings(s: Settings): void {
       `behavior.quickLaunch 无效:必须是最多 ${QUICK_LAUNCH_MAX_ITEMS} 项的不重复列表,` +
         `每项为 { kind: 'template' | 'shell', id }。`,
       { field: 'behavior.quickLaunch', got: s.behavior.quickLaunch },
+    );
+  }
+  if (!isValidFolderAgentDefaults(s.agents?.folderDefaults)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      'agents.folderDefaults 无效:必须是 { pathId, agent: claude-code | codex, model, effort } 的列表,' +
+        '每个文件夹每个 agent 至多一项,model / effort 为空串或只含字母、数字、. _ - [ ]。',
+      { field: 'agents.folderDefaults', got: s.agents?.folderDefaults },
     );
   }
   if (!['default', 'last-used'].includes(s.shell.newTerminalShellPolicy)) {

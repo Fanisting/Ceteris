@@ -11,6 +11,7 @@
  *
  * @对应文档章节: 软件定义书.md 第 8 章 (状态机)、第 11 章 (数据模型)
  */
+import type { FolderAgentDefault } from './agent-model';
 import type { SessionRole } from './session-role';
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
@@ -288,6 +289,14 @@ export interface SessionInfo {
   exitedAt?: number;
   /** 创建时间 (Unix ms) */
   createdAt: number;
+  /**
+   * ADR-038, Claude Code and Codex tabs only: the model and effort Ceteris started the agent
+   * with or last switched it to. '' or absent = the agent's own default, unknown to Ceteris.
+   */
+  agentModel?: string;
+  agentEffort?: string;
+  /** ADR-038: the `--session-id` given to Claude Code at launch, so its transcript is found */
+  agentLaunchId?: string;
 }
 
 /**
@@ -685,6 +694,14 @@ export interface Settings {
    * 机器上已经在跑的 AI agent 标签页。两者互不替代。
    */
   link: LinkSettings;
+
+  /**
+   * ADR-038: per folder, the model and effort new Claude Code and Codex tabs start with.
+   * A list (not a map) so an update replaces it whole; see @shared/agent-model.
+   */
+  agents: {
+    folderDefaults: FolderAgentDefault[];
+  };
 }
 
 /**

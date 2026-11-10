@@ -27,6 +27,7 @@ import type {
 } from './types';
 import type { DeepPartial } from './types-helpers';
 import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
+import type { AgentUsage, ModelChoice } from './agent-model';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -169,6 +170,12 @@ export const COMMAND_CHANNELS = {
    * 恢复对话;关闭时在跑的终端收到 "continue"。立即返回,进度走 evt:agent:update-notice。
    */
   AGENT_RELOAD: 'cmd:agent:reload',
+  /** ADR-038:Claude Code 和 Codex 可选的模型与 effort (Codex 读 ~/.codex/models_cache.json) */
+  AGENT_MODEL_OPTIONS: 'cmd:agent:model-options',
+  /** ADR-038:在同一个标签里重启 agent (/exit 后带新参数和恢复 id 再开),对话接着进行 */
+  AGENT_SWITCH_MODEL: 'cmd:agent:switch-model',
+  /** ADR-038:一个 agent 终端的用量 (模型、effort、上下文、5h / 周限额、明细) */
+  AGENT_USAGE: 'cmd:agent:usage',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -1008,6 +1015,50 @@ export interface AgentNoticeActionPayload {
 
 export interface AgentReloadPlanPayload {
   templateId: string;
+}
+
+/** ADR-038: choices per agent. models empty for Codex when its cache cannot be read. */
+export interface AgentModelOptionsResponse {
+  'claude-code': { models: ModelChoice[]; efforts: string[] };
+  codex: { models: ModelChoice[]; efforts: string[] };
+}
+
+export interface AgentSwitchModelPayload {
+  sessionId: string;
+  /** Omit to keep the current one */
+  model?: string;
+  effort?: string;
+}
+
+export interface AgentSwitchModelResponse {
+  applied: boolean;
+  /**
+   * With applied: true, whether the earlier conversation was resumed. false = no id was
+   * printed or known, so the agent started a new conversation (it had none yet, usually).
+   */
+  resumed?: boolean;
+  /**
+   * busy: mid-turn, waiting on an approval, or a switch already running;
+   * cannot-restart: SSH tab, or a template that does not keep a shell after the agent;
+   * exit-timeout: the agent did not exit after /exit, nothing else was typed;
+   * not-agent / exited / session-not-found as named.
+   */
+  reason?:
+    | 'session-not-found'
+    | 'not-agent'
+    | 'exited'
+    | 'busy'
+    | 'cannot-restart'
+    | 'exit-timeout';
+}
+
+export interface AgentUsagePayload {
+  sessionId: string;
+}
+
+export interface AgentUsageResponse {
+  /** null until the agent has written its first transcript or rollout line */
+  usage: AgentUsage | null;
 }
 
 /** 整体重载会动到什么 (ADR-037),只算本机、没退出的终端 */

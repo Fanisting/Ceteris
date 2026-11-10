@@ -3269,10 +3269,11 @@ select.settings-input option {
   cursor: auto;
 }
 
-/* 选择面板:问题一行,选项一列按钮,带指针的那项描边用强调色 */
+/* 选择面板:问题一行,选项一列按钮,带指针的那项描边用强调色。颜色一律继承 toast 的:
+   Material 皮肤把 toast 画在反色面上,普通文字变量在那上面看不见 */
 .toast-choice-question {
   margin-bottom: 4px;
-  color: var(--color-text-muted, #f0f);
+  opacity: 0.75;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -3291,7 +3292,7 @@ select.settings-input option {
   border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
   border-radius: 6px;
   background: transparent;
-  color: var(--color-text-primary, #f0f);
+  color: inherit;
   font: inherit;
   cursor: pointer;
   white-space: normal;
@@ -3299,7 +3300,7 @@ select.settings-input option {
 }
 
 .toast-choice-option:hover:not(:disabled) {
-  background-color: var(--color-bg-hover, #f0f);
+  background-color: color-mix(in srgb, currentcolor 12%, transparent);
 }
 
 .toast-choice-option:disabled {
@@ -3312,17 +3313,17 @@ select.settings-input option {
 }
 
 .toast-choice-option .toast-choice-index {
-  color: var(--color-text-muted, #f0f);
+  opacity: 0.7;
   margin-right: 6px;
 }
 
 .toast-choice-option .toast-choice-note {
-  color: var(--color-text-muted, #f0f);
+  opacity: 0.7;
   margin-left: 6px;
 }
 
 .toast-choice-empty {
-  color: var(--color-text-muted, #f0f);
+  opacity: 0.75;
 }
 
 /* ── Bootstrap / 错误占位 ── */

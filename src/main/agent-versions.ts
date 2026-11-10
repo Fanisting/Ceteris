@@ -223,6 +223,8 @@ export interface AgentVersionDeps {
   runVersion: (exePath: string) => Promise<string | null>;
   /** 拿 URL 的 JSON;失败返回 null */
   fetchJson: (url: string) => Promise<unknown>;
+  /** force 检查时调用:丢掉缓存的 PATH,刚装好的 CLI 立刻能找到 */
+  refreshEnv?: () => void;
   now?: () => number;
 }
 
@@ -276,6 +278,7 @@ export class AgentVersionChecker {
     if (force) {
       this.installed.clear();
       this.latest.clear();
+      this.deps.refreshEnv?.();
     } else if (this.inFlight) {
       return this.inFlight;
     }
@@ -296,6 +299,27 @@ export class AgentVersionChecker {
   /** 升级后调用:下次 list 重新扫 PATH、重新跑 --version */
   invalidate(templateId: string): void {
     this.installed.delete(templateId);
+  }
+
+  /**
+   * 哪些内置 agent 在 PATH 上 (ADR-034:新建页只显示装了的)。只扫 PATH,不跑
+   * --version、不联网,所以几毫秒就回来,新建页不用等 list() 的慢路径。
+   * 有新鲜的 list() 缓存时直接用它,结论一致。
+   * @param force true 时丢掉缓存重新扫 (新建页 Agents 标题旁的刷新按钮)
+   */
+  listInstalled(force = false): { templateId: string; installed: boolean }[] {
+    if (force) {
+      this.installed.clear();
+      this.deps.refreshEnv?.();
+    }
+    return AGENT_UPDATE_SPECS.map((spec) => {
+      const hit = this.installed.get(spec.templateId);
+      const fresh = hit && this.now() - hit.at < INSTALLED_TTL_MS;
+      const installed = fresh
+        ? hit.value.path !== null
+        : this.deps.findOnPath(spec.command).length > 0;
+      return { templateId: spec.templateId, installed };
+    });
   }
 
   private async checkOne(spec: AgentUpdateSpec): Promise<AgentVersionInfo> {
@@ -381,6 +405,8 @@ export function findOnPath(command: string, env: Record<string, string | undefin
 
 const VERSION_TIMEOUT_MS = 10_000;
 const FETCH_TIMEOUT_MS = 8_000;
+/** 一轮检查内复用刷新过的 PATH;装完新 CLI 几秒后再开新建页就能看到 */
+const ENV_CACHE_MS = 5_000;
 
 /**
  * 生产用的 checker:PATH 取平台层刷新后的值 (装完新 CLI 不用重启 Ceteris),
@@ -388,7 +414,7 @@ const FETCH_TIMEOUT_MS = 8_000;
  * 不能直接 execFile。exe 路径来自 PATH 扫描,不是用户输入。
  */
 export function createAgentVersionChecker(adapter: PlatformAdapter): AgentVersionChecker {
-  const buildEnv = (): Record<string, string> => {
+  const readEnv = (): Record<string, string> => {
     const env: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) if (typeof v === 'string') env[k] = v;
     const path = adapter.getRefreshedPath();
@@ -399,8 +425,20 @@ export function createAgentVersionChecker(adapter: PlatformAdapter): AgentVersio
     adapter.normalizeSpawnEnv(env);
     return env;
   };
+  // getRefreshedPath 在 Windows 上要 spawn 两次 reg.exe。一轮检查对每个 agent 都要 PATH,
+  // 几秒内复用同一份,否则一次 list() 就是十几次 reg 查询。
+  let envCache: { value: Record<string, string>; at: number } | null = null;
+  const buildEnv = (): Record<string, string> => {
+    if (!envCache || Date.now() - envCache.at > ENV_CACHE_MS) {
+      envCache = { value: readEnv(), at: Date.now() };
+    }
+    return envCache.value;
+  };
   return new AgentVersionChecker({
     findOnPath: (command) => findOnPath(command, buildEnv()),
+    refreshEnv: () => {
+      envCache = null;
+    },
     realPath: (path) => {
       try {
         return realpathSync(path);

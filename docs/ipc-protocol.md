@@ -969,6 +969,15 @@ interface SetDefaultTemplatePayload {
 
 **Errors**:`TemplateNotFound`
 
+#### `cmd:template:usage-list`
+新建页各按钮的启动次数(ADR-034)。无 payload。模板按钮的 key 是模板 id,检测到的 shell 按钮是 `shell:<shellId>`。计数在 `cmd:session:create` 里累加,只反映用户自己的点击;存在 `template-usage.json`,最多 64 条,最久没点的先丢。renderer 用 `src/shared/template-usage.ts` 的 `frequentChoices` 决定哪几个是常用选项。
+
+```typescript
+interface ListTemplateUsageResponse {
+  entries: { key: string; count: number; lastUsedAt: number }[];
+}
+```
+
 ### 5.5 Settings
 
 #### `cmd:settings:get`
@@ -1432,6 +1441,19 @@ interface GetPsCommandsResponse {
 **Side Effects**:无
 
 ---
+
+### 5.10 Agent CLI(ADR-034)
+
+新建页用的 agent 检测。版本和升级命令(`cmd:agent:list-versions`、`cmd:agent:upgrade` 等)的类型见 `src/shared/protocol.ts`;这里只记新建页决定显示哪些 agent 的那一条。
+
+#### `cmd:agent:list-installed`
+payload 可选 `{ force?: boolean }`,`force` 为 true 时丢掉缓存重新扫 PATH(新建页 Agents 标题旁的刷新按钮)。每个有检测规则的内置 agent(`AGENT_UPDATE_SPECS`)一项,`installed` 表示 PATH 上找得到它的命令。只扫 PATH,不跑 `--version`、不联网,毫秒级返回;新建页等它回来再画 Agents 区,没装的不显示。没有检测规则的模板(自定义)不在列表里,新建页照常显示它们。只对本机文件夹有意义,SSH / WSL 文件夹的新建页不调用。
+
+```typescript
+interface ListInstalledAgentsResponse {
+  agents: { templateId: string; installed: boolean }[];
+}
+```
 
 ### 5.11 Agent 更新时关掉再开回来 (ADR-037)
 

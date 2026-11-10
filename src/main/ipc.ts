@@ -27,6 +27,8 @@ import {
   type NextPromptUsage,
 } from '@shared/next-prompt';
 import type { NextPromptUsageTracker } from './next-prompt-usage';
+import type { TemplateUsageTracker } from './template-usage';
+import { templateUsageKey } from '@shared/template-usage';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -122,6 +124,9 @@ import {
   type SshConfigListResponse,
   type OpenExternalPayload,
   type SetDefaultTemplatePayload,
+  type ListInstalledAgentsPayload,
+  type ListInstalledAgentsResponse,
+  type ListTemplateUsageResponse,
   type SettingsArchiveV1,
   type UpdateTemplatePayload,
   type UpdateTemplateResponse,
@@ -246,6 +251,8 @@ import {
 export interface IpcLayerDeps {
   /** Optional like aiClient, so tests need not build it. */
   nextPromptUsage?: NextPromptUsageTracker;
+  /** 新建页按钮的启动次数 (ADR-034)。可选:单测不带它,此时不计数,usage-list 返回空 */
+  templateUsage?: TemplateUsageTracker;
   /** Encrypted API keys (ADR-025). Optional so tests need not build it. */
   secretStore?: SecretStore;
   windowManager: WindowManager;
@@ -796,6 +803,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         ...(shellId ? { shellIdOverride: shellId } : {}),
         ...(sshProfileForLaunch ? { sshProfile: sshProfileForLaunch } : {}),
       });
+      // ADR-034:只有用户自己的点击走到这里 (agent 开的标签直接进 SessionManager),
+      // 所以这个计数就是"用户常点哪个"。
+      deps.templateUsage?.record(templateUsageKey(effectiveTemplateId, shellId));
       const pathTreeChanged = JSON.stringify(pathManager.getTree()) !== oldTreeJson;
       const warning = sessionManager.lastLaunchWarning ?? undefined;
       return warning ? { session, pathTreeChanged, warning } : { session, pathTreeChanged };
@@ -1870,6 +1880,22 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   let agentChecker: AgentVersionChecker | null = null;
   const getAgentChecker = (): AgentVersionChecker =>
     (agentChecker ??= createAgentVersionChecker(getPlatformAdapter()));
+
+  // ADR-034:新建页先问这个 (毫秒级) 决定显示哪些 agent,状态点再走 AGENT_LIST_VERSIONS 的慢路径
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
+    (
+      _e,
+      envelope: CommandEnvelope<ListInstalledAgentsPayload | undefined>,
+    ): ListInstalledAgentsResponse => ({
+      agents: getAgentChecker().listInstalled(envelope.payload?.force === true),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.TEMPLATE_USAGE_LIST,
+    (): ListTemplateUsageResponse => ({ entries: deps.templateUsage?.list() ?? [] }),
+  );
 
   /**
    * 开一个跑升级命令的终端。成功自动关闭,失败留着显示报错 (closeOnSuccess)。

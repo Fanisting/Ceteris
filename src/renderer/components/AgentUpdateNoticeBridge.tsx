@@ -4,31 +4,37 @@
  *   并把 toast 上的按钮转回 main (cmd:agent:notice-action)。
  *
  *   通知种类见 @shared/protocol AgentUpdateNotice:
- *   - available:有新版本 → [升级]
+ *   - available:有新版本 → [升级] [关掉再开回来 (该 agent 有终端开着时)]
  *   - scheduled:倒计时后自动升级 → [立即升级] [跳过此版本],toast 停留到倒计时结束
- *   - waiting:agent 还开着,关掉后再升级 → [跳过此版本]
+ *   - waiting:agent 还开着,关掉后再升级 → [关掉再开回来] [跳过此版本]
  *   - done / failed:后台升级结果;失败时 [打开终端] 把留着报错的终端接到本窗口
+ *   - reloading / reloaded:整体重载 (ADR-037) 的开始与结束
  *
  *   每个窗口都会收到同一条通知;按钮在 main 侧是幂等的,哪个窗口点都行。
+ *   "关掉再开回来"按钮只在本窗口看到该 agent 还有终端开着时出现:没有终端就等于普通升级。
  *
  * @不要在这里做的事:
  * - 不要在 renderer 里决定何时升级:倒计时和排队都在 main (agent-auto-update.ts)
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
   type AgentNoticeActionPayload,
   type AgentUpdateNotice,
 } from '@shared/protocol';
-import { useAppDispatch } from '../store';
+import { useAppDispatch, useAppState } from '../store';
 import { useTranslation } from './LanguageProvider';
-import { useToast } from './Toast';
+import { useToast, type ToastAction } from './Toast';
 
 export function AgentUpdateNoticeBridge(): null {
   const toast = useToast();
   const dispatch = useAppDispatch();
   const { tx } = useTranslation();
+  const state = useAppState();
+  // 通知到达时才看 sessions;放 ref 免得每次 sessions 变化都重挂监听
+  const sessionsRef = useRef(state.sessions);
+  sessionsRef.current = state.sessions;
 
   useEffect(() => {
     const act = (templateId: string, action: AgentNoticeActionPayload['action']): void => {
@@ -37,7 +43,11 @@ export function AgentUpdateNoticeBridge(): null {
           templateId,
           action,
         })
-        .catch((err) => console.warn('[AgentUpdateNotice] action failed', err));
+        .catch((err) => {
+          console.warn('[AgentUpdateNotice] action failed', err);
+          const msg = err instanceof Error ? err.message : String(err);
+          toast.push({ kind: 'error', message: msg });
+        });
     };
 
     const openTerminal = (sessionId: string, pathId: string): void => {
@@ -50,6 +60,17 @@ export function AgentUpdateNoticeBridge(): null {
         .catch((err) => console.warn('[AgentUpdateNotice] open terminal failed', err));
     };
 
+    const hasOpenTabs = (templateId: string): boolean => {
+      for (const s of sessionsRef.current.values()) {
+        if (s.templateId === templateId && s.state !== 'exited') return true;
+      }
+      return false;
+    };
+    const reloadAction = (templateId: string): ToastAction[] =>
+      hasOpenTabs(templateId)
+        ? [{ label: tx('关掉再开回来', 'Full reload'), onClick: () => act(templateId, 'reload') }]
+        : [];
+
     const off = window.api.on<AgentUpdateNotice>(EVENT_CHANNELS.AGENT_UPDATE_NOTICE, (n) => {
       const versions = n.from && n.to ? `${n.from} → ${n.to}` : (n.to ?? '');
       switch (n.kind) {
@@ -60,7 +81,11 @@ export function AgentUpdateNoticeBridge(): null {
             durationMs: 15_000,
             actions: [
               { label: tx('升级', 'Update'), onClick: () => act(n.templateId, 'update') },
-              { label: tx('跳过此版本', 'Skip this version'), onClick: () => act(n.templateId, 'skip') },
+              ...reloadAction(n.templateId),
+              {
+                label: tx('跳过此版本', 'Skip this version'),
+                onClick: () => act(n.templateId, 'skip'),
+              },
             ],
           });
           break;
@@ -75,7 +100,10 @@ export function AgentUpdateNoticeBridge(): null {
             durationMs: n.delayMs ?? 30_000,
             actions: [
               { label: tx('立即升级', 'Update now'), onClick: () => act(n.templateId, 'now') },
-              { label: tx('跳过此版本', 'Skip this version'), onClick: () => act(n.templateId, 'skip') },
+              {
+                label: tx('跳过此版本', 'Skip this version'),
+                onClick: () => act(n.templateId, 'skip'),
+              },
             ],
           });
           break;
@@ -89,14 +117,21 @@ export function AgentUpdateNoticeBridge(): null {
             ),
             durationMs: 15_000,
             actions: [
-              { label: tx('跳过此版本', 'Skip this version'), onClick: () => act(n.templateId, 'skip') },
+              ...reloadAction(n.templateId),
+              {
+                label: tx('跳过此版本', 'Skip this version'),
+                onClick: () => act(n.templateId, 'skip'),
+              },
             ],
           });
           break;
         case 'done':
           toast.push({
             kind: 'success',
-            message: tx(`${n.name} 已升级到 ${n.to ?? '最新版'}`, `${n.name} updated to ${n.to ?? 'the latest version'}`),
+            message: tx(
+              `${n.name} 已升级到 ${n.to ?? '最新版'}`,
+              `${n.name} updated to ${n.to ?? 'the latest version'}`,
+            ),
           });
           break;
         case 'failed': {
@@ -106,17 +141,64 @@ export function AgentUpdateNoticeBridge(): null {
             kind: 'error',
             message:
               n.exitCode !== undefined
-                ? tx(`${n.name} 升级失败 (退出码 ${n.exitCode})`, `${n.name} update failed (exit code ${n.exitCode})`)
+                ? tx(
+                    `${n.name} 升级失败 (退出码 ${n.exitCode})`,
+                    `${n.name} update failed (exit code ${n.exitCode})`,
+                  )
                 : tx(`${n.name} 升级没有完成`, `${n.name} update did not finish`),
             durationMs: 20_000,
             ...(sessionId && pathId
               ? {
                   actions: [
-                    { label: tx('打开终端', 'Open terminal'), onClick: () => openTerminal(sessionId, pathId) },
+                    {
+                      label: tx('打开终端', 'Open terminal'),
+                      onClick: () => openTerminal(sessionId, pathId),
+                    },
                   ],
                 }
               : {}),
           });
+          break;
+        }
+        case 'reloading':
+          toast.push({
+            kind: 'info',
+            message: tx(
+              `正在关掉 ${n.tabs ?? 0} 个 ${n.name} 终端并更新,之后会开回来`,
+              `Closing ${n.tabs ?? 0} ${n.name} ${n.tabs === 1 ? 'tab' : 'tabs'} to update; they will come back`,
+            ),
+            durationMs: 10_000,
+          });
+          break;
+        case 'reloaded': {
+          const tabs = n.tabs ?? 0;
+          const back = tx(
+            `${tabs} 个 ${n.name} 终端已开回来` +
+              (n.continued ? `,${n.continued} 个已收到 continue` : '') +
+              (n.failedTabs ? `,${n.failedTabs} 个没开回来` : ''),
+            `${tabs} ${n.name} ${tabs === 1 ? 'tab is' : 'tabs are'} back` +
+              (n.continued ? `, ${n.continued} told to continue` : '') +
+              (n.failedTabs ? `, ${n.failedTabs} could not be reopened` : ''),
+          );
+          toast.push(
+            n.updated
+              ? {
+                  kind: 'success',
+                  message: tx(
+                    `${n.name} 已更新到 ${n.to ?? '最新版'}。${back}`,
+                    `${n.name} updated to ${n.to ?? 'the latest version'}. ${back}`,
+                  ),
+                  durationMs: 12_000,
+                }
+              : {
+                  kind: 'warn',
+                  message: tx(
+                    `${back},但 ${n.name} 没有更新成功 (仍是 ${n.to ?? n.from ?? '旧版本'})`,
+                    `${back}, but ${n.name} did not update (still ${n.to ?? n.from ?? 'the old version'})`,
+                  ),
+                  durationMs: 20_000,
+                },
+          );
           break;
         }
       }

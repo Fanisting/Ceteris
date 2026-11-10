@@ -34,6 +34,10 @@ import {
   type ListAgentVersionsResponse,
   type ListShellsResponse,
   type UpgradeAgentPayload,
+  type AgentReloadPlan,
+  type AgentReloadPlanPayload,
+  type ReloadAgentPayload,
+  type ReloadAgentResponse,
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
 import { formatPathDisplayPath } from '@shared/path-display';
@@ -388,11 +392,57 @@ function WelcomeState(): JSX.Element {
   );
 }
 
+/** 整体重载对话框的正文 (ADR-037):会关掉什么、开回来后会发生什么、不碰什么 */
+function reloadQuestion(
+  name: string,
+  plan: AgentReloadPlan,
+  tx: (zh: string, en: string) => string,
+): string {
+  const lines: string[] = [];
+  lines.push(
+    tx(
+      `${name} 开着 ${plan.tabs} 个终端,其中 ${plan.running} 个正在跑。`,
+      `${name} has ${plan.tabs} open ${plan.tabs === 1 ? 'tab' : 'tabs'}, ${plan.running} of them running.`,
+    ),
+  );
+  lines.push(
+    plan.resumes
+      ? tx(
+          `"关掉再开回来"会关掉这些终端,更新 ${name},再把每个终端开回来并接上它上次的对话;刚才在跑的会收到 "continue" 接着干。`,
+          `"Full reload" closes these tabs, updates ${name}, then reopens each tab with its last conversation; tabs that were running are told to continue.`,
+        )
+      : tx(
+          `"关掉再开回来"会关掉这些终端,更新 ${name},再把每个终端开回来。${name} 不支持从命令行接上对话,开回来的是新对话。`,
+          `"Full reload" closes these tabs, updates ${name}, then reopens each tab. ${name} cannot resume a conversation from the command line, so the reopened tabs start fresh.`,
+        ),
+  );
+  if (plan.blocked > 0) {
+    lines.push(
+      tx(
+        `${plan.blocked} 个在等你批准的不会收到 "continue",开回来后由你决定。`,
+        `${plan.blocked} waiting for your approval will not be told to continue; decide in the reopened tab.`,
+      ),
+    );
+  }
+  lines.push(tx('其他 agent 和 shell 的终端不动。', 'Tabs of other agents and shells are not touched.'));
+  if (plan.otherTabs > 0) {
+    lines.push(
+      tx(
+        `另有 ${plan.otherTabs} 个 shell 终端里手动跑着 ${name},它们不会被关,Windows 上可能让更新失败。`,
+        `${plan.otherTabs} shell ${plan.otherTabs === 1 ? 'tab is' : 'tabs are'} running ${name} by hand; they stay open and may make the update fail on Windows.`,
+      ),
+    );
+  }
+  lines.push(tx('"只更新"只在新终端里跑更新命令。', '"Update only" just runs the update command in a new tab.'));
+  return lines.join('\n');
+}
+
 function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const dispatch = useAppDispatch();
   const toast = useToast();
+  const modal = useModal();
   const [creating, setCreating] = useState(false);
   const node = findPathNode(state.pathTree, pathId);
   const isSshPath = node?.kind === 'ssh';
@@ -453,11 +503,56 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
     };
   }, [showAgentDots]);
 
-  const handleUpgrade = async (templateId: string): Promise<void> => {
+  /**
+   * 状态点被点击。该 agent 有终端开着时先问 (ADR-037):整体重载 (关掉、升级、开回来并
+   * 恢复对话) 还是只在新终端里跑升级命令;没有终端开着时直接跑升级命令。
+   */
+  const handleUpgrade = async (templateId: string, name: string): Promise<void> => {
     if (creating) return;
     setCreating(true);
     try {
       const dims = state.lastTerminalDims;
+      let plan: AgentReloadPlan | null = null;
+      try {
+        plan = await window.api.invoke<AgentReloadPlanPayload, AgentReloadPlan>(
+          COMMAND_CHANNELS.AGENT_RELOAD_PLAN,
+          { templateId },
+        );
+      } catch (err) {
+        // 查不到就按没有终端处理:照旧只跑升级命令
+        console.warn('[MainPane] agent reload plan failed', err);
+      }
+      if (plan?.inProgress) {
+        toast.push({
+          kind: 'info',
+          message: tx(`${name} 正在重载`, `${name} is already reloading`),
+        });
+        return;
+      }
+      if (plan && plan.tabs > 0) {
+        const choice = await modal.choose({
+          title: tx(`更新 ${name}`, `Update ${name}`),
+          message: reloadQuestion(name, plan, tx),
+          choices: [
+            { id: 'reload', label: tx('关掉再开回来', 'Full reload'), primary: true },
+            { id: 'update', label: tx('只更新', 'Update only') },
+          ],
+        });
+        if (!choice) return;
+        if (choice === 'reload') {
+          const res = await window.api.invoke<ReloadAgentPayload, ReloadAgentResponse>(
+            COMMAND_CHANNELS.AGENT_RELOAD,
+            { templateId, pathId, cols: dims.cols, rows: dims.rows },
+          );
+          if (!res.started) {
+            toast.push({
+              kind: 'info',
+              message: tx(`${name} 正在重载`, `${name} is already reloading`),
+            });
+          }
+          return;
+        }
+      }
       const res = await window.api.invoke<UpgradeAgentPayload, CreateSessionResponse>(
         COMMAND_CHANNELS.AGENT_UPGRADE,
         { templateId, pathId, cols: dims.cols, rows: dims.rows },
@@ -529,7 +624,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
       creating={creating}
       onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
       version={showAgentDots ? agentVersions.get(t.id) : undefined}
-      onUpgrade={() => void handleUpgrade(t.id)}
+      onUpgrade={() => void handleUpgrade(t.id, t.name)}
     />
   );
 

@@ -85,25 +85,47 @@ function useHudIndent(
   useLayoutEffect(() => {
     const line = lineRef.current;
     const bar = line?.parentElement;
-    const screen =
-      document.querySelector<HTMLElement>('.pane-slot.focused .xterm-screen') ??
-      document.querySelector<HTMLElement>('.xterm-screen');
-    if (!line || !bar || !screen || cols <= 0) {
+    if (!line || !bar || cols <= 0) {
       setIndent(0);
       return undefined;
     }
+    // The terminal often mounts after this line (a new tab, a layout change), so the screen
+    // is looked up on every measure, and DOM changes in the pane area trigger a new measure.
+    // Measures are batched to one per frame: the DOM renderer (Linux) changes rows constantly.
+    let screen: HTMLElement | null = null;
+    let frame = 0;
+    const resize = new ResizeObserver(() => schedule());
     const measure = (): void => {
+      frame = 0;
+      const found =
+        document.querySelector<HTMLElement>('.pane-slot.focused .xterm-screen') ??
+        document.querySelector<HTMLElement>('.xterm-screen');
+      if (found !== screen) {
+        if (screen) resize.unobserve(screen);
+        screen = found;
+        if (screen) resize.observe(screen);
+      }
+      if (!screen) return; // keep the last indent until a terminal shows up
       const s = screen.getBoundingClientRect();
+      if (s.width === 0) return;
       const b = bar.getBoundingClientRect();
       const pad = parseFloat(getComputedStyle(bar).paddingLeft) || 0;
       const column = s.left + (s.width / cols) * HUD_INDENT_CELLS;
       setIndent(Math.max(0, Math.round(column - b.left - pad)));
     };
+    const schedule = (): void => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    resize.observe(bar);
+    const area = bar.parentElement ?? document.body;
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(area, { childList: true, subtree: true });
     measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(screen);
-    observer.observe(bar);
-    return () => observer.disconnect();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      resize.disconnect();
+      mutations.disconnect();
+    };
   }, [lineRef, sessionId, cols, layout]);
   return indent;
 }

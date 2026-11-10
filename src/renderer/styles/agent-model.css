@@ -100,24 +100,29 @@
   white-space: nowrap;
 }
 
-/* Same box as .pane-layout-btn: 32px tall, small corner, hover tint. The outline is a 1px
-   gradient from the theme's primary to its secondary accent, drawn by ::before and masked to
-   a ring, so the inside stays transparent and keeps the hover tint. */
+/* Same box as .pane-layout-btn: 32px tall, small corner, hover tint over the whole box.
+   The visible outline matches the frame the split icons draw (measured 2026-11-10: a 15px tall
+   rectangle 8.5px below the button top, 1.5px stroke, 2.5px corners), so its top and bottom
+   line up with the icons' frames: outer edge 7.75px to 24.25px. It is a gradient from the
+   theme's primary to its secondary accent, drawn by ::before and masked to a ring, so the
+   inside stays transparent. */
 .agent-status-pick {
   position: relative;
   display: inline-flex;
   align-items: center;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
   border-radius: var(--md-shape-sm, 8px);
 }
 
 .agent-status-pick::before {
   content: '';
   position: absolute;
-  inset: 0;
-  padding: 1px;
-  border-radius: inherit;
+  inset: 7.75px 0;
+  padding: 1.5px;
+  border-radius: 3.25px;
   background: linear-gradient(
     120deg,
     var(--md-primary, #f0f),

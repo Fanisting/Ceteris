@@ -24,6 +24,9 @@ import type { CommandEnvelope, CreateSessionPayload } from '@shared/protocol';
 import type { SessionInfo } from '@shared/types';
 import type * as IpcModule from './ipc';
 import { makePathId } from './path-manager';
+import { promises as fsp } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
 
 // ──────────────────────────────────────────────────────────────────
 // electron mock — ipcMain.handle 捕获 handler 到 handlers Map
@@ -585,5 +588,49 @@ describe('IPC PDF 自动刷新与登录提示', () => {
     expect(answer).not.toHaveBeenCalled();
     expect(await send({ promptId: 'id', answer: null })).toBe(true);
     expect(answer).toHaveBeenCalledWith('id', null);
+  });
+});
+
+describe('IPC show-in-explorer', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await fsp.mkdtemp(joinPath(tmpdir(), 'ceteris-explorer-'));
+  });
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fsp.rm(dir, { recursive: true, force: true });
+  });
+
+  async function show(payload: { path: string; open?: boolean }): Promise<void> {
+    const { installIpcLayer } = await freshIpc();
+    installIpcLayer(makeStubs().deps as Parameters<typeof installIpcLayer>[0]);
+    await handlers.get(COMMAND_CHANNELS.SYSTEM_SHOW_IN_EXPLORER)!(
+      {},
+      { windowId: 'w1', requestId: 'r', payload },
+    );
+  }
+
+  it('open 只打开文件夹本身;文件从不交给 openPath (会运行它),只在父目录里选中', async () => {
+    const openPath = vi.spyOn(mockShell, 'openPath');
+    const select = vi.spyOn(mockShell, 'showItemInFolder');
+    const file = joinPath(dir, 'run.bat');
+    await fsp.writeFile(file, 'echo hi');
+
+    await show({ path: dir, open: true });
+    expect(openPath).toHaveBeenCalledWith(dir);
+    expect(select).not.toHaveBeenCalled();
+
+    await show({ path: file, open: true });
+    await show({ path: joinPath(dir, 'missing'), open: true });
+    await show({ path: dir });
+    expect(openPath).toHaveBeenCalledTimes(1);
+    expect(select.mock.calls.map((c) => (c as unknown[])[0])).toEqual([file, joinPath(dir, 'missing'), dir]);
+  });
+
+  it('openPath 打不开文件夹时退回选中它', async () => {
+    vi.spyOn(mockShell, 'openPath').mockResolvedValueOnce('no handler');
+    const select = vi.spyOn(mockShell, 'showItemInFolder');
+    await show({ path: dir, open: true });
+    expect(select).toHaveBeenCalledWith(dir);
   });
 });

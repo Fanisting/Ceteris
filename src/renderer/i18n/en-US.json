@@ -54,6 +54,8 @@
   "fileTree.rename.error.unknown": "Rename failed. See the log for details",
   "fileTree.newFile": "New file",
   "fileTree.newFile.placeholder": "Name, such as notes.txt",
+  "fileTree.openInExplorer": "Open in File Explorer",
+  "fileTree.showInExplorer": "Show in File Explorer",
   "fileTree.create.error.invalid-name": "\"{name}\" is not a valid file name",
   "fileTree.create.error.exists": "An item named \"{name}\" already exists",
   "fileTree.create.error.not-found": "The folder no longer exists",

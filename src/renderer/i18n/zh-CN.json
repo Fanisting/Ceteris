@@ -54,6 +54,8 @@
   "fileTree.rename.error.unknown": "重命名失败,详情见日志",
   "fileTree.newFile": "新建文件",
   "fileTree.newFile.placeholder": "文件名,例如 notes.txt",
+  "fileTree.openInExplorer": "在文件资源管理器中打开",
+  "fileTree.showInExplorer": "在文件资源管理器中显示",
   "fileTree.create.error.invalid-name": "“{name}”不是有效的文件名",
   "fileTree.create.error.exists": "已存在名为“{name}”的项目",
   "fileTree.create.error.not-found": "文件夹已不存在",

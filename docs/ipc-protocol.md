@@ -1098,13 +1098,14 @@ interface DetectShellsResponse {
 ```typescript
 interface ShowInExplorerPayload {
   path: string;                 // 文件或文件夹路径
+  open?: boolean;               // true 且 path 是文件夹:打开文件夹本身
 }
 // Response: {}
 ```
 
 **Errors**:`PathNotExist`
 
-**Side Effects**:调 `shell.showItemInFolder()`
+**Side Effects**:默认调 `shell.showItemInFolder()`,在父目录里选中。`open: true` 且 `path` 确实是文件夹时改调 `shell.openPath()` 打开它,失败再退回 `showItemInFolder()`。文件永远不走 `openPath`,因为那会用关联程序运行它。文件树右键的"在文件资源管理器中打开"用 `open: true`。
 
 #### `cmd:fs:list-dir`
 ```typescript

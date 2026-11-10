@@ -113,8 +113,6 @@ import {
   type AgentNoticeActionPayload,
   type AgentUpdateNotice,
   type ListAgentVersionsResponse,
-  type ListInstalledAgentsResponse,
-  type ListTemplateUsageResponse,
   type UpgradeAgentPayload,
   type AgentReloadPlan,
   type AgentReloadPlanPayload,
@@ -125,6 +123,8 @@ import {
   type SshConfigListResponse,
   type OpenExternalPayload,
   type SetDefaultTemplatePayload,
+  type ListInstalledAgentsResponse,
+  type ListTemplateUsageResponse,
   type SettingsArchiveV1,
   type UpdateTemplatePayload,
   type UpdateTemplateResponse,
@@ -1867,6 +1867,17 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   const getAgentChecker = (): AgentVersionChecker =>
     (agentChecker ??= createAgentVersionChecker(getPlatformAdapter()));
 
+  // ADR-034:新建页先问这个 (毫秒级) 决定显示哪些 agent,状态点再走 AGENT_LIST_VERSIONS 的慢路径
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
+    (): ListInstalledAgentsResponse => ({ agents: getAgentChecker().listInstalled() }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.TEMPLATE_USAGE_LIST,
+    (): ListTemplateUsageResponse => ({ entries: deps.templateUsage?.list() ?? [] }),
+  );
+
   /**
    * 开一个跑升级命令的终端。成功自动关闭,失败留着显示报错 (closeOnSuccess)。
    * 返回的 exited 在终端退出时 resolve 退出码;UPGRADE_TIMEOUT_MS 内没退出 resolve null。
@@ -2082,17 +2093,6 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     ): Promise<ListAgentVersionsResponse> => {
       return { agents: await getAgentChecker().list(envelope.payload?.force === true) };
     },
-  );
-
-  // ADR-034:新建页先问这个 (毫秒级) 决定显示哪些 agent,状态点再走上面的慢路径
-  handleCommand(
-    COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
-    (): ListInstalledAgentsResponse => ({ agents: getAgentChecker().listInstalled() }),
-  );
-
-  handleCommand(
-    COMMAND_CHANNELS.TEMPLATE_USAGE_LIST,
-    (): ListTemplateUsageResponse => ({ entries: deps.templateUsage?.list() ?? [] }),
   );
 
   handleCommand(

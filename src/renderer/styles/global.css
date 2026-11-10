@@ -2956,7 +2956,9 @@ select.settings-input option {
  * 主要修复 CPB-P2:Electron 原生 dialog 关闭后焦点归还不可控,
  * 自绘后由 ModalProvider 显式 previousActiveElementRef.focus()。
  *
- * z-index 高于 Toast (9999) 但低于 nothing(modal 不应同时存在多个)。
+ * z-index 高于 Toast (9999)。ModalProvider 的 confirm/prompt 带 .app-modal-host,再高一层:
+ * TagSettings 等 portal 对话框也用 .app-modal-backdrop 且挂在 body 末尾,同层时会盖住
+ * 它们自己弹出的确认框(右键标签 → 删除标签时确认框被压在颜色面板下面)。
  */
 .app-modal-backdrop {
   position: fixed;
@@ -2968,6 +2970,10 @@ select.settings-input option {
   align-items: center;
   justify-content: center;
   animation: app-modal-fade-in 100ms ease-out;
+}
+
+.app-modal-backdrop.app-modal-host {
+  z-index: 10001;
 }
 
 @keyframes app-modal-fade-in {

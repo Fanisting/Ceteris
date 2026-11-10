@@ -1693,6 +1693,42 @@ button.agent-dot:hover:not(:disabled)::after {
   color: var(--color-text-secondary, #f0f);
 }
 
+/* Agents 标题旁的重新检测按钮:检测中图标转圈 */
+.empty-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty-section-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary, #f0f);
+  cursor: pointer;
+}
+
+.empty-section-refresh:hover:not(:disabled) {
+  background-color: var(--color-bg-hover, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.empty-section-refresh.refreshing svg {
+  animation: template-refresh-spin 800ms linear infinite;
+}
+
+@keyframes template-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── Tab bar ── */
 
 .tab-bar {

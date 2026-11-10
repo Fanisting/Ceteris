@@ -974,6 +974,11 @@ export interface ListAgentVersionsResponse {
   agents: AgentVersionInfo[];
 }
 
+export interface ListInstalledAgentsPayload {
+  /** true 时丢掉缓存重新扫 PATH (新建页 Agents 标题旁的刷新按钮) */
+  force?: boolean;
+}
+
 export interface ListInstalledAgentsResponse {
   /** 每个有检测规则的内置 agent 一项;没有规则的模板 (自定义) 不在里面,新建页照常显示 */
   agents: { templateId: string; installed: boolean }[];

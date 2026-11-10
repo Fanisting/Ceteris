@@ -1433,7 +1433,7 @@ interface GetPsCommandsResponse {
 新建页用的 agent 检测。版本和升级命令(`cmd:agent:list-versions`、`cmd:agent:upgrade` 等)的类型见 `src/shared/protocol.ts`;这里只记新建页决定显示哪些 agent 的那一条。
 
 #### `cmd:agent:list-installed`
-无 payload。每个有检测规则的内置 agent(`AGENT_UPDATE_SPECS`)一项,`installed` 表示 PATH 上找得到它的命令。只扫 PATH,不跑 `--version`、不联网,毫秒级返回;新建页等它回来再画 Agents 区,没装的不显示。没有检测规则的模板(自定义)不在列表里,新建页照常显示它们。只对本机文件夹有意义,SSH / WSL 文件夹的新建页不调用。
+payload 可选 `{ force?: boolean }`,`force` 为 true 时丢掉缓存重新扫 PATH(新建页 Agents 标题旁的刷新按钮)。每个有检测规则的内置 agent(`AGENT_UPDATE_SPECS`)一项,`installed` 表示 PATH 上找得到它的命令。只扫 PATH,不跑 `--version`、不联网,毫秒级返回;新建页等它回来再画 Agents 区,没装的不显示。没有检测规则的模板(自定义)不在列表里,新建页照常显示它们。只对本机文件夹有意义,SSH / WSL 文件夹的新建页不调用。
 
 ```typescript
 interface ListInstalledAgentsResponse {

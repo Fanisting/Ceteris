@@ -821,6 +821,15 @@ button:focus-visible,
   color: var(--md-on-surface-variant, #f0f);
 }
 
+.empty-section-refresh {
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.empty-section-refresh:hover:not(:disabled) {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
+}
+
 .template-button {
   gap: 12px;
   padding: 14px 16px;

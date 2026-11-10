@@ -123,6 +123,7 @@ import {
   type SshConfigListResponse,
   type OpenExternalPayload,
   type SetDefaultTemplatePayload,
+  type ListInstalledAgentsPayload,
   type ListInstalledAgentsResponse,
   type ListTemplateUsageResponse,
   type SettingsArchiveV1,
@@ -1870,7 +1871,12 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // ADR-034:新建页先问这个 (毫秒级) 决定显示哪些 agent,状态点再走 AGENT_LIST_VERSIONS 的慢路径
   handleCommand(
     COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
-    (): ListInstalledAgentsResponse => ({ agents: getAgentChecker().listInstalled() }),
+    (
+      _e,
+      envelope: CommandEnvelope<ListInstalledAgentsPayload | undefined>,
+    ): ListInstalledAgentsResponse => ({
+      agents: getAgentChecker().listInstalled(envelope.payload?.force === true),
+    }),
   );
 
   handleCommand(

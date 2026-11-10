@@ -144,4 +144,28 @@ describe('agent-versions', () => {
     expect(checker.listInstalled().find((a) => a.templateId === 'claude-code')?.installed).toBe(true);
     expect(findOnPath).not.toHaveBeenCalled();
   });
+
+  it('force rescans PATH with a fresh environment, so a CLI installed a moment ago shows up', async () => {
+    let onPath: string[] = [];
+    const findOnPath = vi.fn(() => onPath);
+    const refreshEnv = vi.fn();
+    const checker = new AgentVersionChecker({
+      findOnPath,
+      realPath: (p) => p,
+      probe: noFiles,
+      runVersion: async () => '1.0.0',
+      fetchJson: async () => null,
+      refreshEnv,
+    });
+    await checker.list();
+    expect(checker.listInstalled().every((a) => !a.installed)).toBe(true);
+    onPath = ['C:\\u\\codex.cmd'];
+    // The plain call trusts the fresh cache and still says nothing is installed.
+    expect(checker.listInstalled().every((a) => !a.installed)).toBe(true);
+    expect(refreshEnv).not.toHaveBeenCalled();
+    expect(checker.listInstalled(true).every((a) => a.installed)).toBe(true);
+    expect(refreshEnv).toHaveBeenCalledTimes(1);
+    await checker.list(true);
+    expect(refreshEnv).toHaveBeenCalledTimes(2);
+  });
 });

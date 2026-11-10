@@ -223,6 +223,8 @@ export interface AgentVersionDeps {
   runVersion: (exePath: string) => Promise<string | null>;
   /** 拿 URL 的 JSON;失败返回 null */
   fetchJson: (url: string) => Promise<unknown>;
+  /** force 检查时调用:丢掉缓存的 PATH,刚装好的 CLI 立刻能找到 */
+  refreshEnv?: () => void;
   now?: () => number;
 }
 
@@ -276,6 +278,7 @@ export class AgentVersionChecker {
     if (force) {
       this.installed.clear();
       this.latest.clear();
+      this.deps.refreshEnv?.();
     } else if (this.inFlight) {
       return this.inFlight;
     }
@@ -302,8 +305,13 @@ export class AgentVersionChecker {
    * 哪些内置 agent 在 PATH 上 (ADR-034:新建页只显示装了的)。只扫 PATH,不跑
    * --version、不联网,所以几毫秒就回来,新建页不用等 list() 的慢路径。
    * 有新鲜的 list() 缓存时直接用它,结论一致。
+   * @param force true 时丢掉缓存重新扫 (新建页 Agents 标题旁的刷新按钮)
    */
-  listInstalled(): { templateId: string; installed: boolean }[] {
+  listInstalled(force = false): { templateId: string; installed: boolean }[] {
+    if (force) {
+      this.installed.clear();
+      this.deps.refreshEnv?.();
+    }
     return AGENT_UPDATE_SPECS.map((spec) => {
       const hit = this.installed.get(spec.templateId);
       const fresh = hit && this.now() - hit.at < INSTALLED_TTL_MS;
@@ -428,6 +436,9 @@ export function createAgentVersionChecker(adapter: PlatformAdapter): AgentVersio
   };
   return new AgentVersionChecker({
     findOnPath: (command) => findOnPath(command, buildEnv()),
+    refreshEnv: () => {
+      envCache = null;
+    },
     realPath: (path) => {
       try {
         return realpathSync(path);

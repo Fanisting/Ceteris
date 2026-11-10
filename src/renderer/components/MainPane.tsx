@@ -21,6 +21,7 @@
  * @对应文档章节: 软件定义书.md 6.3 (右侧标签页)、6.4 (终端区域)
  */
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -32,7 +33,9 @@ import {
   COMMAND_CHANNELS,
   type AgentVersionInfo,
   type CreateSessionResponse,
+  type ListAgentVersionsPayload,
   type ListAgentVersionsResponse,
+  type ListInstalledAgentsPayload,
   type ListInstalledAgentsResponse,
   type ListShellsResponse,
   type ListTemplateUsageResponse,
@@ -495,48 +498,81 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   const [agentVersions, setAgentVersions] = useState<Map<string, AgentVersionInfo>>(
     () => new Map(),
   );
-  useEffect(() => {
-    if (!showAgentDots) return;
-    let cancelled = false;
-    window.api
-      .invoke<unknown, ListAgentVersionsResponse>(COMMAND_CHANNELS.AGENT_LIST_VERSIONS, {})
-      .then((res) => {
-        if (!cancelled) setAgentVersions(new Map(res.agents.map((a) => [a.templateId, a])));
-      })
-      .catch((err) => {
-        // 查不到就不显示点,按钮照常可用
-        console.warn('[EmptyPathState] list-agent-versions failed', err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showAgentDots]);
-
   // ADR-034:本机路径只显示 PATH 上装了的 agent。null 表示还没问到 (毫秒级,
   // Agents 区等它再画,免得先全画出来再抽掉几个)。问不到就当全装了,按钮照常。
   const [missingAgents, setMissingAgents] = useState<Set<string> | null>(
     () => (showAgentDots ? null : new Set()),
   );
+  const [refreshingAgents, setRefreshingAgents] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  /**
+   * 问 main 哪些 agent 装了、各是什么版本。两条并行:安装列表毫秒级回来先把
+   * Agents 区画出来,版本 (要跑 --version、联网) 到了再补状态点。
+   * @param force 丢掉 main 的缓存重新扫 (标题旁的刷新按钮,刚装好一个 agent 时用)
+   * @param isStale 结果回来时返回 true 就丢弃 (组件已卸载或路径已换)
+   */
+  const loadAgents = useCallback(
+    async (force: boolean, isStale: () => boolean): Promise<void> => {
+      const installed = window.api
+        .invoke<ListInstalledAgentsPayload, ListInstalledAgentsResponse>(
+          COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
+          { force },
+        )
+        .then((res) => {
+          if (isStale()) return;
+          setMissingAgents(
+            new Set(res.agents.filter((a) => !a.installed).map((a) => a.templateId)),
+          );
+        })
+        .catch((err) => {
+          console.warn('[EmptyPathState] list-installed-agents failed', err);
+          if (!isStale()) setMissingAgents(new Set());
+        });
+      const versions = window.api
+        .invoke<ListAgentVersionsPayload, ListAgentVersionsResponse>(
+          COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
+          { force },
+        )
+        .then((res) => {
+          if (!isStale()) setAgentVersions(new Map(res.agents.map((a) => [a.templateId, a])));
+        })
+        .catch((err) => {
+          // 查不到就不显示点,按钮照常可用
+          console.warn('[EmptyPathState] list-agent-versions failed', err);
+        });
+      await Promise.all([installed, versions]);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!showAgentDots) {
       setMissingAgents(new Set());
       return;
     }
     let cancelled = false;
-    window.api
-      .invoke<unknown, ListInstalledAgentsResponse>(COMMAND_CHANNELS.AGENT_LIST_INSTALLED, {})
-      .then((res) => {
-        if (cancelled) return;
-        setMissingAgents(new Set(res.agents.filter((a) => !a.installed).map((a) => a.templateId)));
-      })
-      .catch((err) => {
-        console.warn('[EmptyPathState] list-installed-agents failed', err);
-        if (!cancelled) setMissingAgents(new Set());
-      });
+    void loadAgents(false, () => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [showAgentDots]);
+  }, [showAgentDots, loadAgents]);
+
+  const handleRefreshAgents = async (): Promise<void> => {
+    if (refreshingAgents) return;
+    setRefreshingAgents(true);
+    try {
+      await loadAgents(true, () => !mountedRef.current);
+    } finally {
+      if (mountedRef.current) setRefreshingAgents(false);
+    }
+  };
 
   // ADR-034:常用选项的小动画。次数来自 main,规则在 shared。拿不到就没有动画。
   const [usage, setUsage] = useState<TemplateUsageEntry[]>([]);
@@ -683,6 +719,24 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
     const tier = tiers.get(key);
     return tier ? { tier, hopIndex: hopOrder.indexOf(key) } : { hopIndex: 0 };
   };
+  // Agents 区标题,本机路径时右边带一个重新检测的按钮 (装好新 agent 后不用重开页面)
+  const agentsTitle = (
+    <div className="empty-section-title empty-section-title-row">
+      <span>Agents</span>
+      {showAgentDots && (
+        <button
+          type="button"
+          className={`empty-section-refresh${refreshingAgents ? ' refreshing' : ''}`}
+          onClick={() => void handleRefreshAgents()}
+          disabled={refreshingAgents}
+          title={tx('重新检测已安装的 agent', 'Detect installed agents again')}
+          aria-label={tx('重新检测已安装的 agent', 'Detect installed agents again')}
+        >
+          <Icon name="refresh" size={14} />
+        </button>
+      )}
+    </div>
+  );
   const renderTemplate = (t: Template): JSX.Element => (
     <TemplateLaunchButton
       key={t.id}
@@ -766,7 +820,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
 
         {agentsKnown && agentTemplates.length > 0 && (
           <div className="empty-section">
-            <div className="empty-section-title">Agents</div>
+            {agentsTitle}
             <div className="empty-button-grid">
               {canLaunchTemplates && agentTemplates.map(renderTemplate)}
             </div>
@@ -774,7 +828,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
         )}
         {agentsKnown && agentTemplates.length === 0 && allAgentTemplates.length > 0 && (
           <div className="empty-section">
-            <div className="empty-section-title">Agents</div>
+            {agentsTitle}
             <div className="empty-agents-hint">
               {tx(
                 'PATH 上没找到任何 agent 命令。装好 Claude Code、Codex 或别的 agent 后,它会出现在这里。',

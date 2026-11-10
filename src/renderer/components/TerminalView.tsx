@@ -141,7 +141,6 @@ import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useToast } from './Toast';
 import { useModal } from './Modal';
 import { useTranslation } from './LanguageProvider';
-import { AgentModelChip } from './AgentModelControls';
 import { matchKeybinding } from '@shared/terminal-keybindings';
 import '@xterm/xterm/css/xterm.css';
 
@@ -2398,11 +2397,6 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         onWheel={handleWheel}
         onDrop={handleTerminalDrop}
       />
-      {/* ADR-038: a slim strip under Claude Code and Codex tabs with the model chip at its
-          left. It takes layout space instead of floating, because a floating chip covered
-          the agent's bottom line. It is there from the first frame, so the PTY is sized
-          once and the agent never redraws for it. */}
-      <AgentModelChip session={session} />
       {searchVisible && (
         <div
           className="terminal-search-bar"

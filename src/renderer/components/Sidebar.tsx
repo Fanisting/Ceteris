@@ -81,7 +81,8 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import { buildSessionContextMenu } from './sessionContextMenu';
 import { CelebrationBurst } from './CelebrationBurst';
-import { FolderAgentDefaultsRow } from './AgentModelControls';
+import { FolderAgentDefaultsRows } from './AgentModelControls';
+import { MODEL_AGENTS } from '@shared/agent-model';
 
 /**
  * 状态点颜色 (软件定义书 6.2.4 状态指示):
@@ -869,6 +870,8 @@ function PathItem({
   const sessions =
     statusFilter === null ? allSessions : allSessions.filter((s) => sessionStatus(s) === statusFilter);
   const activeCount = allSessions.length;
+  // ADR-038: a model row only for agents that have a tab in this folder
+  const agentsHere = MODEL_AGENTS.filter((a) => allSessions.some((s) => s.templateId === a));
   // BETA-014:优先用 FolderList 算好的去重名;退到本节点 displayName / 末段
   const displayName =
     displayNameOverride ??
@@ -1222,7 +1225,11 @@ function PathItem({
         </div>
         {/* ADR-038: model and effort that new agent tabs in this folder start with */}
         {statusFilter === null && (
-          <FolderAgentDefaultsRow pathId={node.id} folderName={displayName} />
+          <FolderAgentDefaultsRows
+            pathId={node.id}
+            folderName={displayName}
+            agents={agentsHere}
+          />
         )}
         {sessionList || (
           <p className="sidebar-empty path-open-folder-empty">
@@ -1281,7 +1288,7 @@ function PathItem({
       </div>
       {/* ADR-038: only under the clicked folder, so the other open folders stay compact */}
       {expanded && selected && statusFilter === null && (
-        <FolderAgentDefaultsRow pathId={node.id} folderName={displayName} />
+        <FolderAgentDefaultsRows pathId={node.id} folderName={displayName} agents={agentsHere} />
       )}
       {expanded && sessionList}
     </li>

@@ -811,7 +811,7 @@ button:focus-visible,
 
 .empty-section-title {
   color: var(--md-on-surface-variant, #f0f);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.1px;
   text-transform: none;
@@ -1390,8 +1390,9 @@ select.settings-input option {
 /*
  * The main page uses one family, two sizes and one weight, and no italics. Active states
  * are carried by colour and the tab indicator, so nothing changes width when selected.
- *   13px: what you read and click (paths, sessions, tabs, cards, app name)
- *   12px: what labels it (section titles, counts, status bar)
+ *   13px: what you read and click (paths, sessions, tabs, cards, app name), and the launcher's
+ *         section titles (Shell, Agents), which match the text in their blocks (user, 2026-11-10)
+ *   12px: what labels it (sidebar section titles, counts, status bar)
  * Fixed line heights keep every row centred whichever UI font the user picks.
  */
 .titlebar-app-name,
@@ -1401,6 +1402,7 @@ select.settings-input option {
 .tab-name,
 .tab.orphan .tab-name,
 .settings-entry,
+.empty-section-title,
 .empty-button-grid button {
   font-family: var(--ui-font-family, sans-serif);
   font-size: 13px;
@@ -1416,7 +1418,6 @@ select.settings-input option {
 .sidebar-category-count,
 .path-session-count,
 .sidebar-empty,
-.empty-section-title,
 .terminal-statusbar,
 .status-text,
 .status-cwd {

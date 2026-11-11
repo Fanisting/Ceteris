@@ -1446,6 +1446,33 @@ interface ReloadAgentResponse { started: boolean; tabs: number }
 
 **Errors**:`TemplateNotFound`;`InvalidPayload`(`pathId` 是 SSH 路径);`AgentBusy`(后台自动升级正在跑这个 agent)。同一个 agent 已在重载时不报错,`started=false`。
 
+### 5.12 代码文件 lint (ADR-040)
+
+文件查看器保存代码文件成功后调用,用用户本机装的 linter 检查刚保存的文件。只读,不改文件。实现在 `src/main/code-lint.ts`,类型在 `src/shared/code-files.ts`。Link 窗口里和保存一样转发给 Host。
+
+#### `cmd:code:lint`
+```typescript
+interface LintPayload { path: string }   // 刚保存的文件的绝对路径;类型要有 linter (codeFileInfo)
+type LinterId = 'ruff' | 'lintr' | 'sqlfluff';
+type LintResponse =
+  | { ok: true; tool: LinterId; problems: LintProblem[] }
+  | { ok: false; tool: LinterId | null; reason: 'not-installed' | 'unsupported' }
+  | { ok: false; tool: LinterId; reason: 'failed'; detail: string };
+interface LintProblem {
+  line: number; column: number;          // 从 1 起,与各 linter 的输出一致
+  endLine?: number; endColumn?: number;
+  severity: 'error' | 'warning' | 'info';
+  code: string;                          // 规则名,如 F401、LT01、object_usage_linter;没有时为空串
+  message: string;
+}
+```
+- `not-installed`:PATH 上没有这个工具,也没有 `uvx`(ruff、sqlfluff)或 Rscript;或者 R 里没装 lintr 包。renderer 显示安装命令。
+- `unsupported`:路径不是绝对路径,或这种文件没有 linter。
+
+**Errors**:不抛。工具崩溃、超时(60 秒,经 uvx 时 180 秒)、输出读不懂都返回 `reason: 'failed'`,`detail` 是它 stderr 的第一行。
+
+**Side Effects**:起一个子进程。ruff 带 `--no-fix --no-cache`;sqlfluff 从 stdin 读文本。
+
 ## 6. 事件清单 (Main → Renderer)
 
 ### 6.1 应用与窗口

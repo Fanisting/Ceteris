@@ -8,7 +8,7 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 新增
 
-- **查看和编辑 .sql、.hive。** SQL 脚本和 HiveQL 脚本在文件树里点开即可查看和修改,和 txt、json、tex 一样:2 MiB 以内可编辑,更大的分段只读。
+- **查看和编辑代码、数据文件,保存后 lint。** R、Python、Julia、Stata、SQL / HiveQL、MATLAB、SAS、Fortran、配置文件和 csv 等在文件树里点开即可查看和修改:按主题颜色高亮,代码有行号,2 MiB 以内可编辑,更大的分段只读。保存 Python、R、SQL 文件后,用你本机装的 ruff、lintr、sqlfluff 检查(没装 ruff 或 sqlfluff 但有 uv 时经 `uvx` 运行),问题画波浪线并在编辑器下方列出,点一行跳过去;没装时只显示一行安装命令。lint 不改文件,也不在打字时跑。
 
 - **文件树里新建文件。** 文件树标题右边的 + 号,或右键文件夹、文件、空白处的“新建文件”,会在目标文件夹里出现一行输入框,输入名字(如 `notes.txt`、`readme.md`、`data.json`、`paper.tex`)按 Enter 即建一个空文件,Esc 或留空取消。右键文件夹建在它里面,右键文件建在它旁边。同名文件已存在时拒绝,绝不清空已有内容。新建的 .txt、.json、.md 立即在终端旁打开。只用于本机文件夹,SFTP 文件树仍是只读。
 

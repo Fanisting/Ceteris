@@ -17,6 +17,7 @@ import { MainPane } from './components/MainPane';
 import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
 import { CoordinatorTour } from './components/CoordinatorTour';
+import { ExtensionSetupCard } from './components/ExtensionSetupCard';
 import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
 import { ToastProvider } from './components/Toast';
@@ -288,6 +289,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               <LinkConnectionBanner />
               {/* ADR-024:协调者引导动画,没看过时启动或勾协调者时出现;专注模式不显示 */}
               {!state.simpleMode && <CoordinatorTour />}
+              {/* ADR-034:第一次启动的扩展一次装好卡片;排在其他引导之前 */}
+              {!state.simpleMode && <ExtensionSetupCard />}
               {state.inSettingsView ? (
                 <SettingsView />
               ) : state.simpleMode ? (

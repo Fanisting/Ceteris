@@ -135,6 +135,8 @@ export const DEFAULT_SETTINGS: Settings = {
     tabControl: false,
     // 协调者引导 (ADR-024):老设置文件缺这个字段,deep merge 补 false,升级后也会看到一次
     tabControlGuideSeen: false,
+    // 扩展一次装好的卡片 (ADR-034):同上,升级后也会出现一次
+    setupSeen: false,
   },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
@@ -665,6 +667,12 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `behavior.remoteSetupGuideSeen=${String(s.behavior.remoteSetupGuideSeen)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.setupSeen !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.setupSeen=${String(s.extensions.setupSeen)} 必须是 true 或 false`,
     );
   }
   if (typeof s.extensions.tabControl !== 'boolean') {

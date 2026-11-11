@@ -91,6 +91,10 @@ export const COMMAND_CHANNELS = {
    * 粘给 agent 的 prompt。返回 RemoteSetupGuidePathsResponse。
    */
   GUIDES_REMOTE_SETUP_PATHS: 'cmd:guides:remote-setup-paths',
+  /** ADR-033:Codex 的 config.toml 里有没有 ceteris-tabs 这个 MCP 服务器;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_STATUS: 'cmd:extensions:codex-mcp-status',
+  /** ADR-033:把 ceteris-tabs 写进(或重写进)Codex 的 config.toml;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_INSTALL: 'cmd:extensions:codex-mcp-install',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**

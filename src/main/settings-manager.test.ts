@@ -181,6 +181,17 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/terminalRightClick/);
   });
 
+  it('behavior.shelveIdleAfterHours 默认 0(关),越界 throw', () => {
+    expect(DEFAULT_SETTINGS.behavior.shelveIdleAfterHours).toBe(0);
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    bad.behavior.shelveIdleAfterHours = -1;
+    expect(() => validateSettings(bad)).toThrowError(/shelveIdleAfterHours/);
+    bad.behavior.shelveIdleAfterHours = 24 * 31;
+    expect(() => validateSettings(bad)).toThrowError(/shelveIdleAfterHours/);
+    bad.behavior.shelveIdleAfterHours = 120;
+    expect(() => validateSettings(bad)).not.toThrow();
+  });
+
   it('systemIntegration.explorerOpenIn 默认 new-window', () => {
     expect(DEFAULT_SETTINGS.systemIntegration.explorerOpenIn).toBe('new-window');
   });

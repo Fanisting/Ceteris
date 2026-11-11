@@ -60,6 +60,7 @@ async function start(sessions: SessionInfo[]) {
     bracketedPaste: () => false,
     isFile: async (path) => path.endsWith('answer.md'),
     showFile: ({ sessionId, path }) => shown.push({ sessionId, path }),
+    setAgentSession: () => {},
   };
   server = new TabControlServer(host, 'node');
   await server.start();

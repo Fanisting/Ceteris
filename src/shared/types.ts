@@ -12,6 +12,7 @@
  * @对应文档章节: 软件定义书.md 第 8 章 (状态机)、第 11 章 (数据模型)
  */
 import type { SessionRole } from './session-role';
+import type { ShelfEntry } from './shelf';
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 
@@ -532,6 +533,19 @@ export interface Settings {
      * 该 agent 有终端开着时等它关掉再升级。默认 false。需要 autoCheckAgents 开着。
      */
     autoUpdateAgents: boolean;
+    /**
+     * ADR-036:put a tab in the shelf after this many hours without output, key presses or an
+     * exit. 0 (default) never shelves on its own; the tab menu can still shelve by hand.
+     * Choices in Settings are SHELVE_AFTER_HOURS_CHOICES (shelf.ts). Tabs with a role and the
+     * tab a window is showing are never shelved.
+     */
+    shelveIdleAfterHours: number;
+    /**
+     * ADR-039:reopen the tabs that were open when Ceteris last stopped (quit, update, crash).
+     * Shells and built-in agents start again, Claude Code and Codex in their own conversation;
+     * custom commands, SSH and the Admin Shell wait in the shelf. Default true.
+     */
+    restoreTabsOnLaunch: boolean;
   };
 
   systemIntegration: {
@@ -874,6 +888,8 @@ export interface AppSnapshot {
   templates: Template[];
   defaultTemplateId: string;
   settings: Settings;
+  /** Shelved tabs, newest first (ADR-036). Empty from a main without a shelf. */
+  shelf: ShelfEntry[];
   /** 回显发起方的 windowId,renderer 用来校验 */
   myWindowId: string;
 }

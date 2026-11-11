@@ -16,6 +16,7 @@ import type { SessionRole } from './session-role';
 import type { TemplateUsageEntry } from './template-usage';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
+import type { ShelfEntry } from './shelf';
 import type {
   AppSnapshot,
   Bookmark,
@@ -106,6 +107,16 @@ export const COMMAND_CHANNELS = {
    */
   SESSION_OPEN_IN_NEW_WINDOW: 'cmd:session:open-in-new-window',
 
+  // Tab shelf (ADR-036): idle tabs put away with their resume id, see shelf.ts
+  /** Put one session in the shelf now (tab menu). Payload ShelfPutPayload. */
+  SHELF_PUT: 'cmd:shelf:put',
+  /** Open a shelved tab again in the calling window. Payload ShelfRestorePayload. */
+  SHELF_RESTORE: 'cmd:shelf:restore',
+  /** Forget one shelf entry. Payload ShelfRemovePayload. */
+  SHELF_REMOVE: 'cmd:shelf:remove',
+  /** Forget every shelf entry. */
+  SHELF_CLEAR: 'cmd:shelf:clear',
+
   // Bookmark / Path 域
   BOOKMARK_ADD: 'cmd:bookmark:add',
   BOOKMARK_REMOVE: 'cmd:bookmark:remove',
@@ -195,6 +206,8 @@ export const COMMAND_CHANNELS = {
   FS_RENAME: 'cmd:fs:rename',
   /** Makes an empty file in a local folder. Never replaces an existing one */
   FS_CREATE_FILE: 'cmd:fs:create-file',
+  /** Moves a local file or folder to the Recycle Bin. Never erases it */
+  FS_DELETE: 'cmd:fs:delete',
   /** 分块读取 PDF。本地文件或 SFTP 文件,Link 下数据从 Host 分块传回 */
   FS_READ_PDF: 'cmd:fs:read-pdf',
   /** 查文件大小和修改时间,PDF 自动刷新靠它轮询。安静请求,不弹登录提示 */
@@ -206,6 +219,8 @@ export const COMMAND_CHANNELS = {
 
   /** Saves an edited .txt or .json. Under Link it runs on the host, so the host's file changes */
   FS_WRITE_TEXT: 'cmd:fs:write-text',
+  /** Lint a saved code file with the user's installed linter (ADR-040). */
+  CODE_LINT: 'cmd:code:lint',
 
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */
@@ -310,6 +325,12 @@ export const EVENT_CHANNELS = {
   SESSION_EXITED: 'evt:session:exited',
   SESSION_OWNER_CHANGED: 'evt:session:owner-changed',
   SESSION_DESTROYED: 'evt:session:destroyed',
+  /**
+   * The shelf changed (ADR-036): a tab went in, came back or was forgotten. Sent to every
+   * window with the whole list; before the shelved session's evt:session:destroyed, so the
+   * window still has its SessionInfo for the animation. Payload ShelfChangedPayload.
+   */
+  SHELF_CHANGED: 'evt:shelf:changed',
 
   // Path / Bookmark / Settings
   PATH_TREE_UPDATED: 'evt:path:tree-updated',
@@ -522,6 +543,35 @@ export interface SetRolePayload {
   sessionId: string;
   /** null clears the role: the tab becomes a Worker again */
   role: SessionRole | null;
+}
+
+// ── Tab shelf (ADR-036) ──
+
+export interface ShelfPutPayload {
+  sessionId: string;
+}
+
+export interface ShelfRestorePayload {
+  entryId: string;
+  /** Size of the terminal area in the calling window, like cmd:session:create */
+  cols: number;
+  rows: number;
+}
+
+export interface ShelfRestoreResponse {
+  session: SessionInfo;
+  /** True when the tab came back with its conversation (claude --resume / codex resume) */
+  resumed: boolean;
+}
+
+export interface ShelfRemovePayload {
+  entryId: string;
+}
+
+export interface ShelfChangedPayload {
+  entries: ShelfEntry[];
+  /** Set when a session was just put in: it is still alive when this arrives */
+  shelvedSessionId?: string;
 }
 
 export interface CloseSessionPayload {
@@ -1092,6 +1142,11 @@ export interface GetAutoStartResponse {
 
 export interface ShowInExplorerPayload {
   path: string;
+  /**
+   * true: open a folder itself in the system file manager instead of selecting it in its
+   * parent. Ignored for files (main never runs a file), they are always just selected.
+   */
+  open?: boolean;
 }
 
 export interface OpenExternalPayload {
@@ -1255,7 +1310,7 @@ export interface SessionDestroyedPayload {
    * destroy,而是进入 'exited' 状态 (sessionExited 事件已涵盖),由用户
    * 主动关闭触发 'user-closed' destroy。
    */
-  reason: 'user-closed' | 'app-quit' | 'pty-exited';
+  reason: 'user-closed' | 'app-quit' | 'pty-exited' | 'shelved';
 }
 
 export interface PathTreeUpdatedPayload {

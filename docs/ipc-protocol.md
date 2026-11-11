@@ -6,8 +6,15 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.5 · 最后更新:2026-11-08
+文档版本:1.6 · 最后更新:2026-11-10
 
+> **v1.6 变更**(收纳盒,软件定义书 ADR-036):
+> - 新增 `cmd:shelf:put`、`cmd:shelf:restore`、`cmd:shelf:remove`、`cmd:shelf:clear` 与事件 `evt:shelf:changed`;snapshot 加 `shelf`
+> - domain 白名单加 `shelf`
+> - `evt:session:destroyed` 的 reason 多一个 `'shelved'`
+> - settings 加 `behavior.shelveIdleAfterHours`(默认 0)
+> - 附录 D 的管道加 `agent-session` 操作(任何活着的标签都能调)
+>
 > **v1.5 变更**(GitHub Releases 更新检查,软件定义书 ADR-018):
 > - 新增 `cmd:update:get-status`、`cmd:update:check-now` 与事件 `evt:update:status-changed`
 > - domain 白名单加 `update`
@@ -224,6 +231,10 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
 | `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
 | `cmd:session:get-scrollback` | 获取 session 的 scrollback 缓冲(切换 owner 时用) |
+| `cmd:shelf:put` | **(ADR-036)** 把一个 session 收进收纳盒(结束进程,留下 resume id) |
+| `cmd:shelf:restore` | **(ADR-036)** 在本窗口重新打开收纳盒里的一个标签 |
+| `cmd:shelf:remove` | **(ADR-036)** 从收纳盒移除一条 |
+| `cmd:shelf:clear` | **(ADR-036)** 清空收纳盒 |
 | `cmd:bookmark:add` | 添加收藏路径 |
 | `cmd:bookmark:remove` | 移除收藏 |
 | `cmd:bookmark:rename` | 重命名收藏的显示名 |
@@ -248,6 +259,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:system:open-external` | 用系统默认浏览器打开 URL(仅 http(s)/mailto) |
 | `cmd:fs:list-dir` | 列目录(本地或 SFTP),文件树用 |
 | `cmd:fs:rename` | 重命名本地文件树条目 |
+| `cmd:fs:delete` | 把本地文件树条目移到回收站 |
 | `cmd:fs:read-pdf` | 分块读取可查看的文件(PDF / 图片 / markdown) |
 | `cmd:fs:stat-file` | **(v1.4)** 查文件大小和修改时间,PDF 自动刷新轮询用 |
 | `cmd:ssh:askpass-answer` | **(v1.4)** 回答一条 `evt:ssh:askpass-prompt` |
@@ -271,6 +283,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:session:exited` | 全部 |
 | `evt:session:owner-changed` | 全部 |
 | `evt:session:destroyed` | 全部 |
+| `evt:shelf:changed` | **(ADR-036)** 全部;整个收纳盒列表,收纳时先于该 session 的 `evt:session:destroyed` 发出 |
 | `evt:path:tree-updated` | 全部 |
 | `evt:bookmarks:updated` | 全部 |
 | `evt:templates:updated` | 全部 |
@@ -757,6 +770,28 @@ interface SetCoordinatorPayload {
 
 ---
 
+#### `cmd:shelf:put` / `cmd:shelf:restore` / `cmd:shelf:remove` / `cmd:shelf:clear` (ADR-036)
+收纳盒。类型在 `src/shared/shelf.ts`(`ShelfEntry`)和 `protocol.ts`。
+
+```typescript
+// cmd:shelf:put — 结束进程,把标签放进收纳盒;main 先广播 evt:shelf:changed 再销毁 session
+interface ShelfPutPayload { sessionId: string }
+// Response: void。Errors:SessionNotFound、SessionBusy(agentPhase === 'working')
+
+// cmd:shelf:restore — 在调用方窗口按原模板重开;Claude Code / Codex 带 --resume / resume
+interface ShelfRestorePayload { entryId: string; cols: number; rows: number }
+interface ShelfRestoreResponse { session: SessionInfo; resumed: boolean }
+// 新 session 成功创建后才删条目;启动失败条目留着。Errors:EntryNotFound、SshProfileNotFound 及 cmd:session:create 的全部错误
+
+// cmd:shelf:remove
+interface ShelfRemovePayload { entryId: string }
+// cmd:shelf:clear — payload 空
+```
+
+**Side Effects**:每次变化广播 `evt:shelf:changed`(`ShelfChangedPayload`:`{ entries: ShelfEntry[]; shelvedSessionId?: string }`),收纳时 `shelvedSessionId` 是刚收起的 session,此时它还在,窗口用它的信息画"滑进盒子"的动画。自动收纳由 main 每分钟按 `settings.behavior.shelveIdleAfterHours` 扫描,不经 IPC。
+
+---
+
 #### `cmd:session:get-scrollback`
 获取 session 的 scrollback 缓冲。一般用于 owner 切换或窗口刷新。
 
@@ -1098,13 +1133,14 @@ interface DetectShellsResponse {
 ```typescript
 interface ShowInExplorerPayload {
   path: string;                 // 文件或文件夹路径
+  open?: boolean;               // true 且 path 是文件夹:打开文件夹本身
 }
 // Response: {}
 ```
 
 **Errors**:`PathNotExist`
 
-**Side Effects**:调 `shell.showItemInFolder()`
+**Side Effects**:默认调 `shell.showItemInFolder()`,在父目录里选中。`open: true` 且 `path` 确实是文件夹时改调 `shell.openPath()` 打开它,失败再退回 `showItemInFolder()`。文件永远不走 `openPath`,因为那会用关联程序运行它。文件树右键的"在文件资源管理器中打开"用 `open: true`。
 
 #### `cmd:fs:list-dir`
 ```typescript
@@ -1138,6 +1174,20 @@ type RenameEntryResponse =
 **Errors**:无。目标已存在时返回 `exists`,绝不覆盖
 
 **Side Effects**:在原目录内改名。本节的命令在 Link 远程窗口里都转发给 Host,因为路径和 SSH profile 都在 Host 上
+
+#### `cmd:fs:delete`
+```typescript
+interface DeleteEntryPayload {
+  path: string;                 // 本地条目绝对路径
+}
+type DeleteEntryResponse =
+  | { ok: true }
+  | { ok: false; reason: FileTreeFailure };
+```
+
+**Errors**:无。路径不存在返回 `not-found`;相对路径和盘符根返回 `invalid-name`;回收站拒收 (被占用、所在盘没有回收站) 返回 `unknown`
+
+**Side Effects**:调 `shell.trashItem()` 移到回收站,从不永久删除。只用于本地路径,SFTP 文件树没有删除
 
 #### `cmd:fs:read-pdf`
 ```typescript
@@ -1481,6 +1531,33 @@ interface ReloadAgentResponse { started: boolean; tabs: number }
 立即返回;之后的进度走 `evt:agent:update-notice`:`reloading`(tabs 关掉的终端数)→ `reloaded`(tabs 开回来的数、continued 收到 continue 的数、failedTabs 没开回来的数、updated 升级是否生效、to 重查后的已装版本)。升级终端开在 `pathId` 下、显示在发起窗口里(与 `cmd:agent:upgrade` 一样)。`cmd:agent:notice-action` 的 `action: 'reload'` 做同样的事,升级终端开在 home 目录。
 
 **Errors**:`TemplateNotFound`;`InvalidPayload`(`pathId` 是 SSH 路径);`AgentBusy`(后台自动升级正在跑这个 agent)。同一个 agent 已在重载时不报错,`started=false`。
+
+### 5.12 代码文件 lint (ADR-040)
+
+文件查看器保存代码文件成功后调用,用用户本机装的 linter 检查刚保存的文件。只读,不改文件。实现在 `src/main/code-lint.ts`,类型在 `src/shared/code-files.ts`。Link 窗口里和保存一样转发给 Host。
+
+#### `cmd:code:lint`
+```typescript
+interface LintPayload { path: string }   // 刚保存的文件的绝对路径;类型要有 linter (codeFileInfo)
+type LinterId = 'ruff' | 'lintr' | 'sqlfluff';
+type LintResponse =
+  | { ok: true; tool: LinterId; problems: LintProblem[] }
+  | { ok: false; tool: LinterId | null; reason: 'not-installed' | 'unsupported' }
+  | { ok: false; tool: LinterId; reason: 'failed'; detail: string };
+interface LintProblem {
+  line: number; column: number;          // 从 1 起,与各 linter 的输出一致
+  endLine?: number; endColumn?: number;
+  severity: 'error' | 'warning' | 'info';
+  code: string;                          // 规则名,如 F401、LT01、object_usage_linter;没有时为空串
+  message: string;
+}
+```
+- `not-installed`:PATH 上没有这个工具,也没有 `uvx`(ruff、sqlfluff)或 Rscript;或者 R 里没装 lintr 包。renderer 显示安装命令。
+- `unsupported`:路径不是绝对路径,或这种文件没有 linter。
+
+**Errors**:不抛。工具崩溃、超时(60 秒,经 uvx 时 180 秒)、输出读不懂都返回 `reason: 'failed'`,`detail` 是它 stderr 的第一行。
+
+**Side Effects**:起一个子进程。ruff 带 `--no-fix --no-cache`;sqlfluff 从 stdin 读文本。
 
 ## 6. 事件清单 (Main → Renderer)
 
@@ -2142,7 +2219,7 @@ async function handleSessionTabClick(sessionId: string) {
 interface TabControlRequest {
   v: 1;
   token: string;
-  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename' | 'open-file';
+  op: 'list' | 'get' | 'templates' | 'create' | 'close' | 'input' | 'read' | 'rename' | 'open-file' | 'agent-session';
   args: Record<string, unknown>;
 }
 ```
@@ -2160,12 +2237,13 @@ interface TabControlRequest {
 | `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
 | `rename` | `tab`、`name` | `TabSummary` |
 | `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者,也不要求扩展打开 |
+| `agent-session` | `agent`(`'claude-code'` 或 `'codex'`)、`sessionId`(UUID) | `{ tab, agent, sessionId }`(ADR-036);只记到调用方自己的标签上,收纳盒恢复时用它续聊。插件的 SessionStart 钩子每次启动 / resume / `/clear` 都调一次。**任何活着的标签都能调** |
 
 `tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
 
 `open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path }`)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
 
-**授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 只检查令牌对应的标签存在且未退出(ADR-033)。
+**授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 和 `agent-session` 只检查令牌对应的标签存在且未退出(ADR-033、ADR-036,`TAB_CONTROL_ANY_TAB_OPS`)。
 
 **协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件,`detail.sessionId` 是被勾选的标签。角色走 `cmd:session:set-role`,payload `{ sessionId, role }`,role 为 `'coordinator'`、`'fintuner'` 或 null(回到 Worker);main 改名、设 `coordinator` 并广播 sessionStateChanged(changes 含 role、coordinator、displayName)。导览靠 DOM 属性找目标:`data-guide="ghost-tab"`、`data-quick-key`、`data-guide="new-tab"`、`data-session-id`、`data-guide="role"`、`data-guide="role-coordinator"`、`data-guide="coordinator-bar"`。
 

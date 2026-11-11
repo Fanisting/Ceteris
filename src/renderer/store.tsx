@@ -42,6 +42,7 @@ import {
   type SessionOwnerChangedPayload,
   type SessionStateChangedPayload,
   type SettingsChangedPayload,
+  type ShelfChangedPayload,
   type SshProfilesUpdatedPayload,
   type TemplateListUpdatedPayload,
   type WindowFocusRequestedPayload,
@@ -57,7 +58,20 @@ import type {
   Template,
   WindowInfo,
 } from '@shared/types';
+import type { ShelfEntry } from '@shared/shelf';
 import { openPdf } from './pdf-view-store';
+
+/**
+ * ADR-036:a tab on its way into the shelf. The session is gone from `sessions` a moment
+ * after evt:shelf:changed, but the tab stays on screen as a ghost for the animation.
+ */
+export interface ShelfGhost {
+  session: SessionInfo;
+  /** The folder tab it sat behind, or null when it was the first; keeps its place */
+  afterId: string | null;
+  /** performance.now()-free: Date.now() when shelved, so a stale ghost can be dropped */
+  at: number;
+}
 
 // ──────────────────────────────────────────────────────────────────
 // State 定义
@@ -120,6 +134,11 @@ export interface AppState {
    * 组件里:Tab 只为当前 path 挂载,别的文件夹里跑完的 agent 也要记住。
    */
   unseenDoneSessionIds: Set<string>;
+
+  /** ADR-036:the shelf, newest first. Mirrors main through evt:shelf:changed. */
+  shelf: ShelfEntry[];
+  /** ADR-036:tabs animating into the box right now, see ShelfGhost. */
+  shelfGhosts: ShelfGhost[];
 }
 
 /**
@@ -153,6 +172,8 @@ export type AppAction =
   | { type: 'sessions/state-changed'; sessionId: string; changes: Partial<SessionInfo> }
   | { type: 'sessions/exited'; sessionId: string; exitCode: number }
   | { type: 'sessions/destroyed'; sessionId: string }
+  | { type: 'shelf/changed'; entries: ShelfEntry[]; shelvedSessionId?: string | undefined }
+  | { type: 'shelf/ghost-done'; sessionId: string }
   | { type: 'windows/list-update'; windows: WindowInfo[] }
   | { type: 'settings/changed'; settings: Settings }
   | { type: 'templates/update'; templates: Template[]; defaultTemplateId: string }
@@ -196,6 +217,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         templates: s.templates,
         defaultTemplateId: s.defaultTemplateId,
         settings: s.settings,
+        shelf: s.shelf ?? [],
         // bookmarks 不从 pathTree 派生 — 完整列表由 evt:bookmarks:updated
         // 单独同步,snapshot 期先置空,等首个 bookmarks/update 来填。
         bookmarks: [],
@@ -353,6 +375,29 @@ function reducer(state: AppState, action: AppAction): AppState {
       }
       return next;
     }
+
+    case 'shelf/changed': {
+      const next: AppState = { ...state, shelf: action.entries };
+      // The shelved session is still in `sessions` (main announces before destroying), so
+      // its tab can be kept on screen as a ghost in the place it had.
+      const session = action.shelvedSessionId
+        ? state.sessions.get(action.shelvedSessionId)
+        : undefined;
+      if (session && !state.shelfGhosts.some((g) => g.session.id === session.id)) {
+        const ids = findPathNode(state.pathTree, session.pathId)?.sessionIds ?? [];
+        const idx = ids.indexOf(session.id);
+        const afterId = idx > 0 ? (ids[idx - 1] ?? null) : null;
+        next.shelfGhosts = [...state.shelfGhosts, { session, afterId, at: Date.now() }];
+      }
+      return next;
+    }
+
+    case 'shelf/ghost-done':
+      if (!state.shelfGhosts.some((g) => g.session.id === action.sessionId)) return state;
+      return {
+        ...state,
+        shelfGhosts: state.shelfGhosts.filter((g) => g.session.id !== action.sessionId),
+      };
 
     case 'windows/list-update':
       return { ...state, windows: action.windows };
@@ -528,6 +573,8 @@ export function makeDefaultState(myWindowId: string, myWindowNumber: number): Ap
     // BETA-027:默认普通页面;Explorer 简易模式打开时在 startup 显式 dispatch set
     simpleMode: false,
     unseenDoneSessionIds: new Set(),
+    shelf: [],
+    shelfGhosts: [],
   };
 }
 
@@ -678,6 +725,14 @@ export function useIpcSync(): { ready: boolean; error: string | null } {
           ),
           window.api.on<SessionDestroyedPayload>(EVENT_CHANNELS.SESSION_DESTROYED, (p) =>
             dispatch({ type: 'sessions/destroyed', sessionId: p.sessionId }),
+          ),
+          // ADR-036: arrives before the shelved session's destroyed event, see protocol.ts
+          window.api.on<ShelfChangedPayload>(EVENT_CHANNELS.SHELF_CHANGED, (p) =>
+            dispatch({
+              type: 'shelf/changed',
+              entries: p.entries,
+              shelvedSessionId: p.shelvedSessionId,
+            }),
           ),
           // ADR-033: a coordinator's agent asks to show a file beside a tab. Same viewer as a
           // click in the file tree; the window showing that tab has it on screen at once.

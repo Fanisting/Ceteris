@@ -49,6 +49,7 @@ import {
   type UpdateTemplateResponse,
 } from '@shared/protocol';
 import { formatDisplayPath, toWslUncPath } from '@shared/path-display';
+import { SHELVE_AFTER_HOURS_CHOICES } from '@shared/shelf';
 import type {
   NewTerminalShellPolicy,
   PostExitAction,
@@ -1213,6 +1214,8 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
   const confirmOnQuit = b?.confirmOnQuit ?? true;
   const selectOnCopy = b?.selectOnCopy ?? true;
   const terminalRightClick = b?.terminalRightClick ?? 'menu';
+  const shelveIdleAfterHours = b?.shelveIdleAfterHours ?? 0;
+  const restoreTabsOnLaunch = b?.restoreTabsOnLaunch ?? true;
 
   return (
     <section className="settings-panel">
@@ -1265,6 +1268,25 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
       </SettingRow>
 
       <SettingRow
+        label={tx('启动时恢复标签', 'Reopen tabs at launch')}
+        hint={tx(
+          '退出、更新或崩溃后再打开 Ceteris,上次开着的标签都回来。Shell 和内置 agent 直接开回来,Claude Code 和 Codex 接着各自的对话;自定义命令、SSH 和管理员 Shell 放进收纳盒,点一下再开。',
+          'After a quit, an update or a crash, the tabs you had open come back. Shells and built-in agents start again, and Claude Code and Codex continue their own conversation. Custom commands, SSH and the Admin Shell wait in the shelf until you click them.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={restoreTabsOnLaunch}
+            onChange={(e) =>
+              void updateSettings({ behavior: { restoreTabsOnLaunch: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      <SettingRow
         label={tx('完全退出前确认', 'Confirm before full quit')}
         hint={tx(
           '托盘点"完全退出"且有 session 在跑时弹确认。关单窗口永远不弹',
@@ -1312,6 +1334,43 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}
         />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('自动收纳闲置标签', 'Shelve idle tabs')}
+        hint={tx(
+          '一个标签这么久没有输出、没有按键,就结束它的进程,放进标签栏最左边的收纳盒;点开收纳盒随时拿回来,Claude Code 和 Codex 会接着上次的对话。正在工作的 agent、有角色的标签和窗口正在显示的标签不会被收纳。右键标签也可以手动收纳。',
+          'A tab with no output and no key presses for this long ends its process and waits in the shelf at the left end of the tab row. Open the shelf to bring it back; Claude Code and Codex continue their conversation. Working agents, tabs with a role and the tab a window is showing are never shelved. The tab menu can shelve by hand too.',
+        )}
+      >
+        <select
+          className="settings-input"
+          value={String(shelveIdleAfterHours)}
+          onChange={(e) =>
+            void updateSettings(
+              { behavior: { shelveIdleAfterHours: Number(e.target.value) } },
+              setError,
+            )
+          }
+        >
+          {SHELVE_AFTER_HOURS_CHOICES.map((h) => (
+            <option key={h} value={String(h)}>
+              {h === 0
+                ? tx('关闭', 'Off')
+                : h < 24
+                  ? tx(`闲置 ${h} 小时后`, `After ${h} hour${h === 1 ? '' : 's'} idle`)
+                  : tx(`闲置 ${h / 24} 天后`, `After ${h / 24} day${h === 24 ? '' : 's'} idle`)}
+            </option>
+          ))}
+          {!SHELVE_AFTER_HOURS_CHOICES.includes(shelveIdleAfterHours) && (
+            <option value={String(shelveIdleAfterHours)}>
+              {tx(
+                `闲置 ${shelveIdleAfterHours} 小时后`,
+                `After ${shelveIdleAfterHours} hours idle`,
+              )}
+            </option>
+          )}
+        </select>
       </SettingRow>
 
       <SettingRow
@@ -3241,7 +3300,7 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
       <SettingRow
         label={tx('Claude Code 的 ceteris-tabs 插件', 'The ceteris-tabs plugin for Claude Code')}
         hint={tx(
-          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、json、tex、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
+          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、代码和数据文件、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
           'Ships with Ceteris. Once installed, Claude Code in any tab can show a file it wrote (md, txt, json, tex, pdf, image) beside its own tab: say "write the answer as md and open it in Ceteris". No switch below needed for that. Run these two commands once in a terminal, then start a new Claude Code.',
         )}
       >

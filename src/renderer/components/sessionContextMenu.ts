@@ -36,6 +36,7 @@ export function buildSessionContextMenu(
     findPathNode(pathTree, session.pathId)?.path || session.originalCwd;
 
   const invoke = window.api.invoke.bind(window.api);
+  const working = session.agentPhase === 'working';
   const role = session.role ?? null;
   const roleName = role ? SESSION_ROLE_NAMES[role] : WORKER_ROLE_NAME;
   const setRole = (next: SessionRole | null): void => {
@@ -144,6 +145,27 @@ export function buildSessionContextMenu(
       },
     },
     { divider: true, label: '' },
+    // ADR-036:the process ends like Close, but the tab waits in the box at the left end of
+    // the tab row; Claude Code and Codex come back with their conversation.
+    {
+      label: tx('收进收纳盒', 'Put in the shelf'),
+      disabled: isOther || working,
+      ...(isOther
+        ? { hint: tx('其他窗口持有,无法收纳', 'Owned by another window') }
+        : working
+          ? { hint: tx('agent 正在工作,先等它停下', 'The agent is working; wait for it to stop') }
+          : {}),
+      onSelect: () => {
+        invoke(COMMAND_CHANNELS.SHELF_PUT, { sessionId: session.id }).catch((err: unknown) =>
+          toastError(
+            tx(
+              `收纳失败:${err instanceof Error ? err.message : String(err)}`,
+              `Could not shelve: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          ),
+        );
+      },
+    },
     {
       label: '关闭',
       danger: true,

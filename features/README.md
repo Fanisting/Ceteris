@@ -9,6 +9,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | Feature | Summary | Version |
 |---|---|---|
 | [Terminal tabs and windows](terminal-tabs-and-windows.md) | Tabs grouped by folder, equal windows, terminals that outlive their windows | 0.1.0 |
+| [Reopen tabs at launch](reopen-tabs-at-launch.md) | Tabs and agent conversations come back after a quit, update or crash | Next |
 | [Launch templates](launch-templates.md) | Start Shell, Claude Code, Codex and more, or your own command | 0.1.0 |
 | [Terminal search and paste guard](terminal-search-and-paste-guard.md) | Ctrl+F search, multi-line paste confirmation, folder drop | 0.1.0 |
 | [Ghost tab quick launch](ghost-tab-quick-launch.md) | A dashed tab with one-click agent icons | 0.4.1 |
@@ -24,10 +25,12 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [File viewer](file-viewer.md) | PDFs, images and Markdown beside the terminal | 0.3.0 |
 | [Live PDF preview](live-pdf-preview.md) | PDFs refresh when rebuilt, keeping page and zoom | 0.4.1 |
 | [Text file editing](text-file-editing.md) | Edit txt, json, md and tex in place | 0.3.0 |
+| [Code and data files](code-files.md) | R, Python, Julia, Stata, SQL and more, highlighted, with lint after save | Next |
 | [Large text files](large-text-files.md) | Multi-gigabyte files open at once as read-only pages | 0.3.0 |
 | [OnePage Markdown look](onepage-markdown.md) | A paper-like reading style for Markdown | 0.4.1 |
 | [New file in the file tree](file-tree-new-file.md) | Create an empty file from the tree | 0.4.1 |
 | [Pinned folders in the file tree](file-tree-pins.md) | Pin folders as small blocks atop the tree | 0.4.1 |
+| [Open in File Explorer and delete](file-tree-open-in-explorer.md) | Open a local folder in File Explorer, or move an item to the Recycle Bin | Next |
 | [Formula images for Claude Code](formula-images-claude-code.md) | Typeset formulas in Claude Code replies | 0.4.1 |
 | [Formula rendering for Codex](formula-rendering-codex.md) | Typeset formulas in Codex output | 0.4.1 |
 

@@ -191,6 +191,7 @@ BETA-002 把 IPC handler / persistence / session-manager 等关键路径的 try-
 
 ### 用户解法
 
+- 2026-11-10 起(ADR-039)崩溃后再打开 Ceteris,标签会开回来,Claude Code 和 Codex 按会话 id 接上对话;屏幕内容和正在跑的命令仍会丢
 - 定期 export 设置 + 收藏(设置 → 数据 → 导出)
 - 长任务尽量挂在 tmux / screen / nohup 这类**用户态进程隔离**的会话里(它们的 PTY 父是 shell 自己,不依赖 Ceteris 主进程存活)
 
@@ -202,3 +203,22 @@ BETA-002 把 IPC handler / persistence / session-manager 等关键路径的 try-
 ### 状态
 
 接受作为 V1 已知限制,在 README beta 试用说明中明确告知用户。
+
+---
+
+## KI-005 · 整体重载的"开回来就退出则不带参数重开"在 Windows 上不触发
+
+**首次记录**:ADR-039 实现时发现(2026-11-10)
+**严重度**:低(只在续聊参数被拒时出现,标签停在 shell 提示符)
+
+### 现象
+
+ADR-037 整体重载用 `claude --continue` 等参数把 agent 标签开回来;如果参数被拒(文件夹里没有对话、版本不认参数),agent 打印错误后退出,标签停在 PowerShell 提示符,不会按设计"8 秒内退出就不带参数重开"。
+
+### 根因
+
+内置 agent 模板是 `shellFirst: true` + `postExitAction: 'keep_shell'`,Windows 上用 `-NoExit` 启动 PowerShell 再跑 agent(`platform/windows.ts`)。agent 退出后 shell 还在,session 不进入 exited,`sessionExited` 事件不来,`agent-reload.ts` 的 EARLY_EXIT_MS 检查等不到信号。
+
+### 处理
+
+ADR-039 启动恢复不靠事后检测:传 id 之前先查记录文件在不在(`agentSessionExists`),Claude Code / Codex 不用文件夹级参数。ADR-037 未改(不在本次范围);修法可以照搬,或改为读屏判断 agent 是否已退回 shell。

@@ -1,6 +1,6 @@
 /**
  * @file src/main/file-tree.ts
- * @purpose 侧栏文件树的文件系统操作:列目录、重命名条目、新建空文件。
+ * @purpose 侧栏文件树的文件系统操作:列目录、重命名条目、新建空文件、移到回收站。
  *
  * @关键设计:
  * - 按需列单层目录,不递归,所以 node_modules 这样的大目录只有被展开时才有开销。
@@ -10,11 +10,14 @@
  * @对应文档章节: 软件定义书.md 14.6
  *
  * @不要在这里做的事:
- * - 不要提供删除、移动。写已有文件的内容是 text-writer.ts 的职责
+ * - 不要永久删除,也不要提供移动。删除只走回收站 (deleteEntry),用户能找回。
+ *   写已有文件的内容是 text-writer.ts 的职责
  * - 不要访问 SSH 路径,那是 sftp-client.ts 的职责,这里只碰本机文件系统
  *
  * @常见问题排查:
  * - 重命名文件夹返回 denied → 通常是有 shell 的 cwd 在里面,Windows 不允许改名
+ * - 删除返回 unknown → shell.trashItem 只给错误文本,看日志里 deleteEntry 那行;
+ *   常见原因是文件被占用,或所在盘没有回收站 (网络盘、部分 WSL 路径)
  * - 目录显示 not-found 但实际存在 → 看日志里的路径,WSL 路径应为 UNC 形式
  */
 import { promises as fs } from 'node:fs';
@@ -25,6 +28,7 @@ import {
   sortEntries,
   type FileTreeEntry,
   type CreateFileResponse,
+  type DeleteEntryResponse,
   type FileTreeFailure,
   type ListDirResponse,
   type RenameEntryResponse,
@@ -159,6 +163,33 @@ export async function createFile(dirPath: string, name: string): Promise<CreateF
     return { ok: true, path: targetPath };
   } catch (err) {
     logger.warn('FileTree', `createFile failed: dir="${dirPath}" name="${name}"`, err);
+    return { ok: false, reason: failureReason(err) };
+  }
+}
+
+/**
+ * Moves a file or folder to the Recycle Bin, for the file tree's Delete item.
+ *
+ * @param path absolute path of the entry, as a listing from main returned it
+ * @param trash moves one path to the system trash. Production passes shell.trashItem;
+ *   tests pass a fake, so this module stays free of Electron
+ * @returns ok, or why nothing was moved. Never throws
+ *
+ * @副作用: 改动磁盘,但只进回收站,不永久删除 (软件定义书 14.6 的 2026-11-10 例外)。
+ *   拒绝文件系统根 (C:\ 或 /):dirname 等于自身的路径不是用户想删的条目。
+ */
+export async function deleteEntry(
+  path: string,
+  trash: (path: string) => Promise<void>,
+): Promise<DeleteEntryResponse> {
+  if (!isAbsolute(path) || dirname(path) === path) return { ok: false, reason: 'invalid-name' };
+  try {
+    await fs.lstat(path);
+    await trash(path);
+    logger.info('FileTree', `moved to trash: "${path}"`);
+    return { ok: true };
+  } catch (err) {
+    logger.warn('FileTree', `deleteEntry failed: path="${path}"`, err);
     return { ok: false, reason: failureReason(err) };
   }
 }

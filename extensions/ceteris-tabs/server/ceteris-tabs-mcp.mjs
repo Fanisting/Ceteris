@@ -167,7 +167,7 @@ export const TOOLS = [
   {
     name: 'open_file',
     description:
-      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, .txt/.json/.tex as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or a file in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
+      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, text, code and data files (.txt, .json, .tex, .py, .R, .sql, .csv and more) as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or a file in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
     inputSchema: {
       type: 'object',
       properties: {

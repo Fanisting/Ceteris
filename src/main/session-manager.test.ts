@@ -210,6 +210,8 @@ function makeStubSettingsManager(overrides: Partial<Settings['advanced']> = {}):
       autoCheckUpdates: true,
       autoCheckAgents: true,
       autoUpdateAgents: false,
+      shelveIdleAfterHours: 0,
+      restoreTabsOnLaunch: true,
     },
     systemIntegration: { explorerOpenIn: 'new-window' },
     advanced: {

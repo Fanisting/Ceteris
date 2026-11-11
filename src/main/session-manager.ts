@@ -100,6 +100,7 @@ import {
 } from '@shared/agent-phase';
 import { CHANNELS } from '@shared/channel';
 import { clampTitleLength, isAgentTemplate, shortenAgentTitle } from '@shared/agent-title';
+import type { ResumableAgent } from '@shared/shelf';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
 // Ceteris launched from that shell would misidentify itself as a portable build.
@@ -398,6 +399,18 @@ interface ManagedSession {
    */
   lastInputAt: number;
   /**
+   * ADR-036:上次有 PTY 透传字节的时刻 (ms epoch),0 = 从未输出。与 lastInputAt、
+   * exitedAt 一起算"多久没动静",决定能不能收进收纳盒。quiet 窗口里的字节也算:
+   * 它们不点亮 active,但说明终端还在画东西。
+   */
+  lastOutputAt: number;
+  /**
+   * ADR-036:标签里 agent 自己报上来的会话 id(ceteris-tabs 插件的 SessionStart 钩子经
+   * 管道 `agent-session` 送来)。收纳时优先用它;没有就去 agent 的文件夹里找
+   * (agent-resume.ts)。null = 没报过。
+   */
+  agentSession: { agent: ResumableAgent; sessionId: string } | null;
+  /**
    * BETA-006 v2.2:最近按键事件 ring buffer(时间戳 + 类别,**不存内容**)。
    * 上限 RECENT_KEYS_CAP 条 + RECENT_KEYS_TTL_MS 窗口,sendInput 时维护。
    * 让 LLM 看到"用户最近敲键的节奏":连续 char 流 = 在打字,只有一个 enter
@@ -499,6 +512,7 @@ export interface CreateSessionInput {
    * 追加在模板 args 之后的参数,其余 (env / shell / hook / 退出行为) 全按模板。
    * 整体重载 (ADR-037) 用它给 `claude` 加 `--continue` 之类的恢复参数。
    * 纯 shell 模板 (command 为空) 忽略它。与 commandOverride 同时给时以 commandOverride 为准。
+   * 收纳盒 (ADR-036) 恢复标签时也用它传 `--resume <id>` (Claude Code) 或 `resume <id>` (Codex)。
    */
   extraArgs?: string[];
 }
@@ -928,6 +942,8 @@ export class SessionManager extends EventEmitter {
       inputQuietUntil: 0,
       lastEnterAt: 0,
       lastInputAt: 0,
+      lastOutputAt: 0,
+      agentSession: null,
       recentKeys: [],
       manuallyRenamed: false,
       agentOscTitle: null,
@@ -1130,6 +1146,47 @@ export class SessionManager extends EventEmitter {
     const managed = this.sessions.get(sessionId);
     if (!managed) return;
     this.destroySession(managed, 'user-closed');
+  }
+
+  /**
+   * ADR-036:收进收纳盒。和关闭一样杀进程、释放 headless 终端,只是 sessionDestroyed
+   * 的 reason 是 'shelved',让 ipc 层和窗口知道它还在盒子里。ShelfManager 先记好条目
+   * 再调这里。
+   */
+  shelveSession(sessionId: string): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    this.destroySession(managed, 'shelved');
+  }
+
+  /**
+   * ADR-036:上次有动静的时刻:输出、按键、退出、创建里最晚的一个。不存在的 session 返回 0。
+   */
+  getLastActivityAt(sessionId: string): number {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return 0;
+    return Math.max(
+      managed.info.createdAt,
+      managed.lastOutputAt,
+      managed.lastInputAt,
+      managed.info.exitedAt ?? 0,
+    );
+  }
+
+  /** ADR-036:agent 报上来的会话 id(见 ManagedSession.agentSession)。 */
+  getAgentSession(sessionId: string): { agent: ResumableAgent; sessionId: string } | null {
+    return this.sessions.get(sessionId)?.agentSession ?? null;
+  }
+
+  /**
+   * ADR-036:记下标签里 agent 的会话 id。每次 SessionStart 都会报(启动、/clear、resume),
+   * 后报的覆盖先报的,所以 /clear 之后收纳恢复的是新对话。不存在的 session 静默 no-op。
+   */
+  setAgentSession(sessionId: string, agent: ResumableAgent, agentSessionId: string): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    managed.agentSession = { agent, sessionId: agentSessionId };
+    logger.info('SessionManager', `agent session sid=${sessionId} ${agent}=${agentSessionId}`);
   }
 
   /**
@@ -1620,6 +1677,7 @@ export class SessionManager extends EventEmitter {
       // pendingEmit 中尚未 flush 的字节对 renderer 不可见。
       const seq = managed.outputSeq++;
       this.queueEmit(managed, parsed.passthrough, seq);
+      managed.lastOutputAt = Date.now();
 
       // BETA-006 v2:同步喂给 headless terminal — write 是异步的(内部
       // 调度到 next tick),但读 buffer 是同步的且会反映已 write 完的部分。
@@ -1796,7 +1854,7 @@ export class SessionManager extends EventEmitter {
 
   private destroySession(
     managed: ManagedSession,
-    reason: 'user-closed' | 'pty-exited' | 'app-quit',
+    reason: 'user-closed' | 'pty-exited' | 'app-quit' | 'shelved',
   ): void {
     const sid = managed.info.id;
     if (!this.sessions.has(sid)) return;

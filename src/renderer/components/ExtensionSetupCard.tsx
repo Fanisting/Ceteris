@@ -157,7 +157,9 @@ export function ExtensionSetupCard(): JSX.Element | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isTop]);
 
-  const showError = (message: string): void => toast.push({ kind: 'error', message });
+  const showError = (message: string): void => {
+    toast.push({ kind: 'error', message });
+  };
 
   const markSeen = async (): Promise<void> => {
     try {

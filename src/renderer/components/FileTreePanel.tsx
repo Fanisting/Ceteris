@@ -146,7 +146,9 @@ export function FileTreePanel(): JSX.Element {
   const pins = useFolderPins();
   const menu = useContextMenuApi();
   const toast = useToast();
-  const toastError = (message: string): void => toast.push({ kind: 'error', message });
+  const toastError = (message: string): void => {
+    toast.push({ kind: 'error', message });
+  };
   // 点过的置顶只在 session 目录不变时有效,cd 或切 session 后自动回到 session 的目录
   const baseKey = `${sessionSshProfileId ?? ''}|${session?.id ?? ''}|${root ?? ''}`;
   const [jump, setJump] = useState<{ baseKey: string; pin: FolderPin } | null>(null);
@@ -332,7 +334,9 @@ function FileTreeBody({
   const expansionKey = `${sshProfileId ?? ''}|${root}`;
   const { t } = useTranslation();
   const toast = useToast();
-  const toastError = (message: string): void => toast.push({ kind: 'error', message });
+  const toastError = (message: string): void => {
+    toast.push({ kind: 'error', message });
+  };
   const menu = useContextMenuApi();
   const pins = useFolderPins();
   const [dirs, setDirs] = useState<ReadonlyMap<string, DirState>>(() => new Map());

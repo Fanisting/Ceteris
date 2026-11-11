@@ -189,6 +189,15 @@ export interface PlatformAdapter {
    * 可选 — 旧 PlatformAdapter 实现不提供则 SessionManager 用默认值。
    */
   getSshControlPath?(): string | null;
+
+  /**
+   * Places a tool usually lives when its installer leaves it off PATH, best first (ADR-040).
+   * The R installer on Windows does not touch PATH, so Rscript sits only under
+   * Program Files\R\R-x.y.z\bin. The caller checks which of these exist.
+   *
+   * Optional: without it the tool is looked up on PATH only.
+   */
+  knownToolPaths?(tool: 'Rscript'): string[];
 }
 
 /**

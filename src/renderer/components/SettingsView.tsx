@@ -3300,7 +3300,7 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
       <SettingRow
         label={tx('Claude Code 的 ceteris-tabs 插件', 'The ceteris-tabs plugin for Claude Code')}
         hint={tx(
-          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、json、tex、sql、hive、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
+          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、代码和数据文件、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
           'Ships with Ceteris. Once installed, Claude Code in any tab can show a file it wrote (md, txt, json, tex, pdf, image) beside its own tab: say "write the answer as md and open it in Ceteris". No switch below needed for that. Run these two commands once in a terminal, then start a new Claude Code.',
         )}
       >

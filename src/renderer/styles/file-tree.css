@@ -620,7 +620,6 @@
   accent-color: var(--md-primary, #f0f);
 }
 
-.text-view-editor,
 .text-view-page {
   flex: 1 1 0;
   min-height: 0;
@@ -643,6 +642,132 @@
 
 .text-view-page.loading {
   opacity: 0.6;
+}
+
+/* Code editor (ADR-040). CodeMirror's own look lives in code-languages.ts; this only sizes
+ * the host so the editor fills the space between the bar and the lint panel. */
+.code-editor {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Lint under the editor: one muted line, or the problem list (option D). */
+.code-lint-note {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-top: 1px solid var(--md-outline-variant, #f0f);
+  color: var(--color-text-muted, #f0f);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.code-lint-note.alert {
+  color: var(--color-danger, #f0f);
+}
+
+.code-lint-note code,
+.code-lint-msg code {
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  color: var(--color-text-primary, #f0f);
+}
+
+.code-lint-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 32%;
+  border-top: 1px solid var(--md-outline-variant, #f0f);
+  background-color: var(--color-bg-secondary, #f0f);
+  font-size: 12px;
+}
+
+.code-lint-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px 2px 12px;
+  color: var(--color-text-muted, #f0f);
+}
+
+.code-lint-toggle {
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--color-text-secondary, #f0f);
+  font: inherit;
+  cursor: pointer;
+}
+
+.code-lint-toggle:hover {
+  background-color: var(--color-bg-hover, #f0f);
+}
+
+.code-lint-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.code-lint-row {
+  display: grid;
+  grid-template-columns: 8px 48px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 3px 12px;
+  line-height: 1.5;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary, #f0f);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.code-lint-row:hover {
+  background-color: var(--color-bg-hover, #f0f);
+}
+
+.code-lint-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  /* Level with the first line when the message wraps (12px text, 1.5 line height). */
+  align-self: start;
+  margin-top: 5px;
+  background-color: var(--color-info, #f0f);
+}
+
+.code-lint-dot.error {
+  background-color: var(--color-danger, #f0f);
+}
+
+.code-lint-dot.warning {
+  background-color: var(--color-warning, #f0f);
+}
+
+.code-lint-at {
+  color: var(--color-text-muted, #f0f);
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-lint-msg {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.code-lint-code {
+  margin-right: 6px;
+  color: var(--color-text-secondary, #f0f);
+  font-family: Consolas, 'Cascadia Mono', monospace;
 }
 
 /* Pinned folders: small blocks under the header that wrap onto more lines when there are

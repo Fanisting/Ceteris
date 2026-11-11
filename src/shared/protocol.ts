@@ -219,6 +219,8 @@ export const COMMAND_CHANNELS = {
 
   /** Saves an edited .txt or .json. Under Link it runs on the host, so the host's file changes */
   FS_WRITE_TEXT: 'cmd:fs:write-text',
+  /** Lint a saved code file with the user's installed linter (ADR-040). */
+  CODE_LINT: 'cmd:code:lint',
 
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */

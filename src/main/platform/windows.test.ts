@@ -22,6 +22,7 @@ import {
   __setReadRegistryPathImplForTest,
   __setRunRegImplForTest,
   setExplorerLabel,
+  windowsRscriptPaths,
 } from './windows';
 
 describe('WindowsAdapter — WSL shell support', () => {
@@ -445,6 +446,26 @@ describe('accentHex (ADR-030)', () => {
       null,
       null,
       null,
+    ]);
+  });
+});
+
+describe('windowsRscriptPaths (ADR-040)', () => {
+  it('lists every R version under each root, newest first, and skips missing roots', () => {
+    const dirs = new Map<string, string[]>([
+      [join('PF', 'R'), ['R-4.9.3', 'R-4.10.0', 'Rtools', 'R-4.5.2']],
+      [join('Local', 'R'), ['R-4.10.1']],
+    ]);
+    const listDir = (dir: string): string[] => {
+      const names = dirs.get(dir);
+      if (!names) throw new Error('ENOENT');
+      return names;
+    };
+    expect(windowsRscriptPaths(['PF', 'Missing', 'Local'], listDir)).toEqual([
+      join('Local', 'R', 'R-4.10.1', 'bin', 'Rscript.exe'),
+      join('PF', 'R', 'R-4.10.0', 'bin', 'Rscript.exe'),
+      join('PF', 'R', 'R-4.9.3', 'bin', 'Rscript.exe'),
+      join('PF', 'R', 'R-4.5.2', 'bin', 'Rscript.exe'),
     ]);
   });
 });

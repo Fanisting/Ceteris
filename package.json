@@ -40,6 +40,13 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/legacy-modes": "^6.5.5",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
     "@material/material-color-utilities": "0.4.0",
     "@xterm/addon-fit": "0.12.0-beta.256",
     "@xterm/addon-image": "0.10.0-beta.256",

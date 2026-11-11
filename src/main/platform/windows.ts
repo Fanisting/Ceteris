@@ -20,7 +20,7 @@
  */
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -179,6 +179,41 @@ export function __getShellCandidatesForTest(): Array<{
 let askpassBuildFailed: string | null = null;
 
 /** 'RRGGBBAA' / 'RRGGBB' → '#rrggbb';格式不对返回 null。 */
+/**
+ * Rscript.exe of every R under the given install roots (Program Files and the per-user
+ * Programs folder), newest version first. R-4.10.0 sorts above R-4.9.3.
+ *
+ * @param roots folders that may hold an `R` folder
+ * @param listDir lists a folder's entries; throws or returns [] when it does not exist
+ */
+export function windowsRscriptPaths(roots: string[], listDir: (dir: string) => string[]): string[] {
+  const found: Array<{ path: string; version: number[] }> = [];
+  for (const root of roots) {
+    let names: string[] = [];
+    try {
+      names = listDir(join(root, 'R'));
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const m = /^R-(\d+)\.(\d+)\.(\d+)$/.exec(name);
+      if (!m) continue;
+      found.push({
+        path: join(root, 'R', name, 'bin', 'Rscript.exe'),
+        version: [Number(m[1]), Number(m[2]), Number(m[3])],
+      });
+    }
+  }
+  found.sort((a, b) => {
+    for (let i = 0; i < 3; i += 1) {
+      const diff = (b.version[i] ?? 0) - (a.version[i] ?? 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  });
+  return found.map((f) => f.path);
+}
+
 export function accentHex(raw: string | undefined): string | null {
   const m = /^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(raw ?? '');
   return m ? `#${m[1]!.toLowerCase()}` : null;
@@ -728,6 +763,14 @@ export class WindowsAdapter implements PlatformAdapter {
    * 日常打开终端的频次不足以占用一个默认收藏槽位。USERPROFILE 兜底用
    * homedir(),Windows 上正常存在。
    */
+  knownToolPaths(_tool: 'Rscript'): string[] {
+    const roots = [
+      process.env.ProgramFiles,
+      process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Programs') : undefined,
+    ].filter((r): r is string => !!r);
+    return windowsRscriptPaths(roots, (dir) => readdirSync(dir));
+  }
+
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {
     const userProfile = process.env.USERPROFILE || homedir();
     return [

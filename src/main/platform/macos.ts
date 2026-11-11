@@ -156,6 +156,16 @@ export class MacOSAdapter implements PlatformAdapter {
     return () => {};
   }
 
+  knownToolPaths(_tool: 'Rscript'): string[] {
+    // A GUI app starts without the shell's PATH, so the CRAN installer's framework and
+    // Homebrew's two prefixes are tried by name.
+    return [
+      '/Library/Frameworks/R.framework/Resources/bin/Rscript',
+      '/opt/homebrew/bin/Rscript',
+      '/usr/local/bin/Rscript',
+    ];
+  }
+
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {
     const home = homedir();
     return [

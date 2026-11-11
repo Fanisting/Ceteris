@@ -1,7 +1,7 @@
 /**
  * @file src/renderer/components/ExtensionSetupCard.tsx
  * @purpose The one-time card on first start that sets up the agent extensions in one go
- *   (ADR-034): Claude Code plugins, Codex config, and the switches that go with them.
+ *   (ADR-041): Claude Code plugins, Codex config, and the switches that go with them.
  *
  * @关键设计:
  * - Shown while settings.extensions.setupSeen is false (new install, or first start after the
@@ -15,7 +15,7 @@
  *   then open ONE terminal with the command line typed and not run. The Enter is the consent,
  *   the same rule as the rows in Settings.
  *
- * @对应文档章节:软件定义书.md ADR-034
+ * @对应文档章节:软件定义书.md ADR-041
  *
  * @不要在这里做的事:
  * - 不要替用户按 Enter;不要在这里判断某个工具装没装(状态来自 main)。

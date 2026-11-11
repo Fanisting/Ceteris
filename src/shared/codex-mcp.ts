@@ -36,7 +36,7 @@ export interface CodexMcpStatus {
   configPath: string;
   /** The file has a table for this server */
   configured: boolean;
-  /** The Codex home folder exists, so Codex has run on this machine (ADR-034) */
+  /** The Codex home folder exists, so Codex has run on this machine (ADR-041) */
   codexInstalled: boolean;
   /** The entry Ceteris would write now (for display) */
   block: string;

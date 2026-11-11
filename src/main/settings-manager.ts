@@ -136,7 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
     tabControl: false,
     // 协调者引导 (ADR-024):老设置文件缺这个字段,deep merge 补 false,升级后也会看到一次
     tabControlGuideSeen: false,
-    // 扩展一次装好的卡片 (ADR-034):同上,升级后也会出现一次
+    // 扩展一次装好的卡片 (ADR-041):同上,升级后也会出现一次
     setupSeen: false,
     // ADR-020:`name:` 命令默认关,列表先放两个 CLI 都有的斜杠命令。
     colonCommands: {

@@ -234,7 +234,7 @@ export function CoordinatorTour(): JSX.Element | null {
 
   // 一次只出一个引导:"右键 + 号快速启动" 的气泡 (QuickLaunchTip) 也指着 + 号,先等它被关掉
   const quickLaunchTipShowing = state.settings.behavior?.quickLaunchTipSeen === false;
-  // 扩展一次装好的卡片 (ADR-034) 排最前,它没答完导览不开始
+  // 扩展一次装好的卡片 (ADR-041) 排最前,它没答完导览不开始
   const setupCardPending = state.settings.extensions?.setupSeen !== true;
   const active =
     open && !seen && !state.inSettingsView && !quickLaunchTipShowing && !setupCardPending;

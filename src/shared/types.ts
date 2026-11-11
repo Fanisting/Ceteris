@@ -709,7 +709,7 @@ export interface Settings {
      */
     tabControlGuideSeen: boolean;
     /**
-     * Whether the one-time agent extension setup card (ADR-034) was answered with Set up or
+     * Whether the one-time agent extension setup card (ADR-041) was answered with Set up or
      * Later. Default false, and older settings files get false too, so everyone sees it once.
      */
     setupSeen: boolean;

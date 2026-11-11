@@ -289,7 +289,7 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               <LinkConnectionBanner />
               {/* ADR-024:协调者引导动画,没看过时启动或勾协调者时出现;专注模式不显示 */}
               {!state.simpleMode && <CoordinatorTour />}
-              {/* ADR-034:第一次启动的扩展一次装好卡片;排在其他引导之前 */}
+              {/* ADR-041:第一次启动的扩展一次装好卡片;排在其他引导之前 */}
               {!state.simpleMode && <ExtensionSetupCard />}
               {state.inSettingsView ? (
                 <SettingsView />

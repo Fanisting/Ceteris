@@ -1006,7 +1006,7 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   const dispatch = useAppDispatch();
 
   // settings 还没从 main 拿到时 behavior 可能是 undefined:那时不弹,免得闪一下。
-  // 扩展一次装好的卡片 (ADR-034) 先答完,这个气泡才出现
+  // 扩展一次装好的卡片 (ADR-041) 先答完,这个气泡才出现
   const showQuickLaunchTip =
     state.settings.behavior?.quickLaunchTipSeen === false &&
     state.settings.extensions?.setupSeen === true;

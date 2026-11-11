@@ -1,6 +1,6 @@
 /**
  * @file extension-setup.test.ts
- * @purpose The one-time setup list (ADR-034): which items produce which command line and which
+ * @purpose The one-time setup list (ADR-041): which items produce which command line and which
  *   settings. One test per rule.
  */
 import { describe, expect, it } from 'vitest';

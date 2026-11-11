@@ -3199,7 +3199,7 @@ select.settings-input option {
   }
 }
 
-/* ADR-034:第一次启动的扩展一次装好卡片 */
+/* ADR-041:第一次启动的扩展一次装好卡片 */
 .extension-setup-panel {
   width: 560px;
 }

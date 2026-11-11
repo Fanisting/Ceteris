@@ -1,6 +1,6 @@
 /**
  * @file src/shared/extension-setup.ts
- * @purpose The one-time setup list for the agent extensions (ADR-034): which items exist, what
+ * @purpose The one-time setup list for the agent extensions (ADR-041): which items exist, what
  *   each one needs, and the single command line that installs the selected ones.
  *
  * @关键设计:
@@ -13,7 +13,7 @@
  * - For cmd the Codex instruction cannot sit in parentheses (see terminal-math.ts), so it is
  *   chained with `&` after the Claude commands instead of `&&`; it is independent of them.
  *
- * @对应文档章节:软件定义书.md ADR-034
+ * @对应文档章节:软件定义书.md ADR-041
  *
  * @不要在这里做的事:
  * - Do not read settings or detect agents here; the card decides what to preselect.

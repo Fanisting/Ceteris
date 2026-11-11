@@ -78,7 +78,10 @@ class FakePty {
       throw new Error('FakePty: simulated write failure');
     }
     this.written.push(data);
+    this.onWrite?.(data);
   }
+  /** ADR-035 tests: lets a test redraw the screen in answer to keys, as a TUI would. */
+  public onWrite: ((data: string) => void) | null = null;
   resize(cols: number, rows: number): void {
     this.resized.push({ cols, rows });
   }
@@ -1200,6 +1203,161 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
     fp.emitExit(0);
     expect(mgr.get(info.id)?.shellBusy).toBeNull();
     expect(changes.map((c) => c.shellBusy)).toEqual([false, true, false, null]);
+  });
+
+  describe('answerChoice (ADR-035)', () => {
+    /** Redraws the fake screen the way a TUI does: clear, then the new rows. */
+    const draw = (fp: FakePty, rows: string[]): void =>
+      fp.emitData('\x1b[2J\x1b[H' + rows.join('\r\n') + '\r\n');
+    const RULE = '─'.repeat(30);
+    const choice = (pointer: number, typed?: string): string[] => [
+      'Which colour?',
+      `${pointer === 0 ? '❯' : ' '} 1. Red`,
+      `${pointer === 1 ? '❯' : ' '} 2. Blue`,
+      `${pointer === 2 ? '❯' : ' '} 3. ${typed ?? 'Type something.'}`,
+      RULE,
+      `${pointer === 3 ? '❯' : ' '} 4. Chat about this`,
+      'Enter to select · ↑/↓ to navigate · Esc to cancel',
+    ];
+
+    /** A session showing the colour prompt, already read as blocked. */
+    async function atPrompt(): Promise<{ mgr: SessionManager; fp: FakePty; id: string }> {
+      const { mgr } = makeManager();
+      const info = await mgr.createSession({
+        pathId: '/p',
+        templateId: 'shell',
+        ownerWindowId: 'w',
+        cols: 80,
+        rows: 24,
+      });
+      const fp = FakePty.instances[0]!;
+      draw(fp, choice(0));
+      await vi.advanceTimersByTimeAsync(400);
+      return { mgr, fp, id: info.id };
+    }
+
+    /** Runs answerChoice to the end on fake timers. */
+    async function run(
+      mgr: SessionManager,
+      payload: Parameters<SessionManager['answerChoice']>[0],
+    ): Promise<unknown> {
+      const pending = mgr.answerChoice(payload);
+      await vi.advanceTimersByTimeAsync(6000);
+      return pending;
+    }
+
+    it('reads nothing and sends nothing while no prompt is on screen', async () => {
+      const { mgr } = makeManager();
+      const info = await mgr.createSession({
+        pathId: '/p',
+        templateId: 'shell',
+        ownerWindowId: 'w',
+        cols: 80,
+        rows: 24,
+      });
+      expect(mgr.readChoice(info.id)).toBeNull();
+      expect(await run(mgr, { sessionId: info.id, index: 2 })).toEqual({
+        sent: false,
+        reason: 'no-prompt',
+      });
+      expect(FakePty.instances[0]!.written).toEqual([]);
+    });
+
+    it('moves the pointer, waits for it to arrive, then presses Enter', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      fp.onWrite = (d) => {
+        if (d === '\x1b[B') draw(fp, choice(1));
+      };
+      expect(await run(mgr, { sessionId: id, index: 9 })).toEqual({
+        sent: false,
+        reason: 'option-gone',
+      });
+      expect(await run(mgr, { sessionId: id, index: 2 })).toEqual({ sent: true });
+      expect(fp.written).toEqual(['\x1b[B', '\r']);
+    });
+
+    it('confirms nothing when the pointer never arrives', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      expect(await run(mgr, { sessionId: id, index: 2 })).toEqual({
+        sent: false,
+        reason: 'pointer-stuck',
+      });
+      expect(fp.written).toEqual(['\x1b[B']);
+    });
+
+    it('types into the text field on one line, then sends it', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      fp.onWrite = (d) => {
+        if (d === '\x1b[B\x1b[B') draw(fp, choice(2));
+        else if (!d.startsWith('\x1b') && d !== '\r') draw(fp, choice(2, d));
+      };
+      expect(await run(mgr, { sessionId: id, index: 3, text: '  ' })).toEqual({
+        sent: false,
+        reason: 'text-needed',
+      });
+      expect(await run(mgr, { sessionId: id, index: 3, text: 'Green\r\nplease' })).toEqual({
+        sent: true,
+      });
+      expect(fp.written).toEqual(['\x1b[B\x1b[B', 'Green please', '\r']);
+    });
+
+    it('clears text typed into the field before, then types the new answer', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      draw(fp, choice(2, 'Gr'));
+      await vi.advanceTimersByTimeAsync(400);
+      fp.onWrite = (d) => {
+        if (d.startsWith('\x7f')) draw(fp, choice(2, d.replace(/\x7f/g, '')));
+      };
+      expect(await run(mgr, { sessionId: id, index: 3, text: 'Blue-ish' })).toEqual({ sent: true });
+      expect(fp.written).toEqual(['\x7f\x7fBlue-ish', '\r']);
+    });
+
+    it('leaves the prompt for a chat option, then sends the message to the agent', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      fp.onWrite = (d) => {
+        if (d === '\x1b[B\x1b[B\x1b[B') draw(fp, choice(3));
+        else if (d === '\r' && fp.written.length === 2)
+          draw(fp, ['● What would you like to clarify?', '❯ ']);
+      };
+      expect(await run(mgr, { sessionId: id, index: 4, text: 'why do you ask' })).toEqual({
+        sent: true,
+      });
+      expect(fp.written).toEqual(['\x1b[B\x1b[B\x1b[B', '\r', 'why do you ask', '\r']);
+    });
+
+    it('does not type the message when the prompt never leaves', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      fp.onWrite = (d) => {
+        if (d === '\x1b[B\x1b[B\x1b[B') draw(fp, choice(3));
+      };
+      expect(await run(mgr, { sessionId: id, index: 4, text: 'hello' })).toEqual({
+        sent: false,
+        reason: 'prompt-stuck',
+      });
+      expect(fp.written).toEqual(['\x1b[B\x1b[B\x1b[B', '\r']);
+    });
+
+    it('pages a paged prompt forward with Tab, and refuses on a one-page prompt', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      expect(await run(mgr, { sessionId: id, next: true })).toEqual({
+        sent: false,
+        reason: 'not-paged',
+      });
+      draw(fp, ['←  ☐ Fruit  ✔ Submit  →', ...choice(0)]);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(await run(mgr, { sessionId: id, next: true })).toEqual({ sent: true });
+      expect(fp.written).toEqual(['\t']);
+    });
+
+    it('answers one click at a time per tab', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      const first = mgr.answerChoice({ sessionId: id, index: 2 });
+      const second = await mgr.answerChoice({ sessionId: id, index: 2 });
+      expect(second).toEqual({ sent: false, reason: 'busy' });
+      await vi.advanceTimersByTimeAsync(6000);
+      await first;
+      expect(fp.written).toEqual(['\x1b[B']);
+    });
   });
 
   it('resize 后 quiet 窗口内 ConPTY 重绘字节不触发 markActive (CP-3 勘误 #3 v2)', async () => {

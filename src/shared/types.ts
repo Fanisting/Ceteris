@@ -103,6 +103,68 @@ export type AgentPhase = 'working' | 'blocked' | 'done';
 export type AgentWork = 'generating' | 'tool' | 'waiting';
 
 /**
+ * What answering an option takes (ADR-035):
+ * - none: pick it (arrow keys and Enter; in a multi-select list Enter ticks or unticks it)
+ * - type: its row turns into a one-line text field when the pointer is on it ("Type
+ *   something."); the typed text replaces the label and Enter sends it
+ * - chat: picking it leaves the prompt ("Chat about this", "No, and tell Claude what to
+ *   do"), and the user's message then goes to the agent's normal input
+ */
+export type ChoiceInput = 'none' | 'type' | 'chat';
+
+/** One row of a prompt an agent stopped at (ADR-035): an approval box or an AskUserQuestion. */
+export interface ChoiceOption {
+  /** The number the agent printed before the label, 1-based. */
+  index: number;
+  /** The label without the agent's marks (the multi-select box, the ✔ of an earlier answer). */
+  label: string;
+  /**
+   * Where the arrow keys stop on this row, 0-based. Not always index - 1: multi-select lists
+   * have an unnumbered Submit row before "Chat about this".
+   */
+  pos: number;
+  /**
+   * The indented rows under the option: AskUserQuestion's option description, or the rest
+   * of a long approval option that wrapped. Empty when there are none.
+   */
+  description: string;
+  /** True on the row the agent's pointer sits on. */
+  pointed: boolean;
+  input: ChoiceInput;
+  /** Multi-select: whether its box is ticked. Null in a single-select list. */
+  checked: boolean | null;
+  /** A paged prompt the user stepped back into: this was the answer given before. */
+  chosen: boolean;
+}
+
+/** One page of a paged AskUserQuestion, from its tab strip. */
+export interface ChoiceStep {
+  label: string;
+  /** Answered already (☒ on the strip). */
+  done: boolean;
+}
+
+/** A prompt read from an agent's screen (ADR-035). */
+export interface ChoicePrompt {
+  /** The question line above the options, box characters stripped; empty when none reads. */
+  question: string;
+  options: ChoiceOption[];
+  /** The arrow-key position the pointer is on: an option's pos, or multi-select's Submit row. */
+  pointer: number;
+  /** The options have boxes to tick; Enter toggles instead of answering. */
+  multiSelect: boolean;
+  /**
+   * The pages of a paged AskUserQuestion (several questions, or a multi-select one), without
+   * the final Submit page. Empty for a one-page prompt.
+   */
+  steps: ChoiceStep[];
+  /** The final page: the answers so far, then "Submit answers" / "Cancel". */
+  reviewing: boolean;
+  /** That page's lines ("● Which colour?", "→ Red", "⚠ You have not answered all questions"). */
+  review: string[];
+}
+
+/**
  * 应用整体生命周期状态 (软件定义书 8.1 节)。
  */
 export type AppLifecycleState =

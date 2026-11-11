@@ -251,14 +251,14 @@
   --color-bg-strong: #e8a3bd;
 
   /* 文字 / 中性色对比度统一 ≥ 4.5:1(BETA-035 浅色标准) */
-  --color-text-primary: #5c1d3e;     /* 深莓酒红 */
-  --color-text-secondary: #8a4566;   /* 中莓棕 */
-  --color-text-muted: #a8627e;       /* 淡莓棕 */
+  --color-text-primary: #5c1d3e; /* 深莓酒红 */
+  --color-text-secondary: #8a4566; /* 中莓棕 */
+  --color-text-muted: #a8627e; /* 淡莓棕 */
 
   /* 状态色 */
-  --color-danger: #e91e63;           /* 草莓粉(主强调) */
-  --color-warning: #d4795c;          /* 蜜桃驼(替代黄,与粉系协调) */
-  --color-success: #4d8a5e;          /* BETA-038:真·成功绿。
+  --color-danger: #e91e63; /* 草莓粉(主强调) */
+  --color-warning: #d4795c; /* 蜜桃驼(替代黄,与粉系协调) */
+  --color-success: #4d8a5e; /* BETA-038:真·成功绿。
                                           原 cutie 把 --pine 槽填莓紫 #b85d8e 是
                                           为统一莓系美学,但 var(--pine) 在组件层
                                           用作"OK / success"语义时变红了。
@@ -266,9 +266,9 @@
                                           保证 success/danger 语义对比;旧 --pine
                                           别名仍保留莓紫,Phase 2 按消费者意图
                                           分别迁到 --color-success 或装饰槽。 */
-  --color-info: #b89cd9;             /* 薰衣草 */
+  --color-info: #b89cd9; /* 薰衣草 */
   --color-accent-secondary: #ff7aa8; /* 糖霜玫瑰 */
-  --color-accent-special: #c558a0;   /* 紫莓 */
+  --color-accent-special: #c558a0; /* 紫莓 */
 
   /* Layer 3 — 旧 Layer 1 别名(兼容期) */
   --base: var(--color-bg-primary, #f0f);
@@ -283,7 +283,7 @@
   --love: var(--color-danger, #f0f);
   --gold: var(--color-warning, #f0f);
   --rose: var(--color-accent-secondary, #f0f);
-  --pine: #b85d8e;                   /* 故意不指向 --color-success——保留 cutie
+  --pine: #b85d8e; /* 故意不指向 --color-success——保留 cutie
                                           原桑葚紫,Phase 1 视觉零变化;Phase 2
                                           决定哪些消费者要"成功绿"(迁
                                           --color-success)还是"莓紫装饰"(迁
@@ -619,7 +619,7 @@
   --color-bg-strong: var(--ctp-surface2, #acb0be);
   --color-text-primary: var(--ctp-text, #4c4f69);
   --color-text-secondary: var(--ctp-subtext1, #5c5f77); /* ≥4.5:1 */
-  --color-text-muted: var(--ctp-subtext0, #6c6f85);     /* ~4.5:1 */
+  --color-text-muted: var(--ctp-subtext0, #6c6f85); /* ~4.5:1 */
   --color-danger: var(--ctp-red, #d20f39);
   --color-warning: var(--ctp-yellow, #df8e1d);
   --color-success: var(--ctp-green, #40a02b);
@@ -645,9 +645,9 @@
   --color-bg-hover: #d8dae0;
   --color-bg-active: #b6bdcf;
   --color-bg-strong: #a8adc0;
-  --color-text-primary: #3760bf;     /* 钢蓝 body — Tokyo Night Day 标志 */
-  --color-text-secondary: #4d5996;   /* ≥4.5:1 */
-  --color-text-muted: #555f8c;       /* ≥4.5:1 */
+  --color-text-primary: #3760bf; /* 钢蓝 body — Tokyo Night Day 标志 */
+  --color-text-secondary: #4d5996; /* ≥4.5:1 */
+  --color-text-muted: #555f8c; /* ≥4.5:1 */
   --color-danger: #c64343;
   --color-warning: #8c6c3e;
   --color-success: #587539;
@@ -670,21 +670,21 @@
  *   (原主题 comment #BA9AB9 在 #f5f5f5 上仅 ~2.5:1,muted 已加深到 #7d6770) */
 [data-theme='light-pink'] {
   /* Layer 2 — Semantic;直接采用上游 hex,无独立 Layer 1 调色板词汇 */
-  --color-bg-primary: #f5f5f5;       /* 冷灰白(editor.background) */
-  --color-bg-secondary: #f5f0f3;     /* 奶霜粉(sideBar) */
-  --color-bg-elevated: #f5e3ef;      /* 樱花霜(sideBarSectionHeader) */
-  --color-bg-hover: #ede5ed;         /* 淡灰粉 hover */
-  --color-bg-active: #f1dde9;        /* 莓糖选中态 */
-  --color-bg-strong: #ffb8ca;        /* 婴儿粉(emphasis) */
-  --color-text-primary: #54494b;     /* 暖炭灰(editorCursor) */
-  --color-text-secondary: #736a6d;   /* 暖中灰(lineNumber) ≥4.5:1 */
-  --color-text-muted: #7d6770;       /* 暖莓棕 ≥4.5:1(上游 #BA9AB9 不达标,加深) */
-  --color-danger: #d2304b;           /* 玫瑰红(invalid) */
-  --color-warning: #b08b35;          /* 暖金(constants) */
-  --color-success: #4d8a5e;          /* 鼠尾草绿(上游无 success,与 Cutie 一致) */
-  --color-info: #1f6e89;             /* 海蓝(comment.documentation) */
+  --color-bg-primary: #f5f5f5; /* 冷灰白(editor.background) */
+  --color-bg-secondary: #f5f0f3; /* 奶霜粉(sideBar) */
+  --color-bg-elevated: #f5e3ef; /* 樱花霜(sideBarSectionHeader) */
+  --color-bg-hover: #ede5ed; /* 淡灰粉 hover */
+  --color-bg-active: #f1dde9; /* 莓糖选中态 */
+  --color-bg-strong: #ffb8ca; /* 婴儿粉(emphasis) */
+  --color-text-primary: #54494b; /* 暖炭灰(editorCursor) */
+  --color-text-secondary: #736a6d; /* 暖中灰(lineNumber) ≥4.5:1 */
+  --color-text-muted: #7d6770; /* 暖莓棕 ≥4.5:1(上游 #BA9AB9 不达标,加深) */
+  --color-danger: #d2304b; /* 玫瑰红(invalid) */
+  --color-warning: #b08b35; /* 暖金(constants) */
+  --color-success: #4d8a5e; /* 鼠尾草绿(上游无 success,与 Cutie 一致) */
+  --color-info: #1f6e89; /* 海蓝(comment.documentation) */
   --color-accent-secondary: #9466aa; /* 紫莓(types/classes) — 多色少女的紫调点睛 */
-  --color-accent-special: #ff7ab3;   /* 热粉(statusbar) — Light Pink 标志色 */
+  --color-accent-special: #ff7ab3; /* 热粉(statusbar) — Light Pink 标志色 */
 
   /* Layer 3 (旧 --base / --surface 等别名) 故意省略 — 全代码库零消费者 */
 
@@ -700,21 +700,21 @@
  *   "深/浅 × 甜美/帅气"象限里互补 */
 [data-theme='fairyfloss'] {
   /* Layer 2 — Semantic;直接采用上游 hex */
-  --color-bg-primary: #5a5475;       /* 暗紫底(招牌色) */
-  --color-bg-secondary: #464258;     /* 深一档(sidebar/header) */
-  --color-bg-elevated: #514c66;      /* 浮卡 */
+  --color-bg-primary: #5a5475; /* 暗紫底(招牌色) */
+  --color-bg-secondary: #464258; /* 深一档(sidebar/header) */
+  --color-bg-elevated: #514c66; /* 浮卡 */
   --color-bg-hover: #4a4361;
-  --color-bg-active: #6959aa;        /* 选中态紫高亮 */
+  --color-bg-active: #6959aa; /* 选中态紫高亮 */
   --color-bg-strong: #716799;
-  --color-text-primary: #f8f8f2;     /* 奶油白 */
-  --color-text-secondary: #bcb3e7;   /* 淡薰衣草 */
-  --color-text-muted: #a186cf;       /* 灰薰衣草(注释色) */
-  --color-danger: #ff857f;           /* 桃粉红 */
-  --color-warning: #ffea00;          /* 校车黄(signature) */
-  --color-success: #c2ffdf;          /* 薄荷绿(signature) */
-  --color-info: #9673d3;             /* 紫罗兰 */
+  --color-text-primary: #f8f8f2; /* 奶油白 */
+  --color-text-secondary: #bcb3e7; /* 淡薰衣草 */
+  --color-text-muted: #a186cf; /* 灰薰衣草(注释色) */
+  --color-danger: #ff857f; /* 桃粉红 */
+  --color-warning: #ffea00; /* 校车黄(signature) */
+  --color-success: #c2ffdf; /* 薄荷绿(signature) */
+  --color-info: #9673d3; /* 紫罗兰 */
   --color-accent-secondary: #ffb8d1; /* 泡泡糖粉(keywords) */
-  --color-accent-special: #c5a3ff;   /* 薰衣草(主标志色) */
+  --color-accent-special: #c5a3ff; /* 薰衣草(主标志色) */
 
   /* Layer 3 故意省略;深色,不需要 color-scheme 显式声明 */
 }
@@ -961,7 +961,10 @@ html[data-maximized='true'] .app-root.with-shell {
   transition: opacity 80ms ease;
 }
 
-.app-titlebar-macos.show-hover-symbols .titlebar-traffic:hover .titlebar-traffic-btn .traffic-symbol {
+.app-titlebar-macos.show-hover-symbols
+  .titlebar-traffic:hover
+  .titlebar-traffic-btn
+  .traffic-symbol {
   opacity: 1;
 }
 
@@ -1031,7 +1034,11 @@ html[data-maximized='true'] .app-root.with-shell {
  * 浮起作为唯一的"放这里"视觉信号。不依赖任何边沿渲染。 */
 
 .sidebar.drag-over {
-  background-color: color-mix(in srgb, var(--color-accent-special, #c4a7e7) 16%, var(--color-bg-secondary, #f0f));
+  background-color: color-mix(
+    in srgb,
+    var(--color-accent-special, #c4a7e7) 16%,
+    var(--color-bg-secondary, #f0f)
+  );
 }
 
 .sidebar-drop-hint {
@@ -1049,7 +1056,8 @@ html[data-maximized='true'] .app-root.with-shell {
   padding: 16px 24px;
   background-color: var(--color-bg-secondary, #f0f);
   color: var(--color-text-primary, #f0f);
-  border: 1px solid color-mix(in srgb, var(--color-accent-special, #c4a7e7) 60%, var(--color-bg-elevated, #f0f));
+  border: 1px solid
+    color-mix(in srgb, var(--color-accent-special, #c4a7e7) 60%, var(--color-bg-elevated, #f0f));
   border-radius: 10px;
   box-shadow:
     0 10px 28px rgb(0 0 0 / 36%),
@@ -1159,7 +1167,9 @@ html[data-maximized='true'] .app-root.with-shell {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .sidebar-category-action:hover {
@@ -1468,7 +1478,9 @@ html[data-maximized='true'] .app-root.with-shell {
   border-radius: 6px;
   font-size: 13px;
   text-align: left;
-  transition: border-color 80ms ease, background-color 80ms ease;
+  transition:
+    border-color 80ms ease,
+    background-color 80ms ease;
 }
 
 .template-button:hover:not(:disabled) {
@@ -1770,7 +1782,9 @@ button.agent-dot:hover:not(:disabled)::after {
   border-radius: 3px;
   color: var(--color-text-secondary, #f0f);
   cursor: pointer;
-  transition: background-color 80ms ease, color 80ms ease;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
 }
 
 .status-simple-toggle:hover {
@@ -1839,8 +1853,7 @@ button.agent-dot:hover:not(:disabled)::after {
    * shadow line,视觉重量比实色 token 低一个数量级。
    * 双层 ring 同步删除 — drop shadow 已经够撑立体感。
    */
-  border: 1px solid
-    color-mix(in srgb, var(--color-text-primary, #e0def4) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text-primary, #e0def4) 8%, transparent);
   border-radius: 6px;
   box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
   padding: 4px;
@@ -2696,7 +2709,9 @@ select.settings-input option {
   background-color: var(--color-bg-secondary, #f0f);
   position: relative;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
   flex-shrink: 0;
 }
 
@@ -3146,8 +3161,12 @@ select.settings-input option {
 }
 
 @keyframes app-modal-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .app-modal-panel {
@@ -3399,6 +3418,204 @@ select.settings-input option {
 .toast-close:hover {
   background-color: var(--color-bg-hover, #f0f);
   color: var(--color-text-primary, #f0f);
+}
+
+/* ADR-035:可展开的 toast。消息和展开区竖排;展开后图标、按钮贴顶 */
+.toast-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toast.expanded {
+  align-items: flex-start;
+}
+
+.toast.expanded .toast-icon,
+.toast.expanded .toast-actions,
+.toast.expanded .toast-close {
+  margin-top: 3px;
+}
+
+.toast-detail {
+  display: block;
+  cursor: auto;
+}
+
+/* 选择面板:问题一行,选项一列按钮,带指针的那项描边用强调色。颜色一律继承 toast 的:
+   Material 皮肤把 toast 画在反色面上,普通文字变量在那上面看不见 */
+.toast-choice-question {
+  margin-bottom: 4px;
+  opacity: 0.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toast-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-choice-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.toast-choice-option:hover:not(:disabled) {
+  background-color: color-mix(in srgb, currentcolor 12%, transparent);
+}
+
+.toast-choice-option:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.toast-choice-option.pointed {
+  border-color: var(--color-accent-special, #f0f);
+}
+
+.toast-choice-option .toast-choice-index {
+  opacity: 0.7;
+  margin-right: 6px;
+}
+
+.toast-choice-option .toast-choice-note {
+  opacity: 0.7;
+  margin-left: 6px;
+}
+
+.toast-choice-empty {
+  opacity: 0.75;
+}
+
+/* 分页提问的页签:答过的打勾,提交页在最后 */
+.toast-choice-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.toast-choice-step {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
+  border-radius: 999px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.toast-choice-step.done {
+  opacity: 1;
+}
+
+.toast-choice-step.current {
+  opacity: 1;
+  border-color: var(--color-accent-special, #f0f);
+}
+
+/* 提交页:已选的答案 */
+.toast-choice-review {
+  margin-bottom: 6px;
+}
+
+.toast-choice-review-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toast-choice-review-line.answer {
+  padding-left: 12px;
+  opacity: 0.8;
+}
+
+.toast-choice-review-line.warn {
+  color: var(--color-warning, #f0f);
+}
+
+.toast-choice-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-choice-option.chosen {
+  border-color: color-mix(in srgb, currentcolor 55%, transparent);
+}
+
+.toast-choice-box {
+  margin-right: 6px;
+}
+
+.toast-choice-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* 打字回答 / 留言的输入行 */
+.toast-choice-input {
+  display: flex;
+  gap: 6px;
+}
+
+.toast-choice-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, currentcolor 6%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+.toast-choice-input input:focus {
+  outline: 2px solid var(--color-accent-special, #f0f);
+  outline-offset: -1px;
+}
+
+.toast-choice-send,
+.toast-choice-next,
+.toast-choice-go {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, currentcolor 30%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-accent-special, #f0f);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toast-choice-next {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.toast-choice-go {
+  padding: 0 6px;
+  border: none;
+}
+
+.toast-choice-send:disabled,
+.toast-choice-next:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ── Bootstrap / 错误占位 ── */

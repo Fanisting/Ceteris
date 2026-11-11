@@ -1292,7 +1292,7 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
   const unseen = state.unseenDoneSessionIds.has(session.id);
   // ADR-027:圆点刚亮起时撒一次小星星,锚在圆点上。
   const agentDotRef = useRef<HTMLSpanElement>(null);
-  if (blocked) tooltipParts.push(tx('等待你批准', 'Waiting for your approval'));
+  if (blocked) tooltipParts.push(tx('等你决定', 'Waiting for your decision'));
   else if (unseen) tooltipParts.push(tx('已完成,等你查看', 'Finished, your turn'));
 
   return (

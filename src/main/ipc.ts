@@ -110,6 +110,10 @@ import {
   type EventEnvelope,
   type FocusSessionOwnerPayload,
   type FocusSessionOwnerResponse,
+  type ReadChoicePayload,
+  type ReadChoiceResponse,
+  type AnswerChoicePayload,
+  type AnswerChoiceResponse,
   type LinkConnectionStatePayload,
   type FocusWindowPayload,
   type AddTemplatePayload,
@@ -1137,6 +1141,37 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         // 在那里(orphan 或被抢),新窗口仍开出来,只是不会自动 select。
       }
       return { windowId: info.id, windowNumber: info.number };
+    },
+  );
+
+  // ADR-035:toast 里的选择面板从别的标签或窗口读和回答 agent 的提示。
+  // 两条都不抛错:session 没了或提示变了都是正常时序,面板按 reason 改口。
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_READ_CHOICE,
+    (_e, envelope: CommandEnvelope<ReadChoicePayload>): ReadChoiceResponse => ({
+      prompt: sessionManager.readChoice(envelope.payload.sessionId),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_ANSWER_CHOICE,
+    (_e, envelope: CommandEnvelope<AnswerChoicePayload>): Promise<AnswerChoiceResponse> => {
+      // The payload crosses from the renderer: rebuild it from checked fields only.
+      const p = envelope.payload as unknown as Record<string, unknown>;
+      const sessionId = typeof p.sessionId === 'string' ? p.sessionId : '';
+      if (p.next === true) return sessionManager.answerChoice({ sessionId, next: true });
+      if (typeof p.index !== 'number' || !Number.isInteger(p.index)) {
+        throw makeIpcError(
+          'InvalidPayload',
+          `answer-choice needs an integer index or next:true; got keys ${Object.keys(p).join(',')}. ` +
+            'Likely a renderer built against an older protocol; reload the window.',
+        );
+      }
+      return sessionManager.answerChoice({
+        sessionId,
+        index: p.index,
+        ...(typeof p.text === 'string' ? { text: p.text } : {}),
+      });
     },
   );
 

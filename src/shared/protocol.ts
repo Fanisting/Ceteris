@@ -20,6 +20,7 @@ import type { ShelfEntry } from './shelf';
 import type {
   AppSnapshot,
   Bookmark,
+  ChoicePrompt,
   PathTree,
   SessionInfo,
   Settings,
@@ -66,6 +67,10 @@ export const COMMAND_CHANNELS = {
   SESSION_RELEASE: 'cmd:session:release',
   SESSION_FOCUS_OWNER: 'cmd:session:focus-owner',
   SESSION_SEND_INPUT: 'cmd:session:send-input',
+  /** ADR-035:读某 session 屏幕上 agent 停着的提示(问题和选项),没有则 null */
+  SESSION_READ_CHOICE: 'cmd:session:read-choice',
+  /** ADR-035:替用户在那个提示里选一项:main 先核对提示还在,再发方向键和回车 */
+  SESSION_ANSWER_CHOICE: 'cmd:session:answer-choice',
   SESSION_RESIZE: 'cmd:session:resize',
   SESSION_GET_SCROLLBACK: 'cmd:session:get-scrollback',
   /** BETA-028:导出 scrollback 为 UTF-8 字符串,供终端工具栏"复制全部"按钮 */
@@ -652,6 +657,55 @@ export interface SendInputPayload {
   sessionId: string;
   /** 字节流,base64 编码 */
   data: string;
+}
+
+/** cmd:session:read-choice (ADR-035) */
+export interface ReadChoicePayload {
+  sessionId: string;
+}
+
+export interface ReadChoiceResponse {
+  /** null:agent 没停在提示上,或者屏幕上的行读不出问题和选项 */
+  prompt: ChoicePrompt | null;
+}
+
+/**
+ * cmd:session:answer-choice (ADR-035). Two shapes:
+ * - { index, text? }: pick the option with that printed number. text is the answer for a
+ *   'type' option (required) or the message after a 'chat' option (optional).
+ * - { next: true }: go to the next page of a paged prompt (Tab); multi-select uses it once
+ *   the boxes are ticked.
+ */
+export type AnswerChoicePayload =
+  | { sessionId: string; index: number; text?: string }
+  | { sessionId: string; next: true };
+
+/**
+ * Why an answer was not (fully) sent:
+ * - no-prompt: the agent is no longer at a prompt
+ * - option-gone: the prompt changed and has no option with that number
+ * - not-paged: next on a prompt without pages, or on its last page
+ * - text-needed: a 'type' option with no text
+ * - pointer-stuck: the pointer did not reach the option, so nothing was confirmed
+ * - prompt-stuck: a 'chat' option was picked but the prompt stayed, so the message was not sent
+ * - busy: another answer to this tab is still being typed
+ * - session-not-found / pty-exited / pty-write-failed: as in cmd:session:send-input
+ */
+export type AnswerChoiceReason =
+  | 'no-prompt'
+  | 'option-gone'
+  | 'not-paged'
+  | 'text-needed'
+  | 'pointer-stuck'
+  | 'prompt-stuck'
+  | 'busy'
+  | 'session-not-found'
+  | 'pty-exited'
+  | 'pty-write-failed';
+
+export interface AnswerChoiceResponse {
+  sent: boolean;
+  reason?: AnswerChoiceReason;
 }
 
 /**

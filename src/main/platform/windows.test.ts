@@ -90,6 +90,16 @@ describe('WindowsAdapter — WSL shell support', () => {
     expect(bash.args.at(-1)).not.toContain('exec bash');
   });
 
+  it('Git Bash keeps the hook in the shell that takes over after the command (ADR-038)', () => {
+    const adapter = new WindowsAdapter();
+    const bash = adapter.buildShellLaunchParams(
+      { id: 'git-bash', displayName: 'Git Bash', executablePath: 'bash.exe' },
+      'C:\\data\\hooks\\bash.sh',
+      { command: 'claude', args: [] },
+    );
+    expect(bash.args.at(-1)).toMatch(/; exec bash --rcfile '?C:\/data\/hooks\/bash\.sh'? -i$/);
+  });
+
   it('buildShellLaunchParams(wsl) 无命令时不传参数(走发行版默认 shell)', () => {
     const adapter = new WindowsAdapter();
     const result = adapter.buildShellLaunchParams(

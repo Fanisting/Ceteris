@@ -1,11 +1,13 @@
 /**
  * @file src/renderer/components/PaneLayoutBar.tsx
  * @purpose Bottom right layout picker. Each icon is a small drawing of the panes it gives.
+ *   The left end of the same row shows the selected agent tab's status line (ADR-038).
  */
 import type { PaneLayoutId } from '@shared/pane-layout';
 import { useAppDispatch, useAppState } from '../store';
 import { focusTerminalDom } from '../focus';
 import { useTranslation } from './LanguageProvider';
+import { AgentStatusLine } from './AgentModelControls';
 
 interface LayoutOption {
   id: PaneLayoutId;
@@ -31,6 +33,8 @@ export function PaneLayoutBar(): JSX.Element {
 
   return (
     <div className="pane-layout-bar" role="group" aria-label={tx('终端布局', 'Terminal layout')}>
+      {/* ADR-038: the selected tab's model, effort and usage, at the left of the same row */}
+      <AgentStatusLine />
       {OPTIONS.map((o) => {
         const active = state.paneLayout === o.id;
         return (

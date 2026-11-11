@@ -29,6 +29,7 @@ import type {
 } from './types';
 import type { DeepPartial } from './types-helpers';
 import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
+import type { AgentUsage, ModelChoice, ModelEffort } from './agent-model';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -190,6 +191,12 @@ export const COMMAND_CHANNELS = {
   AGENT_RELOAD: 'cmd:agent:reload',
   /** 只扫 PATH 看哪些内置 agent 装了 (ADR-034),新建页据此隐藏没装的;毫秒级,不跑 --version */
   AGENT_LIST_INSTALLED: 'cmd:agent:list-installed',
+  /** ADR-038:Claude Code 和 Codex 可选的模型与 effort (Codex 读 ~/.codex/models_cache.json) */
+  AGENT_MODEL_OPTIONS: 'cmd:agent:model-options',
+  /** ADR-038:在同一个标签里重启 agent (/exit 后带新参数和恢复 id 再开),对话接着进行 */
+  AGENT_SWITCH_MODEL: 'cmd:agent:switch-model',
+  /** ADR-038:一个 agent 终端的用量 (模型、effort、上下文、5h / 周限额、明细) */
+  AGENT_USAGE: 'cmd:agent:usage',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -1091,6 +1098,57 @@ export interface AgentNoticeActionPayload {
 
 export interface AgentReloadPlanPayload {
   templateId: string;
+}
+
+/**
+ * ADR-038: choices per agent. models empty for Codex when its cache cannot be read.
+ * `own` is what the agent runs with when Ceteris adds no flag, read from its own settings
+ * (Claude Code settings.json, Codex config.toml); '' where the file does not say.
+ */
+export interface AgentModelOptionsResponse {
+  'claude-code': { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+  codex: { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+}
+
+export interface AgentSwitchModelPayload {
+  sessionId: string;
+  /** Omit to keep the current one */
+  model?: string;
+  effort?: string;
+}
+
+export interface AgentSwitchModelResponse {
+  applied: boolean;
+  /**
+   * With applied: true, whether the earlier conversation was resumed. false = no id was
+   * printed or known, so the agent started a new conversation (it had none yet, usually).
+   */
+  resumed?: boolean;
+  /**
+   * busy: mid-turn, waiting on an approval, or a switch already running;
+   * cannot-restart: SSH tab, or a template that does not keep a shell after the agent;
+   * exit-timeout: the agent did not exit after /exit, nothing else was typed;
+   * input-not-clear: the input box did not read exactly "/exit" after clearing it, so Enter
+   *   was not pressed and the typed "/exit" was erased again;
+   * not-agent / exited / session-not-found as named.
+   */
+  reason?:
+    | 'session-not-found'
+    | 'not-agent'
+    | 'exited'
+    | 'busy'
+    | 'cannot-restart'
+    | 'exit-timeout'
+    | 'input-not-clear';
+}
+
+export interface AgentUsagePayload {
+  sessionId: string;
+}
+
+export interface AgentUsageResponse {
+  /** null until the agent has written its first transcript or rollout line */
+  usage: AgentUsage | null;
 }
 
 /** 整体重载会动到什么 (ADR-037),只算本机、没退出的终端 */

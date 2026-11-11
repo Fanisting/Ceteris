@@ -477,13 +477,17 @@ export class WindowsAdapter implements PlatformAdapter {
         }
         if (commandToRun) {
           const cmdLine = [commandToRun.command, ...commandToRun.args].map(quoteBash).join(' ');
+          // The bash that takes over after the command must load the hook again, or it never
+          // reports its prompt and cwd (ADR-038 waits for that report after /exit). Forward
+          // slashes, because this path is read by bash itself, not converted by msys.
+          const thenShell = `exec bash --rcfile ${quoteBash(hookFilePath.replace(/\\/g, '/'))} -i`;
           return {
             args: [
               '--rcfile',
               hookFilePath,
               '-i',
               '-c',
-              commandToRun.exitAfter ? cmdLine : `${cmdLine}; exec bash -i`,
+              commandToRun.exitAfter ? cmdLine : `${cmdLine}; ${thenShell}`,
             ],
             env: {},
           };

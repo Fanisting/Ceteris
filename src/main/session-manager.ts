@@ -101,6 +101,12 @@ import {
 import { CHANNELS } from '@shared/channel';
 import { clampTitleLength, isAgentTemplate, shortenAgentTitle } from '@shared/agent-title';
 import type { ResumableAgent } from '@shared/shelf';
+import {
+  folderDefaultFor,
+  launchArgs,
+  modelAgentOf,
+  type FolderAgentDefault,
+} from '@shared/agent-model';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
 // Ceteris launched from that shell would misidentify itself as a portable build.
@@ -678,6 +684,17 @@ export class SessionManager extends EventEmitter {
   async createSession(input: CreateSessionInput): Promise<SessionInfo> {
     this.lastLaunchWarning = null;
     const resolved = this.templatesManager.resolve(input.templateId);
+    const agentLaunch = input.commandOverride
+      ? null
+      : planAgentLaunch(
+          resolved.id,
+          input.pathId,
+          this.settingsManager.get().agents?.folderDefaults,
+          input.extraArgs ?? [],
+          randomUUID,
+          resolved.args,
+        );
+    const addedArgs = [...(agentLaunch?.args ?? []), ...(input.extraArgs ?? [])];
     const template = input.commandOverride
       ? {
           ...resolved,
@@ -687,8 +704,8 @@ export class SessionManager extends EventEmitter {
           env: {},
           postExitAction: 'keep_shell' as const,
         }
-      : input.extraArgs && input.extraArgs.length > 0 && resolved.command
-        ? { ...resolved, args: [...resolved.args, ...input.extraArgs] }
+      : addedArgs.length > 0 && resolved.command
+        ? { ...resolved, args: [...resolved.args, ...addedArgs] }
         : resolved;
     const dims = validateDimensions(input.cols, input.rows);
     const shells = await this.getShells();
@@ -919,6 +936,13 @@ export class SessionManager extends EventEmitter {
       ownerWindowId: input.ownerWindowId || null,
       state: 'idle',
       createdAt: Date.now(),
+      ...(agentLaunch && template.command
+        ? {
+            agentModel: agentLaunch.model,
+            agentEffort: agentLaunch.effort,
+            ...(agentLaunch.launchId ? { agentLaunchId: agentLaunch.launchId } : {}),
+          }
+        : {}),
     };
 
     const disposables: IDisposable[] = [];
@@ -1134,6 +1158,23 @@ export class SessionManager extends EventEmitter {
       coordinator: managed.info.coordinator,
       displayName: managed.info.displayName,
     });
+  }
+
+  /**
+   * ADR-038: record the model, effort and Claude Code session id a tab now runs with, after
+   * agent-model-switch.ts relaunched the agent in it. '' means the agent's own default.
+   * 副作用: emits sessionStateChanged. Unknown ids are ignored.
+   */
+  setAgentPick(
+    sessionId: string,
+    pick: { model: string; effort: string; launchId?: string },
+  ): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    const changes: Partial<SessionInfo> = { agentModel: pick.model, agentEffort: pick.effort };
+    if (pick.launchId) changes.agentLaunchId = pick.launchId;
+    Object.assign(managed.info, changes);
+    this.emitStateChanged(managed, changes);
   }
 
   /**
@@ -2090,6 +2131,9 @@ export class SessionManager extends EventEmitter {
   // ──────────────────────────────────────────────────────────────────
 
   private handleOsc1337Cwd(managed: ManagedSession, rawCwd: string): void {
+    // The shell hook reports the cwd each time it draws a prompt, so this also says "the shell
+    // is back at its prompt". ADR-038 waits for it after typing /exit into an agent.
+    this.emit('shellPrompt', { sessionId: managed.info.id });
     // OSC 收到了 → 永久关闭 cwd 兜底 (软件定义书 5.1.8、ADR-003)
     if (!managed.oscReceived) {
       managed.oscReceived = true;
@@ -2710,3 +2754,47 @@ function normalizeCwd(raw: string): string {
     return value;
   }
 }
+
+/**
+ * ADR-038: what a new Claude Code or Codex tab is started with. Returns null for any other
+ * template.
+ *
+ * - model / effort: the folder's default from settings ('' = the agent's own default).
+ * - Claude Code on a local folder starting fresh also gets `--session-id <uuid>`, so
+ *   agent-usage.ts finds exactly this tab's transcript. Not when extraArgs or the template's
+ *   own args already resume a conversation: that keeps its old id, and Claude Code does not
+ *   take `--session-id` together with `--continue` / `--resume`.
+ * - args go before extraArgs (e.g. `resume --last`). Codex takes `-m` and `-c` both before
+ *   the subcommand and after it (`codex resume --help` lists them), so either order works.
+ */
+export function planAgentLaunch(
+  templateId: string,
+  pathId: string,
+  folderDefaults: readonly FolderAgentDefault[] | undefined,
+  extraArgs: readonly string[],
+  newId: () => string = randomUUID,
+  templateArgs: readonly string[] = [],
+): { args: string[]; model: string; effort: string; launchId?: string } | null {
+  const agent = modelAgentOf(templateId);
+  if (!agent) return null;
+  const pick = folderDefaultFor(folderDefaults, pathId, agent);
+  const args = launchArgs(agent, pick);
+  const local = pathRefFromId(pathId || homedir()).kind !== 'ssh';
+  const resumesAlready = [...templateArgs, ...extraArgs].some((a) => CLAUDE_RESUME_FLAGS.has(a));
+  if (agent === 'claude-code' && local && extraArgs.length === 0 && !resumesAlready) {
+    const launchId = newId();
+    return { args: [...args, '--session-id', launchId], ...pick, launchId };
+  }
+  return { args, ...pick };
+}
+
+/** Claude Code flags that pick up an existing conversation (`claude --help`, 2.1.322) */
+const CLAUDE_RESUME_FLAGS = new Set([
+  '--continue',
+  '-c',
+  '--resume',
+  '-r',
+  '--session-id',
+  '--from-pr',
+  '--teleport',
+]);

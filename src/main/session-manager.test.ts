@@ -21,6 +21,7 @@ import {
   SessionManagerError,
   inferDisplayName,
   looksLikeShellStartupGarbage,
+  planAgentLaunch,
   type PtySpawnFn,
 } from './session-manager';
 import { Osc1337Parser } from './osc1337-parser';
@@ -166,7 +167,10 @@ function makeStubTemplatesManager(extraTemplates: Template[] = []): TemplatesMan
   } as unknown as TemplatesManager;
 }
 
-function makeStubSettingsManager(overrides: Partial<Settings['advanced']> = {}): SettingsManager {
+function makeStubSettingsManager(
+  overrides: Partial<Settings['advanced']> = {},
+  folderDefaults: Settings['agents']['folderDefaults'] = [],
+): SettingsManager {
   const settings: Settings = {
     version: 1,
     appearance: {
@@ -237,6 +241,7 @@ function makeStubSettingsManager(overrides: Partial<Settings['advanced']> = {}):
       hostToken: '',
       savedHosts: [],
     },
+    agents: { folderDefaults },
   };
   return {
     get: (): Settings => settings,
@@ -2751,5 +2756,126 @@ describe('SessionManager — extraArgs (ADR-037 reload)', () => {
       extraArgs: ['--continue'],
     });
     expect(spy.mock.calls[0]![2]).toBeUndefined();
+  });
+});
+
+describe('SessionManager — model and effort (ADR-038)', () => {
+  const agentTemplate = (id: 'claude-code' | 'codex', command: string): Template => ({
+    id,
+    name: id,
+    icon: 'A',
+    isBuiltin: true,
+    command,
+    args: [],
+    env: {},
+    shellFirst: false,
+    postExitAction: 'keep_shell',
+  });
+  const claude = agentTemplate('claude-code', 'claude');
+  const codex = agentTemplate('codex', 'codex');
+  const defaults = [
+    { pathId: '/p', agent: 'claude-code' as const, model: 'opus', effort: 'high' },
+    { pathId: '/p', agent: 'codex' as const, model: 'gpt-x', effort: 'low' },
+  ];
+
+  async function start(
+    templateId: 'claude-code' | 'codex',
+    extraArgs?: string[],
+  ): Promise<{ mgr: SessionManager; id: string; launch: { command: string; args: string[] } }> {
+    const adapter = makeFakeAdapter();
+    const spy = vi.spyOn(adapter, 'buildShellLaunchParams');
+    const { mgr } = makeManager({
+      adapter,
+      templates: [claude, codex],
+      settings: makeStubSettingsManager({}, defaults),
+    });
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId,
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+      ...(extraArgs ? { extraArgs } : {}),
+    });
+    return {
+      mgr,
+      id: info.id,
+      launch: spy.mock.calls[0]![2] as { command: string; args: string[] },
+    };
+  }
+
+  it("starts Claude Code with the folder's model, effort and its own session id", async () => {
+    const { mgr, id, launch } = await start('claude-code');
+    const info = mgr.get(id)!;
+    expect(info.agentLaunchId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(launch.args).toEqual([
+      '--model',
+      'opus',
+      '--effort',
+      'high',
+      '--session-id',
+      info.agentLaunchId,
+    ]);
+    expect(info).toMatchObject({ agentModel: 'opus', agentEffort: 'high' });
+  });
+
+  it('puts Codex flags before a resume subcommand and gives no session id on a resume', async () => {
+    const { launch } = await start('codex', ['resume', '--last']);
+    expect(launch.args).toEqual([
+      '-m',
+      'gpt-x',
+      '-c',
+      'model_reasoning_effort=low',
+      'resume',
+      '--last',
+    ]);
+    const resumed = await start('claude-code', ['--continue']);
+    expect(resumed.launch.args).toEqual(['--model', 'opus', '--effort', 'high', '--continue']);
+    expect(resumed.mgr.get(resumed.id)!.agentLaunchId).toBeUndefined();
+  });
+
+  it('records a new pick and tells the windows', async () => {
+    const { mgr, id } = await start('claude-code');
+    const seen: unknown[] = [];
+    mgr.on('sessionStateChanged', (p: { changes: unknown }) => seen.push(p.changes));
+    mgr.setAgentPick(id, { model: 'sonnet', effort: 'low', launchId: 'next-id' });
+    expect(mgr.get(id)).toMatchObject({
+      agentModel: 'sonnet',
+      agentEffort: 'low',
+      agentLaunchId: 'next-id',
+    });
+    expect(seen).toContainEqual({
+      agentModel: 'sonnet',
+      agentEffort: 'low',
+      agentLaunchId: 'next-id',
+    });
+  });
+
+  it('reports every shell prompt (OSC 1337), not only cwd changes', async () => {
+    const { mgr, id } = await start('claude-code');
+    const prompts: string[] = [];
+    mgr.on('shellPrompt', (p: { sessionId: string }) => prompts.push(p.sessionId));
+    const pty = FakePty.instances[0]!;
+    pty.emitData('\x1b]1337;CurrentDir=/p\x07');
+    pty.emitData('\x1b]1337;CurrentDir=/p\x07');
+    expect(prompts).toEqual([id, id]);
+  });
+});
+
+describe('planAgentLaunch (ADR-038)', () => {
+  it('gives no session id when the template itself already resumes a conversation', () => {
+    for (const flag of ['--continue', '-c', '--resume', '-r']) {
+      const plan = planAgentLaunch('claude-code', '/p', [], [], () => 'id', [flag]);
+      expect(plan?.args).not.toContain('--session-id');
+      expect(plan?.launchId).toBeUndefined();
+    }
+    expect(planAgentLaunch('claude-code', '/p', [], [], () => 'id', ['--verbose'])?.launchId).toBe(
+      'id',
+    );
+  });
+
+  it('leaves other templates and SSH folders without a session id', () => {
+    expect(planAgentLaunch('shell', '/p', [], [])).toBeNull();
+    expect(planAgentLaunch('claude-code', 'ssh:prof:/home/x', [], [])?.launchId).toBeUndefined();
   });
 });

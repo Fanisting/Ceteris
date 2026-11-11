@@ -358,6 +358,12 @@ export class LinuxAdapter implements PlatformAdapter {
     return () => {};
   }
 
+  knownToolPaths(_tool: 'Rscript'): string[] {
+    // Distribution packages put it in /usr/bin, source builds in /usr/local/bin, and Posit's
+    // R builds in /opt/R/<version>/bin (only the "current" link is guessed here).
+    return ['/usr/bin/Rscript', '/usr/local/bin/Rscript', '/opt/R/current/bin/Rscript'];
+  }
+
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {
     const home = homedir();
     return [

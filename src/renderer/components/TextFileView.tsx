@@ -1,29 +1,31 @@
 /**
  * @file src/renderer/components/TextFileView.tsx
- * @purpose Shows a .txt, .json, .tex, .sql or .hive file in the file viewer, and a Markdown file once the user
- *   switches it to editing. Small files can be edited and saved. Very large files open as
+ * @purpose Shows a text, code or data file in the file viewer (the types of code-files.ts),
+ *   and a Markdown file once the user switches it to editing. Small files can be edited and
+ *   saved; code files then get checked by the user's own linter. Very large files open as
  *   read-only pages.
  *
  * @关键设计:
- * - The size decides: up to TEXT_EDIT_MAX_BYTES the file loads whole into a textarea. A larger
- *   file would freeze a textarea, so only one page of it is ever in memory. This is what lets
+ * - The size decides: up to TEXT_EDIT_MAX_BYTES the file loads whole into the editor
+ *   (CodeEditor, CodeMirror). A larger file would make editing slow, so only one page of it is
+ *   ever in memory, shown as plain text. This is what lets
  *   a file of several gigabytes open at once, over Link too.
  * - The first read always takes a single page, so the size is known before anything large moves.
  * - Saving is a button only: an in-app Ctrl+S is on the 13.2 list.
  * - Unsaved text lives in text-drafts.ts, so this component can unmount at any time.
  * - SSH tabs are read-only, because the SFTP tree is. A Link window edits: the host does the save.
+ * - Lint runs after each successful save, never while typing (ADR-040). Its problems show as
+ *   squiggles in the editor and as a list under it; a click on a row jumps to the line. A
+ *   newer save makes the result of an older one obsolete (lintSeq).
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-016, ADR-028
+ * @对应文档章节: 软件定义书.md 14.6, ADR-016, ADR-028, ADR-040
  *
  * @不要在这里做的事:
- * - 不要把格式、高亮这类功能加进来:这里只为顺手改一下文本,不是 IDE
+ * - 不要加自动格式化、补全、调试这类 IDE 功能:这里只为顺手改一下文件(ADR-040 只加了高亮和保存后 lint)
  * - 不要改写用户没动过的内容:换行和 BOM 的还原见 text-file.ts
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  COMMAND_CHANNELS,
-  type LinkConnectionStatePayload,
-} from '@shared/protocol';
+import { COMMAND_CHANNELS, type LinkConnectionStatePayload } from '@shared/protocol';
 import type {
   ReadPdfFailure,
   WriteTextFailure,
@@ -45,13 +47,16 @@ import {
   type DecodedText,
   type TextEncodingName,
 } from '@shared/text-file';
-import { readTextRange, type PdfSource } from '../pdf-view-store';
 import {
-  clearTextDraft,
-  getTextDraft,
-  setTextDraft,
-  type TextStamp,
-} from '../text-drafts';
+  codeFileInfo,
+  type LinterId,
+  type LintPayload,
+  type LintProblem,
+  type LintResponse,
+} from '@shared/code-files';
+import { readTextRange, type PdfSource } from '../pdf-view-store';
+import { clearTextDraft, getTextDraft, setTextDraft, type TextStamp } from '../text-drafts';
+import { CodeEditor, type CodeEditorHandle } from './CodeEditor';
 import { useTranslation } from './LanguageProvider';
 
 type TxFn = ReturnType<typeof useTranslation>['tx'];
@@ -92,10 +97,10 @@ const pagePositions = new Map<string, number>();
 /** Key of a file's unsaved draft. PdfOverlay uses it to preview Markdown edits before saving. */
 export async function draftKeyOf(source: PdfSource): Promise<string> {
   const link = await window.api
-    .invoke<undefined, LinkConnectionStatePayload | null>(
-      COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
+    .invoke<
       undefined,
-    )
+      LinkConnectionStatePayload | null
+    >(COMMAND_CHANNELS.LINK_GET_WINDOW_STATE, undefined)
     .catch(() => null);
   return `${link?.address ?? 'local'}|${source.path}`;
 }
@@ -195,6 +200,38 @@ export function TextFileView({ source }: { source: PdfSource }): JSX.Element {
   );
 }
 
+/** What the lint area under the editor shows. */
+type LintState =
+  | { kind: 'none' }
+  | { kind: 'running'; tool: LinterId }
+  | { kind: 'done'; tool: LinterId; problems: LintProblem[] }
+  | { kind: 'missing'; tool: LinterId }
+  | { kind: 'failed'; tool: LinterId; detail: string };
+
+/** How to get the missing linter. Commands stay as code so they can be copied. */
+function installHint(tool: LinterId, tx: TxFn): JSX.Element {
+  if (tool === 'lintr') {
+    return (
+      <>
+        {tx('检查 R 文件需要 R 和 lintr 包,在 R 里运行 ', 'To check R files, install R, then run ')}
+        <code>{'install.packages("lintr")'}</code>
+        {tx('', ' in it')}
+      </>
+    );
+  }
+  const what = tool === 'ruff' ? 'Python' : 'SQL';
+  return (
+    <>
+      {tx(`检查 ${what} 文件需要 ${tool}:`, `To check ${what} files, install ${tool}: `)}
+      <code>uv tool install {tool}</code>
+    </>
+  );
+}
+
+function byPosition(a: LintProblem, b: LintProblem): number {
+  return a.line - b.line || a.column - b.column;
+}
+
 interface TextEditorProps {
   source: PdfSource;
   decoded: DecodedText;
@@ -223,8 +260,43 @@ function TextEditor({ source, decoded, stamp, draftKey, onReload }: TextEditorPr
   const [base, setBase] = useState<TextStamp | null>(draft?.base ?? stamp);
   const [save, setSave] = useState<SaveState>({ kind: 'idle' });
   const [problem, setProblem] = useState<string | null>(null);
+  const [lint, setLint] = useState<LintState>({ kind: 'none' });
+  const [lintHidden, setLintHidden] = useState(false);
+  const editorRef = useRef<CodeEditorHandle>(null);
+  const lintSeq = useRef(0);
+  const info = useMemo(() => codeFileInfo(source.name), [source.name]);
   const dirty = value !== saved;
   const isJson = /\.json$/i.test(source.name);
+
+  /** Lints the text saved under `mark`. A later save's run makes this one obsolete. */
+  const runLint = async (mark: number): Promise<void> => {
+    const tool = info?.linter;
+    if (!tool) return;
+    const seq = ++lintSeq.current;
+    setLint({ kind: 'running', tool });
+    const res = await window.api
+      .invoke<LintPayload, LintResponse>(COMMAND_CHANNELS.CODE_LINT, { path: source.path })
+      .catch(
+        (e: unknown): LintResponse => ({
+          ok: false,
+          tool,
+          reason: 'failed',
+          detail: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    if (seq !== lintSeq.current) return;
+    if (res.ok) {
+      const problems = [...res.problems].sort(byPosition);
+      editorRef.current?.showProblems(mark, problems);
+      setLint({ kind: 'done', tool, problems });
+    } else if (res.reason === 'failed') {
+      setLint({ kind: 'failed', tool, detail: res.detail });
+    } else if (res.reason === 'not-installed') {
+      setLint({ kind: 'missing', tool });
+    } else {
+      setLint({ kind: 'none' });
+    }
+  };
 
   useEffect(() => {
     if (!editable || !base) return;
@@ -245,6 +317,7 @@ function TextEditor({ source, decoded, stamp, draftKey, onReload }: TextEditorPr
       return;
     }
     setSave({ kind: 'saving' });
+    const mark = editorRef.current?.markLintBase() ?? -1;
     const res = await window.api
       .invoke<WriteTextPayload, WriteTextResponse>(COMMAND_CHANNELS.FS_WRITE_TEXT, {
         path: source.path,
@@ -256,6 +329,7 @@ function TextEditor({ source, decoded, stamp, draftKey, onReload }: TextEditorPr
       setBase({ mtimeMs: res.mtimeMs, size: res.size });
       setSaved(value);
       setSave({ kind: 'saved' });
+      void runLint(mark);
     } else if (res.reason === 'changed') {
       setSave({ kind: 'conflict' });
     } else {
@@ -306,7 +380,11 @@ function TextEditor({ source, decoded, stamp, draftKey, onReload }: TextEditorPr
             <button type="button" className="text-view-btn" onClick={discard}>
               {tx('放弃我的修改', 'Discard mine')}
             </button>
-            <button type="button" className="text-view-btn primary" onClick={() => void write(null)}>
+            <button
+              type="button"
+              className="text-view-btn primary"
+              onClick={() => void write(null)}
+            >
               {tx('覆盖保存', 'Overwrite')}
             </button>
           </>
@@ -330,17 +408,99 @@ function TextEditor({ source, decoded, stamp, draftKey, onReload }: TextEditorPr
           </button>
         )}
       </div>
-      <textarea
-        className="text-view-editor"
-        value={value}
+      <CodeEditor
+        ref={editorRef}
+        initialValue={value}
+        info={info}
         readOnly={!editable}
-        spellCheck={false}
-        aria-label={source.name}
-        onChange={(e) => {
-          setValue(e.target.value);
-          if (save.kind !== 'saving') setSave({ kind: 'idle' });
+        ariaLabel={source.name}
+        onChange={(next) => {
+          setValue(next);
+          setSave((s) => (s.kind === 'saving' ? s : { kind: 'idle' }));
         }}
       />
+      <LintArea
+        lint={lint}
+        hidden={lintHidden}
+        onToggle={() => setLintHidden((h) => !h)}
+        onJump={(i) => editorRef.current?.jumpToProblem(i)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Under the editor: one quiet line while checking, when all is fine, or when the linter is
+ * missing or failed; the problem list (option D of ADR-040) when there are problems.
+ */
+function LintArea({
+  lint,
+  hidden,
+  onToggle,
+  onJump,
+}: {
+  lint: LintState;
+  hidden: boolean;
+  onToggle: () => void;
+  onJump: (index: number) => void;
+}): JSX.Element | null {
+  const { tx } = useTranslation();
+  if (lint.kind === 'none') return null;
+  if (lint.kind === 'running') {
+    return (
+      <div className="code-lint-note">
+        {tx(`${lint.tool} 正在检查…`, `${lint.tool}: checking…`)}
+      </div>
+    );
+  }
+  if (lint.kind === 'missing') {
+    return <div className="code-lint-note">{installHint(lint.tool, tx)}</div>;
+  }
+  if (lint.kind === 'failed') {
+    return (
+      <div className="code-lint-note alert" title={lint.detail}>
+        {tx(`${lint.tool} 没能检查这个文件:`, `${lint.tool} could not check this file: `)}
+        {lint.detail}
+      </div>
+    );
+  }
+  const count = lint.problems.length;
+  if (count === 0) {
+    return (
+      <div className="code-lint-note">
+        {tx(`${lint.tool}:没有发现问题`, `${lint.tool}: no problems`)}
+      </div>
+    );
+  }
+  return (
+    <div className="code-lint-panel">
+      <div className="code-lint-head">
+        <span>
+          {tx(
+            `${lint.tool} · ${count} 个问题`,
+            `${lint.tool} · ${count} ${count === 1 ? 'problem' : 'problems'}`,
+          )}
+        </span>
+        <button type="button" className="code-lint-toggle" onClick={onToggle}>
+          {hidden ? tx('显示', 'Show') : tx('收起', 'Hide')}
+        </button>
+      </div>
+      {!hidden && (
+        <ul className="code-lint-list">
+          {lint.problems.map((p, i) => (
+            <li key={`${p.line}:${p.column}:${p.code}:${i}`}>
+              <button type="button" className="code-lint-row" onClick={() => onJump(i)}>
+                <span className={`code-lint-dot ${p.severity}`} />
+                <span className="code-lint-at">{`${p.line}:${p.column}`}</span>
+                <span className="code-lint-msg">
+                  {p.code && <span className="code-lint-code">{p.code}</span>}
+                  {p.message}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -355,9 +515,7 @@ interface TextPagesProps {
 
 function TextPages({ source, size, encoding, firstPage, onReload }: TextPagesProps): JSX.Element {
   const { t, tx } = useTranslation();
-  const [offset, setOffset] = useState(() =>
-    pageOffset(pagePositions.get(source.path) ?? 0, size),
-  );
+  const [offset, setOffset] = useState(() => pageOffset(pagePositions.get(source.path) ?? 0, size));
   const [text, setText] = useState(() => decodeTextPage(firstPage, 0, size, encoding));
   const [failure, setFailure] = useState<ReadPdfFailure | null>(null);
   const [loading, setLoading] = useState(false);

@@ -33,6 +33,8 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
 import { getAppLabel, getBuildType, getChannel, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
+import { createCodeLinter } from './code-lint';
+import type { LintPayload, LintResponse } from '@shared/code-files';
 import {
   createAgentVersionChecker,
   findAgentSpec,
@@ -1445,6 +1447,16 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.FS_WRITE_TEXT,
     (_e, envelope: CommandEnvelope<WriteTextPayload>): Promise<WriteTextResponse> =>
       writeTextFile(envelope.payload),
+  );
+
+  // Created on first use: it reads the platform adapter, which tests replace.
+  let lintCode: ((payload: LintPayload) => Promise<LintResponse>) | null = null;
+  handleCommand(
+    COMMAND_CHANNELS.CODE_LINT,
+    (_e, envelope: CommandEnvelope<LintPayload>): Promise<LintResponse> => {
+      lintCode ??= createCodeLinter(getPlatformAdapter());
+      return lintCode(envelope.payload);
+    },
   );
 
   handleCommand(

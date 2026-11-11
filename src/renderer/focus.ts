@@ -52,7 +52,7 @@ export function fileViewCoversTerminal(scope: ParentNode): boolean {
 export function focusTerminalDom(): void {
   requestAnimationFrame(() => {
     // Someone typing in the text editor must not have their keys moved into the shell.
-    if (document.activeElement?.closest('.text-view-editor')) return;
+    if (document.activeElement?.closest('.code-editor')) return;
     // 搜索栏存在且 input 在 viewport 内 → 用户正在搜索,不抢焦点
     const searchInput = document.querySelector<HTMLInputElement>(
       '.terminal-search-input',

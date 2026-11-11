@@ -431,7 +431,9 @@ function reloadQuestion(
       ),
     );
   }
-  lines.push(tx('其他 agent 和 shell 的终端不动。', 'Tabs of other agents and shells are not touched.'));
+  lines.push(
+    tx('其他 agent 和 shell 的终端不动。', 'Tabs of other agents and shells are not touched.'),
+  );
   if (plan.otherTabs > 0) {
     lines.push(
       tx(
@@ -440,7 +442,12 @@ function reloadQuestion(
       ),
     );
   }
-  lines.push(tx('"只更新"只在新终端里跑更新命令。', '"Update only" just runs the update command in a new tab.'));
+  lines.push(
+    tx(
+      '"只更新"只在新终端里跑更新命令。',
+      '"Update only" just runs the update command in a new tab.',
+    ),
+  );
   return lines.join('\n');
 }
 
@@ -487,8 +494,8 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   );
   // ADR-034:本机路径只显示 PATH 上装了的 agent。null 表示还没问到 (毫秒级,
   // Agents 区等它再画,免得先全画出来再抽掉几个)。问不到就当全装了,按钮照常。
-  const [missingAgents, setMissingAgents] = useState<Set<string> | null>(
-    () => (showAgentDots ? null : new Set()),
+  const [missingAgents, setMissingAgents] = useState<Set<string> | null>(() =>
+    showAgentDots ? null : new Set(),
   );
   const [refreshingAgents, setRefreshingAgents] = useState(false);
   const mountedRef = useRef(true);
@@ -505,39 +512,34 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
    * @param force 丢掉 main 的缓存重新扫 (标题旁的刷新按钮,刚装好一个 agent 时用)
    * @param isStale 结果回来时返回 true 就丢弃 (组件已卸载或路径已换)
    */
-  const loadAgents = useCallback(
-    async (force: boolean, isStale: () => boolean): Promise<void> => {
-      const installed = window.api
-        .invoke<ListInstalledAgentsPayload, ListInstalledAgentsResponse>(
-          COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
-          { force },
-        )
-        .then((res) => {
-          if (isStale()) return;
-          setMissingAgents(
-            new Set(res.agents.filter((a) => !a.installed).map((a) => a.templateId)),
-          );
-        })
-        .catch((err) => {
-          console.warn('[EmptyPathState] list-installed-agents failed', err);
-          if (!isStale()) setMissingAgents(new Set());
-        });
-      const versions = window.api
-        .invoke<ListAgentVersionsPayload, ListAgentVersionsResponse>(
-          COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
-          { force },
-        )
-        .then((res) => {
-          if (!isStale()) setAgentVersions(new Map(res.agents.map((a) => [a.templateId, a])));
-        })
-        .catch((err) => {
-          // 查不到就不显示点,按钮照常可用
-          console.warn('[EmptyPathState] list-agent-versions failed', err);
-        });
-      await Promise.all([installed, versions]);
-    },
-    [],
-  );
+  const loadAgents = useCallback(async (force: boolean, isStale: () => boolean): Promise<void> => {
+    const installed = window.api
+      .invoke<ListInstalledAgentsPayload, ListInstalledAgentsResponse>(
+        COMMAND_CHANNELS.AGENT_LIST_INSTALLED,
+        { force },
+      )
+      .then((res) => {
+        if (isStale()) return;
+        setMissingAgents(new Set(res.agents.filter((a) => !a.installed).map((a) => a.templateId)));
+      })
+      .catch((err) => {
+        console.warn('[EmptyPathState] list-installed-agents failed', err);
+        if (!isStale()) setMissingAgents(new Set());
+      });
+    const versions = window.api
+      .invoke<ListAgentVersionsPayload, ListAgentVersionsResponse>(
+        COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
+        { force },
+      )
+      .then((res) => {
+        if (!isStale()) setAgentVersions(new Map(res.agents.map((a) => [a.templateId, a])));
+      })
+      .catch((err) => {
+        // 查不到就不显示点,按钮照常可用
+        console.warn('[EmptyPathState] list-agent-versions failed', err);
+      });
+    await Promise.all([installed, versions]);
+  }, []);
 
   useEffect(() => {
     if (!showAgentDots) {
@@ -783,28 +785,32 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
         )}
 
         {!isSshPath &&
-          ((visibleShells?.length ?? 0) > 0 || (canLaunchTemplates && shellTemplates.length > 0)) && (
-          <div className="empty-section">
-            <div className="empty-section-title">Shell</div>
-            <div className="empty-button-grid">
-              {(visibleShells ?? []).map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={frequentClass('template-button', tierProps(templateUsageKey('shell', s.id)))}
-                  style={frequentStyle(tierProps(templateUsageKey('shell', s.id)))}
-                  onClick={() => void handleCreate('shell', s.id)}
-                  disabled={creating}
-                  title={`${s.displayName}\n${s.executablePath}`}
-                >
-                  <span className="template-icon">
-                    <Icon name={shellIcon(s.id)} size={18} />
-                  </span>
-                  <span className="template-label">{s.displayName}</span>
-                </button>
-              ))}
-              {canLaunchTemplates && shellTemplates.map(renderTemplate)}
-            </div>
+          ((visibleShells?.length ?? 0) > 0 ||
+            (canLaunchTemplates && shellTemplates.length > 0)) && (
+            <div className="empty-section">
+              <div className="empty-section-title">Shell</div>
+              <div className="empty-button-grid">
+                {(visibleShells ?? []).map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={frequentClass(
+                      'template-button',
+                      tierProps(templateUsageKey('shell', s.id)),
+                    )}
+                    style={frequentStyle(tierProps(templateUsageKey('shell', s.id)))}
+                    onClick={() => void handleCreate('shell', s.id)}
+                    disabled={creating}
+                    title={`${s.displayName}\n${s.executablePath}`}
+                  >
+                    <span className="template-icon">
+                      <Icon name={shellIcon(s.id)} size={18} />
+                    </span>
+                    <span className="template-label">{s.displayName}</span>
+                  </button>
+                ))}
+                {canLaunchTemplates && shellTemplates.map(renderTemplate)}
+              </div>
             </div>
           )}
 

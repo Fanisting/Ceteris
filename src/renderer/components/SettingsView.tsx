@@ -71,6 +71,7 @@ import {
 import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
+import { ColonCommandsSettings } from './ColonCommandsSettings';
 import { RemoteSetupCard } from './RemoteSetupGuide';
 import { useModal } from './Modal';
 import {
@@ -3170,6 +3171,7 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
   const tabControl = state.settings.extensions?.tabControl ?? false;
   const terminalMath = state.settings.extensions?.terminalMath ?? false;
+  const colon = state.settings.extensions?.colonCommands;
   const typer = useTypeIntoNewTerminal();
   const preparing = typer.preparing;
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
@@ -3443,6 +3445,45 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
+
+      <SettingRow
+        label={tx('名称: 命令', 'name: commands')}
+        hint={tx(
+          '在 Claude Code 或 Codex 里,单词开头敲下面的名称再敲冒号,Ceteris 把它换成对应命令,例如 compact: 变成 /compact。不会按 Enter,确认后自己按。其它终端不受影响。',
+          'In Claude Code or Codex, type a name below at the start of a word followed by a colon and Ceteris replaces it with the command, so compact: becomes /compact. Enter is not pressed for you. Other terminals are not affected.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={colon?.enabled ?? false}
+            onChange={(e) =>
+              void updateSettings(
+                { extensions: { colonCommands: { enabled: e.target.checked } } },
+                setError,
+              )
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {colon?.enabled && (
+        <SettingRow
+          label={tx('名称与命令', 'Names and commands')}
+          hint={tx(
+            '名称不分大小写。命令留空就是 /名称;也可以指向别的命令,例如 plan → /oh-my-claudecode:plan。',
+            'Names ignore case. An empty command means /name; it can also point elsewhere, such as plan → /oh-my-claudecode:plan.',
+          )}
+        >
+          <ColonCommandsSettings
+            commands={colon.commands}
+            onChange={(next) =>
+              void updateSettings({ extensions: { colonCommands: { commands: next } } }, setError)
+            }
+          />
+        </SettingRow>
+      )}
     </section>
   );
 }

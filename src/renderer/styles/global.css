@@ -3996,3 +3996,86 @@ button:focus-visible,
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ADR-020 `name:` 命令列表 */
+.colon-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.colon-commands-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.colon-commands-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.colon-commands-name,
+.colon-commands-command {
+  font-family: var(--terminal-font-family, monospace);
+  font-size: 12px;
+  color: var(--color-text-primary, #f0f);
+  overflow-wrap: anywhere;
+}
+
+.colon-commands-arrow {
+  color: var(--color-text-muted, #f0f);
+}
+
+.colon-commands-remove {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted, #f0f);
+}
+
+.colon-commands-remove:hover {
+  background-color: var(--color-bg-hover, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.colon-commands-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.colon-commands-form .settings-input {
+  width: 160px;
+}
+
+.colon-commands-form .settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.colon-commands-problem {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-danger, #f0f);
+}
+
+.colon-commands-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted, #f0f);
+}

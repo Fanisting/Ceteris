@@ -10,6 +10,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 |---|---|---|
 | [Terminal tabs and windows](terminal-tabs-and-windows.md) | Tabs grouped by folder, equal windows, terminals that outlive their windows | 0.1.0 |
 | [Reopen tabs at launch](reopen-tabs-at-launch.md) | Tabs and agent conversations come back after a quit, update or crash | Next |
+| [Tab shelf](tab-shelf.md) | Idle tabs move to a shelf and come back with their conversation | Next |
 | [Launch templates](launch-templates.md) | Start Shell, Claude Code, Codex and more, or your own command | 0.1.0 |
 | [Terminal search and paste guard](terminal-search-and-paste-guard.md) | Ctrl+F search, multi-line paste confirmation, folder drop | 0.1.0 |
 | [Ghost tab quick launch](ghost-tab-quick-launch.md) | A dashed tab with one-click agent icons | 0.4.1 |
@@ -52,11 +53,13 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Celebrations](celebrations.md) | A small burst when an agent finishes, and an optional title bar pebble | 0.4.1 |
 | [Next prompt suggestions](next-prompt-suggestions.md) | A suggested next message that learns your habits | 0.3.0 |
 | [Agent tab titles](agent-tab-titles.md) | Short, readable titles, optionally written by a model | 0.4.1 |
-| [Model and effort](agent-model-effort.md) | Folder defaults, per tab switching and usage for Claude Code and Codex | Next |
+| [Model and effort](agent-model-effort.md) | Folder defaults and per tab switching for Claude Code and Codex | Next |
+| [Choice notice](agent-choice-notice.md) | A notice points to the tab waiting for your decision, and answers it | Next |
+| [name: commands](name-commands.md) | Type compact: and get /compact in Claude Code or Codex | Next |
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar | 0.4.1 |
 | [Coordinator tour](coordinator-tour.md) | An animated guide to roles and tab control | 0.4.1 |
 | [Tab control plugin](tab-control-plugin.md) | A Coordinator opens, reads and drives other tabs | 0.4.1 |
-| [Open file tool](open-file-tool.md) | Your agent shows you a file beside its tab | 0.4.2 |
+| [Open file tool](open-file-tool.md) | Your agent shows you a file beside its tab; Codex support is Next | 0.4.2 |
 
 ## Appearance
 
@@ -75,5 +78,6 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Windows, macOS and Linux](platforms.md) | One app on three systems | 0.1.0 |
 | [Update checks](update-checks.md) | A dot and a download link when a new version exists | 0.4.1 |
 | [Agent updates](agent-updates.md) | Notices and updates for the agents you use | 0.4.1 |
+| [Extension setup card](extension-setup.md) | One checklist on first start sets up the agent extensions | Next |
 | [Full reload on agent update](agent-full-reload.md) | Close an agent's tabs, update it, reopen them with their conversations | 0.4.2 |
 | [Stable, beta and dev channels](release-channels.md) | Run several builds side by side | 0.3.0 |

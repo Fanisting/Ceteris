@@ -6,6 +6,7 @@
  * - 选项来自 设置 → 行为 的 quickLaunch 列表,存的是模板或 shell 的 id;这里按当前路径
  *   解析成可启动的条目。规则与新建页 EmptyPathState 相同:SSH 路径不传 shell、跳过本地 shell;
  *   WSL 路径用该发行版的 shell,没有可用 shell 时连模板也隐藏。
+ * - 本机路径上 PATH 里没有的 agent 不显示 (ADR-042),和新建页一样;SSH / WSL 不查。
  * - 启动参数与新建页完全一致,启动后选中新 session 并把焦点交给终端。
  *
  * @对应文档章节: 软件定义书.md 2 (鼠标优先)
@@ -28,6 +29,7 @@ import { focusTerminalDom } from '../focus';
 import { findPathNode, useAppDispatch, useAppState } from '../store';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
+import { useMissingAgents } from './main-agent-ui';
 import {
   filterShellsForWslPath,
   getWslDistroName,
@@ -89,6 +91,8 @@ export function useQuickLaunch(pathId: string | null, iconSize: number): QuickLa
   const wslDistroName = node ? getWslDistroName(node.path) : null;
   const visibleShells = shells ? filterShellsForWslPath(shells, wslDistroName) : null;
   const wslShellId = wslDistroName ? visibleShells?.[0]?.id : undefined;
+  // ADR-042:本机路径不显示 PATH 上没有的 agent (和新建页一样);SSH / WSL 是另一套安装,不查
+  const missingAgents = useMissingAgents(!isSshPath && !wslDistroName);
 
   const resolve = (item: QuickLaunchItem): ResolvedQuickLaunchItem | null => {
     const key = quickLaunchItemKey(item);
@@ -96,7 +100,7 @@ export function useQuickLaunch(pathId: string | null, iconSize: number): QuickLa
       // 新建页在 WSL 路径没有可用 shell 时隐藏全部模板,这里保持一致
       if (wslDistroName && !wslShellId) return null;
       const template = state.templates.find((t) => t.id === item.id);
-      if (!template) return null;
+      if (!template || missingAgents?.has(template.id)) return null;
       return {
         key,
         label: template.name,
@@ -117,7 +121,7 @@ export function useQuickLaunch(pathId: string | null, iconSize: number): QuickLa
     };
   };
 
-  const ready = shells !== null;
+  const ready = shells !== null && missingAgents !== null;
   const items =
     ready && pathId
       ? (state.settings.behavior?.quickLaunch ?? DEFAULT_QUICK_LAUNCH_ITEMS)

@@ -205,7 +205,7 @@ export class TabControlService {
     if (!caller) {
       throw new RequestError(
         'unknown-token',
-        'This tab is not known to the running Ceteris. Open Claude Code in a new Ceteris tab.',
+        'This tab is not known to the running Ceteris. Open the agent in a new Ceteris tab.',
       );
     }
     if (caller.state === 'exited') {

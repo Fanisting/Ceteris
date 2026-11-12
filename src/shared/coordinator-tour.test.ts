@@ -66,7 +66,9 @@ describe('coordinatorTourStep', () => {
   it('skips the setting and plugin steps when the coordinator runs an agent other than Claude Code', () => {
     const made = { ...fresh, hasCoordinator: true, rowSeen: true, workerSeen: true };
     expect(coordinatorTourStep({ ...made, controlSupported: false })).toBe('start');
-    expect(canControlTabs('codex')).toBe(false);
+    expect(canControlTabs('gemini-cli')).toBe(false);
+    // ADR-042:Codex 经 config.toml 拿到同一个 ceteris-tabs 服务器
+    expect(canControlTabs('codex')).toBe(true);
     expect(canControlTabs('claude-code')).toBe(true);
     expect(canControlTabs('shell')).toBe(true);
   });

@@ -1,6 +1,6 @@
 /**
  * @file extensions/ceteris-tabs/server/ceteris-tabs-mcp.mjs
- * @purpose MCP server that lets Claude Code in a Ceteris coordinator tab control the other tabs
+ * @purpose MCP server that lets Claude Code or Codex in a Ceteris coordinator tab control the other tabs
  *   of its folder: list, open, close, rename, type into, read, and wait for them (Ceteris
  *   ADR-024), and show a file it wrote beside a tab (ADR-033).
  *
@@ -38,7 +38,8 @@ const INSTRUCTIONS = [
   '.tex, .pdf, image) file and call open_file with its path. Ceteris displays it next to this tab.',
   'The other tools control the other terminal tabs of this folder and work only while this tab is',
   'marked as coordinator in Ceteris; otherwise every call says so.',
-  'Typical loop: list_tabs; open_tab with template "claude-code" and a prompt to start a worker;',
+  'Typical loop: list_tabs; open_tab with your own agent template ("claude-code" or "codex", see',
+  'list_templates) and a prompt to start a worker;',
   'wait_for_tab until it is done or blocked; read_tab to see its answer; send_input to answer an',
   'approval prompt (keys) or give the next prompt (text); close_tab when it is finished.',
   'Tabs are named by the id from list_tabs (a unique prefix of 4+ characters works) or by exact name.',
@@ -194,7 +195,7 @@ export function callCeteris(env, op, args = {}) {
   if (!pipe || !token) {
     return Promise.reject(
       new ControlError(
-        'This Claude Code is not running in a Ceteris tab, so there are no tabs to control.',
+        'This agent is not running in a Ceteris tab, so there are no tabs to control.',
       ),
     );
   }
@@ -242,7 +243,7 @@ export function callCeteris(env, op, args = {}) {
       done(
         reject,
         new ControlError(
-          `Cannot reach Ceteris at ${pipe} (${err.code ?? err.message}). If Ceteris restarted, open Claude Code in a new tab.`,
+          `Cannot reach Ceteris at ${pipe} (${err.code ?? err.message}). If Ceteris restarted, open your agent in a new tab.`,
         ),
       ),
     );

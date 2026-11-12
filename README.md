@@ -9,8 +9,6 @@
 
 A path-centric, AI-agent-friendly terminal manager for Windows, macOS and Linux. Built for developers who run multiple long-running tasks (including Claude Code, Codex, OpenCode, and other AI coding agents) across many local or SSH working directories, and who refuse to lose them when the window closes.
 
-> **Fork note**: Ceteris is a fork of [Marina](https://github.com/Liyue-Cheng/marina) by Liyue-Cheng, which began as EasyTerm.
-
 ---
 
 ## The Problem
@@ -322,6 +320,7 @@ Ceteris stands on the shoulders of:
 - [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3): the Legado MD3 themes use its Material 3 colour schemes
 - [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus): the Pili themes are generated from its theme colours and its default Material 3 colour algorithm
 - [LXGW WenKai (霞鹜文楷)](https://github.com/lxgw/LxgwWenKai) — UI font
+- [Marina](https://github.com/Liyue-Cheng/marina) by Liyue-Cheng: the early codebase Ceteris grew from
 
 And inspiration from:
 

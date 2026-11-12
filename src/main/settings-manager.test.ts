@@ -117,6 +117,14 @@ describe('validateSettings', () => {
     expect(() => validateSettings(DEFAULT_SETTINGS)).not.toThrow();
   });
 
+  it('remoteSetupGuideSeen 必须是布尔值', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    (bad.behavior as { remoteSetupGuideSeen: unknown }).remoteSetupGuideSeen = 'yes';
+    expect(() => validateSettings(bad)).toThrowError(/remoteSetupGuideSeen/);
+    (bad.behavior as { remoteSetupGuideSeen: unknown }).remoteSetupGuideSeen = true;
+    expect(() => validateSettings(bad)).not.toThrow();
+  });
+
   it('非法 theme throw InvalidSettings', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     (bad.appearance as { theme: string }).theme = 'nonexistent';
@@ -208,6 +216,8 @@ describe('SettingsManager — initialize', () => {
     expect(settings.behavior.confirmOnQuit).toBe(true); // 来自默认
     // 老用户升级后也看一次 "右键 + 号" 首次引导
     expect(settings.behavior.quickLaunchTipSeen).toBe(false);
+    // 远程设置引导 (ADR-032) 同样补 false,升级后没配远端的用户会被问一次
+    expect(settings.behavior.remoteSetupGuideSeen).toBe(false);
     expect(settings.advanced.logLevel).toBe('INFO');
   });
 

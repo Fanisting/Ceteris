@@ -13,6 +13,7 @@
  * @对应文档章节: docs/ipc-protocol.md 全部
  */
 import type { SessionRole } from './session-role';
+import type { TemplateUsageEntry } from './template-usage';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
 import type {
@@ -78,6 +79,11 @@ export const COMMAND_CHANNELS = {
   EXTENSIONS_GET_MARKETPLACE_DIR: 'cmd:extensions:get-marketplace-dir',
   /** 协调者控制 (ADR-024):Claude Code 是否已装 ceteris-tabs 插件,协调者引导用它打勾 */
   EXTENSIONS_TAB_CONTROL_STATUS: 'cmd:extensions:tab-control-status',
+  /**
+   * 远程设置引导 (ADR-032):随 Ceteris 一起安装的两份指南文件的绝对路径,renderer 把它拼进
+   * 粘给 agent 的 prompt。返回 RemoteSetupGuidePathsResponse。
+   */
+  GUIDES_REMOTE_SETUP_PATHS: 'cmd:guides:remote-setup-paths',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**
@@ -147,6 +153,8 @@ export const COMMAND_CHANNELS = {
   TEMPLATE_UPDATE: 'cmd:template:update',
   TEMPLATE_DELETE: 'cmd:template:delete',
   TEMPLATE_SET_DEFAULT: 'cmd:template:set-default',
+  /** 新建页各按钮的启动次数 (ADR-034),renderer 据此标出常用选项 */
+  TEMPLATE_USAGE_LIST: 'cmd:template:usage-list',
 
   // Agent CLI 版本 (新建页的状态点)
   /** 查本机各 agent CLI 的已装版本和最新版本 */
@@ -169,6 +177,8 @@ export const COMMAND_CHANNELS = {
    * 恢复对话;关闭时在跑的终端收到 "continue"。立即返回,进度走 evt:agent:update-notice。
    */
   AGENT_RELOAD: 'cmd:agent:reload',
+  /** 只扫 PATH 看哪些内置 agent 装了 (ADR-034),新建页据此隐藏没装的;毫秒级,不跑 --version */
+  AGENT_LIST_INSTALLED: 'cmd:agent:list-installed',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -450,6 +460,15 @@ export interface FocusWindowPayload {
 // ──────────────────────────────────────────────────────────────────
 // Session 域
 // ──────────────────────────────────────────────────────────────────
+
+/**
+ * 远程设置引导 (ADR-032):两份指南文件在本机的绝对路径。安装版在 resources/guides,
+ * dev 在仓库的 guides/。
+ */
+export interface RemoteSetupGuidePathsResponse {
+  host: string;
+  client: string;
+}
 
 export interface CreateSessionPayload {
   /** 启动 session 的 path id (= 该 path 的 normalize 后绝对路径)。
@@ -967,6 +986,20 @@ export interface ListAgentVersionsPayload {
 
 export interface ListAgentVersionsResponse {
   agents: AgentVersionInfo[];
+}
+
+export interface ListInstalledAgentsPayload {
+  /** true 时丢掉缓存重新扫 PATH (新建页 Agents 标题旁的刷新按钮) */
+  force?: boolean;
+}
+
+export interface ListInstalledAgentsResponse {
+  /** 每个有检测规则的内置 agent 一项;没有规则的模板 (自定义) 不在里面,新建页照常显示 */
+  agents: { templateId: string; installed: boolean }[];
+}
+
+export interface ListTemplateUsageResponse {
+  entries: TemplateUsageEntry[];
 }
 
 /**

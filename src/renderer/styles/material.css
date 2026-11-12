@@ -34,6 +34,10 @@
   --md-shape-lg: 16px;
   --md-shape-xl: 28px;
   --md-shape-full: 999px;
+  /* One corner for every block, filled or outlined: buttons, chips, badges, chosen rows.
+     It is the corner of the split view buttons (.pane-layout-btn). Dots, swatches, switches
+     and containers (menus, dialogs, cards) keep their own shapes. */
+  --block-radius: var(--md-shape-sm, 8px);
   /* 动效:MD3 easing 与 duration 全套,motion.css 使用。emphasized 原本是一条
      分段曲线,CSS 只能写单条 cubic-bezier,这里按 MD3 的 CSS 近似取值。
      旧名字保留:--md-easing-decelerate 等于 emphasized decelerate,
@@ -290,7 +294,7 @@ button:focus-visible,
 .titlebar-window-badge {
   margin-left: 0;
   padding: 1px 8px;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
   font-family: inherit;
@@ -355,7 +359,7 @@ button:focus-visible,
   height: 32px;
   padding: 0 16px;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background: transparent;
   color: var(--md-on-surface-variant, #f0f);
   font-family: var(--ui-font-family, sans-serif);
@@ -509,7 +513,7 @@ button:focus-visible,
 .sidebar-category-action {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface-variant, #f0f);
 }
 
@@ -533,7 +537,7 @@ button:focus-visible,
 .session-item {
   min-height: 32px;
   padding: 0 12px 0 8px;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   margin-block: 1px;
   transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
 }
@@ -581,7 +585,7 @@ button:focus-visible,
 .path-session-count {
   min-width: 18px;
   padding: 0 6px;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
   font-family: inherit;
@@ -602,7 +606,7 @@ button:focus-visible,
 .settings-entry {
   min-height: 36px;
   padding: 0 12px;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface-variant, #f0f);
   font-size: 13px;
   font-weight: 500;
@@ -611,7 +615,7 @@ button:focus-visible,
 }
 
 .settings-entry:hover:not(:disabled) {
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-state-hover, transparent);
   color: var(--md-on-surface, #f0f);
 }
@@ -683,7 +687,7 @@ button:focus-visible,
   width: 22px;
   height: 22px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface-variant, #f0f);
 }
 
@@ -724,7 +728,7 @@ button:focus-visible,
 .status-simple-toggle {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
 }
 
 .status-simple-toggle:hover {
@@ -735,7 +739,7 @@ button:focus-visible,
 .reconnect-button {
   padding: 2px 12px;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
   font-size: 12px;
@@ -767,7 +771,7 @@ button:focus-visible,
   gap: 2px;
   padding: 4px 6px 4px 14px;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container-high, #f0f);
   box-shadow: var(--md-elevation-2, none);
 }
@@ -791,7 +795,7 @@ button:focus-visible,
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface-variant, #f0f);
   font-size: 12px;
 }
@@ -811,17 +815,30 @@ button:focus-visible,
 
 .empty-section-title {
   color: var(--md-on-surface-variant, #f0f);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.1px;
   text-transform: none;
+}
+
+.empty-agents-hint {
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.empty-section-refresh {
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.empty-section-refresh:hover:not(:disabled) {
+  background-color: var(--md-state-hover, transparent);
+  color: var(--md-on-surface, #f0f);
 }
 
 .template-button {
   gap: 12px;
   padding: 14px 16px;
   border: none;
-  border-radius: var(--md-shape-md, 12px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container, #f0f);
   color: var(--md-on-surface, #f0f);
   font-weight: 500;
@@ -881,7 +898,7 @@ button:focus-visible,
   gap: 10px;
   min-height: 32px;
   padding: 0 12px;
-  border-radius: var(--md-shape-sm, 8px);
+  border-radius: var(--block-radius, 8px);
   transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
 }
 
@@ -932,7 +949,7 @@ button:focus-visible,
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface-variant, #f0f);
 }
 
@@ -956,7 +973,7 @@ button:focus-visible,
   gap: 12px;
   min-height: 40px;
   padding: 0 16px;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   color: var(--md-on-surface-variant, #f0f);
   font-weight: 500;
   transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
@@ -1001,7 +1018,7 @@ button:focus-visible,
 }
 
 .settings-theme-row {
-  border-radius: var(--md-shape-sm, 8px);
+  border-radius: var(--block-radius, 8px);
 }
 
 .settings-theme-row:hover {
@@ -1016,7 +1033,7 @@ button:focus-visible,
 .theme-tone-tag,
 .template-list-tag {
   padding: 0 8px;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container-highest, #f0f);
   color: var(--md-on-surface-variant, #f0f);
   font-size: 11px;
@@ -1142,7 +1159,7 @@ select.settings-input option {
   min-height: 32px;
   padding: 0 16px;
   border: 1px solid var(--md-outline, #f0f);
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: transparent;
   color: var(--md-primary-text, #f0f);
   font-size: 13px;
@@ -1173,7 +1190,7 @@ select.settings-input option {
 .settings-keybindings-card,
 .template-list-item {
   border: none;
-  border-radius: var(--md-shape-md, 12px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container, #f0f);
 }
 
@@ -1267,7 +1284,7 @@ select.settings-input option {
   min-height: 36px;
   padding: 0 16px;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: transparent;
   color: var(--md-primary-text, #f0f);
   font-size: 13px;
@@ -1346,6 +1363,7 @@ select.settings-input option {
 
 /* snackbar 是反色底,按钮文字向前景色混合,保证对比度 */
 .toast-action {
+  border-radius: var(--block-radius, 8px);
   color: color-mix(in srgb, var(--md-primary, #f0f) 40%, var(--md-inverse-on-surface, #f0f));
 }
 
@@ -1358,7 +1376,7 @@ select.settings-input option {
   height: 28px;
   justify-content: center;
   padding: 0;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   color: var(--md-inverse-on-surface, #f0f);
 }
 
@@ -1390,8 +1408,9 @@ select.settings-input option {
 /*
  * The main page uses one family, two sizes and one weight, and no italics. Active states
  * are carried by colour and the tab indicator, so nothing changes width when selected.
- *   13px: what you read and click (paths, sessions, tabs, cards, app name)
- *   12px: what labels it (section titles, counts, status bar)
+ *   13px: what you read and click (paths, sessions, tabs, cards, app name), and the launcher's
+ *         section titles (Shell, Agents), which match the text in their blocks (user, 2026-11-10)
+ *   12px: what labels it (sidebar section titles, counts, status bar)
  * Fixed line heights keep every row centred whichever UI font the user picks.
  */
 .titlebar-app-name,
@@ -1401,6 +1420,7 @@ select.settings-input option {
 .tab-name,
 .tab.orphan .tab-name,
 .settings-entry,
+.empty-section-title,
 .empty-button-grid button {
   font-family: var(--ui-font-family, sans-serif);
   font-size: 13px;
@@ -1416,7 +1436,6 @@ select.settings-input option {
 .sidebar-category-count,
 .path-session-count,
 .sidebar-empty,
-.empty-section-title,
 .terminal-statusbar,
 .status-text,
 .status-cwd {
@@ -1486,7 +1505,7 @@ select.settings-input option {
   height: 32px;
   margin-left: 4px;
   padding: 0;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
 }
 
 .tab.tab-blank .tab-blank-icon {
@@ -1514,7 +1533,7 @@ select.settings-input option {
   margin-left: auto;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   background: none;
   color: var(--md-on-surface-variant, #f0f);
   cursor: pointer;
@@ -1626,7 +1645,7 @@ select.settings-input option {
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--block-radius, 8px);
   background-color: var(--color-bg-secondary, #f0f);
   color: var(--color-text-muted, #f0f);
   cursor: pointer;
@@ -1662,7 +1681,7 @@ select.settings-input option {
   height: 32px;
   padding: 0;
   border: none;
-  border-radius: var(--md-shape-sm, 8px);
+  border-radius: var(--block-radius, 8px);
   background: none;
   color: var(--md-on-surface-variant, #f0f);
   cursor: pointer;
@@ -1840,7 +1859,7 @@ select.settings-input option {
   display: flex;
   align-items: center;
   max-width: min(70%, 560px);
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
   box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
@@ -1884,7 +1903,7 @@ select.settings-input option {
   margin-right: 2px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--block-radius, 8px);
   background: none;
   color: inherit;
   cursor: pointer;
@@ -2078,7 +2097,7 @@ select.settings-input option {
   height: 26px;
   padding: 0 12px;
   border: 1px dashed var(--md-outline, #f0f);
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-surface-container-high, #f0f);
   color: var(--md-on-surface-variant, #f0f);
   font-size: 12px;

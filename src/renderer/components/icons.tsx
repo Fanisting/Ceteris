@@ -38,6 +38,7 @@ import {
   RadioChecked,
   Schedule,
   Search,
+  Refresh,
   Settings,
   Terminal,
   Tune,
@@ -80,6 +81,7 @@ export const Icons = {
   paste: ContentPaste,
   clear: InkEraser,
   search: Search,
+  refresh: Refresh,
 
   // 通用
   settings: Settings,

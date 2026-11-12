@@ -64,7 +64,7 @@
   margin-left: auto;
   padding: 4px 14px;
   border: none;
-  border-radius: var(--md-shape-full, 999px);
+  border-radius: var(--block-radius, 8px);
   background-color: var(--md-primary, #f0f);
   color: var(--md-on-primary, #f0f);
   font-size: 12px;

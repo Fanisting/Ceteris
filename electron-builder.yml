@@ -26,6 +26,18 @@ files:
   - '!**/node_modules/*.d.ts'
   - '!**/node_modules/.bin'
 
+# Install size: only packages under `dependencies` in package.json are copied into
+# app.asar, so anything the renderer uses lives in devDependencies (Vite bundles it into
+# out/renderer). Keep `dependencies` to what out/main and out/preload import at run time.
+#
+# Chromium's own strings (spellchecker, built-in menus) come from locales/*.pak; the 55
+# default languages take 39 MB. Ceteris's UI has its own en-US and zh-CN dictionaries, and
+# i18n.ts maps any zh-* system language to zh-CN, so zh-TW stays for Taiwan and Hong Kong.
+electronLanguages:
+  - en-US
+  - zh-CN
+  - zh-TW
+
 # Mac only: fixes node-pty permissions and signs the app. See the script.
 afterPack: scripts/after-pack.cjs
 
@@ -41,6 +53,9 @@ extraResources:
     to: shell-hooks
   # 公式图片扩展 (ADR-019):latex-math 插件和它的本地 marketplace。Claude Code 读这个
   # 目录 (`claude plugin marketplace add <install>\resources\extensions`),所以放在 asar 外。
+  # 远程设置引导 (ADR-032):agent 按路径读的 markdown 指南,放在 asar 外。
+  - from: guides
+    to: guides
   - from: extensions
     to: extensions
     filter:
@@ -78,6 +93,12 @@ win:
   # NSIS installer/uninstaller chrome 只认 ICO,所以两者并发,由 generate-icon.cjs 一并产出。
   icon: build/icon.ico
   requestedExecutionLevel: asInvoker
+  # node-pty ships native files for every platform. The x64 Windows package only loads
+  # the win32-x64 ones; the others are dead weight, and verify-artifacts flags the
+  # Mac binaries as cross platform.
+  files:
+    - '!node_modules/node-pty/prebuilds/{darwin-*,linux-*,win32-arm64}/**'
+    - '!node_modules/node-pty/third_party/conpty/*/win10-arm64/**'
 
 nsis:
   oneClick: false
@@ -101,6 +122,14 @@ portable:
 
 # macOS / Linux 占位 (V2.0 由社区贡献者启用)
 mac:
+  # On Mac this list keeps folders named Contents/Resources/<name>.lproj, and Electron
+  # names them en, zh_CN, zh_TW. The Windows names above match none of them, which
+  # deleted every .lproj: the app then declares no localizations and Chromium reports
+  # en-US, so a Chinese Mac on "follow system" got English.
+  electronLanguages:
+    - en
+    - zh_CN
+    - zh_TW
   target:
     - target: dmg
       arch: [x64, arm64]
@@ -121,6 +150,12 @@ mac:
 ## - desktop entry 通过 Categories=System;TerminalEmulator 让 Nautilus / Nemo /
 ##   Caja 的 "在终端中打开" 找到 Ceteris (走 gsettings + freedesktop spec)
 linux:
+  # node-pty has no Linux prebuilds: Linux loads build/Release/pty.node, rebuilt for
+  # Electron during packaging. The Windows and Mac prebuilds are dead weight here and
+  # fail verify-artifacts as cross platform binaries.
+  files:
+    - '!node_modules/node-pty/prebuilds/**'
+    - '!node_modules/node-pty/third_party/**'
   target:
     - target: deb
       arch: [x64]

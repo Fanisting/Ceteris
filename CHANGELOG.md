@@ -4,7 +4,40 @@
 
 ## [Unreleased]
 
-Ceteris Link — 远程挂载(Windows ↔ Windows)。
+## [0.4.2] (2026-11-10)
+
+### 新增
+
+- **新建页只显示装了的 agent。** 本地文件夹的新建页隐藏命令不在 PATH 里的内置 agent;一个都没装时给出提示。最常用的三个按钮在页面打开时弹出,悬停时晃动,收藏的那个带一颗闪烁的星。agent 标题旁新增刷新按钮,重新扫描 PATH 并重查版本,刚装好的 agent 不用重开页面就会出现。
+- **让你的 agent 带你配置 SSH。** 点侧栏的 Local 徽章或 设置 → Remote,Ceteris 只问一次,之后由你自己的 agent 读随应用附带的指南,一步步带你配好 Host 和 Client。
+- **你的 Claude Code 可以在 Ceteris 里给你看文件。** 让它把答案写成 Markdown 文件并“在 Ceteris 里打开”,文件就出现在它标签旁边的文件面板里,和你在文件树里点开一样。任何标签都能用,不需要协调者,也不需要打开扩展开关;只需装好 ceteris-tabs 插件,设置 → 扩展 里一直显示安装和更新命令。支持 Markdown、文本、JSON、LaTeX、PDF 和图片,暂不支持 SSH 服务器上的文件夹。
+- **更新 agent 时完整重载。** Claude Code 这类 agent 更新前必须先退出,Windows 上运行中的程序被锁定,有标签开着就更新失败。现在点新标签页里 agent 旁的黄点,若它有标签开着,可选“完整重载”:关掉该 agent 的所有标签,在终端里更新,再在原文件夹里带着上次的对话重新打开。更新前还在干活的标签,等提示符回来且安静后自动发一条 `continue`;停在批准提示的标签不发。更新失败时标签用旧版本回来,通知里会说明。只处理该 agent 自己模板开的标签,其他 agent、普通 shell 和 SSH 标签不受影响。
+- **Pili 主题系列。** 设置 → 外观 → 主题 里新增 38 套 Material 3 主题,取自 PiliPlus 的 19 个主题色(默认绿、粉色和 17 个 Material 色),各有浅色和深色。配色用 PiliPlus 同样的方法从主题色生成,深色标签用它深色模式的带色卡片色。
+- **官网。** 新的 Material Design 3 落地页,部署在 GitHub Pages,下载链接跟随最新版本。
+
+### 修复
+
+- **“运行中”现在包括在跑命令的 shell。** pwsh、cmd、bash 等从按 Enter 起到提示符回来都算运行中,`npm run dev`、ssh、长时间编译不出字也不会掉出列表;在提示符上打字不算。“等你处理”改为只列跑完一轮还没看过的标签(agent 跑完一轮,或 shell 跑完一条命令),加上停在批准提示的 agent;点开后就离开这个列表。
+- 侧栏不再被套上一个带描边和阴影的卡片。那是 pdf.js 自带样式里的 `.sidebar` 规则误伤了 Ceteris 的侧栏,它还把侧栏最宽限制在 632px。现在窗口里只有标签页是一块 16px 圆角的区域,侧栏和文件面板直接显示文字,没有底色和描边;文件面板的滚动条换成 Material 风格的细胶囊,鼠标移入面板时才出现。
+- 删除标签的确认框不再被标签对话框盖住。
+
+### 变更
+
+- 所有按钮、标签、徽章和选中行共用同一个 8px 圆角,和分屏按钮一致;圆点、色块、开关和容器保持原来的形状。
+- 新建页上 Shell 和 Agents 的小标题改为 13px,与块里的文字一致;侧栏底部两个按钮改为 32px,文件树开关不再比分屏按钮高。
+- 新增 `features/` 文件夹:每个功能一页说明,并标出首次发布的版本。
+
+## [0.4.1] (2026-11-08)
+
+### 修复
+
+- PowerShell 标签页里的个人配置($PROFILE)只加载一次。pwsh 在执行 `-Command` 前已经加载过它,Ceteris 的 shell hook 又加载了一遍,配置里的欢迎横幅因此出现两次。
+
+### 变更
+
+- **安装体积从 367 MB 降到 250 MB,Windows 安装器从 105 MB 降到 80 MB。** 只给界面用的包(`pdfjs-dist`、`katex`、`markdown-it`、界面的 xterm 包等)挪到 `devDependencies`:Vite 已把它们打进 `out/renderer`,不必再复制一份进 `app.asar`。其中 `pdfjs-dist` 顺带的 38 MB `@napi-rs/canvas` 只在 Node 里画 PDF 时才用。Windows 和 Linux 的 Chromium 语言包只留 en-US、zh-CN、zh-TW(Mac 的语言包在 Electron 框架里,体积不变)。Windows 包去掉 node-pty 给 Mac、Linux 和 ARM 的文件,Linux 包去掉 node-pty 给 Windows 和 Mac 的文件。
+
+## [0.4.0] — 2026-11-08
 
 ### 新增
 
@@ -17,8 +50,11 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 - **一键启动常用 agent。** 标签栏末尾、+ 号旁边多了一组快捷启动的 agent 图标(默认 Claude Code 和 Codex),点一下就在当前文件夹新开它的标签。最后的 + 照旧打开新建页。右键 + 不再弹出快捷启动圈,它的选项都在这组图标里了。图标在 设置 → 行为 → 快捷启动 里增删。
 
 - **Legado MD3 主题。** 设置 → 外观 → 主题 里新增 Legado MD3 系列:取自 legado-with-MD3 的 11 套 Material 3 配色,各有浅色和深色。另有 Custom 和 Windows Accent 两种模式:选一个颜色(或跟随 Windows 强调色,改了马上跟着变),再挑调色风格和对比度,就生成整套配色,终端颜色一起变。
+
 - **侧栏的“运行中”和“等你处理”。** 标签栏最前面多了两个固定筛选:“运行中”列出所有文件夹里正在输出的终端,“等你处理”列出停在批准提示或已跑完、等下一条指令的 Claude Code 和 Codex。选中后只显示有这类终端的文件夹,并自动展开,只列匹配的终端;可以和文件夹标签一起用。
+
 - **协调者标签。** 右键标签或侧栏里的终端,勾选“协调者”,它的标签就移到标签栏上方单独一行,切到任何文件夹都在,前面写着所属文件夹。点它会切到它的文件夹。再勾一次取消。所有窗口同步,关闭终端后标记随之消失。
+
 - **协调者控制标签页。** 在 设置 → 扩展 打开后,协调者标签里的 Claude Code 可以管理同一文件夹的其他标签:列出、新开(比如再开一个 Claude Code 并交给它一条指令)、输入文字或按键、读取屏幕、等它跑完或停在批准提示、改名、关闭。只有协调者能用,其他标签一律被拒;取消协调者立即失效。需要在终端里运行一次设置页给出的两条命令,装上随 Ceteris 附带的 ceteris-tabs 插件。升级或新安装后第一次启动,以及勾选“协调者”时,会出现一段动画导览:先介绍 Coordinator(指挥其他 agent)、Worker(同一文件夹里接活的普通标签)和 Fintuner(读对话历史找省时间的办法)三个推荐角色,再用聚光灯和光标一步步演示怎么设协调者、加 Worker、打开设置、装插件,最后用同样的动画教你把另一个 agent 设成 Fintuner(右键 → 角色 → Fintuner),等它启动后自动粘贴提示;也能把一个示例任务粘贴进 Coordinator。提示只粘贴不发送,按界面语言给中文或英文版。右键标签的“协调者”换成 角色 子菜单(Worker、Coordinator、Fintuner),选了角色标签就改名为它、并排在上方一行;取消角色恢复原名。不用 Claude Code 也能走完:导览按你用的 agent 指路,Claude Code 才需要的设置和插件两步会跳过。
 
 - **小庆祝。** agent 跑完而你在看别的标签时,它标签上的圆点会飞出三颗小粒子,不到一秒就淡掉。样式随主题:可爱主题是爱心,Rose Pine 和梅子是花瓣,珍珠主题是一圈光,Business 和 Windows Terminal 只有一个对勾。设置 → 外观 还可以打开标题栏小石子:都空闲时打盹,agent 干活时睁眼,跑完时笑一下。不抢焦点、不出声;系统减少动态效果时不播。
@@ -44,8 +80,35 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 - **SSH 文件树支持需要输入的登录。** 服务器要密码、Duo 二次验证码或主机密钥确认时,Ceteris 弹出对话框让你回答,文件树和 PDF 随后正常打开。只有你主动操作(切到那台服务器、点重试、点击文件)时才会弹;后台轮询遇到提示会安静地停下并显示“需要登录”。回答过提示的连接不会因空闲断开,免得再收一次 Duo 推送。
 
 - **编辑 txt 和 json。** 文件树里点开即可修改并保存,Link 窗口同样可用。其他程序改过文件时不会覆盖,未保存的内容在断线重连和关闭窗口后仍在。
+
 - **超大文本文件。** 超过 2 MB 的 txt 和 json 分段只读,几 GB 的文件也能立刻打开。
+
 - **文件与终端并排。** 只有一个终端时,点击文件不再盖住终端:文件在左,终端在右。
+
+- **7 个珠光主题。** Lapis、Sapphire、Rose Dew、Ember、Jade、Moonlight、Frost,配色取自 7 组小红书色板:标签页是珠光白,正文用色板的墨色,主色作强调,金色作警告;外框是更深的宝石色调,左上和左下各有一层微光。文字对比度 4.5:1 以上,由 `pearl-themes.test.ts` 检查。
+
+- **6 个 Beamer 模板配色主题。** Metropolis、Metropolis Dark、Madrid、CambridgeUS、AnnArbor、Spruce。标志色取自 TeX Live 的 Beamer 配色源文件,状态色和终端 ANSI 色按模板色相调到 4.5:1,由 `beamer-themes.test.ts` 检查。AnnArbor 用 wolverine 里的深蓝 `darkblue!50!black` 作底、玉米黄作强调,其余浅色主题保持模板的白底。Beamer 模板没有终端配色,这部分是新设计的。模板编辑器的保存按钮改用 `--md-primary` / `--md-on-primary`,与其它填充按钮一致。
+
+### 修复
+
+- 侧栏不再被套上一个带描边和阴影的卡片。那是 pdf.js 自带样式里的 `.sidebar` 规则误伤了 Ceteris 的侧栏,它还把侧栏最宽限制在 632px。现在窗口里只有标签页是一块 16px 圆角的区域,侧栏和文件面板直接显示文字,没有底色和描边;文件面板的滚动条换成 Material 风格的细胶囊,鼠标移入面板时才出现。
+
+### 安全
+
+- **SSH_ASKPASS 不再经过 .cmd。** 原来保存的密码通过一个 .cmd 助手交给 ssh,而 Windows 让 cmd.exe 解释 .cmd,服务器发来的提示文本会出现在它的命令行上,`&calc` 这样的提示就能在本机执行命令(CVE-2024-24576 的形态)。现在 ssh 运行一个由 Windows 自带的 C# 编译器现编的小程序,提示经命名管道交回 Ceteris,密码只走管道,不进命令行也不进环境变量。
+
+### 技术栈
+
+- 新增 `pdfjs-dist`(Mozilla pdf.js,Apache-2.0)渲染 PDF,用 legacy 构建适配 Electron 31 的 Chromium 126。移除 `plugins: true` 和 Chromium PDF 扩展的 CSP 豁免。
+- 新增 `@material/material-color-utilities`(Google,Apache-2.0),从种子色或 Windows 强调色生成 Legado 实时配色。
+- 新增 `katex`(MIT)和 `@xterm/addon-image`(MIT),在终端里把 Claude Code 和 Codex 输出的公式显示成图片。
+- 移除 `@anthropic-ai/sdk` 和 `openai`,下一句提示改为直接请求兼容 OpenAI 的接口。
+
+## [0.3.0] — 2026-11-06
+
+Ceteris Link — 远程挂载(Windows ↔ Windows)。
+
+### 新增
 
 - **支持 macOS。** 新增 macOS 适配层和 GitHub Actions 构建。关闭窗口后留在 Dock,登录 shell 的 PATH 对终端生效,没有签名时首次打开需要右键选择“打开”。
 
@@ -77,10 +140,6 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 - **托盘菜单可以重新启动。** 右键托盘图标选择"重新启动",应用会退出并重新打开,比如在安装更新之后。运行中的终端不会恢复,所以有终端在运行时会先询问。
 
-- **7 个珠光主题。** Lapis、Sapphire、Rose Dew、Ember、Jade、Moonlight、Frost,配色取自 7 组小红书色板:标签页是珠光白,正文用色板的墨色,主色作强调,金色作警告;外框是更深的宝石色调,左上和左下各有一层微光。文字对比度 4.5:1 以上,由 `pearl-themes.test.ts` 检查。
-
-- **6 个 Beamer 模板配色主题。** Metropolis、Metropolis Dark、Madrid、CambridgeUS、AnnArbor、Spruce。标志色取自 TeX Live 的 Beamer 配色源文件,状态色和终端 ANSI 色按模板色相调到 4.5:1,由 `beamer-themes.test.ts` 检查。AnnArbor 用 wolverine 里的深蓝 `darkblue!50!black` 作底、玉米黄作强调,其余浅色主题保持模板的白底。Beamer 模板没有终端配色,这部分是新设计的。模板编辑器的保存按钮改用 `--md-primary` / `--md-on-primary`,与其它填充按钮一致。
-
 - **Material Design 3 外观。** 窗口改为一整块外壳上嵌圆角内容卡片,侧栏和设置导航用胶囊式活动项,标签改为 MD3 primary tabs,设置项开关改为 Switch,文本框改为 outlined text field,对话框、菜单、通知都换成 MD3 的形状、阴影和动效。尺寸按鼠标为主的桌面密度收缩,没有照搬触屏的 56px 行高。
 
   外观集中在 `src/renderer/styles/material.css`,在 `global.css` 之后加载,`global.css` 本身没有改动。所有主题都走这一层:没有 MD3 色板的主题从现有语义 token 推导颜色角色。
@@ -97,6 +156,8 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 - **PDF 查看。** 在文件树点击 PDF,就在终端区域显示,本地和 SSH 都支持,关闭后回到原来的终端。PDF 里的链接用系统浏览器打开。
 
+- **右键 + 号快捷启动。** 在标签栏右键 + 号,周围弹出一圈小圆,点一下就在当前路径启动。默认是 Claude Code 和 Codex,可在 设置 → 行为 里改成新建页上的任意模板或 shell,最多 8 项。
+
 ### 变更
 
 - 新安装默认使用 Light Pink 主题。已有设置不受影响。
@@ -111,8 +172,6 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 - **远程窗口的主题与本机一致。** 主题跟随你面前的这台机器:本地窗口和远程窗口颜色相同,在任一窗口切换都会一起变,切换不改动 Host 的主题。字体等其余设置仍来自 Host。
 
 ### 修复
-
-- 侧栏不再被套上一个带描边和阴影的卡片。那是 pdf.js 自带样式里的 `.sidebar` 规则误伤了 Ceteris 的侧栏,它还把侧栏最宽限制在 632px。现在窗口里只有标签页是一块 16px 圆角的区域,侧栏和文件面板直接显示文字,没有底色和描边;文件面板的滚动条换成 Material 风格的细胶囊,鼠标移入面板时才出现。
 
 - 通过 SSH 连接 Windows 主机时不再报“文件名、目录名或卷标语法不正确”。盘符路径改用 Windows 命令进入文件夹,并启动 PowerShell。
 
@@ -138,8 +197,6 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 安全
 
-- **SSH_ASKPASS 不再经过 .cmd。** 原来保存的密码通过一个 .cmd 助手交给 ssh,而 Windows 让 cmd.exe 解释 .cmd,服务器发来的提示文本会出现在它的命令行上,`&calc` 这样的提示就能在本机执行命令(CVE-2024-24576 的形态)。现在 ssh 运行一个由 Windows 自带的 C# 编译器现编的小程序,提示经命名管道交回 Ceteris,密码只走管道,不进命令行也不进环境变量。
-
 - **认证与加密合一,预共享令牌从不上线路。** 令牌作为 IKM 的一部分参与 HKDF 派生会话密钥(`shared ‖ token`),因此"能解开对方的第一个加密帧"本身就是认证通过的充分证明,不需要再传一个口令去比对。被动窃听者拿不到任何可离线爆破的材料。每条连接使用一对全新的临时 X25519 密钥(前向保密),双方公钥进 HKDF 的 info 串做 transcript binding(抗降级),逐帧 AES-256-GCM 且 nonce 由接收方自己维护的计数器构成(重放 / 乱序 / 丢帧一律表现为认证失败并断开)。攻击路径逐条有测试覆盖,见 `src/main/link/link-crypto.test.ts`。
 
 - **Host 强制重写转发命令的 windowId。** 客户端传来的 windowId 一律被替换为该连接的虚拟窗口 id。若原样信任,一个恶意客户端可以冒充 Host 上的任意窗口去 claim / release 它正在用的 session。同理 `preferredWindowId`(重连时复用身份用)只在该 id 当前既不是真实窗口也不是已注册虚拟窗口时才被接受。
@@ -150,8 +207,7 @@ Ceteris Link — 远程挂载(Windows ↔ Windows)。
 
 ### 技术栈
 
-- 新增 `pdfjs-dist`(Mozilla pdf.js,Apache-2.0)渲染 PDF,用 legacy 构建适配 Electron 31 的 Chromium 126。移除 `plugins: true` 和 Chromium PDF 扩展的 CSP 豁免。
-- Link 传输层零新增依赖,只用 node 内置 `net` + `crypto`,未引入 `ws` / `socket.io`(AGENTS.md 1.2 边界 2)。
+- 零新增依赖。传输层只用 node 内置 `net` + `crypto`,未引入 `ws` / `socket.io`(AGENTS.md 1.2 边界 2)。
 
 ## [0.2.3] — 2026-06-05
 

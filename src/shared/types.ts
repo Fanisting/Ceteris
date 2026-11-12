@@ -272,6 +272,13 @@ export interface SessionInfo {
   /** While generating: how fast, 0.25 to 1 in quarter steps, from the token counter. */
   agentPace?: number | null;
   /**
+   * A shell command is running: true from the Enter the user sends until the shell hook
+   * reports the next prompt (OSC 1337 CurrentDir), false while the shell sits at its prompt
+   * (ADR-023). null or absent until the first prompt report, so a shell without the hook
+   * keeps the output-driven rule.
+   */
+  shellBusy?: boolean | null;
+  /**
    * The user marked this session as a coordinator: its tab sits in a row of its own above
    * the folder's tabs, whichever folder is open (ADR-023). Lives as long as the session.
    */
@@ -491,6 +498,12 @@ export interface Settings {
      * 用户点 "知道了" 或第一次右键 + 号后写 true,之后不再弹。
      */
     quickLaunchTipSeen: boolean;
+    /**
+     * 远程设置引导 (ADR-032) 是否已回答过。默认 false:没配置任何远端时点标题栏的 Local
+     * 会问一次"要不要让 AI 带你配置";用户选"不用了"或开始引导后写 true,之后只在菜单和
+     * 设置 → 远程 里留一个入口。老设置文件 deep merge 补 false。
+     */
+    remoteSetupGuideSeen: boolean;
     /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell

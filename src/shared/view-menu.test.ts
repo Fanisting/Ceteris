@@ -36,11 +36,14 @@ const kinds = (over?: Partial<ViewMenuInput>): string[] =>
 
 describe('buildViewMenu', () => {
   it('什么都没配置时也能打开,并提供添加入口', () => {
-    expect(kinds()).toEqual(['view', 'divider', 'add-link', 'add-ssh']);
+    expect(kinds()).toEqual(['view', 'divider', 'add-link', 'add-ssh', 'setup-guide']);
   });
 
   it('主进程还没报告状态时按本地窗口处理', () => {
-    expect(buildViewMenu(input({ targets: [] }))[0]).toMatchObject({ id: VIEW_TARGET_LOCAL, active: true });
+    expect(buildViewMenu(input({ targets: [] }))[0]).toMatchObject({
+      id: VIEW_TARGET_LOCAL,
+      active: true,
+    });
   });
 
   it('Tailscale 和 SSH 都列出来', () => {
@@ -52,6 +55,7 @@ describe('buildViewMenu', () => {
       'divider',
       'add-link',
       'add-ssh',
+      'setup-guide',
     ]);
   });
 
@@ -155,7 +159,9 @@ describe('viewBadgeLabel', () => {
 
   it('SSH 服务器上显示服务器名', () => {
     expect(
-      viewBadgeLabel(input({ segment: 'remote', selectedSshProfileId: 'p1', sshProfiles: [server] })),
+      viewBadgeLabel(
+        input({ segment: 'remote', selectedSshProfileId: 'p1', sshProfiles: [server] }),
+      ),
     ).toBe('lab');
   });
 

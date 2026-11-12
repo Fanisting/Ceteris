@@ -1,7 +1,9 @@
 /**
  * @file src/renderer/components/type-into-terminal.ts
  * @purpose Open a new shell tab and type one command into it without pressing Enter. The
- *   settings page (plugin install rows) and the coordinator guide both use it.
+ *   settings page (plugin install rows) and the coordinator guide both use it. Also the wait
+ *   for a new agent tab to be ready for typed input, shared by the coordinator tour and the
+ *   remote setup guide (ADR-032).
  *
  * @关键设计:
  * - Typing but not running is the consent step: the user reads the command, then presses Enter.
@@ -18,7 +20,7 @@ import {
   type CreateSessionResponse,
   type ListShellsResponse,
 } from '@shared/protocol';
-import { useAppDispatch, useAppState } from '../store';
+import { useAppDispatch, useAppState, type AppState } from '../store';
 import { useTranslation } from './LanguageProvider';
 import { useToast } from './Toast';
 
@@ -31,6 +33,42 @@ export async function typeIntoSession(sessionId: string, text: string): Promise<
   let binary = '';
   for (const byte of utf8) binary += String.fromCharCode(byte);
   await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, { sessionId, data: btoa(binary) });
+}
+
+/** How long a new agent may take to start before its prompt goes to the clipboard instead. */
+export const SETTLE_TIMEOUT_MS = 30_000;
+/** Quiet time after the agent's start-up output that counts as ready for input. */
+const SETTLE_QUIET_MS = 1500;
+const SETTLE_POLL_MS = 250;
+
+/**
+ * Wait until a newly opened agent tab is ready to take typed input: it printed its start-up
+ * screen (state went active) and then stayed quiet for SETTLE_QUIET_MS, or its agent phase says
+ * done. Typing earlier can land in the shell before the agent starts, or be dropped.
+ * Resolves false when the tab exits or the wait times out.
+ */
+export async function waitUntilSettled(
+  stateRef: { current: AppState },
+  sessionId: string,
+): Promise<boolean> {
+  const started = Date.now();
+  // 已经开了一会儿的标签 (用户拿现有标签当 Fintuner) 不会再有启动输出,安静够久也算好了
+  let sawOutput = (stateRef.current.sessions.get(sessionId)?.createdAt ?? started) < started - 5000;
+  let quietSince: number | null = null;
+  while (Date.now() - started < SETTLE_TIMEOUT_MS) {
+    const session = stateRef.current.sessions.get(sessionId);
+    if (session?.state === 'exited') return false;
+    if (session?.agentPhase === 'done') return true;
+    if (session?.state === 'active') {
+      sawOutput = true;
+      quietSince = null;
+    } else if (session && sawOutput) {
+      quietSince ??= Date.now();
+      if (Date.now() - quietSince >= SETTLE_QUIET_MS) return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
+  }
+  return false;
 }
 
 export interface TypeIntoNewTerminal {

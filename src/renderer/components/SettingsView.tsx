@@ -70,6 +70,7 @@ import {
 import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
+import { RemoteSetupCard } from './RemoteSetupGuide';
 import { useModal } from './Modal';
 import {
   NEXT_PROMPT_DEFAULT_BASE_URL,
@@ -1921,6 +1922,8 @@ function RemoteCategory({ setError }: { setError: (msg: string | null) => void }
   return (
     <>
       <h2 className="settings-panel-title">{tx('远程', 'Remote')}</h2>
+      {/* 远程设置引导 (ADR-032):没回答过时问一次,之后是一行"开始" */}
+      <RemoteSetupCard />
       <div className="settings-tabs" role="tablist">
         {(['link', 'ssh'] as const).map((id) => (
           <button

@@ -31,6 +31,8 @@ import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
+import { TemplateUsageTracker } from './template-usage';
+import type { TemplateUsageFile } from '@shared/template-usage';
 import { SecretStore, type SecretsFile } from './secret-store';
 import {
   broadcastLinkStatus,
@@ -266,6 +268,10 @@ function bootstrap(): void {
   const secretStore = new SecretStore(
     new JsonStore<SecretsFile>(join(dataDir, 'secrets.json')),
     safeStorage,
+  );
+  // ADR-034:新建页按钮的点击次数,常用的那几个会有小动画
+  const templateUsage = new TemplateUsageTracker(
+    new JsonStore<TemplateUsageFile>(join(dataDir, 'template-usage.json')),
   );
 
   const channel = CHANNELS[getChannel()];
@@ -588,6 +594,7 @@ function bootstrap(): void {
       logger.setLevel(settingsManager.get().advanced.logLevel === 'DEBUG' ? 'debug' : 'info');
       const { bookmarksSource } = await pathManager.initialize();
       await nextPromptUsage.initialize();
+      await templateUsage.initialize();
       await secretStore.initialize();
       // ADR-025: move a key pasted in an older version out of settings.json, then rewrite
       // both settings.json and its .bak so no plain text copy stays on disk.
@@ -651,6 +658,7 @@ function bootstrap(): void {
         secretStore,
         // Without it the usage handlers fall back to zeros and no call is ever counted.
         nextPromptUsage,
+        templateUsage,
         windowManager,
         viewSwitcher,
         pathManager,
@@ -912,6 +920,7 @@ function bootstrap(): void {
         settingsManager.flush(),
         pathManager.flush(),
         nextPromptUsage.flush(),
+        templateUsage.flush(),
         secretStore.flush(),
         sshProfileManager.flush(),
         knownHostsManager.flush(),

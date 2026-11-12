@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.4.3] (2026-11-12)
+
 ### 新增
 
 - **换模型和 effort。** 点侧栏的文件夹,每个开着标签的 agent 有一行 `CC [Opus] [high]`:点方括号里的字给这个文件夹选默认模型和 effort,之后新开的 Claude Code、Codex 标签按它启动,全局设置不变。分屏按钮那一行显示当前标签的模型和 effort,点一下换:Ceteris 退出 agent,在同一标签里带新参数重开并接上同一段对话。只支持本机文件夹的 Claude Code 和 Codex。

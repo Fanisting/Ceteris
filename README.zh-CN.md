@@ -9,8 +9,6 @@
 
 一个**以路径为中心、对 AI agent 友好**的终端管理器,支持 Windows、macOS 和 Linux。为同时运行多个长时间任务(包括 Claude Code、Codex、OpenCode 等 AI 编码助手)、需要在多个工作目录之间频繁切换、又不愿意因为关错窗口前功尽弃的开发者打造。
 
-> **Fork 说明**:Ceteris 是 Liyue-Cheng 的 [Marina](https://github.com/Liyue-Cheng/marina) 的 fork,Marina 的前身是 EasyTerm。
-
 ---
 
 ## 痛点
@@ -320,6 +318,7 @@ Ceteris 站在这些项目的肩膀上:
 - [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3):Legado MD3 系列主题使用它的 Material 3 配色方案
 - [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus):Pili 系列主题照它的主题色列表和默认 Material 3 配色算法生成
 - [霞鹜文楷 (LXGW WenKai)](https://github.com/lxgw/LxgwWenKai) — UI 中文字体
+- [Marina](https://github.com/Liyue-Cheng/marina)(Liyue-Cheng):Ceteris 早期的代码基础
 
 灵感来源:
 

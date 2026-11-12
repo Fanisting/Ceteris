@@ -81,6 +81,8 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import { buildSessionContextMenu } from './sessionContextMenu';
 import { CelebrationBurst } from './CelebrationBurst';
+import { FolderAgentDefaultsRows } from './AgentModelControls';
+import { MODEL_AGENTS } from '@shared/agent-model';
 
 /**
  * 状态点颜色 (软件定义书 6.2.4 状态指示):
@@ -648,7 +650,7 @@ const MAX_BLOCK_SESSION_DOTS = 5;
 
 
 /**
- * A session's dot colour (ADR-021): warning while an agent waits at an approval prompt, the
+ * A session's dot colour (ADR-021): warning while an agent waits at a prompt (approval or choice), the
  * primary colour when it finished unseen, otherwise the active / idle / exited colour.
  * Shared by the session rows and the dots on a folder block so the two never disagree.
  */
@@ -872,6 +874,8 @@ function PathItem({
           (s) => sessionStatus(s, state.unseenDoneSessionIds.has(s.id)) === statusFilter,
         );
   const activeCount = allSessions.length;
+  // ADR-038: a model row only for agents that have a tab in this folder
+  const agentsHere = MODEL_AGENTS.filter((a) => allSessions.some((s) => s.templateId === a));
   // BETA-014:优先用 FolderList 算好的去重名;退到本节点 displayName / 末段
   const displayName =
     displayNameOverride ??
@@ -1223,6 +1227,14 @@ function PathItem({
           {node.tags && !renaming && <RowTagDots tags={node.tags} {...dotActions} />}
           {!renaming && openTerminalButton}
         </div>
+        {/* ADR-038: model and effort that new agent tabs in this folder start with */}
+        {statusFilter === null && (
+          <FolderAgentDefaultsRows
+            pathId={node.id}
+            folderName={displayName}
+            agents={agentsHere}
+          />
+        )}
         {sessionList || (
           <p className="sidebar-empty path-open-folder-empty">
             {statusFilter === null
@@ -1278,6 +1290,10 @@ function PathItem({
         )}
         {!renaming && openTerminalButton}
       </div>
+      {/* ADR-038: only under the clicked folder, so the other open folders stay compact */}
+      {expanded && selected && statusFilter === null && (
+        <FolderAgentDefaultsRows pathId={node.id} folderName={displayName} agents={agentsHere} />
+      )}
       {expanded && sessionList}
     </li>
   );

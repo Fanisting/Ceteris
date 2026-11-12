@@ -133,13 +133,16 @@ describe('writeTextFile', () => {
     expect(await fs.readdir(dir)).toEqual([]);
   });
 
-  it.each(['notes.md', 'paper.tex'])('saves %s too (ADR-028)', async (name) => {
-    const path = join(dir, name);
-    await fs.writeFile(path, 'old');
-    const res = await writeTextFile({ path, base64: b64('new'), expected: await stamp(path) });
-    expect(res.ok).toBe(true);
-    expect(await fs.readFile(path, 'utf8')).toBe('new');
-  });
+  it.each(['notes.md', 'paper.tex', 'query.sql', 'etl.hive'])(
+    'saves %s too (ADR-028)',
+    async (name) => {
+      const path = join(dir, name);
+      await fs.writeFile(path, 'old');
+      const res = await writeTextFile({ path, base64: b64('new'), expected: await stamp(path) });
+      expect(res.ok).toBe(true);
+      expect(await fs.readFile(path, 'utf8')).toBe('new');
+    },
+  );
 
   it.each(['a.exe', 'a.pdf', 'relative.txt'])('refuses %s', async (name) => {
     const path = name === 'relative.txt' ? name : join(dir, name);

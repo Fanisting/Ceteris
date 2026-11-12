@@ -173,7 +173,9 @@ describe('LinuxAdapter — buildShellLaunchParams', () => {
     expect(result.args[1]).toBe('/tmp/hook');
     expect(result.args[2]).toBe('-i');
     expect(result.args[3]).toBe('-c');
-    expect(result.args[4]).toMatch(/echo.*hello world.*exec bash -i/);
+    expect(result.args[4]).toMatch(
+      /echo.*hello world.*; exec bash '?--rcfile'? '?\/tmp\/hook'? -i$/,
+    );
   });
 });
 

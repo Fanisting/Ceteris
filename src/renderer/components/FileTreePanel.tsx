@@ -18,6 +18,11 @@
  * - New file comes from the header + button or the right-click menu, never a shortcut. The
  *   name is typed in a row inside the target folder, so the user sees where it will land.
  *   A new file the viewer can show opens at once, so a .txt or .json is ready to type into.
+ * - Local folders (rows, the header, pinned blocks, the blank area) have "Open in File
+ *   Explorer", which opens the folder itself; a local file has "Show in File Explorer",
+ *   which selects it. SFTP paths are on another machine, so they get neither.
+ * - Delete (local only, 14.6 例外 2026-11-10) moves the entry to the Recycle Bin. There is no
+ *   confirm dialog because the bin is the undo; the item's hint says so.
  *
  * @对应文档章节: 软件定义书.md 13.2、14.6
  *
@@ -50,6 +55,8 @@ import {
   type ListDirResponse,
   type CreateFilePayload,
   type CreateFileResponse,
+  type DeleteEntryPayload,
+  type DeleteEntryResponse,
   type RenameEntryPayload,
   type RenameEntryResponse,
 } from '@shared/file-tree';
@@ -103,6 +110,28 @@ function pinFor(path: string, sshProfileId: string | undefined): FolderPin {
   return sshProfileId ? { path, sshProfileId } : { path };
 }
 
+/**
+ * Menu item for a local path: a folder opens in File Explorer, a file is selected in its
+ * folder. SFTP paths live on another machine, so callers leave this item out for them.
+ */
+function explorerItem(
+  path: string,
+  isDirectory: boolean,
+  label: string,
+  onError: (message: string) => void,
+): ContextMenuItem {
+  return {
+    label,
+    onSelect: () => {
+      window.api
+        .invoke(COMMAND_CHANNELS.SYSTEM_SHOW_IN_EXPLORER, { path, open: isDirectory })
+        .catch((err: unknown) =>
+          onError(`${label}: ${err instanceof Error ? err.message : String(err)}`),
+        );
+    },
+  };
+}
+
 export function FileTreePanel(): JSX.Element {
   const state = useAppState();
   const { t } = useTranslation();
@@ -116,6 +145,10 @@ export function FileTreePanel(): JSX.Element {
   const [newFileRequest, setNewFileRequest] = useState(0);
   const pins = useFolderPins();
   const menu = useContextMenuApi();
+  const toast = useToast();
+  const toastError = (message: string): void => {
+    toast.push({ kind: 'error', message });
+  };
   // 点过的置顶只在 session 目录不变时有效,cd 或切 session 后自动回到 session 的目录
   const baseKey = `${sessionSshProfileId ?? ''}|${session?.id ?? ''}|${root ?? ''}`;
   const [jump, setJump] = useState<{ baseKey: string; pin: FolderPin } | null>(null);
@@ -134,6 +167,9 @@ export function FileTreePanel(): JSX.Element {
           label: t(isPinned(pins, pin) ? 'fileTree.unpin' : 'fileTree.pin'),
           onSelect: () => togglePin(pin),
         },
+        ...(pin.sshProfileId
+          ? []
+          : [explorerItem(pin.path, true, t('fileTree.openInExplorer'), toastError)]),
       ],
     });
   };
@@ -298,6 +334,9 @@ function FileTreeBody({
   const expansionKey = `${sshProfileId ?? ''}|${root}`;
   const { t } = useTranslation();
   const toast = useToast();
+  const toastError = (message: string): void => {
+    toast.push({ kind: 'error', message });
+  };
   const menu = useContextMenuApi();
   const pins = useFolderPins();
   const [dirs, setDirs] = useState<ReadonlyMap<string, DirState>>(() => new Map());
@@ -486,6 +525,31 @@ function FileTreeBody({
     void refreshAll();
   };
 
+  /**
+   * Moves a row to the Recycle Bin. No confirm dialog: the bin is the undo, and the menu
+   * item says where the entry goes. Pins to a deleted folder stay, so restoring it from the
+   * bin brings the pin back to life.
+   */
+  const applyDelete = async (row: FileTreeRow): Promise<void> => {
+    const { path, name } = row.entry;
+    const res = await window.api
+      .invoke<DeleteEntryPayload, DeleteEntryResponse>(COMMAND_CHANNELS.FS_DELETE, { path })
+      .catch((): DeleteEntryResponse => ({ ok: false, reason: 'unknown' }));
+    if (!mountedRef.current) return;
+    if (!res.ok) {
+      toast.push({ kind: 'error', message: t(`fileTree.delete.error.${res.reason}`, { name }) });
+      return;
+    }
+    toast.push({ kind: 'success', message: t('fileTree.delete.done', { name }) });
+    // remapPath changes exactly the paths at or under `path`, so this drops the deleted
+    // folder and everything below it from the expanded set and the listing cache.
+    const isGone = (p: string): boolean => remapPath(p, path, '') !== p;
+    setExpanded(new Set([...expandedRef.current].filter((p) => !isGone(p))));
+    setSelected((prev) => (prev !== null && isGone(prev) ? null : prev));
+    setDirs((prev) => new Map([...prev].filter(([dir]) => !isGone(dir))));
+    await loadDir(row.parentPath);
+  };
+
   const commitRename = async (row: FileTreeRow): Promise<void> => {
     if (renamingRef.current !== row.entry.path) return;
     endRename();
@@ -601,11 +665,25 @@ function FileTreeBody({
         onSelect: () => togglePin(pin),
       });
     }
-    // 远端文件树只读,不能新建或改名
+    // 远端文件树只读,不能新建或改名;远端路径在另一台机器上,也不能在 Explorer 里打开
     if (!sshProfileId) {
+      const { path, isDirectory } = row.entry;
       items.push(
         { label: t('fileTree.newFile'), onSelect: () => beginCreate(createTargetOf(row)) },
         { label: t('fileTree.rename'), onSelect: () => beginRename(row.entry) },
+        explorerItem(
+          path,
+          isDirectory,
+          t(isDirectory ? 'fileTree.openInExplorer' : 'fileTree.showInExplorer'),
+          toastError,
+        ),
+        { divider: true, label: '' },
+        {
+          label: t('fileTree.delete'),
+          hint: t('fileTree.delete.hint'),
+          danger: true,
+          onSelect: () => void applyDelete(row),
+        },
       );
     }
     if (items.length > 0) menu.open({ x: e.clientX, y: e.clientY, items });
@@ -618,7 +696,10 @@ function FileTreeBody({
     menu.open({
       x: e.clientX,
       y: e.clientY,
-      items: [{ label: t('fileTree.newFile'), onSelect: () => beginCreate(root) }],
+      items: [
+        { label: t('fileTree.newFile'), onSelect: () => beginCreate(root) },
+        explorerItem(root, true, t('fileTree.openInExplorer'), toastError),
+      ],
     });
   };
 

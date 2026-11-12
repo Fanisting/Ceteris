@@ -49,6 +49,7 @@ import {
   type UpdateTemplateResponse,
 } from '@shared/protocol';
 import { formatDisplayPath, toWslUncPath } from '@shared/path-display';
+import { SHELVE_AFTER_HOURS_CHOICES } from '@shared/shelf';
 import type {
   NewTerminalShellPolicy,
   PostExitAction,
@@ -70,6 +71,7 @@ import {
 import { Icon, type IconName } from './icons';
 import { LinkPanel } from './LinkPanel';
 import { QuickLaunchSettings } from './QuickLaunchSettings';
+import { ColonCommandsSettings } from './ColonCommandsSettings';
 import { RemoteSetupCard } from './RemoteSetupGuide';
 import { useModal } from './Modal';
 import {
@@ -116,6 +118,8 @@ import {
   tabControlInstallLine,
   tabControlInstallLines,
 } from '@shared/tab-control';
+import type { CodexMcpStatus } from '@shared/codex-mcp';
+import { EXTENSION_SETUP_OPEN_EVENT } from '@shared/extension-setup';
 import { CODEX_MATH_INSTRUCTION, codexMathInstructionCommand } from '@shared/terminal-math';
 
 type CategoryId =
@@ -1213,6 +1217,8 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
   const confirmOnQuit = b?.confirmOnQuit ?? true;
   const selectOnCopy = b?.selectOnCopy ?? true;
   const terminalRightClick = b?.terminalRightClick ?? 'menu';
+  const shelveIdleAfterHours = b?.shelveIdleAfterHours ?? 0;
+  const restoreTabsOnLaunch = b?.restoreTabsOnLaunch ?? true;
 
   return (
     <section className="settings-panel">
@@ -1265,6 +1271,25 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
       </SettingRow>
 
       <SettingRow
+        label={tx('启动时恢复标签', 'Reopen tabs at launch')}
+        hint={tx(
+          '退出、更新或崩溃后再打开 Ceteris,上次开着的标签都回来。Shell 和内置 agent 直接开回来,Claude Code 和 Codex 接着各自的对话;自定义命令、SSH 和管理员 Shell 放进收纳盒,点一下再开。',
+          'After a quit, an update or a crash, the tabs you had open come back. Shells and built-in agents start again, and Claude Code and Codex continue their own conversation. Custom commands, SSH and the Admin Shell wait in the shelf until you click them.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={restoreTabsOnLaunch}
+            onChange={(e) =>
+              void updateSettings({ behavior: { restoreTabsOnLaunch: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      <SettingRow
         label={tx('完全退出前确认', 'Confirm before full quit')}
         hint={tx(
           '托盘点"完全退出"且有 session 在跑时弹确认。关单窗口永远不弹',
@@ -1312,6 +1337,43 @@ function BehaviorPanel({ setError }: { setError: (msg: string | null) => void })
         <QuickLaunchSettings
           onChange={(quickLaunch) => void updateSettings({ behavior: { quickLaunch } }, setError)}
         />
+      </SettingRow>
+
+      <SettingRow
+        label={tx('自动收纳闲置标签', 'Shelve idle tabs')}
+        hint={tx(
+          '一个标签这么久没有输出、没有按键,就结束它的进程,放进标签栏最左边的收纳盒;点开收纳盒随时拿回来,Claude Code 和 Codex 会接着上次的对话。正在工作的 agent、有角色的标签和窗口正在显示的标签不会被收纳。右键标签也可以手动收纳。',
+          'A tab with no output and no key presses for this long ends its process and waits in the shelf at the left end of the tab row. Open the shelf to bring it back; Claude Code and Codex continue their conversation. Working agents, tabs with a role and the tab a window is showing are never shelved. The tab menu can shelve by hand too.',
+        )}
+      >
+        <select
+          className="settings-input"
+          value={String(shelveIdleAfterHours)}
+          onChange={(e) =>
+            void updateSettings(
+              { behavior: { shelveIdleAfterHours: Number(e.target.value) } },
+              setError,
+            )
+          }
+        >
+          {SHELVE_AFTER_HOURS_CHOICES.map((h) => (
+            <option key={h} value={String(h)}>
+              {h === 0
+                ? tx('关闭', 'Off')
+                : h < 24
+                  ? tx(`闲置 ${h} 小时后`, `After ${h} hour${h === 1 ? '' : 's'} idle`)
+                  : tx(`闲置 ${h / 24} 天后`, `After ${h / 24} day${h === 24 ? '' : 's'} idle`)}
+            </option>
+          ))}
+          {!SHELVE_AFTER_HOURS_CHOICES.includes(shelveIdleAfterHours) && (
+            <option value={String(shelveIdleAfterHours)}>
+              {tx(
+                `闲置 ${shelveIdleAfterHours} 小时后`,
+                `After ${shelveIdleAfterHours} hours idle`,
+              )}
+            </option>
+          )}
+        </select>
       </SettingRow>
 
       <SettingRow
@@ -3109,6 +3171,7 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
   const tabControl = state.settings.extensions?.tabControl ?? false;
   const terminalMath = state.settings.extensions?.terminalMath ?? false;
+  const colon = state.settings.extensions?.colonCommands;
   const typer = useTypeIntoNewTerminal();
   const preparing = typer.preparing;
   // 随 Ceteris 安装的插件 marketplace 目录 (安装版 resources/extensions,dev 为仓库目录)
@@ -3140,9 +3203,52 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
     if (dir) void typeIntoNewTerminal((shellId) => tabControlInstallLine(shellId, dir));
   };
 
+  // ADR-033: Codex gets the same server through its config.toml; Ceteris writes the entry.
+  const [codexMcp, setCodexMcp] = useState<CodexMcpStatus | null>(null);
+  const [codexBusy, setCodexBusy] = useState(false);
+  useEffect(() => {
+    if (codexMcp) return;
+    window.api
+      .invoke<unknown, CodexMcpStatus>(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, {})
+      .then(setCodexMcp)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  }, [codexMcp, setError]);
+  const handleCodexInstall = async (): Promise<void> => {
+    setError(null);
+    setCodexBusy(true);
+    try {
+      setCodexMcp(
+        await window.api.invoke<unknown, CodexMcpStatus>(
+          COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_INSTALL,
+          {},
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCodexBusy(false);
+    }
+  };
+
   return (
     <section className="settings-panel">
       <h2 className="settings-panel-title">{tx('扩展', 'Extensions')}</h2>
+
+      <SettingRow
+        label={tx('一次装好', 'Set up in one go')}
+        hint={tx(
+          '第一次启动时出现的清单:勾选要用的 Claude Code / Codex 扩展,一次装好。这里可以再打开。',
+          'The checklist from the first start: tick the Claude Code and Codex extensions you use and set them up together. Open it again here.',
+        )}
+      >
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => window.dispatchEvent(new Event(EXTENSION_SETUP_OPEN_EVENT))}
+        >
+          {tx('打开清单', 'Open the list')}
+        </button>
+      </SettingRow>
 
       <SettingRow
         label={tx('Claude Code 公式图片', 'Claude Code formula images')}
@@ -3241,7 +3347,7 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
       <SettingRow
         label={tx('Claude Code 的 ceteris-tabs 插件', 'The ceteris-tabs plugin for Claude Code')}
         hint={tx(
-          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、json、tex、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
+          '随 Ceteris 安装的插件。装上后,任何标签里的 Claude Code 都能把它写的文件(md、txt、代码和数据文件、pdf、图片)摆在自己标签旁边:对它说"把回答写成 md 在 Ceteris 里打开"就行,不用开下面的开关。在终端里跑一次这两条命令,然后新开 Claude Code。',
           'Ships with Ceteris. Once installed, Claude Code in any tab can show a file it wrote (md, txt, json, tex, pdf, image) beside its own tab: say "write the answer as md and open it in Ceteris". No switch below needed for that. Run these two commands once in a terminal, then start a new Claude Code.',
         )}
       >
@@ -3291,6 +3397,37 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
       </SettingRow>
 
       <SettingRow
+        label={tx('Codex 也要用?', 'Using Codex too?')}
+        hint={tx(
+          'Codex 没有插件,MCP 服务器写在它的 config.toml 里。点一下,Ceteris 把同一个服务器加进去(已有的会重写成当前路径),然后新开 Codex。Codex 里工具叫 ceteris-tabs/open_file。',
+          'Codex has no plugins; MCP servers live in its config.toml. One click adds the same server there (an existing entry is rewritten with the current paths), then start a new Codex. In Codex the tool is called ceteris-tabs/open_file.',
+        )}
+      >
+        <div className="settings-code-stack">
+          <pre className="settings-code-block settings-code-wrap">
+            <code>{codexMcp ? codexMcp.block.trimEnd() : '…'}</code>
+          </pre>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={codexBusy || !codexMcp}
+            onClick={() => void handleCodexInstall()}
+            title={codexMcp?.configPath ?? ''}
+          >
+            {codexMcp?.configured
+              ? tx('重写 config.toml 里的这一项', 'Rewrite the entry in config.toml')
+              : tx('写进 config.toml', 'Add to config.toml')}
+          </button>
+          {codexMcp?.configured && (
+            <span className="settings-row-hint">
+              {tx('已在 ', 'Already in ')}
+              {codexMcp.configPath}
+            </span>
+          )}
+        </div>
+      </SettingRow>
+
+      <SettingRow
         label={tx('协调者控制标签页', 'Coordinator tab control')}
         hint={tx(
           '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。需要上面的插件;右键标签,勾选"协调者"。',
@@ -3308,6 +3445,45 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
+
+      <SettingRow
+        label={tx('名称: 命令', 'name: commands')}
+        hint={tx(
+          '在 Claude Code 或 Codex 里,单词开头敲下面的名称再敲冒号,Ceteris 把它换成对应命令,例如 compact: 变成 /compact。不会按 Enter,确认后自己按。其它终端不受影响。',
+          'In Claude Code or Codex, type a name below at the start of a word followed by a colon and Ceteris replaces it with the command, so compact: becomes /compact. Enter is not pressed for you. Other terminals are not affected.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={colon?.enabled ?? false}
+            onChange={(e) =>
+              void updateSettings(
+                { extensions: { colonCommands: { enabled: e.target.checked } } },
+                setError,
+              )
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      {colon?.enabled && (
+        <SettingRow
+          label={tx('名称与命令', 'Names and commands')}
+          hint={tx(
+            '名称不分大小写。命令留空就是 /名称;也可以指向别的命令,例如 plan → /oh-my-claudecode:plan。',
+            'Names ignore case. An empty command means /name; it can also point elsewhere, such as plan → /oh-my-claudecode:plan.',
+          )}
+        >
+          <ColonCommandsSettings
+            commands={colon.commands}
+            onChange={(next) =>
+              void updateSettings({ extensions: { colonCommands: { commands: next } } }, setError)
+            }
+          />
+        </SettingRow>
+      )}
     </section>
   );
 }

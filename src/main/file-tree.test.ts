@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createFile, listDirectory, renameEntry } from './file-tree';
+import { createFile, deleteEntry, listDirectory, renameEntry } from './file-tree';
 
 vi.mock('./logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -166,5 +166,44 @@ describe('createFile', () => {
     expect(await createFile(root, 'a.txt')).toEqual({ ok: false, reason: 'exists' });
     expect(await fs.readFile(join(root, 'a.txt'), 'utf8')).toBe('keep');
     expect(await createFile(root, '../x.txt')).toEqual({ ok: false, reason: 'invalid-name' });
+  });
+});
+
+describe('deleteEntry', () => {
+  it('hands an existing file or folder to the trash and nothing else', async () => {
+    await fs.mkdir(join(root, 'dir'));
+    await fs.writeFile(join(root, 'a.txt'), 'x');
+    const trash = vi.fn(async () => {});
+
+    expect(await deleteEntry(join(root, 'a.txt'), trash)).toEqual({ ok: true });
+    expect(await deleteEntry(join(root, 'dir'), trash)).toEqual({ ok: true });
+    expect(trash.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
+      join(root, 'a.txt'),
+      join(root, 'dir'),
+    ]);
+  });
+
+  it('refuses a missing path, a relative path and a drive root without calling the trash', async () => {
+    const trash = vi.fn(async () => {});
+    expect(await deleteEntry(join(root, 'gone.txt'), trash)).toEqual({
+      ok: false,
+      reason: 'not-found',
+    });
+    expect(await deleteEntry('a.txt', trash)).toEqual({ ok: false, reason: 'invalid-name' });
+    const driveRoot = join(root, '..', '..', '..', '..', '..', '..', '..', '..');
+    expect(await deleteEntry(driveRoot, trash)).toEqual({ ok: false, reason: 'invalid-name' });
+    expect(trash).not.toHaveBeenCalled();
+  });
+
+  it('reports a trash failure instead of throwing, and the file stays', async () => {
+    await fs.writeFile(join(root, 'busy.txt'), 'x');
+    const trash = vi.fn(async () => {
+      throw new Error('Failed to move item to trash');
+    });
+    expect(await deleteEntry(join(root, 'busy.txt'), trash)).toEqual({
+      ok: false,
+      reason: 'unknown',
+    });
+    expect(await fs.readFile(join(root, 'busy.txt'), 'utf8')).toBe('x');
   });
 });

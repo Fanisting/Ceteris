@@ -1,0 +1,149 @@
+/*
+ * agent-model.css: model and effort controls (ADR-038).
+ * - .folder-agent-rows: rows under an opened folder, `CC [Opus] [high]`, stacked like
+ *   session rows; plain coloured text, underline on hover
+ * - .agent-status-line: the selected tab's model and effort, two unfilled outlined buttons
+ *   with the split icons' 32px height and the shared block corner, in the same row
+ * Effort steps: low (muted) → mid (primary) → high (success) → top (danger).
+ */
+
+/* ── Colour steps ─────────────────────────────────────────────────── */
+
+.effort-low {
+  --effort-color: var(--md-on-surface-variant, #f0f);
+}
+.effort-mid {
+  --effort-color: var(--md-primary, #f0f);
+}
+.effort-high {
+  --effort-color: var(--color-success, #f0f);
+}
+.effort-top {
+  --effort-color: var(--color-danger, #f0f);
+}
+
+/* ── Shared: a word that opens a choice ───────────────────────────── */
+
+.bracket-value,
+.agent-status-pick {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bracket-value:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.bracket-value.model,
+.agent-status-pick.model {
+  color: var(--md-primary, #f0f);
+  font-weight: 600;
+}
+
+.bracket-value[class*='effort-'],
+.agent-status-pick[class*='effort-'] {
+  color: var(--effort-color, #f0f);
+  font-weight: 600;
+}
+
+.bracket-value.unset {
+  color: var(--md-on-surface-variant, #f0f);
+  font-weight: 400;
+}
+
+/* ── Sidebar rows, stacked like session rows ──────────────────────── */
+
+.folder-agent-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.folder-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-block: 1px;
+  padding: 0 12px 0 16px;
+  font-size: 13px;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.folder-agent-name {
+  min-width: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.bracket-pick {
+  white-space: nowrap;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+/* ── Model and effort in the split-view row ───────────────────────── */
+
+.agent-status-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-right: auto;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Same box as .pane-layout-btn: 32px tall, with the shared block corner (--block-radius, the
+   split view button corner). Unfilled: only an outline, no background, also on hover. The
+   outline is a gradient from the theme's primary to its secondary accent, drawn by ::before
+   and masked to a ring, so the inside stays transparent. */
+.agent-status-pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: var(--block-radius, var(--md-shape-sm, 8px));
+}
+
+.agent-status-pick::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    120deg,
+    var(--md-primary, #f0f),
+    var(--color-accent-secondary, var(--md-primary, #f0f))
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Unfilled also on hover: the outline thickens instead of a fill */
+.agent-status-pick:hover::before {
+  padding: 1.5px;
+}
+
+.agent-status-switching {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  font-style: italic;
+  color: var(--md-primary, #f0f);
+}

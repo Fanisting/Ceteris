@@ -35,6 +35,8 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { shouldForwardToHost } from '@shared/link-protocol';
 import { getAppLabel, getBuildType, getChannel, getLaunchExePath } from './build-type';
 import { getPlatformAdapter } from './platform';
+import { createCodeLinter } from './code-lint';
+import type { LintPayload, LintResponse } from '@shared/code-files';
 import {
   createAgentVersionChecker,
   findAgentSpec,
@@ -42,6 +44,21 @@ import {
 } from './agent-versions';
 import { AgentAutoUpdater } from './agent-auto-update';
 import { AgentReloader } from './agent-reload';
+import {
+  AgentUsageReader,
+  readClaudeOwnDefault,
+  readCodexModels,
+  readCodexOwnDefault,
+  type UsageTab,
+} from './agent-usage';
+import { AgentModelSwitcher } from './agent-model-switch';
+import {
+  CLAUDE_EFFORTS,
+  CLAUDE_MODELS,
+  CODEX_FALLBACK_EFFORTS,
+  isSafeModelValue,
+  modelAgentOf,
+} from '@shared/agent-model';
 import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
@@ -51,7 +68,13 @@ import {
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { resolve, join as joinPath } from 'node:path';
+import { dirname, resolve, join as joinPath } from 'node:path';
+import {
+  codexMcpBlock,
+  hasCodexMcpBlock,
+  upsertCodexMcpBlock,
+  type CodexMcpStatus,
+} from '@shared/codex-mcp';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -93,6 +116,10 @@ import {
   type EventEnvelope,
   type FocusSessionOwnerPayload,
   type FocusSessionOwnerResponse,
+  type ReadChoicePayload,
+  type ReadChoiceResponse,
+  type AnswerChoicePayload,
+  type AnswerChoiceResponse,
   type LinkConnectionStatePayload,
   type FocusWindowPayload,
   type AddTemplatePayload,
@@ -119,6 +146,11 @@ import {
   type AgentReloadPlanPayload,
   type ReloadAgentPayload,
   type ReloadAgentResponse,
+  type AgentModelOptionsResponse,
+  type AgentSwitchModelPayload,
+  type AgentSwitchModelResponse,
+  type AgentUsagePayload,
+  type AgentUsageResponse,
   type ListSshProfilesResponse,
   type SshAgentStatusResponse,
   type SshConfigListResponse,
@@ -182,8 +214,14 @@ import {
   type LinkStatusChangedPayload,
   type FileViewOpenRequestedPayload,
   type LinkStatusResponse,
+  type ShelfChangedPayload,
+  type ShelfPutPayload,
+  type ShelfRemovePayload,
+  type ShelfRestorePayload,
+  type ShelfRestoreResponse,
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
+import type { ShelfManager } from './shelf-manager';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -198,6 +236,8 @@ import { detectSshAgent } from './ssh-agent';
 import type {
   CreateFilePayload,
   CreateFileResponse,
+  DeleteEntryPayload,
+  DeleteEntryResponse,
   ListDirPayload,
   ListDirResponse,
   ReadPdfPayload,
@@ -209,7 +249,7 @@ import type {
   WriteTextPayload,
   WriteTextResponse,
 } from '@shared/file-tree';
-import { createFile, listDirectory, renameEntry } from './file-tree';
+import { createFile, deleteEntry, listDirectory, renameEntry } from './file-tree';
 import { writeTextFile } from './text-writer';
 import type { CustomThemeStore } from './custom-theme-store';
 import type { CustomTheme, TemplateValues } from '@shared/custom-themes';
@@ -283,6 +323,8 @@ export interface IpcLayerDeps {
   updateChecker?: UpdateChecker;
   /** 用户主题文件夹(ADR-026)。可选:单测不带它,此时列表为空,其余主题命令抛错 */
   customThemes?: CustomThemeStore;
+  /** 收纳盒(ADR-036)。可选:单测不带它,此时 snapshot.shelf 为空,cmd:shelf:* 抛错 */
+  shelfManager?: ShelfManager;
 }
 
 let installed = false;
@@ -812,6 +854,96 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // ── Tab shelf (ADR-036) ──
+  const shelf = (): ShelfManager => {
+    if (!deps.shelfManager) {
+      throw makeIpcError(
+        'ShelfUnavailable',
+        'The tab shelf is not set up in this main process (no ShelfManager injected). ' +
+          'In the app this means bootstrap failed before the shelf was built; check main.log.',
+      );
+    }
+    return deps.shelfManager;
+  };
+
+  handleCommand(
+    COMMAND_CHANNELS.SHELF_PUT,
+    async (_e, envelope: CommandEnvelope<ShelfPutPayload>): Promise<void> => {
+      await shelf().shelve(envelope.payload.sessionId, 'manual');
+    },
+  );
+
+  // Restoring launches like cmd:session:create in the calling window. SSH folders need the
+  // profile and password handling above, so the launch stays here and the shelf only plans it.
+  handleCommand(
+    COMMAND_CHANNELS.SHELF_RESTORE,
+    async (_e, envelope: CommandEnvelope<ShelfRestorePayload>): Promise<ShelfRestoreResponse> => {
+      const { entryId, cols, rows } = envelope.payload;
+      const plan = shelf().planRestore(entryId);
+      const pathRef = pathRefFromId(plan.pathId);
+      const sshProfile =
+        pathRef.kind === 'ssh' && pathRef.sshProfileId
+          ? sshProfileManager?.getInternal(pathRef.sshProfileId)
+          : null;
+      if (pathRef.kind === 'ssh' && !sshProfile) {
+        throw makeIpcError(
+          'SshProfileNotFound',
+          `shelf restore: the SSH profile "${pathRef.sshProfileId}" of "${plan.entry.displayName}" ` +
+            `no longer exists. Add the profile again or remove the entry from the shelf.`,
+        );
+      }
+      const sshProfileForLaunch = sshProfile
+        ? {
+            ...sshProfile,
+            tmuxMode: 'disabled' as const,
+            tmuxOnMissing: 'fallback-shell' as const,
+            ...(sshProfile.passwordEncrypted
+              ? decryptStoredPassword(sshProfile.passwordEncrypted)
+              : {}),
+          }
+        : null;
+      if (sshProfileForLaunch) {
+        delete (sshProfileForLaunch as { passwordEncrypted?: string }).passwordEncrypted;
+      }
+      const session = await sessionManager.createSession({
+        pathId: plan.pathId,
+        templateId: plan.templateId,
+        ownerWindowId: envelope.windowId,
+        cols,
+        rows,
+        ...(plan.extraArgs.length > 0 ? { extraArgs: plan.extraArgs } : {}),
+        ...(sshProfileForLaunch ? { sshProfile: sshProfileForLaunch } : {}),
+      });
+      // Only now: a failed launch above keeps the entry, so nothing is lost.
+      shelf().forget(entryId);
+      if (plan.extraArgs.length > 0 && plan.entry.resume) {
+        sessionManager.setAgentSession(
+          session.id,
+          plan.entry.resume.agent,
+          plan.entry.resume.sessionId,
+        );
+      }
+      // The name the user knew it by. A fresh agent would otherwise overwrite it with its
+      // own title at once; an AI title still follows the next finished turn (ADR-029).
+      if (plan.entry.displayName) sessionManager.renameSession(session.id, plan.entry.displayName);
+      return {
+        session: sessionManager.get(session.id) ?? session,
+        resumed: plan.extraArgs.length > 0,
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SHELF_REMOVE,
+    (_e, envelope: CommandEnvelope<ShelfRemovePayload>): void => {
+      shelf().forget(envelope.payload.entryId);
+    },
+  );
+
+  handleCommand(COMMAND_CHANNELS.SHELF_CLEAR, (): void => {
+    shelf().clear();
+  });
+
   handleCommand(
     COMMAND_CHANNELS.SESSION_CLOSE,
     (_e, envelope: CommandEnvelope<CloseSessionPayload>): void => {
@@ -942,14 +1074,84 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 读不了或不是 JSON 都当没装,引导就继续显示安装那一步。
       const configDir = process.env.CLAUDE_CONFIG_DIR || joinPath(homedir(), '.claude');
       const file = joinPath(configDir, 'plugins', 'installed_plugins.json');
+      const claudeInstalled = await fs.stat(configDir).then(
+        (st) => st.isDirectory(),
+        () => false,
+      );
       try {
         const registry: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
-        return { pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID) };
+        return {
+          pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID),
+          claudeInstalled,
+        };
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') logger.warn('ipc', `tab control status: cannot read ${file}`, err);
-        return { pluginInstalled: false };
+        return { pluginInstalled: false, claudeInstalled };
       }
+    },
+  );
+
+  // ADR-033:Codex 没有插件市场,MCP 服务器写在 ~/.codex/config.toml(CODEX_HOME 可改目录)。
+  // 服务器就是 Claude Code 插件里那个脚本,用 Ceteris 自己的可执行文件当 Node 跑。
+  const codexHome = (): string => process.env.CODEX_HOME || joinPath(homedir(), '.codex');
+  const codexConfigPath = (): string => joinPath(codexHome(), 'config.toml');
+  const codexInstalled = (): Promise<boolean> =>
+    fs.stat(codexHome()).then(
+      (st) => st.isDirectory(),
+      () => false,
+    );
+  const codexBlock = (): string =>
+    codexMcpBlock({
+      command: process.execPath,
+      serverPath: joinPath(
+        bundledMarketplaceDir({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath(),
+        }),
+        'ceteris-tabs',
+        'server',
+        'ceteris-tabs-mcp.mjs',
+      ),
+    });
+  /** The file's text, '' when it does not exist. Other read errors are thrown to the caller. */
+  const readCodexConfig = async (file: string): Promise<string> => {
+    try {
+      return await fs.readFile(file, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw new Error(
+        `[ipc] cannot read Codex config ${file}: ${(err as Error).message}. ` +
+          'Possible causes: no permission, or the path is a folder. Check the file, then retry.',
+      );
+    }
+  };
+
+  handleCommand(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, async (): Promise<CodexMcpStatus> => {
+    const configPath = codexConfigPath();
+    const text = await readCodexConfig(configPath);
+    return {
+      configPath,
+      configured: hasCodexMcpBlock(text),
+      codexInstalled: await codexInstalled(),
+      block: codexBlock(),
+    };
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_INSTALL,
+    async (): Promise<CodexMcpStatus> => {
+      const configPath = codexConfigPath();
+      const block = codexBlock();
+      const next = upsertCodexMcpBlock(await readCodexConfig(configPath), block);
+      // 先写临时文件再改名,和 persistence.ts 一样:Codex 正在读这个文件时不能看到半截
+      await fs.mkdir(dirname(configPath), { recursive: true });
+      const tmp = `${configPath}.tmp.${process.pid}.${Date.now()}`;
+      await fs.writeFile(tmp, next, 'utf8');
+      await fs.rename(tmp, configPath);
+      logger.info('ipc', `codex mcp entry written to ${configPath}`);
+      return { configPath, configured: true, codexInstalled: true, block };
     },
   );
 
@@ -1015,6 +1217,37 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         // 在那里(orphan 或被抢),新窗口仍开出来,只是不会自动 select。
       }
       return { windowId: info.id, windowNumber: info.number };
+    },
+  );
+
+  // ADR-035:toast 里的选择面板从别的标签或窗口读和回答 agent 的提示。
+  // 两条都不抛错:session 没了或提示变了都是正常时序,面板按 reason 改口。
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_READ_CHOICE,
+    (_e, envelope: CommandEnvelope<ReadChoicePayload>): ReadChoiceResponse => ({
+      prompt: sessionManager.readChoice(envelope.payload.sessionId),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_ANSWER_CHOICE,
+    (_e, envelope: CommandEnvelope<AnswerChoicePayload>): Promise<AnswerChoiceResponse> => {
+      // The payload crosses from the renderer: rebuild it from checked fields only.
+      const p = envelope.payload as unknown as Record<string, unknown>;
+      const sessionId = typeof p.sessionId === 'string' ? p.sessionId : '';
+      if (p.next === true) return sessionManager.answerChoice({ sessionId, next: true });
+      if (typeof p.index !== 'number' || !Number.isInteger(p.index)) {
+        throw makeIpcError(
+          'InvalidPayload',
+          `answer-choice needs an integer index or next:true; got keys ${Object.keys(p).join(',')}. ` +
+            'Likely a renderer built against an older protocol; reload the window.',
+        );
+      }
+      return sessionManager.answerChoice({
+        sessionId,
+        index: p.index,
+        ...(typeof p.text === 'string' ? { text: p.text } : {}),
+      });
     },
   );
 
@@ -1394,7 +1627,24 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   handleCommand(
     COMMAND_CHANNELS.SYSTEM_SHOW_IN_EXPLORER,
     async (_e, envelope: CommandEnvelope<ShowInExplorerPayload>): Promise<void> => {
-      shell.showItemInFolder(envelope.payload.path);
+      const { path, open } = envelope.payload;
+      // open 只对文件夹生效:shell.openPath 遇到文件会用关联程序运行它 (.exe、.bat 直接执行),
+      // 所以先确认是目录。stat 失败或不是目录时退回 showItemInFolder,只在父目录里选中。
+      if (
+        open &&
+        (await fs.stat(path).then(
+          (s) => s.isDirectory(),
+          () => false,
+        ))
+      ) {
+        const err = await shell.openPath(path);
+        if (!err) return;
+        logger.warn(
+          'ipc',
+          `show-in-explorer openPath failed for ${path}: ${err}; selecting it instead`,
+        );
+      }
+      shell.showItemInFolder(path);
     },
   );
 
@@ -1465,9 +1715,25 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   handleCommand(
+    COMMAND_CHANNELS.FS_DELETE,
+    (_e, envelope: CommandEnvelope<DeleteEntryPayload>): Promise<DeleteEntryResponse> =>
+      deleteEntry(envelope.payload.path, (p) => shell.trashItem(p)),
+  );
+
+  handleCommand(
     COMMAND_CHANNELS.FS_WRITE_TEXT,
     (_e, envelope: CommandEnvelope<WriteTextPayload>): Promise<WriteTextResponse> =>
       writeTextFile(envelope.payload),
+  );
+
+  // Created on first use: it reads the platform adapter, which tests replace.
+  let lintCode: ((payload: LintPayload) => Promise<LintResponse>) | null = null;
+  handleCommand(
+    COMMAND_CHANNELS.CODE_LINT,
+    (_e, envelope: CommandEnvelope<LintPayload>): Promise<LintResponse> => {
+      lintCode ??= createCodeLinter(getPlatformAdapter());
+      return lintCode(envelope.payload);
+    },
   );
 
   handleCommand(
@@ -2104,6 +2370,111 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // ── ADR-038:模型与 effort ──────────────────────────────────────────
+  // CLAUDE_CONFIG_DIR / CODEX_HOME 与两个 CLI 自己的规则一致;没设就是 home 下的默认目录
+  const usageReader = new AgentUsageReader({
+    claudeDir: process.env['CLAUDE_CONFIG_DIR'] || joinPath(homedir(), '.claude'),
+    codexDir: process.env['CODEX_HOME'] || joinPath(homedir(), '.codex'),
+  });
+  sessionManager.on('sessionDestroyed', (e: { sessionId: string }) =>
+    usageReader.forget(e.sessionId),
+  );
+
+  /** The tab's usage source, or null for SSH tabs and other templates (files are local). */
+  const usageTabOf = (sessionId: string): UsageTab | null => {
+    const s = sessionManager.get(sessionId);
+    const agent = modelAgentOf(s?.templateId);
+    if (!s || !agent || pathRefFromId(s.pathId).kind === 'ssh') return null;
+    const otherLaunchIds = sessionManager
+      .list()
+      .filter((o) => o.id !== sessionId && o.agentLaunchId)
+      .map((o) => o.agentLaunchId as string);
+    return {
+      sessionId,
+      agent,
+      cwd: s.originalCwd,
+      createdAt: s.createdAt,
+      ...(s.agentLaunchId ? { launchId: s.agentLaunchId } : {}),
+      otherLaunchIds,
+    };
+  };
+
+  // 换模型 = 在同一个标签里 /exit 再带新参数恢复同一段对话 (agent-model-switch.ts)
+  const modelSwitcher = new AgentModelSwitcher({
+    session: (id) => sessionManager.get(id),
+    template: (templateId) => templatesManager.get(templateId),
+    isLocal: (pathId) => pathRefFromId(pathId).kind !== 'ssh',
+    write: (id, text) =>
+      sessionManager.sendInput(id, Buffer.from(text, 'utf8').toString('base64')).accepted,
+    events: sessionManager,
+    screenOf: (id, rows) => sessionManager.getScreenTail(id, rows),
+    // Only an id known for certain: Claude Code's own launch id once its transcript exists.
+    // A file guessed from the folder could belong to another tab.
+    resumeIdOf: async (id) => {
+      const tab = usageTabOf(id);
+      return tab?.launchId ? usageReader.conversationId(tab) : null;
+    },
+    setPick: (id, pick) => sessionManager.setAgentPick(id, pick),
+    forgetUsage: (id) => usageReader.forget(id),
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_MODEL_OPTIONS,
+    async (): Promise<AgentModelOptionsResponse> => {
+      const codexDir = process.env['CODEX_HOME'] || joinPath(homedir(), '.codex');
+      const claudeDir = process.env['CLAUDE_CONFIG_DIR'] || joinPath(homedir(), '.claude');
+      const [codexModels, claudeOwn, codexOwn] = await Promise.all([
+        readCodexModels(codexDir),
+        readClaudeOwnDefault(claudeDir),
+        readCodexOwnDefault(codexDir),
+      ]);
+      const codexEfforts = [...new Set(codexModels.flatMap((m) => m.efforts))];
+      return {
+        'claude-code': {
+          models: [...CLAUDE_MODELS],
+          efforts: [...CLAUDE_EFFORTS],
+          own: claudeOwn,
+        },
+        codex: {
+          models: codexModels,
+          efforts: codexEfforts.length > 0 ? codexEfforts : [...CODEX_FALLBACK_EFFORTS],
+          own: codexOwn,
+        },
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_USAGE,
+    async (_e, envelope: CommandEnvelope<AgentUsagePayload>): Promise<AgentUsageResponse> => {
+      const tab = usageTabOf(envelope.payload.sessionId);
+      return { usage: tab ? await usageReader.usage(tab) : null };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_SWITCH_MODEL,
+    async (
+      _e,
+      envelope: CommandEnvelope<AgentSwitchModelPayload>,
+    ): Promise<AgentSwitchModelResponse> => {
+      const { sessionId, model, effort } = envelope.payload;
+      for (const v of [model, effort]) {
+        if (v !== undefined && (typeof v !== 'string' || (v !== '' && !isSafeModelValue(v)))) {
+          throw makeIpcError(
+            'InvalidPayload',
+            `agent switch-model: "${String(v)}" is not a model or effort name. ` +
+              'Pick a value from the menu; names hold only letters, digits and . _ - [ ].',
+          );
+        }
+      }
+      return modelSwitcher.switch(sessionId, {
+        ...(model !== undefined ? { model } : {}),
+        ...(effort !== undefined ? { effort } : {}),
+      });
+    },
+  );
+
   handleCommand(
     COMMAND_CHANNELS.AGENT_LIST_VERSIONS,
     async (
@@ -2650,6 +3021,11 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
     broadcastAppState(deps);
   });
 
+  // ADR-036: the shelf announces before it destroys, so this reaches the windows first.
+  deps.shelfManager?.on('changed', (payload: ShelfChangedPayload) => {
+    broadcastEvent<ShelfChangedPayload>(EVENT_CHANNELS.SHELF_CHANGED, payload);
+  });
+
   // Session output → 仅推 owner
   //
   // Ceteris Link 之后 owner 可能是一个远程客户端(虚拟窗口)。走
@@ -2706,6 +3082,7 @@ function buildSnapshot(deps: IpcLayerDeps, myWindowId: string): AppSnapshot {
     templates: deps.templatesManager.list(),
     defaultTemplateId: deps.templatesManager.getDefaultTemplateId(),
     settings: deps.settingsManager.get(),
+    shelf: deps.shelfManager?.list() ?? [],
     myWindowId,
   };
 }

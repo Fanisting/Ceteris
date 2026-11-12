@@ -16,9 +16,11 @@ import type { SessionRole } from './session-role';
 import type { TemplateUsageEntry } from './template-usage';
 import type { TagColors } from './path-tags';
 import type { LinkClientStatus, LinkConnectionState, LinkHostStatus } from './link-protocol';
+import type { ShelfEntry } from './shelf';
 import type {
   AppSnapshot,
   Bookmark,
+  ChoicePrompt,
   PathTree,
   SessionInfo,
   Settings,
@@ -28,6 +30,7 @@ import type {
 } from './types';
 import type { DeepPartial } from './types-helpers';
 import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
+import type { AgentUsage, ModelChoice, ModelEffort } from './agent-model';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -64,6 +67,10 @@ export const COMMAND_CHANNELS = {
   SESSION_RELEASE: 'cmd:session:release',
   SESSION_FOCUS_OWNER: 'cmd:session:focus-owner',
   SESSION_SEND_INPUT: 'cmd:session:send-input',
+  /** ADR-035:读某 session 屏幕上 agent 停着的提示(问题和选项),没有则 null */
+  SESSION_READ_CHOICE: 'cmd:session:read-choice',
+  /** ADR-035:替用户在那个提示里选一项:main 先核对提示还在,再发方向键和回车 */
+  SESSION_ANSWER_CHOICE: 'cmd:session:answer-choice',
   SESSION_RESIZE: 'cmd:session:resize',
   SESSION_GET_SCROLLBACK: 'cmd:session:get-scrollback',
   /** BETA-028:导出 scrollback 为 UTF-8 字符串,供终端工具栏"复制全部"按钮 */
@@ -84,6 +91,10 @@ export const COMMAND_CHANNELS = {
    * 粘给 agent 的 prompt。返回 RemoteSetupGuidePathsResponse。
    */
   GUIDES_REMOTE_SETUP_PATHS: 'cmd:guides:remote-setup-paths',
+  /** ADR-033:Codex 的 config.toml 里有没有 ceteris-tabs 这个 MCP 服务器;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_STATUS: 'cmd:extensions:codex-mcp-status',
+  /** ADR-033:把 ceteris-tabs 写进(或重写进)Codex 的 config.toml;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_INSTALL: 'cmd:extensions:codex-mcp-install',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**
@@ -105,6 +116,16 @@ export const COMMAND_CHANNELS = {
    * 读到目标后 dispatch select-session 自动切到该 session。
    */
   SESSION_OPEN_IN_NEW_WINDOW: 'cmd:session:open-in-new-window',
+
+  // Tab shelf (ADR-036): idle tabs put away with their resume id, see shelf.ts
+  /** Put one session in the shelf now (tab menu). Payload ShelfPutPayload. */
+  SHELF_PUT: 'cmd:shelf:put',
+  /** Open a shelved tab again in the calling window. Payload ShelfRestorePayload. */
+  SHELF_RESTORE: 'cmd:shelf:restore',
+  /** Forget one shelf entry. Payload ShelfRemovePayload. */
+  SHELF_REMOVE: 'cmd:shelf:remove',
+  /** Forget every shelf entry. */
+  SHELF_CLEAR: 'cmd:shelf:clear',
 
   // Bookmark / Path 域
   BOOKMARK_ADD: 'cmd:bookmark:add',
@@ -179,6 +200,12 @@ export const COMMAND_CHANNELS = {
   AGENT_RELOAD: 'cmd:agent:reload',
   /** 只扫 PATH 看哪些内置 agent 装了 (ADR-034),新建页据此隐藏没装的;毫秒级,不跑 --version */
   AGENT_LIST_INSTALLED: 'cmd:agent:list-installed',
+  /** ADR-038:Claude Code 和 Codex 可选的模型与 effort (Codex 读 ~/.codex/models_cache.json) */
+  AGENT_MODEL_OPTIONS: 'cmd:agent:model-options',
+  /** ADR-038:在同一个标签里重启 agent (/exit 后带新参数和恢复 id 再开),对话接着进行 */
+  AGENT_SWITCH_MODEL: 'cmd:agent:switch-model',
+  /** ADR-038:一个 agent 终端的用量 (模型、effort、上下文、5h / 周限额、明细) */
+  AGENT_USAGE: 'cmd:agent:usage',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -195,6 +222,8 @@ export const COMMAND_CHANNELS = {
   FS_RENAME: 'cmd:fs:rename',
   /** Makes an empty file in a local folder. Never replaces an existing one */
   FS_CREATE_FILE: 'cmd:fs:create-file',
+  /** Moves a local file or folder to the Recycle Bin. Never erases it */
+  FS_DELETE: 'cmd:fs:delete',
   /** 分块读取 PDF。本地文件或 SFTP 文件,Link 下数据从 Host 分块传回 */
   FS_READ_PDF: 'cmd:fs:read-pdf',
   /** 查文件大小和修改时间,PDF 自动刷新靠它轮询。安静请求,不弹登录提示 */
@@ -206,6 +235,8 @@ export const COMMAND_CHANNELS = {
 
   /** Saves an edited .txt or .json. Under Link it runs on the host, so the host's file changes */
   FS_WRITE_TEXT: 'cmd:fs:write-text',
+  /** Lint a saved code file with the user's installed linter (ADR-040). */
+  CODE_LINT: 'cmd:code:lint',
 
   // Explorer 集成域 —— 不进 settings.json,现场查 + 操作系统状态
   /** 综合查询:buildType + Win 版本 + 经典菜单 + Win11 新菜单 + 证书 + MSIX 包 */
@@ -310,6 +341,12 @@ export const EVENT_CHANNELS = {
   SESSION_EXITED: 'evt:session:exited',
   SESSION_OWNER_CHANGED: 'evt:session:owner-changed',
   SESSION_DESTROYED: 'evt:session:destroyed',
+  /**
+   * The shelf changed (ADR-036): a tab went in, came back or was forgotten. Sent to every
+   * window with the whole list; before the shelved session's evt:session:destroyed, so the
+   * window still has its SessionInfo for the animation. Payload ShelfChangedPayload.
+   */
+  SHELF_CHANGED: 'evt:shelf:changed',
 
   // Path / Bookmark / Settings
   PATH_TREE_UPDATED: 'evt:path:tree-updated',
@@ -524,6 +561,35 @@ export interface SetRolePayload {
   role: SessionRole | null;
 }
 
+// ── Tab shelf (ADR-036) ──
+
+export interface ShelfPutPayload {
+  sessionId: string;
+}
+
+export interface ShelfRestorePayload {
+  entryId: string;
+  /** Size of the terminal area in the calling window, like cmd:session:create */
+  cols: number;
+  rows: number;
+}
+
+export interface ShelfRestoreResponse {
+  session: SessionInfo;
+  /** True when the tab came back with its conversation (claude --resume / codex resume) */
+  resumed: boolean;
+}
+
+export interface ShelfRemovePayload {
+  entryId: string;
+}
+
+export interface ShelfChangedPayload {
+  entries: ShelfEntry[];
+  /** Set when a session was just put in: it is still alive when this arrives */
+  shelvedSessionId?: string;
+}
+
 export interface CloseSessionPayload {
   sessionId: string;
   /** 强制 kill (默认 false 即 SIGTERM) */
@@ -595,6 +661,55 @@ export interface SendInputPayload {
   sessionId: string;
   /** 字节流,base64 编码 */
   data: string;
+}
+
+/** cmd:session:read-choice (ADR-035) */
+export interface ReadChoicePayload {
+  sessionId: string;
+}
+
+export interface ReadChoiceResponse {
+  /** null:agent 没停在提示上,或者屏幕上的行读不出问题和选项 */
+  prompt: ChoicePrompt | null;
+}
+
+/**
+ * cmd:session:answer-choice (ADR-035). Two shapes:
+ * - { index, text? }: pick the option with that printed number. text is the answer for a
+ *   'type' option (required) or the message after a 'chat' option (optional).
+ * - { next: true }: go to the next page of a paged prompt (Tab); multi-select uses it once
+ *   the boxes are ticked.
+ */
+export type AnswerChoicePayload =
+  | { sessionId: string; index: number; text?: string }
+  | { sessionId: string; next: true };
+
+/**
+ * Why an answer was not (fully) sent:
+ * - no-prompt: the agent is no longer at a prompt
+ * - option-gone: the prompt changed and has no option with that number
+ * - not-paged: next on a prompt without pages, or on its last page
+ * - text-needed: a 'type' option with no text
+ * - pointer-stuck: the pointer did not reach the option, so nothing was confirmed
+ * - prompt-stuck: a 'chat' option was picked but the prompt stayed, so the message was not sent
+ * - busy: another answer to this tab is still being typed
+ * - session-not-found / pty-exited / pty-write-failed: as in cmd:session:send-input
+ */
+export type AnswerChoiceReason =
+  | 'no-prompt'
+  | 'option-gone'
+  | 'not-paged'
+  | 'text-needed'
+  | 'pointer-stuck'
+  | 'prompt-stuck'
+  | 'busy'
+  | 'session-not-found'
+  | 'pty-exited'
+  | 'pty-write-failed';
+
+export interface AnswerChoiceResponse {
+  sent: boolean;
+  reason?: AnswerChoiceReason;
 }
 
 /**
@@ -1043,6 +1158,57 @@ export interface AgentReloadPlanPayload {
   templateId: string;
 }
 
+/**
+ * ADR-038: choices per agent. models empty for Codex when its cache cannot be read.
+ * `own` is what the agent runs with when Ceteris adds no flag, read from its own settings
+ * (Claude Code settings.json, Codex config.toml); '' where the file does not say.
+ */
+export interface AgentModelOptionsResponse {
+  'claude-code': { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+  codex: { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+}
+
+export interface AgentSwitchModelPayload {
+  sessionId: string;
+  /** Omit to keep the current one */
+  model?: string;
+  effort?: string;
+}
+
+export interface AgentSwitchModelResponse {
+  applied: boolean;
+  /**
+   * With applied: true, whether the earlier conversation was resumed. false = no id was
+   * printed or known, so the agent started a new conversation (it had none yet, usually).
+   */
+  resumed?: boolean;
+  /**
+   * busy: mid-turn, waiting on an approval, or a switch already running;
+   * cannot-restart: SSH tab, or a template that does not keep a shell after the agent;
+   * exit-timeout: the agent did not exit after /exit, nothing else was typed;
+   * input-not-clear: the input box did not read exactly "/exit" after clearing it, so Enter
+   *   was not pressed and the typed "/exit" was erased again;
+   * not-agent / exited / session-not-found as named.
+   */
+  reason?:
+    | 'session-not-found'
+    | 'not-agent'
+    | 'exited'
+    | 'busy'
+    | 'cannot-restart'
+    | 'exit-timeout'
+    | 'input-not-clear';
+}
+
+export interface AgentUsagePayload {
+  sessionId: string;
+}
+
+export interface AgentUsageResponse {
+  /** null until the agent has written its first transcript or rollout line */
+  usage: AgentUsage | null;
+}
+
 /** 整体重载会动到什么 (ADR-037),只算本机、没退出的终端 */
 export interface AgentReloadPlan {
   /** 该 agent 模板的终端数,全部会被关掉再开回来 */
@@ -1092,6 +1258,11 @@ export interface GetAutoStartResponse {
 
 export interface ShowInExplorerPayload {
   path: string;
+  /**
+   * true: open a folder itself in the system file manager instead of selecting it in its
+   * parent. Ignored for files (main never runs a file), they are always just selected.
+   */
+  open?: boolean;
 }
 
 export interface OpenExternalPayload {
@@ -1255,7 +1426,7 @@ export interface SessionDestroyedPayload {
    * destroy,而是进入 'exited' 状态 (sessionExited 事件已涵盖),由用户
    * 主动关闭触发 'user-closed' destroy。
    */
-  reason: 'user-closed' | 'app-quit' | 'pty-exited';
+  reason: 'user-closed' | 'app-quit' | 'pty-exited' | 'shelved';
 }
 
 export interface PathTreeUpdatedPayload {

@@ -155,7 +155,10 @@ export class LinuxAdapter implements PlatformAdapter {
         // bash 系:--rcfile 指向 hook,hook 自身 source 用户 .bashrc
         if (commandToRun) {
           const cmdLine = shellJoin([commandToRun.command, ...commandToRun.args]);
-          args = ['--rcfile', hookFilePath, '-i', '-c', commandToRun.exitAfter ? cmdLine : `${cmdLine}; exec bash -i`];
+          // The bash that takes over after the command must load the hook again, or it never
+          // reports its prompt and cwd (ADR-038 waits for that report after /exit)
+          const thenShell = `exec bash ${shellJoin(['--rcfile', hookFilePath])} -i`;
+          args = ['--rcfile', hookFilePath, '-i', '-c', commandToRun.exitAfter ? cmdLine : `${cmdLine}; ${thenShell}`];
         } else {
           args = ['--rcfile', hookFilePath, '-i'];
         }
@@ -356,6 +359,12 @@ export class LinuxAdapter implements PlatformAdapter {
 
   async onAccentColorChanged(): Promise<() => void> {
     return () => {};
+  }
+
+  knownToolPaths(_tool: 'Rscript'): string[] {
+    // Distribution packages put it in /usr/bin, source builds in /usr/local/bin, and Posit's
+    // R builds in /opt/R/<version>/bin (only the "current" link is guessed here).
+    return ['/usr/bin/Rscript', '/usr/local/bin/Rscript', '/opt/R/current/bin/Rscript'];
   }
 
   getDefaultBookmarkSeeds(): DefaultBookmarkSeed[] {

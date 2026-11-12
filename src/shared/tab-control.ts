@@ -53,7 +53,8 @@ export type TabControlOp =
   | 'input'
   | 'read'
   | 'rename'
-  | 'open-file';
+  | 'open-file'
+  | 'agent-session';
 
 export const TAB_CONTROL_OPS: readonly TabControlOp[] = [
   'list',
@@ -65,7 +66,11 @@ export const TAB_CONTROL_OPS: readonly TabControlOp[] = [
   'read',
   'rename',
   'open-file',
+  'agent-session',
 ];
+
+/** Ops any live tab may call, coordinator or not and extension on or off. */
+export const TAB_CONTROL_ANY_TAB_OPS: readonly TabControlOp[] = ['open-file', 'agent-session'];
 
 /** Named keys an input request may press, and the bytes each one sends. */
 export const TAB_CONTROL_KEYS: Readonly<Record<string, string>> = {
@@ -202,6 +207,8 @@ export function isClaudePluginInstalled(registry: unknown, pluginId: string): bo
 export interface TabControlStatus {
   /** Claude Code lists ceteris-tabs@ceteris as installed in at least one scope. */
   pluginInstalled: boolean;
+  /** Claude Code's config folder exists, so Claude Code has run on this machine (ADR-041). */
+  claudeInstalled: boolean;
 }
 
 /**

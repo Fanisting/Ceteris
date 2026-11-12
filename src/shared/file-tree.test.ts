@@ -8,7 +8,9 @@ import {
   SLOW_CLICK_MAX_MS,
   SLOW_CLICK_MIN_MS,
   classifyRowClick,
+  fileViewKind,
   flattenVisibleRows,
+  isEditableTextFile,
   isValidEntryName,
   remapPath,
   resolveFileTreeRoot,
@@ -22,7 +24,28 @@ const file = (name: string, dir = 'C:\\p'): FileTreeEntry => ({
   path: `${dir}\\${name}`,
   isDirectory: false,
 });
-const folder = (name: string, dir = 'C:\\p'): FileTreeEntry => ({ ...file(name, dir), isDirectory: true });
+const folder = (name: string, dir = 'C:\\p'): FileTreeEntry => ({
+  ...file(name, dir),
+  isDirectory: true,
+});
+
+describe('isEditableTextFile', () => {
+  it.each(['query.sql', 'ETL.HIVE', 'paper.tex', 'notes.md'])(
+    'opens %s in the text editor',
+    (name) => {
+      expect(isEditableTextFile(name)).toBe(true);
+    },
+  );
+
+  it('shows SQL and HiveQL scripts as plain text, not as a rendered page', () => {
+    expect(fileViewKind('query.sql')).toBe('text');
+    expect(fileViewKind('etl.hive')).toBe('text');
+  });
+
+  it.each(['a.pdf', 'a.png', 'a.exe', 'hive', 'a.sqlite'])('does not edit %s', (name) => {
+    expect(isEditableTextFile(name)).toBe(false);
+  });
+});
 
 describe('sortEntries', () => {
   it('文件夹在前,数字按自然顺序,且不修改入参', () => {
@@ -71,15 +94,15 @@ describe('resolveFileTreeRoot', () => {
   const local = { kind: 'local' } as const;
 
   it('跟随 cd 后的 currentCwd', () => {
-    expect(
-      resolveFileTreeRoot({ currentCwd: 'C:\\p\\src', originalCwd: 'C:\\p' }, local),
-    ).toBe('C:\\p\\src');
+    expect(resolveFileTreeRoot({ currentCwd: 'C:\\p\\src', originalCwd: 'C:\\p' }, local)).toBe(
+      'C:\\p\\src',
+    );
   });
 
   it('SSH session 用上报的绝对路径', () => {
-    expect(
-      resolveFileTreeRoot({ currentCwd: '/home/x', originalCwd: '~' }, { kind: 'ssh' }),
-    ).toBe('/home/x');
+    expect(resolveFileTreeRoot({ currentCwd: '/home/x', originalCwd: '~' }, { kind: 'ssh' })).toBe(
+      '/home/x',
+    );
   });
 
   it('SSH 的 cwd 被解析成盘符路径时退回远程路径', () => {
@@ -99,7 +122,9 @@ describe('resolveFileTreeRoot', () => {
 
   it('WSL 的 cwd 被解析成错误盘符路径时退回 UNC 的 originalCwd', () => {
     const originalCwd = '\\\\wsl$\\Ubuntu\\home\\x';
-    expect(resolveFileTreeRoot({ currentCwd: 'C:\\home\\x', originalCwd }, local)).toBe(originalCwd);
+    expect(resolveFileTreeRoot({ currentCwd: 'C:\\home\\x', originalCwd }, local)).toBe(
+      originalCwd,
+    );
   });
 
   it('WSL 内切到另一个 UNC 目录时跟随', () => {

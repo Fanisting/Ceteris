@@ -1,0 +1,430 @@
+/*
+ * @file shelf.css
+ * @purpose The tab shelf (ShelfBox.tsx, ADR-036): the grey box at the left end of the tab
+ *   row, its popover, and the ghost of a tab sliding into it.
+ *
+ * @关键设计:
+ * - The box is a 28px round button like the quick launch icons (ghost-tab.css), grey
+ *   (on-surface-variant) so it reads as storage, not as an action. Hover lifts the lid.
+ * - Three motions, all under 0.6 s and all off under prefers-reduced-motion:
+ *   1. a tab going in: the ghost tab shrinks toward the left and fades (tab-shelving),
+ *      then the box bobs and its lid flips open and shut (receiving);
+ *   2. the popover grows from the box's corner (shelf-pop), rows fade in with a short stagger;
+ *   3. a row leaving slides right and collapses (leaving); the box itself shrinks away after
+ *      the last entry (exiting).
+ * - Durations are repeated as constants in ShelfBox.tsx; change both.
+ */
+
+.shelf-box {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: center;
+  align-items: center;
+  margin: 0 2px 0 6px;
+  animation: shelf-box-in var(--md-duration-medium2, 300ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes shelf-box-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  60% {
+    transform: scale(1.12);
+  }
+}
+
+.shelf-box.exiting {
+  pointer-events: none;
+  animation: shelf-box-out 220ms var(--md-easing-emphasized-accelerate, ease-in) forwards;
+}
+
+@keyframes shelf-box-out {
+  to {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+.shelf-box-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--md-on-surface-variant, #888);
+  opacity: 0.75;
+  cursor: pointer;
+  transition:
+    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    opacity var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    transform var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.shelf-box-button:hover,
+.shelf-box-button.open {
+  background-color: var(--md-state-hover, rgb(128 128 128 / 12%));
+  opacity: 1;
+}
+
+.shelf-box-button:focus-visible {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: 1px;
+}
+
+.shelf-box-icon {
+  overflow: visible;
+}
+
+.shelf-box-lid {
+  transform-origin: 4px 8.5px;
+  transition: transform var(--md-duration-short4, 200ms) var(--md-easing-emphasized, ease);
+}
+
+.shelf-box-button:hover .shelf-box-lid,
+.shelf-box-button.open .shelf-box-lid {
+  transform: rotate(-14deg);
+}
+
+/* A tab just went in: bob, and flip the lid open and shut. */
+.shelf-box-button.receiving {
+  animation: shelf-box-bob 600ms var(--md-easing-emphasized, ease) both;
+}
+
+.shelf-box-button.receiving .shelf-box-lid {
+  animation: shelf-lid-flap 600ms var(--md-easing-emphasized, ease) both;
+}
+
+@keyframes shelf-box-bob {
+  0% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(1.22) translateY(-1px);
+  }
+
+  60% {
+    transform: scale(0.94);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes shelf-lid-flap {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  30% {
+    transform: rotate(-40deg);
+  }
+
+  65% {
+    transform: rotate(4deg);
+  }
+
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.shelf-box-count {
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background-color: var(--md-surface-container-highest, rgb(128 128 128 / 20%));
+  color: var(--md-on-surface-variant, #888);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ── Popover ── */
+
+/* Rendered at the body (the tab bar clips overflow); top / left come from ShelfBox.tsx. */
+.shelf-pop {
+  position: fixed;
+  z-index: 1000;
+  width: 300px;
+  max-height: min(420px, 70vh);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: var(--md-shape-md, 12px);
+  background-color: var(--md-surface-container-high, var(--color-bg-secondary, #222));
+  color: var(--color-text-primary, #eee);
+  box-shadow: var(--md-elevation-2, 0 2px 8px rgb(0 0 0 / 30%));
+  transform-origin: top left;
+  animation: shelf-pop-in var(--md-duration-short4, 200ms)
+    var(--md-easing-emphasized-decelerate, ease-out) backwards;
+}
+
+@keyframes shelf-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(-4px);
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.shelf-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px 10px;
+}
+
+.shelf-pop-title {
+  color: var(--md-on-surface-variant, #aaa);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.shelf-pop-clear {
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--md-shape-sm, 8px);
+  background: none;
+  color: var(--md-primary-text, var(--md-primary, #f0f));
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.shelf-pop-clear:hover:not(:disabled) {
+  background-color: var(--md-state-hover, rgb(128 128 128 / 12%));
+}
+
+.shelf-pop-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shelf-list {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.shelf-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  max-height: 48px;
+  overflow: hidden;
+  animation: shelf-row-in var(--md-duration-short4, 200ms)
+    var(--md-easing-standard-decelerate, ease-out) backwards;
+}
+
+@keyframes shelf-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+
+.shelf-row.leaving {
+  pointer-events: none;
+  animation: shelf-row-out 180ms var(--md-easing-emphasized-accelerate, ease-in) forwards;
+}
+
+@keyframes shelf-row-out {
+  40% {
+    opacity: 0;
+    transform: translateX(14px);
+    max-height: 48px;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(14px);
+    max-height: 0;
+  }
+}
+
+.shelf-row-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--md-shape-sm, 8px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.shelf-row-main:hover:not(:disabled),
+.shelf-row-main:focus-visible {
+  background-color: var(--md-state-hover, rgb(128 128 128 / 12%));
+}
+
+.shelf-row-main:focus-visible {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: -2px;
+}
+
+.shelf-row-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--md-on-surface-variant, #aaa);
+}
+
+.shelf-row-text {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.shelf-row-name {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--md-on-surface-variant, #aaa);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.shelf-row-folder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shelf-row-dot {
+  opacity: 0.6;
+}
+
+.shelf-row-resume {
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background-color: var(--md-secondary-container, rgb(128 128 128 / 20%));
+  color: var(--md-on-secondary-container, inherit);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.shelf-row-forget {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 26px;
+  margin: 4px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-shape-sm, 8px);
+  background: none;
+  color: var(--md-on-surface-variant, #aaa);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--md-duration-short, 100ms) var(--md-easing-standard, ease),
+    background-color var(--md-duration-short, 100ms) var(--md-easing-standard, ease);
+}
+
+.shelf-row:hover .shelf-row-forget,
+.shelf-row-forget:focus-visible {
+  opacity: 1;
+}
+
+.shelf-row-forget:hover:not(:disabled) {
+  background-color: var(--md-state-hover, rgb(128 128 128 / 12%));
+  color: var(--md-error-text, var(--color-text-primary, #eee));
+}
+
+/* ── A tab sliding into the box ── */
+
+.tab-list .tab.tab-shelving {
+  flex: 0 1 auto;
+  max-width: 180px;
+  opacity: 0.9;
+  pointer-events: none;
+  transform-origin: left center;
+  animation: shelf-tab-in 420ms var(--md-easing-emphasized-accelerate, ease-in) forwards;
+}
+
+.tab-list .tab.tab-shelving::after {
+  content: none;
+}
+
+@keyframes shelf-tab-in {
+  0% {
+    opacity: 0.9;
+    transform: translateX(0) scale(1);
+  }
+
+  55% {
+    opacity: 0.6;
+    max-width: 180px;
+    transform: translateX(-24px) scale(0.78, 0.72);
+  }
+
+  100% {
+    opacity: 0;
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    transform: translateX(-60px) scale(0.3, 0.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf-box,
+  .shelf-box.exiting,
+  .shelf-box-button.receiving,
+  .shelf-box-button.receiving .shelf-box-lid,
+  .shelf-pop,
+  .shelf-row,
+  .shelf-row.leaving,
+  .tab-list .tab.tab-shelving {
+    animation: none;
+  }
+
+  .shelf-box-lid {
+    transition: none;
+  }
+
+  .shelf-box.exiting,
+  .tab-list .tab.tab-shelving {
+    display: none;
+  }
+}

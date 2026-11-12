@@ -15,6 +15,7 @@
  * - 不要在这里做真实文件操作(那是 src/main/file-tree.ts 的职责)
  */
 import type { PathNode, SessionInfo } from './types';
+import { EDITABLE_TEXT_EXTENSIONS } from './code-files';
 
 /** 单个目录最多返回的条目数。超过时截断,避免超大目录把 renderer 卡死。 */
 export const FILE_TREE_MAX_ENTRIES = 5000;
@@ -153,17 +154,29 @@ export interface CreateFilePayload {
 /** Same shape as a rename: the new file's path, or why it was not made. */
 export type CreateFileResponse = RenameEntryResponse;
 
+export interface DeleteEntryPayload {
+  /** Local absolute path main returned in a listing. Moved to the Recycle Bin, never erased */
+  path: string;
+}
+
+export type DeleteEntryResponse = { ok: true } | { ok: false; reason: FileTreeFailure };
+
 const entryCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export type FileViewKind = 'pdf' | 'image' | 'markdown' | 'text';
 
 const VIEW_MIME_TYPES: Record<string, { kind: FileViewKind; mime: string }> = {
+  // Every type the text editor opens (code-files.ts, ADR-040). The rows below override it.
+  ...Object.fromEntries(
+    EDITABLE_TEXT_EXTENSIONS.map((ext) => [ext, { kind: 'text' as const, mime: 'text/plain' }]),
+  ),
   pdf: { kind: 'pdf', mime: 'application/pdf' },
   md: { kind: 'markdown', mime: 'text/markdown' },
   markdown: { kind: 'markdown', mime: 'text/markdown' },
-  txt: { kind: 'text', mime: 'text/plain' },
   json: { kind: 'text', mime: 'application/json' },
   tex: { kind: 'text', mime: 'text/x-tex' },
+  sql: { kind: 'text', mime: 'application/sql' },
+  hive: { kind: 'text', mime: 'application/sql' },
   png: { kind: 'image', mime: 'image/png' },
   jpg: { kind: 'image', mime: 'image/jpeg' },
   jpeg: { kind: 'image', mime: 'image/jpeg' },
@@ -174,8 +187,11 @@ const VIEW_MIME_TYPES: Record<string, { kind: FileViewKind; mime: string }> = {
 };
 
 function viewEntry(name: string): { kind: FileViewKind; mime: string } | null {
-  const ext = /\.([a-z]+)$/i.exec(name)?.[1]?.toLowerCase();
-  return (ext && VIEW_MIME_TYPES[ext]) || null;
+  // Digits too: .f90 and .ps1 are extensions.
+  const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
+  // hasOwnProperty: a file named x.constructor must not find Object.prototype.constructor.
+  if (!ext || !Object.prototype.hasOwnProperty.call(VIEW_MIME_TYPES, ext)) return null;
+  return VIEW_MIME_TYPES[ext] ?? null;
 }
 
 /** How the file tree shows a clicked file. Null means clicking only selects it. */
@@ -184,9 +200,9 @@ export function fileViewKind(name: string): FileViewKind | null {
 }
 
 /**
- * Whether the file can be read in pages and saved by the text editor: .txt, .json, .tex and
- * Markdown (ADR-016, ADR-028). Markdown still opens as a rendered page and switches to the
- * editor on request.
+ * Whether the file can be read in pages and saved by the text editor: .txt, .json, .tex,
+ * Markdown and the code and data files of code-files.ts (ADR-016, ADR-028, ADR-040). Markdown
+ * still opens as a rendered page and switches to the editor on request.
  */
 export function isEditableTextFile(name: string): boolean {
   const kind = fileViewKind(name);

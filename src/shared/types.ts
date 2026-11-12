@@ -11,9 +11,12 @@
  *
  * @对应文档章节: 软件定义书.md 第 8 章 (状态机)、第 11 章 (数据模型)
  */
+import type { FolderAgentDefault } from './agent-model';
 import type { SessionRole } from './session-role';
+import type { ShelfEntry } from './shelf';
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
+import type { ColonCommand } from './colon-commands';
 
 import type { BeamerThemeId } from './beamer-themes';
 import type { CustomThemeId } from './custom-themes';
@@ -99,6 +102,68 @@ export type AgentPhase = 'working' | 'blocked' | 'done';
  * - waiting:the turn is on but nothing is generated, such as hooks or the API starting up
  */
 export type AgentWork = 'generating' | 'tool' | 'waiting';
+
+/**
+ * What answering an option takes (ADR-035):
+ * - none: pick it (arrow keys and Enter; in a multi-select list Enter ticks or unticks it)
+ * - type: its row turns into a one-line text field when the pointer is on it ("Type
+ *   something."); the typed text replaces the label and Enter sends it
+ * - chat: picking it leaves the prompt ("Chat about this", "No, and tell Claude what to
+ *   do"), and the user's message then goes to the agent's normal input
+ */
+export type ChoiceInput = 'none' | 'type' | 'chat';
+
+/** One row of a prompt an agent stopped at (ADR-035): an approval box or an AskUserQuestion. */
+export interface ChoiceOption {
+  /** The number the agent printed before the label, 1-based. */
+  index: number;
+  /** The label without the agent's marks (the multi-select box, the ✔ of an earlier answer). */
+  label: string;
+  /**
+   * Where the arrow keys stop on this row, 0-based. Not always index - 1: multi-select lists
+   * have an unnumbered Submit row before "Chat about this".
+   */
+  pos: number;
+  /**
+   * The indented rows under the option: AskUserQuestion's option description, or the rest
+   * of a long approval option that wrapped. Empty when there are none.
+   */
+  description: string;
+  /** True on the row the agent's pointer sits on. */
+  pointed: boolean;
+  input: ChoiceInput;
+  /** Multi-select: whether its box is ticked. Null in a single-select list. */
+  checked: boolean | null;
+  /** A paged prompt the user stepped back into: this was the answer given before. */
+  chosen: boolean;
+}
+
+/** One page of a paged AskUserQuestion, from its tab strip. */
+export interface ChoiceStep {
+  label: string;
+  /** Answered already (☒ on the strip). */
+  done: boolean;
+}
+
+/** A prompt read from an agent's screen (ADR-035). */
+export interface ChoicePrompt {
+  /** The question line above the options, box characters stripped; empty when none reads. */
+  question: string;
+  options: ChoiceOption[];
+  /** The arrow-key position the pointer is on: an option's pos, or multi-select's Submit row. */
+  pointer: number;
+  /** The options have boxes to tick; Enter toggles instead of answering. */
+  multiSelect: boolean;
+  /**
+   * The pages of a paged AskUserQuestion (several questions, or a multi-select one), without
+   * the final Submit page. Empty for a one-page prompt.
+   */
+  steps: ChoiceStep[];
+  /** The final page: the answers so far, then "Submit answers" / "Cancel". */
+  reviewing: boolean;
+  /** That page's lines ("● Which colour?", "→ Red", "⚠ You have not answered all questions"). */
+  review: string[];
+}
 
 /**
  * 应用整体生命周期状态 (软件定义书 8.1 节)。
@@ -295,6 +360,14 @@ export interface SessionInfo {
   exitedAt?: number;
   /** 创建时间 (Unix ms) */
   createdAt: number;
+  /**
+   * ADR-038, Claude Code and Codex tabs only: the model and effort Ceteris started the agent
+   * with or last switched it to. '' or absent = the agent's own default, unknown to Ceteris.
+   */
+  agentModel?: string;
+  agentEffort?: string;
+  /** ADR-038: the `--session-id` given to Claude Code at launch, so its transcript is found */
+  agentLaunchId?: string;
 }
 
 /**
@@ -532,6 +605,19 @@ export interface Settings {
      * 该 agent 有终端开着时等它关掉再升级。默认 false。需要 autoCheckAgents 开着。
      */
     autoUpdateAgents: boolean;
+    /**
+     * ADR-036:put a tab in the shelf after this many hours without output, key presses or an
+     * exit. 0 (default) never shelves on its own; the tab menu can still shelve by hand.
+     * Choices in Settings are SHELVE_AFTER_HOURS_CHOICES (shelf.ts). Tabs with a role and the
+     * tab a window is showing are never shelved.
+     */
+    shelveIdleAfterHours: number;
+    /**
+     * ADR-039:reopen the tabs that were open when Ceteris last stopped (quit, update, crash).
+     * Shells and built-in agents start again, Claude Code and Codex in their own conversation;
+     * custom commands, SSH and the Admin Shell wait in the shelf. Default true.
+     */
+    restoreTabsOnLaunch: boolean;
   };
 
   systemIntegration: {
@@ -622,6 +708,20 @@ export interface Settings {
      * on the next launch, and again the first time they tick Coordinator until they close it.
      */
     tabControlGuideSeen: boolean;
+    /**
+     * Whether the one-time agent extension setup card (ADR-041) was answered with Set up or
+     * Later. Default false, and older settings files get false too, so everyone sees it once.
+     */
+    setupSeen: boolean;
+    /**
+     * `name:` 命令 (ADR-020):在 Claude Code / Codex 终端里,单词开头敲已保存的名称
+     * 加冒号,Ceteris 把它换成对应命令(默认 `/name`),不按 Enter。规则见
+     * shared/colon-commands.ts。
+     */
+    colonCommands: {
+      enabled: boolean;
+      commands: ColonCommand[];
+    };
   };
 
   /**
@@ -698,6 +798,14 @@ export interface Settings {
    * 机器上已经在跑的 AI agent 标签页。两者互不替代。
    */
   link: LinkSettings;
+
+  /**
+   * ADR-038: per folder, the model and effort new Claude Code and Codex tabs start with.
+   * A list (not a map) so an update replaces it whole; see @shared/agent-model.
+   */
+  agents: {
+    folderDefaults: FolderAgentDefault[];
+  };
 }
 
 /**
@@ -874,6 +982,8 @@ export interface AppSnapshot {
   templates: Template[];
   defaultTemplateId: string;
   settings: Settings;
+  /** Shelved tabs, newest first (ADR-036). Empty from a main without a shelf. */
+  shelf: ShelfEntry[];
   /** 回显发起方的 windowId,renderer 用来校验 */
   myWindowId: string;
 }

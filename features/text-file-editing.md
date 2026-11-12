@@ -8,4 +8,6 @@ If another program changes the file while you edit, Ceteris does not overwrite i
 
 This is a light editor. It is not meant to replace your code editor.
 
+Code and data files (R, Python, SQL and more) open in the same editor with colours and lint; see [Code and data files](code-files.md).
+
 Related: [ADR-016 and ADR-028](../docs/软件定义书.md).

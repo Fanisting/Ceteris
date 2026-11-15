@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **远程 agent 标签先在本机打字。** 经 Ceteris Link 打开的 Claude Code、Codex 标签里,打的字留在本机,画在 agent 输入框的位置,后面一个“按 Enter 发送”的小标记;按 Enter 整段一次发给 Host。打字不再等网络,也不等忙着的 agent 重画。Shift+Enter 换行;开头的 `/`、`!`、`#` 和 `@` 照旧打开 agent 的菜单;方向键和 Tab 先把字发出去。断线重连后字还在。shell 标签和本机窗口不变。
+
 ## [0.4.3] (2026-11-12)
 
 ### 新增

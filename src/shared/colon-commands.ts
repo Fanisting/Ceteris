@@ -103,7 +103,8 @@ export function findColonCommand(
 
 const DEL = '\x7f';
 const MAX_LINE = 256;
-const TRIGGERS = new Set([':', '：']); // ASCII colon, and the full-width one a Chinese IME types
+/** ASCII colon, and the full-width one a Chinese IME types. */
+export const COLON_TRIGGERS: ReadonlySet<string> = new Set([':', '：']);
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
 // The trailing word on the line, and what comes before it (nothing or whitespace).
@@ -117,7 +118,7 @@ const TRAILING_NAME_RE = /(^|\s)([A-Za-z0-9][A-Za-z0-9_.-]*)$/;
  * and have no terminator.
  */
 /* eslint-disable no-control-regex -- these patterns match escape sequences on purpose */
-function isTerminalReply(data: string): boolean {
+export function isTerminalReply(data: string): boolean {
   return (
     /^\x1b\[[?>]/.test(data) ||
     data === '\x1b[I' ||
@@ -129,6 +130,28 @@ function isTerminalReply(data: string): boolean {
   );
 }
 /* eslint-enable no-control-regex */
+
+/**
+ * The saved name a colon typed now would expand, or null.
+ *
+ * @param line the input line up to the cursor
+ * @param atStart true when `line` begins at the start of the input, so a name with nothing
+ *        before it may fire; otherwise the name may be the tail of text the caller never saw
+ * @param resolve returns the command for a name, or null to let the colon through
+ * @returns the name found at the end of `line` and the command that replaces it
+ */
+export function matchTrailingName(
+  line: string,
+  atStart: boolean,
+  resolve: (name: string) => string | null,
+): { name: string; command: string } | null {
+  const match = TRAILING_NAME_RE.exec(line);
+  if (!match) return null;
+  const name = match[2]!;
+  if (match[1] === '' && !atStart) return null;
+  const command = resolve(name);
+  return command === null ? null : { name, command };
+}
 
 /**
  * Follows the current input line from the keystrokes Ceteris sends, and turns `name:` into
@@ -150,7 +173,7 @@ export class ColonTracker {
    * @returns `data` unchanged, or DELs that erase the name followed by the command text
    */
   feed(data: string, resolve: (name: string) => string | null): string {
-    if (TRIGGERS.has(data)) {
+    if (COLON_TRIGGERS.has(data)) {
       const expanded = this.expand(resolve);
       if (expanded !== null) return expanded;
       this.append(data);
@@ -184,15 +207,11 @@ export class ColonTracker {
   }
 
   private expand(resolve: (name: string) => string | null): string | null {
-    const match = TRAILING_NAME_RE.exec(this.line);
-    if (!match) return null;
-    const name = match[2]!;
-    if (match[1] === '' && !this.atStart) return null; // the name may be the tail of unseen text
-    const command = resolve(name);
-    if (command === null) return null;
-    this.line = this.line.slice(0, -name.length) + command;
+    const hit = matchTrailingName(this.line, this.atStart, resolve);
+    if (!hit) return null;
+    this.line = this.line.slice(0, -hit.name.length) + hit.command;
     this.trim();
-    return DEL.repeat(name.length) + command;
+    return DEL.repeat(hit.name.length) + hit.command;
   }
 
   private appendText(text: string): void {

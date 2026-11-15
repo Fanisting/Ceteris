@@ -129,6 +129,13 @@ import { activateInlineImages, reportTerminalLook } from '../inline-images';
 import { activateTerminalMath } from '../terminal-math-overlay';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
+import { attachTypeAheadView, type TypeAheadView } from '../type-ahead-view';
+import {
+  TYPE_AHEAD_SUBMIT_DELAY_MS,
+  TypeAhead,
+  agentPromptReady,
+  type TypeAheadWrite,
+} from '@shared/type-ahead';
 import { detectAgent } from '@shared/next-prompt';
 import { ColonTracker, findColonCommand } from '@shared/colon-commands';
 import type {
@@ -857,6 +864,28 @@ const SUGGEST_SCREEN_LINES = 60;
 /** Screen lines read to tell whether Claude Code or Codex owns the input (ADR-020). */
 const COLON_SCREEN_LINES = 40;
 
+/**
+ * Type ahead text survives the reload a Link reconnect does (ceteris-link-protocol.md 6.1),
+ * so a prompt typed while the link was down is still there afterwards. sessionStorage is per
+ * window and outlives a reload; a closed window takes it along, as it should.
+ */
+const TYPE_AHEAD_STORAGE_PREFIX = 'ceteris:type-ahead:';
+function loadTypeAhead(sessionId: string): string {
+  try {
+    return sessionStorage.getItem(TYPE_AHEAD_STORAGE_PREFIX + sessionId) ?? '';
+  } catch {
+    return '';
+  }
+}
+function saveTypeAhead(sessionId: string, text: string): void {
+  try {
+    if (text) sessionStorage.setItem(TYPE_AHEAD_STORAGE_PREFIX + sessionId, text);
+    else sessionStorage.removeItem(TYPE_AHEAD_STORAGE_PREFIX + sessionId);
+  } catch {
+    // Storage blocked: the text still lives in memory until a reload.
+  }
+}
+
 interface TerminalViewProps {
   /**
    * 必须满足 session.ownerWindowId === state.myWindowId — 父组件 MainPane 通过
@@ -997,6 +1026,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   toastRef.current = toast;
   // 防 toast 刷屏:多次 sendInput 失败短时间内只弹一次。
   const lastInputRejectToastAtRef = useRef(0);
+  // Type ahead (ADR-047) entry points for paste, drop, the next prompt suggestion and
+  // Shift+Enter; null unless this is a remote window. take and newline return false when the
+  // text is not held; send writes through the same queue as typed keys, so a paste cannot
+  // overtake a prompt that is still on its way.
+  const typeAheadRef = useRef<{
+    take(text: string): boolean;
+    send(data: string): void;
+    newline(): boolean;
+  } | null>(null);
 
   // ── 操作:复制 / 粘贴 / 清屏 / 搜索 ──
   //
@@ -1112,9 +1150,17 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         }
       }
 
+      // Type ahead (ADR-047): the paste joins the held prompt, in order with what was typed.
+      const typeAheadEntry = typeAheadRef.current;
+      if (typeAheadEntry?.take(text)) return;
+
       // bracketed paste 包裹(可通过 settings.behavior.bracketedPaste 关闭,
       // cmd.exe 等不支持 readline 的 shell 用户应当关闭以免看到字面 marker)
       const payload = bracketedPaste ? `\x1b[200~${text}\x1b[201~` : text;
+      if (typeAheadEntry) {
+        typeAheadEntry.send(payload);
+        return;
+      }
       const base64 = encodeStringToBase64(payload);
       await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
         sessionId: session.id,
@@ -1183,6 +1229,13 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const acceptSuggestion = (): void => {
     if (!suggestion) return;
     // Typed, not sent: the user reads it and presses Enter themselves.
+    const typeAheadEntry = typeAheadRef.current;
+    if (typeAheadEntry) {
+      if (!typeAheadEntry.take(suggestion)) typeAheadEntry.send(suggestion);
+      setSuggestion(null);
+      focusTerminal(termRef, searchVisibleRef);
+      return;
+    }
     void window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
       sessionId: session.id,
       data: encodeStringToBase64(suggestion),
@@ -1353,9 +1406,29 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     //   - paste 类 action 的真正动作在 capture-phase 'paste' listener
     //     (见 term.open 之后的 PASTE-1 注册块),本 handler 只负责 consume
     //     keyboard event
+    let shiftEnterTaken = false;
     term.attachCustomKeyEventHandler((ev) => {
+      // Type ahead (ADR-047): Shift+Enter adds a line to the held prompt instead of sending.
+      // Enter also fires a keypress after the keydown; xterm sends '\r' from it when the
+      // keydown was refused here, so that keypress is refused too.
+      if (ev.type === 'keypress' && ev.key === 'Enter' && shiftEnterTaken) {
+        shiftEnterTaken = false;
+        return false;
+      }
       if (ev.type !== 'keydown') return true;
+      shiftEnterTaken = false;
       if (ev.isComposing || ev.keyCode === 229) return true;
+      if (
+        ev.key === 'Enter' &&
+        ev.shiftKey &&
+        !ev.ctrlKey &&
+        !ev.altKey &&
+        !ev.metaKey &&
+        typeAheadRef.current?.newline()
+      ) {
+        shiftEnterTaken = true;
+        return false;
+      }
       const binding = matchKeybinding(ev, {
         searchVisible: searchVisibleRef.current,
       });
@@ -1697,9 +1770,66 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         undefined,
       )
       .then((link) => {
-        if (link && !disposed) echo = attachLocalEcho(term);
+        if (!link || disposed) return;
+        echo = attachLocalEcho(term);
+        typeAhead = new TypeAhead(loadTypeAhead(session.id));
+        typeAheadView = attachTypeAheadView(
+          term,
+          tx('按 Enter 发送', 'sends on Enter'),
+          () => !typeAhead!.isLive && promptReady(),
+        );
+        showTypeAhead();
+        typeAheadRef.current = {
+          take(text) {
+            if (!typeAheadTakes() || !typeAhead!.insert(text)) return false;
+            setSuggestion(null);
+            showTypeAhead();
+            return true;
+          },
+          send: sendQueued,
+          newline() {
+            if (!typeAheadTakes() || typeAhead!.isLive) return false;
+            routeTypeAhead(typeAhead!.feed('\n'));
+            return true;
+          },
+        };
       })
       .catch(() => {});
+
+    // Type ahead (ADR-047), remote agent tabs only: the prompt stays here until Enter sends
+    // it in one message, so typing never waits on the link or on a busy agent's redraw.
+    let typeAhead: TypeAhead | null = null;
+    let typeAheadView: TypeAheadView | null = null;
+    /**
+     * Claude Code or Codex waits at its own input box: its footer is on or below the input
+     * cursor row and no approval or choice prompt is open. Read on every key, because an
+     * approval can replace the input box between two keys and its 1 must not be held.
+     */
+    const promptReady = (): boolean => {
+      const buffer = term.buffer.active;
+      const at = typeAheadView?.inputCell();
+      if (!at) return false;
+      const fromInput: string[] = [];
+      for (let y = at.y; y < term.rows; y++) {
+        fromInput.push(buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? '');
+      }
+      const screen: string[] = [];
+      for (let y = Math.max(0, buffer.length - COLON_SCREEN_LINES); y < buffer.length; y++) {
+        screen.push(buffer.getLine(y)?.translateToString(true) ?? '');
+      }
+      return agentPromptReady(fromInput.join('\n'), screen.join('\n'));
+    };
+    /**
+     * True when this key belongs to the type ahead: a live message runs or the agent's input
+     * box is showing. Held text that the screen no longer fits stays held, hidden, while keys
+     * go straight to whatever covers the input box.
+     */
+    const typeAheadTakes = (): boolean => typeAhead !== null && (typeAhead.isLive || promptReady());
+    const showTypeAhead = (): void => {
+      if (!typeAhead) return;
+      saveTypeAhead(session.id, typeAhead.text);
+      typeAheadView?.show(typeAhead.text);
+    };
 
     const cleanupOutput = window.api.on<SessionOutputPayload>(
       EVENT_CHANNELS.SESSION_OUTPUT,
@@ -1963,11 +2093,25 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         });
         return;
       }
+      if (typeAheadTakes()) {
+        setSuggestion(null);
+        routeTypeAhead(typeAhead!.feed(data, resolveColonCommand));
+        return;
+      }
+      sendQueued(data);
+    });
+
+    /**
+     * Sends one chunk the user typed: `name:` expansion, local echo, the write itself, and a
+     * toast when the Host refuses it.
+     * @returns true once the Host accepted the write; false when refused or the link failed
+     */
+    const sendInput = (data: string): Promise<boolean> => {
       const toSend = colonTracker.feed(data, resolveColonCommand);
       const base64 = encodeStringToBase64(toSend);
       setSuggestion(null);
       const echoId = echo?.noteInput(toSend) ?? null;
-      void window.api
+      return window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
           COMMAND_CHANNELS.SESSION_SEND_INPUT,
           { sessionId: session.id, data: base64 },
@@ -1975,14 +2119,14 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         .then((res) => {
           if (res.accepted) {
             if (echoId !== null) echo?.ack(echoId);
-            return;
+            return true;
           }
           echo?.reset();
           // Removing a focused terminal fires a blur, and its focus report reaches a
           // session that was just closed. That is not input the user lost.
-          if (disposed) return;
+          if (disposed) return false;
           const now = Date.now();
-          if (now - lastInputRejectToastAtRef.current < 5000) return;
+          if (now - lastInputRejectToastAtRef.current < 5000) return false;
           lastInputRejectToastAtRef.current = now;
           const msg =
             res.reason === 'pty-exited'
@@ -1995,12 +2139,68 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
                     ? 'PTY 写入失败,终端可能需要重启'
                     : '输入未送达';
           toastRef.current.push({ kind: 'warn', message: msg });
+          return false;
         })
         .catch((err) => {
           echo?.reset();
           console.error('[TerminalView] send-input failed', err);
+          return false;
         });
-    });
+    };
+
+    // While a type ahead submit is on its way (text, pause, Enter), later writes wait behind
+    // it, so a key pressed in the pause cannot land between the text and its Enter.
+    let submitChain: Promise<void> = Promise.resolve();
+    let submitsInFlight = 0;
+    const sendQueued = (data: string): void => {
+      if (submitsInFlight === 0) {
+        void sendInput(data);
+        return;
+      }
+      // Not awaited: queued keys go out back to back once the submit is through, before any
+      // key typed after them.
+      submitChain = submitChain.then(() => {
+        void sendInput(data);
+      });
+    };
+
+    /** Multi-line text goes as a paste when the program asked for that, so a newline cannot submit. */
+    const asTyped = (text: string): string =>
+      /\n/.test(text) && term.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text;
+
+    const routeTypeAhead = (writes: TypeAheadWrite[]): void => {
+      for (const w of writes) {
+        if (w.kind === 'key') sendQueued(w.data);
+        else if (w.kind === 'text') sendQueued(asTyped(w.text));
+        else submitTypeAhead(w.text);
+      }
+      showTypeAhead();
+    };
+
+    const submitTypeAhead = (text: string): void => {
+      submitsInFlight++;
+      submitChain = submitChain
+        .then(async () => {
+          if (!(await sendInput(asTyped(text)))) {
+            // Link down or the Host refused: keep the words, the user presses Enter again.
+            typeAhead?.restore(text);
+            showTypeAhead();
+            if (!disposed) {
+              toastRef.current.push({
+                kind: 'warn',
+                message: tx('未发送,输入的文字已保留', 'Not sent. Your text is kept.'),
+              });
+            }
+            return;
+          }
+          await new Promise((r) => setTimeout(r, TYPE_AHEAD_SUBMIT_DELAY_MS));
+          // Sent even if the tab unmounted meanwhile: the text is already in the agent's input.
+          await sendInput('\r');
+        })
+        .finally(() => {
+          submitsInFlight--;
+        });
+    };
 
     return () => {
       disposed = true;
@@ -2008,6 +2208,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       resizeObserver.disconnect();
       cleanupMaxState();
       echo?.dispose();
+      typeAheadView?.dispose();
+      typeAheadRef.current = null;
       cleanupOutput();
       detachImeWorkaround?.();
       detachImePositionLock?.();
@@ -2253,6 +2455,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         // Windows 路径不允许包含 ",所以只需对含空白的路径加双引号即可。
         .map((p) => (/\s/.test(p) ? `"${p}"` : p))
         .join(' ');
+      const typeAheadEntry = typeAheadRef.current;
+      if (typeAheadEntry) {
+        if (!typeAheadEntry.take(quoted)) typeAheadEntry.send(quoted);
+        focusTerminal(termRef, searchVisibleRef);
+        return;
+      }
       const base64 = encodeStringToBase64(quoted);
       window.api
         .invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {

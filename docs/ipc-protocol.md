@@ -227,6 +227,8 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:release` | 释放本窗口对某 session 的 ownership |
 | `cmd:session:focus-owner` | 聚焦某 session 的 owner 窗口 |
 | `cmd:session:send-input` | 向 session 发送键盘输入 |
+| `cmd:session:read-choice` | **(ADR-035)** 读 agent 停着的提示:问题和编号选项 |
+| `cmd:session:answer-choice` | **(ADR-035)** 替用户回答那个提示:选项、打字回答、留言、翻页 |
 | `cmd:session:resize` | 通知 session 终端尺寸变化 |
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
 | `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
@@ -644,6 +646,80 @@ interface FocusSessionOwnerResponse {
 **Side Effects**:
 - 若 session 有 owner → 等价于 `cmd:window:focus`
 - 若无 owner → 不做事,response 中 focused=false(Renderer 自行决定是否 claim)
+
+---
+
+#### `cmd:session:read-choice`
+**(ADR-035)** 读某 session 屏幕末尾 agent 停着的提示。toast 里的"选项"按钮展开时调用,回答后面板每 200ms 再读一次,直到屏幕变了(下一页、勾上的框、或提示没了)。
+
+```typescript
+// Payload
+interface ReadChoicePayload {
+  sessionId: string;
+}
+// Response
+interface ReadChoiceResponse {
+  prompt: ChoicePrompt | null;   // null:agent 不在 blocked,或屏幕上的行读不出提示
+}
+interface ChoicePrompt {
+  question: string;              // 选项上面那一行,去掉框线;读不到就是空串
+  options: ChoiceOption[];
+  pointer: number;               // 指针所在的方向键停靠位(选项的 pos,或多选列表的 Submit 行)
+  multiSelect: boolean;          // 选项带 [ ] / [✔],回车是勾选而不是作答
+  steps: Array<{ label: string; done: boolean }>;  // 分页提问的页签,不含最后的提交页;单页为空
+  reviewing: boolean;            // 提交页:"Ready to submit your answers?"
+  review: string[];              // 提交页上已选的答案行
+}
+interface ChoiceOption {
+  index: number;                 // 选项前印的数字,从 1 起
+  label: string;                 // 去掉多选框和"已选"✔ 的文字
+  description: string;           // 选项下面缩进的行:说明,或折行的长选项
+  pos: number;                   // 方向键停靠位;多选列表里 Submit 行也占一位,所以不总是 index-1
+  pointed: boolean;
+  input: 'none' | 'type' | 'chat';  // 直接选 / 打字回答(Type something)/ 离开提示后留言(Chat about this)
+  checked: boolean | null;       // 多选的勾;单选为 null
+  chosen: boolean;               // 分页提问退回某页时,先前选的那项
+}
+```
+
+**Errors**:无。session 不存在也返回 `prompt: null`。
+
+---
+
+#### `cmd:session:answer-choice`
+**(ADR-035)** 替用户回答提示。main 先重读屏幕核对提示还在,再分段输入,每段之后等屏幕显示到位才发下一段,过期的面板不会把按键敲进 agent 之后在做的事。
+
+```typescript
+// Payload:两种
+type AnswerChoicePayload =
+  | { sessionId: string; index: number; text?: string }  // 选一项;type 必须带 text,chat 可带留言
+  | { sessionId: string; next: true };                   // 分页提问翻到下一页(Tab),多选勾完后用
+// Response
+interface AnswerChoiceResponse {
+  sent: boolean;
+  reason?:
+    | 'no-prompt' | 'option-gone' | 'not-paged' | 'text-needed'
+    | 'pointer-stuck'   // 指针没到目标行,什么都没确认
+    | 'prompt-stuck'    // chat 选项选了但提示没离开,留言没发
+    | 'busy'            // 这个标签上一个回答还在输入
+    | 'session-not-found' | 'pty-exited' | 'pty-write-failed';
+}
+```
+
+各种 input 的输入顺序(按 2026-11-10 录下的 Claude Code 2.1.319 到 2.1.322 屏幕):
+
+| input | 输入 |
+|---|---|
+| none | 方向键 → 等指针到位 → 回车(多选列表里回车是勾 / 取消勾) |
+| type | 方向键 → 等到位 → 退格清掉先前打的字,打入一行文字 → 等文字显示 → 回车;多选列表不按回车(打字就已勾上,回车会取消) |
+| chat | 方向键 → 等到位 → 回车 → 等提示离开屏幕 → 留言(多行且终端开了 bracketed paste 就用它包起来)→ 回车 |
+| next | Tab |
+
+**Errors**:payload 既没有整数 index 也没有 `next: true` 时抛 `InvalidPayload`;其余都走 `reason`。
+
+**Side Effects**:
+- 同 `cmd:session:send-input`:写 PTY,记 lastInputAt / lastEnterAt
+- 日志 `answerChoice sid=… option N "label" input=… from pos A to B chars=…`(不记打的内容)
 
 ---
 
@@ -1559,6 +1635,50 @@ interface LintProblem {
 
 **Side Effects**:起一个子进程。ruff 带 `--no-fix --no-cache`;sqlfluff 从 stdin 读文本。
 
+### 5.13 模型、effort 与用量 (ADR-038)
+
+只对 Claude Code (`claude-code`) 和 Codex (`codex`) 模板的标签。文件夹默认值不走新命令:renderer 用 `cmd:settings:update` 整体替换 `agents.folderDefaults`(`{ pathId, agent, model, effort }[]`,`''` 表示 agent 自己的默认)。类型在 `src/shared/agent-model.ts`,实现在 `src/main/agent-usage.ts` 和 `src/main/agent-model-switch.ts`。
+
+#### `cmd:agent:model-options`
+```typescript
+// payload: undefined
+interface AgentModelOptionsResponse {
+  'claude-code': { models: ModelChoice[]; efforts: string[]; own: ModelEffort }; // 别名 fable / opus / sonnet / haiku
+  codex: { models: ModelChoice[]; efforts: string[]; own: ModelEffort };         // 读 ~/.codex/models_cache.json,读不到时 models 为空
+}
+interface ModelChoice { id: string; label: string; efforts: string[] }
+interface ModelEffort { model: string; effort: string }
+```
+`own` 是 agent 自己设置里的模型和 effort(Claude Code 的 settings.json:`model`、`effortLevel` 或 `modelSettings` 里对应模型的 `effortLevel`;Codex 的 config.toml 顶层 `model`、`model_reasoning_effort`),只读;文件没写的为空字符串。界面在没有选择时显示它,不显示"默认"。
+
+#### `cmd:agent:switch-model`
+```typescript
+interface AgentSwitchModelPayload { sessionId: string; model?: string; effort?: string } // 省略的保持当前值
+interface AgentSwitchModelResponse {
+  applied: boolean;
+  reason?: 'session-not-found' | 'not-agent' | 'exited' | 'busy' | 'cannot-restart' | 'exit-timeout' | 'input-not-clear';
+}
+```
+先清空输入框里的草稿(Ctrl-K、Ctrl-U 各按多次),敲 `/exit`,屏幕上输入行正好是 `/exit` 才按回车;否则删掉敲进去的 `/exit`,返回 `input-not-clear`,什么都不发送。然后在同一个标签里等到 shell 钩子的提示符报告(OSC 1337),再敲模板命令加 `--resume <id>` / `resume <id>` 和新的启动参数。成功后标签的 `agentModel` / `agentEffort`(以及 Claude Code 新开时的 `agentLaunchId`)走 `evt:session:state-changed`。整个过程几秒,resolve 时新命令已经敲进去。`busy`:agent 正在干活、在等批准,或这个标签的切换还没完;`cannot-restart`:SSH 标签,或模板在 agent 退出后不保留 shell;`exit-timeout`:20 秒内 agent 没退出,之后什么都没敲。
+
+**Errors**:`InvalidPayload`(model / effort 含字母、数字、`. _ - [ ]` 以外的字符)。
+
+#### `cmd:agent:usage`
+```typescript
+interface AgentUsagePayload { sessionId: string }
+interface AgentUsageResponse { usage: AgentUsage | null } // agent 还没写任何记录时为 null;SSH 标签恒为 null
+interface AgentUsage {
+  agent: 'claude-code' | 'codex';
+  model?: string; effort?: string;
+  context?: { usedPercent?: number; usedTokens?: number; windowTokens?: number };
+  fiveHour?: { usedPercent: number; resetsAt?: number }; // resetsAt 为 Unix ms
+  weekly?: { usedPercent: number; resetsAt?: number };
+  details: { startedAt?; lastPromptAt?; prompts?; toolCalls?; agentCalls?; skillCalls?; lastSkill?;
+             todos?: { done: number; total: number }; costUsd?; source: string };
+}
+```
+renderer 面板打开时每 5 秒、关着时每 30 秒调一次;main 每次只读文件新增的字节。从不抛错,读失败记 warn 返回 null。
+
 ## 6. 事件清单 (Main → Renderer)
 
 ### 6.1 应用与窗口
@@ -2245,7 +2365,9 @@ interface TabControlRequest {
 
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 和 `agent-session` 只检查令牌对应的标签存在且未退出(ADR-033、ADR-036,`TAB_CONTROL_ANY_TAB_OPS`)。
 
-**协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean }`)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件,`detail.sessionId` 是被勾选的标签。角色走 `cmd:session:set-role`,payload `{ sessionId, role }`,role 为 `'coordinator'`、`'fintuner'` 或 null(回到 Worker);main 改名、设 `coordinator` 并广播 sessionStateChanged(changes 含 role、coordinator、displayName)。导览靠 DOM 属性找目标:`data-guide="ghost-tab"`、`data-quick-key`、`data-guide="new-tab"`、`data-session-id`、`data-guide="role"`、`data-guide="role-coordinator"`、`data-guide="coordinator-bar"`。
+**Codex 用的 IPC**(ADR-033):`cmd:extensions:codex-mcp-status` 和 `cmd:extensions:codex-mcp-install`,payload 都为空,都回复 `CodexMcpStatus`(`{ configPath, configured, codexInstalled, block }`;`codexInstalled` 是 Codex home 目录存在)。`configPath` 是 `<CODEX_HOME 或 ~/.codex>/config.toml`;`block` 是 Ceteris 要写的 TOML(`src/shared/codex-mcp.ts`:`[mcp_servers.ceteris-tabs]` 用 Ceteris 自己的可执行文件加 `ELECTRON_RUN_AS_NODE=1` 跑插件里的服务器脚本,`env_vars` 转发 `CETERIS_CONTROL_PIPE` 和 `CETERIS_CONTROL_TOKEN`)。install 把文件里这个服务器已有的表全部删掉再追加新的,其余内容原样保留,先写临时文件再 rename。
+
+**协调者引导用的 IPC**:`cmd:extensions:tab-control-status`,payload 为空,回复 `TabControlStatus`(`{ pluginInstalled: boolean, claudeInstalled: boolean }`,后者是 `~/.claude` 目录存在,ADR-041 的卡片用它预勾)。main 读 Claude Code 的插件登记表 `<CLAUDE_CONFIG_DIR 或 ~/.claude>/plugins/installed_plugins.json`,列出 `ceteris-tabs@ceteris` 就是 true;文件不存在或读不了都回 false。勾选协调者不走新 IPC:标签菜单在 `cmd:session:set-coordinator` 成功后在本窗口派发 `ceteris:coordinator-ticked` 事件,`detail.sessionId` 是被勾选的标签。角色走 `cmd:session:set-role`,payload `{ sessionId, role }`,role 为 `'coordinator'`、`'fintuner'` 或 null(回到 Worker);main 改名、设 `coordinator` 并广播 sessionStateChanged(changes 含 role、coordinator、displayName)。导览靠 DOM 属性找目标:`data-guide="ghost-tab"`、`data-quick-key`、`data-guide="new-tab"`、`data-session-id`、`data-guide="role"`、`data-guide="role-coordinator"`、`data-guide="coordinator-bar"`。
 
 ---
 

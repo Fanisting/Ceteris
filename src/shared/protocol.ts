@@ -20,6 +20,7 @@ import type { ShelfEntry } from './shelf';
 import type {
   AppSnapshot,
   Bookmark,
+  ChoicePrompt,
   PathTree,
   SessionInfo,
   Settings,
@@ -29,6 +30,7 @@ import type {
 } from './types';
 import type { DeepPartial } from './types-helpers';
 import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
+import type { AgentUsage, ModelChoice, ModelEffort } from './agent-model';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -65,6 +67,10 @@ export const COMMAND_CHANNELS = {
   SESSION_RELEASE: 'cmd:session:release',
   SESSION_FOCUS_OWNER: 'cmd:session:focus-owner',
   SESSION_SEND_INPUT: 'cmd:session:send-input',
+  /** ADR-035:读某 session 屏幕上 agent 停着的提示(问题和选项),没有则 null */
+  SESSION_READ_CHOICE: 'cmd:session:read-choice',
+  /** ADR-035:替用户在那个提示里选一项:main 先核对提示还在,再发方向键和回车 */
+  SESSION_ANSWER_CHOICE: 'cmd:session:answer-choice',
   SESSION_RESIZE: 'cmd:session:resize',
   SESSION_GET_SCROLLBACK: 'cmd:session:get-scrollback',
   /** BETA-028:导出 scrollback 为 UTF-8 字符串,供终端工具栏"复制全部"按钮 */
@@ -85,6 +91,10 @@ export const COMMAND_CHANNELS = {
    * 粘给 agent 的 prompt。返回 RemoteSetupGuidePathsResponse。
    */
   GUIDES_REMOTE_SETUP_PATHS: 'cmd:guides:remote-setup-paths',
+  /** ADR-033:Codex 的 config.toml 里有没有 ceteris-tabs 这个 MCP 服务器;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_STATUS: 'cmd:extensions:codex-mcp-status',
+  /** ADR-033:把 ceteris-tabs 写进(或重写进)Codex 的 config.toml;payload 空,回复 CodexMcpStatus */
+  EXTENSIONS_CODEX_MCP_INSTALL: 'cmd:extensions:codex-mcp-install',
   /** M1-C:重命名 session(只改 displayName,内部仍由 sessionId 标识) */
   SESSION_RENAME: 'cmd:session:rename',
   /**
@@ -190,6 +200,12 @@ export const COMMAND_CHANNELS = {
   AGENT_RELOAD: 'cmd:agent:reload',
   /** 只扫 PATH 看哪些内置 agent 装了 (ADR-034),新建页据此隐藏没装的;毫秒级,不跑 --version */
   AGENT_LIST_INSTALLED: 'cmd:agent:list-installed',
+  /** ADR-038:Claude Code 和 Codex 可选的模型与 effort (Codex 读 ~/.codex/models_cache.json) */
+  AGENT_MODEL_OPTIONS: 'cmd:agent:model-options',
+  /** ADR-038:在同一个标签里重启 agent (/exit 后带新参数和恢复 id 再开),对话接着进行 */
+  AGENT_SWITCH_MODEL: 'cmd:agent:switch-model',
+  /** ADR-038:一个 agent 终端的用量 (模型、effort、上下文、5h / 周限额、明细) */
+  AGENT_USAGE: 'cmd:agent:usage',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -647,6 +663,55 @@ export interface SendInputPayload {
   data: string;
 }
 
+/** cmd:session:read-choice (ADR-035) */
+export interface ReadChoicePayload {
+  sessionId: string;
+}
+
+export interface ReadChoiceResponse {
+  /** null:agent 没停在提示上,或者屏幕上的行读不出问题和选项 */
+  prompt: ChoicePrompt | null;
+}
+
+/**
+ * cmd:session:answer-choice (ADR-035). Two shapes:
+ * - { index, text? }: pick the option with that printed number. text is the answer for a
+ *   'type' option (required) or the message after a 'chat' option (optional).
+ * - { next: true }: go to the next page of a paged prompt (Tab); multi-select uses it once
+ *   the boxes are ticked.
+ */
+export type AnswerChoicePayload =
+  | { sessionId: string; index: number; text?: string }
+  | { sessionId: string; next: true };
+
+/**
+ * Why an answer was not (fully) sent:
+ * - no-prompt: the agent is no longer at a prompt
+ * - option-gone: the prompt changed and has no option with that number
+ * - not-paged: next on a prompt without pages, or on its last page
+ * - text-needed: a 'type' option with no text
+ * - pointer-stuck: the pointer did not reach the option, so nothing was confirmed
+ * - prompt-stuck: a 'chat' option was picked but the prompt stayed, so the message was not sent
+ * - busy: another answer to this tab is still being typed
+ * - session-not-found / pty-exited / pty-write-failed: as in cmd:session:send-input
+ */
+export type AnswerChoiceReason =
+  | 'no-prompt'
+  | 'option-gone'
+  | 'not-paged'
+  | 'text-needed'
+  | 'pointer-stuck'
+  | 'prompt-stuck'
+  | 'busy'
+  | 'session-not-found'
+  | 'pty-exited'
+  | 'pty-write-failed';
+
+export interface AnswerChoiceResponse {
+  sent: boolean;
+  reason?: AnswerChoiceReason;
+}
+
 /**
  * sendInput/resize 的反馈。
  *
@@ -1091,6 +1156,57 @@ export interface AgentNoticeActionPayload {
 
 export interface AgentReloadPlanPayload {
   templateId: string;
+}
+
+/**
+ * ADR-038: choices per agent. models empty for Codex when its cache cannot be read.
+ * `own` is what the agent runs with when Ceteris adds no flag, read from its own settings
+ * (Claude Code settings.json, Codex config.toml); '' where the file does not say.
+ */
+export interface AgentModelOptionsResponse {
+  'claude-code': { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+  codex: { models: ModelChoice[]; efforts: string[]; own: ModelEffort };
+}
+
+export interface AgentSwitchModelPayload {
+  sessionId: string;
+  /** Omit to keep the current one */
+  model?: string;
+  effort?: string;
+}
+
+export interface AgentSwitchModelResponse {
+  applied: boolean;
+  /**
+   * With applied: true, whether the earlier conversation was resumed. false = no id was
+   * printed or known, so the agent started a new conversation (it had none yet, usually).
+   */
+  resumed?: boolean;
+  /**
+   * busy: mid-turn, waiting on an approval, or a switch already running;
+   * cannot-restart: SSH tab, or a template that does not keep a shell after the agent;
+   * exit-timeout: the agent did not exit after /exit, nothing else was typed;
+   * input-not-clear: the input box did not read exactly "/exit" after clearing it, so Enter
+   *   was not pressed and the typed "/exit" was erased again;
+   * not-agent / exited / session-not-found as named.
+   */
+  reason?:
+    | 'session-not-found'
+    | 'not-agent'
+    | 'exited'
+    | 'busy'
+    | 'cannot-restart'
+    | 'exit-timeout'
+    | 'input-not-clear';
+}
+
+export interface AgentUsagePayload {
+  sessionId: string;
+}
+
+export interface AgentUsageResponse {
+  /** null until the agent has written its first transcript or rollout line */
+  usage: AgentUsage | null;
 }
 
 /** 整体重载会动到什么 (ADR-037),只算本机、没退出的终端 */

@@ -53,7 +53,8 @@ import type {
   SessionOutputPayload,
   SessionStateChangedPayload,
 } from '@shared/protocol';
-import type { AgentWork, SessionInfo, Template, Settings } from '@shared/types';
+import type { AgentWork, ChoicePrompt, SessionInfo, Template, Settings } from '@shared/types';
+import type { AnswerChoicePayload, AnswerChoiceResponse } from '@shared/protocol';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import type { TemplatesManager } from './templates-manager';
@@ -92,6 +93,10 @@ import { SESSION_ROLE_NAMES, type SessionRole } from '@shared/session-role';
 import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
 import {
   AGENT_PHASE_SCREEN_ROWS,
+  moveKeys,
+  oneLineAnswer,
+  readChoicePrompt,
+  TYPE_OPTION,
   classifyWork,
   detectAgentPhase,
   readWorkSignals,
@@ -101,6 +106,12 @@ import {
 import { CHANNELS } from '@shared/channel';
 import { clampTitleLength, isAgentTemplate, shortenAgentTitle } from '@shared/agent-title';
 import type { ResumableAgent } from '@shared/shelf';
+import {
+  folderDefaultFor,
+  launchArgs,
+  modelAgentOf,
+  type FolderAgentDefault,
+} from '@shared/agent-model';
 
 // The PORTABLE_* vars come from the portable wrapper. If a shell inherited them, a
 // Ceteris launched from that shell would misidentify itself as a portable build.
@@ -241,6 +252,26 @@ const INPUT_QUIET_MS = 200;
  * headless write 是异步 parse 的,等一会儿读到的屏幕才包含刚到的字节。
  */
 const AGENT_PHASE_CHECK_MS = 300;
+
+/**
+ * ADR-035: answering a prompt from a toast types in stages and checks the screen between
+ * them. A TUI moves its pointer, and turns a row into a text field, only when it redraws;
+ * text sent in the same burst as the arrow keys would reach the old row, where a digit
+ * picks an option. So each stage waits until the screen shows the pointer arrived.
+ */
+const CHOICE_POLL_MS = 50;
+/** How long one stage may take to show on screen before the answer is abandoned. */
+const CHOICE_STEP_TIMEOUT_MS = 1500;
+/** How long a 'chat' option may take to leave the prompt before the message is dropped. */
+const CHOICE_LEAVE_TIMEOUT_MS = 4000;
+/** Pause between typed text and the Enter that sends it, as in tab control (ADR-024). */
+const CHOICE_SUBMIT_DELAY_MS = 150;
+/** The longest answer or message typed from a toast. */
+const CHOICE_MAX_TEXT = 4000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * spawn 工厂,与 node-pty 的 spawn 兼容。测试中用 mock 替换。
@@ -678,6 +709,17 @@ export class SessionManager extends EventEmitter {
   async createSession(input: CreateSessionInput): Promise<SessionInfo> {
     this.lastLaunchWarning = null;
     const resolved = this.templatesManager.resolve(input.templateId);
+    const agentLaunch = input.commandOverride
+      ? null
+      : planAgentLaunch(
+          resolved.id,
+          input.pathId,
+          this.settingsManager.get().agents?.folderDefaults,
+          input.extraArgs ?? [],
+          randomUUID,
+          resolved.args,
+        );
+    const addedArgs = [...(agentLaunch?.args ?? []), ...(input.extraArgs ?? [])];
     const template = input.commandOverride
       ? {
           ...resolved,
@@ -687,8 +729,8 @@ export class SessionManager extends EventEmitter {
           env: {},
           postExitAction: 'keep_shell' as const,
         }
-      : input.extraArgs && input.extraArgs.length > 0 && resolved.command
-        ? { ...resolved, args: [...resolved.args, ...input.extraArgs] }
+      : addedArgs.length > 0 && resolved.command
+        ? { ...resolved, args: [...resolved.args, ...addedArgs] }
         : resolved;
     const dims = validateDimensions(input.cols, input.rows);
     const shells = await this.getShells();
@@ -919,6 +961,13 @@ export class SessionManager extends EventEmitter {
       ownerWindowId: input.ownerWindowId || null,
       state: 'idle',
       createdAt: Date.now(),
+      ...(agentLaunch && template.command
+        ? {
+            agentModel: agentLaunch.model,
+            agentEffort: agentLaunch.effort,
+            ...(agentLaunch.launchId ? { agentLaunchId: agentLaunch.launchId } : {}),
+          }
+        : {}),
     };
 
     const disposables: IDisposable[] = [];
@@ -1128,12 +1177,32 @@ export class SessionManager extends EventEmitter {
       managed.info.role = null;
       managed.info.coordinator = false;
     }
-    logger.info('SessionManager', `setRole sid=${sessionId} ${current ?? 'worker'} → ${role ?? 'worker'}`);
+    logger.info(
+      'SessionManager',
+      `setRole sid=${sessionId} ${current ?? 'worker'} → ${role ?? 'worker'}`,
+    );
     this.emitStateChanged(managed, {
       role: managed.info.role,
       coordinator: managed.info.coordinator,
       displayName: managed.info.displayName,
     });
+  }
+
+  /**
+   * ADR-038: record the model, effort and Claude Code session id a tab now runs with, after
+   * agent-model-switch.ts relaunched the agent in it. '' means the agent's own default.
+   * 副作用: emits sessionStateChanged. Unknown ids are ignored.
+   */
+  setAgentPick(
+    sessionId: string,
+    pick: { model: string; effort: string; launchId?: string },
+  ): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    const changes: Partial<SessionInfo> = { agentModel: pick.model, agentEffort: pick.effort };
+    if (pick.launchId) changes.agentLaunchId = pick.launchId;
+    Object.assign(managed.info, changes);
+    this.emitStateChanged(managed, changes);
   }
 
   /**
@@ -1268,6 +1337,8 @@ export class SessionManager extends EventEmitter {
    * releases the window's others, which would blank every other pane.
    */
   private readonly paneSessions = new Map<string, Set<string>>();
+  /** ADR-035: sessions an answer is being typed into; a second click waits its turn. */
+  private readonly answeringChoice = new Set<string>();
 
   /** Empty list means one terminal, and claiming behaves as it always has. */
   setPaneSessions(windowId: string, sessionIds: string[]): void {
@@ -1275,10 +1346,7 @@ export class SessionManager extends EventEmitter {
     else this.paneSessions.set(windowId, new Set(sessionIds));
   }
 
-  private releaseAllOwnedBy(
-    windowId: string,
-    options?: { exceptSessionId?: string },
-  ): void {
+  private releaseAllOwnedBy(windowId: string, options?: { exceptSessionId?: string }): void {
     const except = options?.exceptSessionId;
     // No exception means the window is going away, so panes are not protected then.
     const panes = except !== undefined ? this.paneSessions.get(windowId) : undefined;
@@ -1380,10 +1448,7 @@ export class SessionManager extends EventEmitter {
     const kind = classifyInput(text);
     managed.recentKeys.push({ ts: now, kind });
     const cutoff = now - RECENT_KEYS_TTL_MS;
-    while (
-      managed.recentKeys.length > 0 &&
-      (managed.recentKeys[0]?.ts ?? Infinity) < cutoff
-    ) {
+    while (managed.recentKeys.length > 0 && (managed.recentKeys[0]?.ts ?? Infinity) < cutoff) {
       managed.recentKeys.shift();
     }
     while (managed.recentKeys.length > RECENT_KEYS_CAP) {
@@ -1399,9 +1464,7 @@ export class SessionManager extends EventEmitter {
     } catch (err) {
       logger.warn(
         'SessionManager',
-        `pty.write failed sid=${sessionId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `pty.write failed sid=${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
       );
       return { accepted: false, reason: 'pty-write-failed' };
     }
@@ -1527,9 +1590,7 @@ export class SessionManager extends EventEmitter {
    *
    * session 不存在返回 { data: '', lastSeq: -1 }。
    */
-  async getScrollbackForReplay(
-    sessionId: string,
-  ): Promise<{ data: string; lastSeq: number }> {
+  async getScrollbackForReplay(sessionId: string): Promise<{ data: string; lastSeq: number }> {
     const managed = this.sessions.get(sessionId);
     if (!managed || !managed.headlessTerm || !managed.serializeAddon) {
       return { data: '', lastSeq: -1 };
@@ -1559,12 +1620,14 @@ export class SessionManager extends EventEmitter {
     // headless _core 内部状态把这两条补到字节流末尾 — 与 master 自身实现
     // 字节级等价,不是猜测。完整背景与删除条件见
     // docs/issues/xterm-serialize-mode-polyfill.md。
-    const core = (term as unknown as {
-      _core?: {
-        coreService?: { isCursorHidden?: boolean };
-        buffer?: { scrollTop?: number; scrollBottom?: number };
-      };
-    })._core;
+    const core = (
+      term as unknown as {
+        _core?: {
+          coreService?: { isCursorHidden?: boolean };
+          buffer?: { scrollTop?: number; scrollBottom?: number };
+        };
+      }
+    )._core;
     if (core?.coreService?.isCursorHidden) {
       ansi += '\x1b[?25l';
     }
@@ -1742,10 +1805,7 @@ export class SessionManager extends EventEmitter {
     if (managed.pendingEmit === null) {
       managed.pendingEmit = { bytes, lastSeq: seq };
     } else {
-      managed.pendingEmit.bytes = Buffer.concat([
-        managed.pendingEmit.bytes,
-        bytes,
-      ]);
+      managed.pendingEmit.bytes = Buffer.concat([managed.pendingEmit.bytes, bytes]);
       managed.pendingEmit.lastSeq = seq;
     }
     if (managed.pendingEmitTimer === null) {
@@ -1847,7 +1907,10 @@ export class SessionManager extends EventEmitter {
 
     // Agent 升级这类一次性命令:成功就关掉 tab;失败留着,让用户看报错
     if (managed.closeOnCleanExit && exitCode === 0) {
-      logger.info('SessionManager', `one-off command finished, closing sessionId=${managed.info.id}`);
+      logger.info(
+        'SessionManager',
+        `one-off command finished, closing sessionId=${managed.info.id}`,
+      );
       this.destroySession(managed, 'pty-exited');
     }
   }
@@ -1877,9 +1940,7 @@ export class SessionManager extends EventEmitter {
       } catch (err) {
         logger.warn(
           'SessionManager',
-          `kill failed sid=${sid}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `kill failed sid=${sid}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
       managed.pty = null;
@@ -1925,18 +1986,12 @@ export class SessionManager extends EventEmitter {
       // 仅在用户开启 statusRecheckEnabled 且 aiClient.isConfigured() 时生效。
       // 失败 / LLM 异常时回退到原行为(直接转 idle),不阻塞主流程。
       const s = this.settingsManager.get();
-      if (
-        s.ai?.statusRecheckEnabled &&
-        this.aiClient &&
-        this.aiClient.isConfigured()
-      ) {
+      if (s.ai?.statusRecheckEnabled && this.aiClient && this.aiClient.isConfigured()) {
         // BETA-006 v2:从 @xterm/headless buffer 拿"已渲染"文本(无 ANSI
         // 噪音 / 无 PSReadLine 重绘残影)。
         // CURSOR-1 后:原 settings.ai.statusRecheckSource='raw' 路径(裸字节
         // ring 末 2KB)已删除,headless 是唯一输入源。screenshot 选项仍预留。
-        const tail = managed.headlessTerm
-          ? this.getHeadlessTail(managed, 40)
-          : '';
+        const tail = managed.headlessTerm ? this.getHeadlessTail(managed, 40) : '';
         // BETA-006 v2.1:把"上次 Enter / 上次任意输入距今多久"喂给 LLM,
         // 帮它区分"长命令在跑"vs"用户打字未按回车"。
         // BETA-006 v2.2:再附最近按键事件 ring buffer(类别+时间,无内容),
@@ -2060,6 +2115,149 @@ export class SessionManager extends EventEmitter {
     return managed ? this.getHeadlessTail(managed, maxRows) : '';
   }
 
+  /**
+   * ADR-035: the prompt an agent stopped at, read from the screen. Null when the session is
+   * unknown, not blocked, or the rows do not read as a prompt.
+   */
+  readChoice(sessionId: string): ChoicePrompt | null {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || managed.info.agentPhase !== 'blocked') return null;
+    return readChoicePrompt(this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS));
+  }
+
+  /**
+   * ADR-035: answers the prompt the agent stopped at, for the choice panel in a toast in
+   * another tab or window. Re-reads the screen first and after every stage: a stale panel
+   * must never type into whatever the agent is doing by now.
+   *
+   * Stages for a pick (see the recordings in agent-phase.test.ts):
+   *
+   *   arrows ──(pointer on target)──┬─ none ──────── Enter (multi-select: Enter ticks)
+   *                                 ├─ type ── clear old text, text ─(shown)─ Enter
+   *                                 │          (multi-select: no Enter, typing ticks it)
+   *                                 └─ chat ── Enter ─(prompt gone)─ message, Enter
+   *
+   * { next: true } sends Tab, which pages forward in a paged AskUserQuestion.
+   *
+   * @returns sent=false with a reason instead of throwing: the panel shows the reason and
+   *   offers the tab, nothing here is an error of the caller's
+   */
+  async answerChoice(action: AnswerChoicePayload): Promise<AnswerChoiceResponse> {
+    const { sessionId } = action;
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return { sent: false, reason: 'session-not-found' };
+    if (this.answeringChoice.has(sessionId)) return { sent: false, reason: 'busy' };
+    this.answeringChoice.add(sessionId);
+    try {
+      return await this.typeChoice(managed, action);
+    } finally {
+      this.answeringChoice.delete(sessionId);
+    }
+  }
+
+  private async typeChoice(
+    managed: ManagedSession,
+    action: AnswerChoicePayload,
+  ): Promise<AnswerChoiceResponse> {
+    const sid = managed.info.id;
+    const prompt = this.readChoice(sid);
+    if (!prompt) return { sent: false, reason: 'no-prompt' };
+    const write = (data: string): AnswerChoiceResponse | null => {
+      const res = this.sendInput(sid, Buffer.from(data, 'utf8').toString('base64'));
+      return res.accepted ? null : { sent: false, reason: res.reason ?? 'pty-write-failed' };
+    };
+
+    if ('next' in action) {
+      if (prompt.steps.length === 0 || prompt.reviewing)
+        return { sent: false, reason: 'not-paged' };
+      logger.info('SessionManager', `answerChoice sid=${sid} next page`);
+      return write('\t') ?? { sent: true };
+    }
+
+    const target = prompt.options.find((o) => o.index === action.index);
+    if (!target) return { sent: false, reason: 'option-gone' };
+    const raw = (action.text ?? '').slice(0, CHOICE_MAX_TEXT);
+    const text = target.input === 'type' ? oneLineAnswer(raw) : raw.trim();
+    if (target.input === 'type' && !text) return { sent: false, reason: 'text-needed' };
+    logger.info(
+      'SessionManager',
+      `answerChoice sid=${sid} option ${target.index} "${target.label}" input=${target.input} ` +
+        `from pos ${prompt.pointer} to ${target.pos} chars=${text.length}`,
+    );
+
+    if (prompt.pointer !== target.pos) {
+      const failed = write(moveKeys(prompt.pointer, target.pos));
+      if (failed) return failed;
+      const arrived = await this.waitForChoice(managed, (p) => p?.pointer === target.pos);
+      if (!arrived) {
+        logger.warn(
+          'SessionManager',
+          `answerChoice sid=${sid} pointer never reached ${target.pos}`,
+        );
+        return { sent: false, reason: 'pointer-stuck' };
+      }
+    }
+
+    if (target.input === 'type') {
+      // Text typed there earlier is still in the field; the row shows it as the label.
+      const old = TYPE_OPTION.test(target.label) ? 0 : [...target.label].length;
+      const failed = write('\x7f'.repeat(old) + text);
+      if (failed) return failed;
+      const head = text.slice(0, 8);
+      const shown = await this.waitForChoice(managed, (p) =>
+        Boolean(p?.options.find((o) => o.pos === target.pos)?.label.startsWith(head)),
+      );
+      if (!shown) {
+        logger.warn('SessionManager', `answerChoice sid=${sid} typed text never showed`);
+        return { sent: false, reason: 'pointer-stuck' };
+      }
+      // In a multi-select list the typed row is ticked as soon as it has text; Enter would
+      // untick it (recorded 2026-11-10). The user pages on with { next: true }.
+      if (prompt.multiSelect) return { sent: true };
+      await sleep(CHOICE_SUBMIT_DELAY_MS);
+      return write('\r') ?? { sent: true };
+    }
+
+    const failed = write('\r');
+    if (failed) return failed;
+    if (target.input !== 'chat' || !text) return { sent: true };
+
+    // "Chat about this" and "No, and tell Claude" leave the prompt; the message then goes to
+    // the agent's normal input, queued by the agent if it is answering the decline first.
+    const left = await this.waitForChoice(managed, (p) => p === null, CHOICE_LEAVE_TIMEOUT_MS);
+    if (!left) return { sent: false, reason: 'prompt-stuck' };
+    const multiline = /[\r\n]/.test(text);
+    const body =
+      multiline && this.isBracketedPasteOn(sid)
+        ? `\x1b[200~${text}\x1b[201~`
+        : multiline
+          ? oneLineAnswer(text)
+          : text;
+    const typed = write(body);
+    if (typed) return typed;
+    await sleep(CHOICE_SUBMIT_DELAY_MS);
+    return write('\r') ?? { sent: true };
+  }
+
+  /**
+   * Polls the screen until `ok` holds for the prompt on it (null when there is none).
+   * Reads the screen directly, not through agentPhase, which lags output by up to 300ms.
+   */
+  private async waitForChoice(
+    managed: ManagedSession,
+    ok: (prompt: ChoicePrompt | null) => boolean,
+    timeoutMs = CHOICE_STEP_TIMEOUT_MS,
+  ): Promise<boolean> {
+    const until = Date.now() + timeoutMs;
+    for (;;) {
+      if (!this.sessions.has(managed.info.id)) return false;
+      const screen = this.getHeadlessTail(managed, AGENT_PHASE_SCREEN_ROWS);
+      if (ok(readChoicePrompt(screen))) return true;
+      if (Date.now() >= until) return false;
+      await sleep(CHOICE_POLL_MS);
+    }
+  }
+
   private getHeadlessTail(managed: ManagedSession, maxRows: number): string {
     if (!managed.headlessTerm) return '';
     const buf = managed.headlessTerm.buffer.active;
@@ -2090,6 +2288,9 @@ export class SessionManager extends EventEmitter {
   // ──────────────────────────────────────────────────────────────────
 
   private handleOsc1337Cwd(managed: ManagedSession, rawCwd: string): void {
+    // The shell hook reports the cwd each time it draws a prompt, so this also says "the shell
+    // is back at its prompt". ADR-038 waits for it after typing /exit into an agent.
+    this.emit('shellPrompt', { sessionId: managed.info.id });
     // OSC 收到了 → 永久关闭 cwd 兜底 (软件定义书 5.1.8、ADR-003)
     if (!managed.oscReceived) {
       managed.oscReceived = true;
@@ -2211,10 +2412,7 @@ export class SessionManager extends EventEmitter {
     }
   }
 
-  private emitStateChanged(
-    managed: ManagedSession,
-    changes: Partial<SessionInfo>,
-  ): void {
+  private emitStateChanged(managed: ManagedSession, changes: Partial<SessionInfo>): void {
     const payload: SessionStateChangedPayload = {
       sessionId: managed.info.id,
       changes,
@@ -2229,10 +2427,7 @@ export class SessionManager extends EventEmitter {
 
   private async getShells(): Promise<ShellInfo[]> {
     const now = Date.now();
-    if (
-      this.cachedShells &&
-      now - this.cachedShellsAt < SessionManager.SHELL_CACHE_TTL_MS
-    ) {
+    if (this.cachedShells && now - this.cachedShellsAt < SessionManager.SHELL_CACHE_TTL_MS) {
       return this.cachedShells;
     }
     this.cachedShells = await this.platformAdapter.detectShells();
@@ -2265,11 +2460,7 @@ export class SessionManager extends EventEmitter {
  * override 命中失败 (id 不在 detectShells 结果里) 时回退到 settings 兜底,
  * 不抛错 — 给用户的视觉效果是"用默认 shell 启动",比报错更友好。
  */
-function pickShell(
-  shells: ShellInfo[],
-  settings: Settings,
-  override?: string,
-): ShellInfo {
+function pickShell(shells: ShellInfo[], settings: Settings, override?: string): ShellInfo {
   if (override) {
     const found = shells.find((s) => s.id === override);
     if (found) return found;
@@ -2317,13 +2508,7 @@ export function buildSshLaunchParams(
     controlPath?: string;
   } = {},
 ): { args: string[]; env: Record<string, string> } {
-  const args = [
-    '-tt',
-    '-p',
-    String(profile.port),
-    '-o',
-    'ServerAliveInterval=30',
-  ];
+  const args = ['-tt', '-p', String(profile.port), '-o', 'ServerAliveInterval=30'];
   if (profile.authType === 'keyFile' && profile.keyFilePath) {
     args.push('-i', profile.keyFilePath);
   }
@@ -2340,9 +2525,12 @@ export function buildSshLaunchParams(
   // Windows 版 OpenSSH 不支持,调用方不会在 Windows 上开这个选项。
   if (options.enableControlMaster && options.controlPath) {
     args.push(
-      '-o', 'ControlMaster=auto',
-      '-o', `ControlPath=${options.controlPath}`,
-      '-o', 'ControlPersist=10m',
+      '-o',
+      'ControlMaster=auto',
+      '-o',
+      `ControlPath=${options.controlPath}`,
+      '-o',
+      'ControlPersist=10m',
     );
   }
   args.push(`${profile.username}@${profile.host}`);
@@ -2392,9 +2580,9 @@ function buildRemoteLoginCommand(
     ? buildRemoteTemplateCommand(options.commandToRun)
     : null;
   const launchCommand = commandLine
-    // 远端模板(如 claude/codex)常写在交互式 shell 初始化文件里。
-    // 这里用 `-ic` 让行为尽量贴近用户手动在终端里输入命令的路径。
-    ? `exec "\${SHELL:-/bin/sh}" -ic ${shQuote(`${commandLine}; ${shellCommand}`)}`
+    ? // 远端模板(如 claude/codex)常写在交互式 shell 初始化文件里。
+      // 这里用 `-ic` 让行为尽量贴近用户手动在终端里输入命令的路径。
+      `exec "\${SHELL:-/bin/sh}" -ic ${shQuote(`${commandLine}; ${shellCommand}`)}`
     : shellCommand;
   if (profile.tmuxMode !== 'attach-or-create') {
     return `${cdCommand} && ${launchCommand}`;
@@ -2411,8 +2599,7 @@ function buildRemoteLoginCommand(
   );
   const failCommand =
     'printf %s\\\\n "Ceteris: tmux attach/create failed on the remote host." >&2; exit 127';
-  const fallbackAfterFailure =
-    profile.tmuxOnMissing === 'fail' ? failCommand : launchCommand;
+  const fallbackAfterFailure = profile.tmuxOnMissing === 'fail' ? failCommand : launchCommand;
   // tmux 本身只是远端 shell 里的一个全屏程序,不是 Ceteris session 的终点。
   // 用户在 tmux pane 里输入 exit 后,tmux client 会正常返回;此时必须继续
   // exec 回登录 shell,否则 ssh.exe 会结束,Main 只能把整个 Ceteris session
@@ -2469,9 +2656,8 @@ function buildRemoteTemplateCommand(input: {
     .filter(([key]) => key.length > 0)
     .map(([key, value]) => shQuote(`${key}=${value}`));
   const argv = [input.command, ...input.args].map(shQuote);
-  const runCommand = envPairs.length === 0
-    ? argv.join(' ')
-    : ['env', ...envPairs, ...argv].join(' ');
+  const runCommand =
+    envPairs.length === 0 ? argv.join(' ') : ['env', ...envPairs, ...argv].join(' ');
   return (
     `${runCommand}; ceteris_template_status=$?; ` +
     `if [ "$ceteris_template_status" -eq 127 ]; then ` +
@@ -2482,9 +2668,7 @@ function buildRemoteTemplateCommand(input: {
 
 function defaultTmuxSessionName(remoteCwd: string): string {
   const normalized = remoteCwd.replace(/\/+$/g, '') || '~';
-  const leaf = normalized === '~'
-    ? 'home'
-    : normalized.split('/').filter(Boolean).pop() || 'root';
+  const leaf = normalized === '~' ? 'home' : normalized.split('/').filter(Boolean).pop() || 'root';
   const safe = leaf
     .trim()
     .toLowerCase()
@@ -2710,3 +2894,47 @@ function normalizeCwd(raw: string): string {
     return value;
   }
 }
+
+/**
+ * ADR-038: what a new Claude Code or Codex tab is started with. Returns null for any other
+ * template.
+ *
+ * - model / effort: the folder's default from settings ('' = the agent's own default).
+ * - Claude Code on a local folder starting fresh also gets `--session-id <uuid>`, so
+ *   agent-usage.ts finds exactly this tab's transcript. Not when extraArgs or the template's
+ *   own args already resume a conversation: that keeps its old id, and Claude Code does not
+ *   take `--session-id` together with `--continue` / `--resume`.
+ * - args go before extraArgs (e.g. `resume --last`). Codex takes `-m` and `-c` both before
+ *   the subcommand and after it (`codex resume --help` lists them), so either order works.
+ */
+export function planAgentLaunch(
+  templateId: string,
+  pathId: string,
+  folderDefaults: readonly FolderAgentDefault[] | undefined,
+  extraArgs: readonly string[],
+  newId: () => string = randomUUID,
+  templateArgs: readonly string[] = [],
+): { args: string[]; model: string; effort: string; launchId?: string } | null {
+  const agent = modelAgentOf(templateId);
+  if (!agent) return null;
+  const pick = folderDefaultFor(folderDefaults, pathId, agent);
+  const args = launchArgs(agent, pick);
+  const local = pathRefFromId(pathId || homedir()).kind !== 'ssh';
+  const resumesAlready = [...templateArgs, ...extraArgs].some((a) => CLAUDE_RESUME_FLAGS.has(a));
+  if (agent === 'claude-code' && local && extraArgs.length === 0 && !resumesAlready) {
+    const launchId = newId();
+    return { args: [...args, '--session-id', launchId], ...pick, launchId };
+  }
+  return { args, ...pick };
+}
+
+/** Claude Code flags that pick up an existing conversation (`claude --help`, 2.1.322) */
+const CLAUDE_RESUME_FLAGS = new Set([
+  '--continue',
+  '-c',
+  '--resume',
+  '-r',
+  '--session-id',
+  '--from-pr',
+  '--teleport',
+]);

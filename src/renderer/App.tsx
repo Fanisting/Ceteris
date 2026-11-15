@@ -17,6 +17,7 @@ import { MainPane } from './components/MainPane';
 import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
 import { CoordinatorTour } from './components/CoordinatorTour';
+import { ExtensionSetupCard } from './components/ExtensionSetupCard';
 import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
 import { ToastProvider } from './components/Toast';
@@ -24,6 +25,7 @@ import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
 import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
+import { AgentChoiceNoticeBridge } from './components/AgentChoiceNoticeBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
 import { resolveThemeId, useCustomThemes } from './custom-themes';
 import { setLegadoDynamicInputs } from './legado-dynamic';
@@ -273,6 +275,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
           <LastSessionConfirmBridge />
           <SshAskpassBridge />
           <AgentUpdateNoticeBridge />
+          {/* ADR-035:别的标签里的 agent 停下来等用户决定时弹 toast,点了跳过去 */}
+          <AgentChoiceNoticeBridge />
           <ContextMenuProvider>
             <div
               className="app-root with-shell"
@@ -285,6 +289,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               <LinkConnectionBanner />
               {/* ADR-024:协调者引导动画,没看过时启动或勾协调者时出现;专注模式不显示 */}
               {!state.simpleMode && <CoordinatorTour />}
+              {/* ADR-041:第一次启动的扩展一次装好卡片;排在其他引导之前 */}
+              {!state.simpleMode && <ExtensionSetupCard />}
               {state.inSettingsView ? (
                 <SettingsView />
               ) : state.simpleMode ? (

@@ -26,25 +26,17 @@
 # (see software-definition.md 5.1.8, ADR-003).
 #
 # Design notes:
-# - Source the user's own profile first so we don't pollute their config.
+# - Do NOT dot-source $PROFILE here. PowerShell already loads every profile
+#   (AllUsers and CurrentUser) before -Command runs, so sourcing it again
+#   ran it twice and printed profile banners twice. The user's prompt
+#   function therefore already exists when we wrap it below.
 # - Wrap the prompt function: emit OSC 1337, then call the original prompt.
 # - OSC 1337 format: ESC ] 1337 ; CurrentDir=<path> BEL
 #   ([char]27 = ESC, [char]7 = BEL; works on both PowerShell 5.1 and 7).
 # - Injected by WindowsAdapter.buildShellLaunchParams via:
-#     pwsh -NoLogo -NoExit -Command ". 'pwsh.ps1'"
+#     pwsh -NoExit -Command ". 'pwsh.ps1'"   (no -NoProfile, see above)
 #
 # Corresponding docs: software-definition.md 5.1.8, 12.5; ADR-003, ADR-008.
-
-# Source the user's profile if it exists. -Force is intentional: even on
-# error we want the hook to install (a broken profile must not silently
-# disable cwd tracking).
-if (Test-Path $PROFILE) {
-    try {
-        . $PROFILE
-    } catch {
-        Write-Host "[Ceteris] user PowerShell profile failed to load (hook still active): $_" -ForegroundColor DarkYellow
-    }
-}
 
 # Wrap the prompt function. Save the original first so we can call it,
 # otherwise we would recurse infinitely if the user's profile already

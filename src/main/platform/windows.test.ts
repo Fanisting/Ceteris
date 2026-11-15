@@ -10,7 +10,7 @@
  * @对应文档章节: 软件定义书.md 12.2;Explorer 右键集成工作记录
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -24,6 +24,32 @@ import {
   setExplorerLabel,
   windowsRscriptPaths,
 } from './windows';
+
+describe('WindowsAdapter: PowerShell profile loads once', () => {
+  // PowerShell loads $PROFILE before -Command runs. The hook used to dot-source
+  // it again, so profile banners printed twice in every tab. Both halves are
+  // needed: the launch args must keep the profile (no -NoProfile, which would
+  // also skip AllUsers profiles) and the hook must not load it a second time.
+  it('launch args keep the automatic profile load', () => {
+    const adapter = new WindowsAdapter();
+    for (const id of ['pwsh', 'powershell'] as const) {
+      const params = adapter.buildShellLaunchParams(
+        { id, displayName: id, executablePath: `${id}.exe` },
+        'C:/hook.ps1',
+      );
+      expect(params.args).not.toContain('-NoProfile');
+    }
+  });
+
+  it('pwsh.ps1 hook does not dot-source $PROFILE again', () => {
+    const hook = readFileSync(join(__dirname, '../../shell-hooks/pwsh.ps1'), 'utf-8');
+    const code = hook
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n');
+    expect(code).not.toMatch(/\.\s+\$PROFILE/i);
+  });
+});
 
 describe('WindowsAdapter — WSL shell support', () => {
   afterEach(() => {
@@ -62,6 +88,16 @@ describe('WindowsAdapter — WSL shell support', () => {
       cmd,
     );
     expect(bash.args.at(-1)).not.toContain('exec bash');
+  });
+
+  it('Git Bash keeps the hook in the shell that takes over after the command (ADR-038)', () => {
+    const adapter = new WindowsAdapter();
+    const bash = adapter.buildShellLaunchParams(
+      { id: 'git-bash', displayName: 'Git Bash', executablePath: 'bash.exe' },
+      'C:\\data\\hooks\\bash.sh',
+      { command: 'claude', args: [] },
+    );
+    expect(bash.args.at(-1)).toMatch(/; exec bash --rcfile '?C:\/data\/hooks\/bash\.sh'? -i$/);
   });
 
   it('buildShellLaunchParams(wsl) 无命令时不传参数(走发行版默认 shell)', () => {
@@ -161,10 +197,7 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
     await adapter.registerFileManagerIntegration('C:\\Program Files\\Ceteris\\Ceteris.exe');
     // 两个 hive 各一条 Icon
     const iconCalls = calls.filter(
-      (a) =>
-        a[0] === 'add' &&
-        a.includes('/v') &&
-        a[a.indexOf('/v') + 1] === 'Icon',
+      (a) => a[0] === 'add' && a.includes('/v') && a[a.indexOf('/v') + 1] === 'Icon',
     );
     expect(iconCalls).toHaveLength(2);
     for (const c of iconCalls) {
@@ -203,14 +236,10 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
   it('Directory\\shell command 用 %1 占位符', async () => {
     const adapter = new WindowsAdapter();
     await adapter.registerFileManagerIntegration('C:\\My App\\Ceteris.exe');
-    const cmdCall = calls.find((a) =>
-      a[1]?.endsWith('Directory\\shell\\Ceteris\\command'),
-    );
+    const cmdCall = calls.find((a) => a[1]?.endsWith('Directory\\shell\\Ceteris\\command'));
     expect(cmdCall).toBeTruthy();
     const idx = cmdCall!.indexOf('/d');
-    expect(cmdCall![idx + 1]).toBe(
-      '"C:\\My App\\Ceteris.exe" --open-here "%1"',
-    );
+    expect(cmdCall![idx + 1]).toBe('"C:\\My App\\Ceteris.exe" --open-here "%1"');
   });
 
   it('Directory\\Background\\shell command 用 %V 占位符', async () => {
@@ -252,9 +281,9 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
       return { stderr: 'access denied', code: 5 };
     });
     const adapter = new WindowsAdapter();
-    await expect(
-      adapter.registerFileManagerIntegration('C:\\Ceteris.exe'),
-    ).rejects.toThrow(/code=5/);
+    await expect(adapter.registerFileManagerIntegration('C:\\Ceteris.exe')).rejects.toThrow(
+      /code=5/,
+    );
   });
 
   it('cleanupLegacyExplorerIntegration 删两个 EasyTerm key,容忍 not found', async () => {
@@ -263,9 +292,7 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
       code: 1,
     }));
     const adapter = new WindowsAdapter();
-    await expect(
-      adapter.cleanupLegacyExplorerIntegration(),
-    ).resolves.toBeUndefined();
+    await expect(adapter.cleanupLegacyExplorerIntegration()).resolves.toBeUndefined();
     // 实际调用断言
     const realCalls: string[][] = [];
     __setRunRegImplForTest(async (args) => {
@@ -276,11 +303,7 @@ describe('WindowsAdapter — registerFileManagerIntegration', () => {
     await a2.cleanupLegacyExplorerIntegration();
     expect(realCalls).toEqual([
       ['delete', 'HKCU\\Software\\Classes\\Directory\\shell\\EasyTerm', '/f'],
-      [
-        'delete',
-        'HKCU\\Software\\Classes\\Directory\\Background\\shell\\EasyTerm',
-        '/f',
-      ],
+      ['delete', 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\EasyTerm', '/f'],
     ]);
   });
 });
@@ -309,9 +332,7 @@ describe('WindowsAdapter — getRefreshedPath (BETA-001 + BETA-ENV-1)', () => {
       return 'D:\\user\\local';
     });
     const adapter = new WindowsAdapter();
-    expect(adapter.getRefreshedPath()).toBe(
-      'C:\\Windows\\System32;C:\\bin;D:\\user\\local',
-    );
+    expect(adapter.getRefreshedPath()).toBe('C:\\Windows\\System32;C:\\bin;D:\\user\\local');
   });
 
   it('注册表里残留 %SystemRoot% 字面量 → 返回值必须已展开(BETA-ENV-1 核心)', () => {

@@ -149,6 +149,12 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/behavior\.quickLaunch/);
   });
 
+  it('非法 `name:` 命令列表 throw', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    bad.extensions.colonCommands.commands = [{ name: 'a b', command: '/x' }];
+    expect(() => validateSettings(bad)).toThrowError(/extensions\.colonCommands\.commands/);
+  });
+
   it('字号越界 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     bad.appearance.terminalFontSize = 5;
@@ -243,6 +249,21 @@ describe('SettingsManager — initialize', () => {
     const s = mgr.get();
     s.appearance.theme = 'business';
     expect(mgr.get().appearance.theme).toBe('light-pink'); // 内部仍是默认
+  });
+
+  it('ADR-038: drops bad folder defaults at load, so later updates still save', async () => {
+    const good = { pathId: 'C:\\p', agent: 'codex', model: 'gpt-x', effort: 'low' };
+    const { mgr } = makeManager({
+      version: 1,
+      agents: { folderDefaults: [good, { ...good }, { pathId: 'C:\\q', agent: 'x' }] },
+    } as unknown as Settings);
+    await mgr.initialize();
+    expect(mgr.get().agents.folderDefaults).toEqual([good]);
+    expect(() => mgr.update({ appearance: { theme: 'cutie' } })).not.toThrow();
+
+    const { mgr: nullAgents } = makeManager({ version: 1, agents: null } as unknown as Settings);
+    await nullAgents.initialize();
+    expect(nullAgents.get().agents).toEqual({ folderDefaults: [] });
   });
 });
 

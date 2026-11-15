@@ -45,6 +45,21 @@ import {
 import { AgentAutoUpdater } from './agent-auto-update';
 import { AgentReloader } from './agent-reload';
 import {
+  AgentUsageReader,
+  readClaudeOwnDefault,
+  readCodexModels,
+  readCodexOwnDefault,
+  type UsageTab,
+} from './agent-usage';
+import { AgentModelSwitcher } from './agent-model-switch';
+import {
+  CLAUDE_EFFORTS,
+  CLAUDE_MODELS,
+  CODEX_FALLBACK_EFFORTS,
+  isSafeModelValue,
+  modelAgentOf,
+} from '@shared/agent-model';
+import {
   getExplorerIntegrationStatus,
   setClassicIntegration,
   setModernIntegration,
@@ -53,7 +68,13 @@ import {
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { resolve, join as joinPath } from 'node:path';
+import { dirname, resolve, join as joinPath } from 'node:path';
+import {
+  codexMcpBlock,
+  hasCodexMcpBlock,
+  upsertCodexMcpBlock,
+  type CodexMcpStatus,
+} from '@shared/codex-mcp';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -95,6 +116,10 @@ import {
   type EventEnvelope,
   type FocusSessionOwnerPayload,
   type FocusSessionOwnerResponse,
+  type ReadChoicePayload,
+  type ReadChoiceResponse,
+  type AnswerChoicePayload,
+  type AnswerChoiceResponse,
   type LinkConnectionStatePayload,
   type FocusWindowPayload,
   type AddTemplatePayload,
@@ -121,6 +146,11 @@ import {
   type AgentReloadPlanPayload,
   type ReloadAgentPayload,
   type ReloadAgentResponse,
+  type AgentModelOptionsResponse,
+  type AgentSwitchModelPayload,
+  type AgentSwitchModelResponse,
+  type AgentUsagePayload,
+  type AgentUsageResponse,
   type ListSshProfilesResponse,
   type SshAgentStatusResponse,
   type SshConfigListResponse,
@@ -1044,14 +1074,84 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 读不了或不是 JSON 都当没装,引导就继续显示安装那一步。
       const configDir = process.env.CLAUDE_CONFIG_DIR || joinPath(homedir(), '.claude');
       const file = joinPath(configDir, 'plugins', 'installed_plugins.json');
+      const claudeInstalled = await fs.stat(configDir).then(
+        (st) => st.isDirectory(),
+        () => false,
+      );
       try {
         const registry: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
-        return { pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID) };
+        return {
+          pluginInstalled: isClaudePluginInstalled(registry, TAB_CONTROL_PLUGIN_ID),
+          claudeInstalled,
+        };
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code !== 'ENOENT') logger.warn('ipc', `tab control status: cannot read ${file}`, err);
-        return { pluginInstalled: false };
+        return { pluginInstalled: false, claudeInstalled };
       }
+    },
+  );
+
+  // ADR-033:Codex 没有插件市场,MCP 服务器写在 ~/.codex/config.toml(CODEX_HOME 可改目录)。
+  // 服务器就是 Claude Code 插件里那个脚本,用 Ceteris 自己的可执行文件当 Node 跑。
+  const codexHome = (): string => process.env.CODEX_HOME || joinPath(homedir(), '.codex');
+  const codexConfigPath = (): string => joinPath(codexHome(), 'config.toml');
+  const codexInstalled = (): Promise<boolean> =>
+    fs.stat(codexHome()).then(
+      (st) => st.isDirectory(),
+      () => false,
+    );
+  const codexBlock = (): string =>
+    codexMcpBlock({
+      command: process.execPath,
+      serverPath: joinPath(
+        bundledMarketplaceDir({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath(),
+        }),
+        'ceteris-tabs',
+        'server',
+        'ceteris-tabs-mcp.mjs',
+      ),
+    });
+  /** The file's text, '' when it does not exist. Other read errors are thrown to the caller. */
+  const readCodexConfig = async (file: string): Promise<string> => {
+    try {
+      return await fs.readFile(file, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw new Error(
+        `[ipc] cannot read Codex config ${file}: ${(err as Error).message}. ` +
+          'Possible causes: no permission, or the path is a folder. Check the file, then retry.',
+      );
+    }
+  };
+
+  handleCommand(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, async (): Promise<CodexMcpStatus> => {
+    const configPath = codexConfigPath();
+    const text = await readCodexConfig(configPath);
+    return {
+      configPath,
+      configured: hasCodexMcpBlock(text),
+      codexInstalled: await codexInstalled(),
+      block: codexBlock(),
+    };
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_INSTALL,
+    async (): Promise<CodexMcpStatus> => {
+      const configPath = codexConfigPath();
+      const block = codexBlock();
+      const next = upsertCodexMcpBlock(await readCodexConfig(configPath), block);
+      // 先写临时文件再改名,和 persistence.ts 一样:Codex 正在读这个文件时不能看到半截
+      await fs.mkdir(dirname(configPath), { recursive: true });
+      const tmp = `${configPath}.tmp.${process.pid}.${Date.now()}`;
+      await fs.writeFile(tmp, next, 'utf8');
+      await fs.rename(tmp, configPath);
+      logger.info('ipc', `codex mcp entry written to ${configPath}`);
+      return { configPath, configured: true, codexInstalled: true, block };
     },
   );
 
@@ -1117,6 +1217,37 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         // 在那里(orphan 或被抢),新窗口仍开出来,只是不会自动 select。
       }
       return { windowId: info.id, windowNumber: info.number };
+    },
+  );
+
+  // ADR-035:toast 里的选择面板从别的标签或窗口读和回答 agent 的提示。
+  // 两条都不抛错:session 没了或提示变了都是正常时序,面板按 reason 改口。
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_READ_CHOICE,
+    (_e, envelope: CommandEnvelope<ReadChoicePayload>): ReadChoiceResponse => ({
+      prompt: sessionManager.readChoice(envelope.payload.sessionId),
+    }),
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_ANSWER_CHOICE,
+    (_e, envelope: CommandEnvelope<AnswerChoicePayload>): Promise<AnswerChoiceResponse> => {
+      // The payload crosses from the renderer: rebuild it from checked fields only.
+      const p = envelope.payload as unknown as Record<string, unknown>;
+      const sessionId = typeof p.sessionId === 'string' ? p.sessionId : '';
+      if (p.next === true) return sessionManager.answerChoice({ sessionId, next: true });
+      if (typeof p.index !== 'number' || !Number.isInteger(p.index)) {
+        throw makeIpcError(
+          'InvalidPayload',
+          `answer-choice needs an integer index or next:true; got keys ${Object.keys(p).join(',')}. ` +
+            'Likely a renderer built against an older protocol; reload the window.',
+        );
+      }
+      return sessionManager.answerChoice({
+        sessionId,
+        index: p.index,
+        ...(typeof p.text === 'string' ? { text: p.text } : {}),
+      });
     },
   );
 
@@ -2236,6 +2367,111 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
         );
       }
       return startAgentReload(templateId, { pathId, ownerWindowId: envelope.windowId, cols, rows });
+    },
+  );
+
+  // ── ADR-038:模型与 effort ──────────────────────────────────────────
+  // CLAUDE_CONFIG_DIR / CODEX_HOME 与两个 CLI 自己的规则一致;没设就是 home 下的默认目录
+  const usageReader = new AgentUsageReader({
+    claudeDir: process.env['CLAUDE_CONFIG_DIR'] || joinPath(homedir(), '.claude'),
+    codexDir: process.env['CODEX_HOME'] || joinPath(homedir(), '.codex'),
+  });
+  sessionManager.on('sessionDestroyed', (e: { sessionId: string }) =>
+    usageReader.forget(e.sessionId),
+  );
+
+  /** The tab's usage source, or null for SSH tabs and other templates (files are local). */
+  const usageTabOf = (sessionId: string): UsageTab | null => {
+    const s = sessionManager.get(sessionId);
+    const agent = modelAgentOf(s?.templateId);
+    if (!s || !agent || pathRefFromId(s.pathId).kind === 'ssh') return null;
+    const otherLaunchIds = sessionManager
+      .list()
+      .filter((o) => o.id !== sessionId && o.agentLaunchId)
+      .map((o) => o.agentLaunchId as string);
+    return {
+      sessionId,
+      agent,
+      cwd: s.originalCwd,
+      createdAt: s.createdAt,
+      ...(s.agentLaunchId ? { launchId: s.agentLaunchId } : {}),
+      otherLaunchIds,
+    };
+  };
+
+  // 换模型 = 在同一个标签里 /exit 再带新参数恢复同一段对话 (agent-model-switch.ts)
+  const modelSwitcher = new AgentModelSwitcher({
+    session: (id) => sessionManager.get(id),
+    template: (templateId) => templatesManager.get(templateId),
+    isLocal: (pathId) => pathRefFromId(pathId).kind !== 'ssh',
+    write: (id, text) =>
+      sessionManager.sendInput(id, Buffer.from(text, 'utf8').toString('base64')).accepted,
+    events: sessionManager,
+    screenOf: (id, rows) => sessionManager.getScreenTail(id, rows),
+    // Only an id known for certain: Claude Code's own launch id once its transcript exists.
+    // A file guessed from the folder could belong to another tab.
+    resumeIdOf: async (id) => {
+      const tab = usageTabOf(id);
+      return tab?.launchId ? usageReader.conversationId(tab) : null;
+    },
+    setPick: (id, pick) => sessionManager.setAgentPick(id, pick),
+    forgetUsage: (id) => usageReader.forget(id),
+  });
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_MODEL_OPTIONS,
+    async (): Promise<AgentModelOptionsResponse> => {
+      const codexDir = process.env['CODEX_HOME'] || joinPath(homedir(), '.codex');
+      const claudeDir = process.env['CLAUDE_CONFIG_DIR'] || joinPath(homedir(), '.claude');
+      const [codexModels, claudeOwn, codexOwn] = await Promise.all([
+        readCodexModels(codexDir),
+        readClaudeOwnDefault(claudeDir),
+        readCodexOwnDefault(codexDir),
+      ]);
+      const codexEfforts = [...new Set(codexModels.flatMap((m) => m.efforts))];
+      return {
+        'claude-code': {
+          models: [...CLAUDE_MODELS],
+          efforts: [...CLAUDE_EFFORTS],
+          own: claudeOwn,
+        },
+        codex: {
+          models: codexModels,
+          efforts: codexEfforts.length > 0 ? codexEfforts : [...CODEX_FALLBACK_EFFORTS],
+          own: codexOwn,
+        },
+      };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_USAGE,
+    async (_e, envelope: CommandEnvelope<AgentUsagePayload>): Promise<AgentUsageResponse> => {
+      const tab = usageTabOf(envelope.payload.sessionId);
+      return { usage: tab ? await usageReader.usage(tab) : null };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_SWITCH_MODEL,
+    async (
+      _e,
+      envelope: CommandEnvelope<AgentSwitchModelPayload>,
+    ): Promise<AgentSwitchModelResponse> => {
+      const { sessionId, model, effort } = envelope.payload;
+      for (const v of [model, effort]) {
+        if (v !== undefined && (typeof v !== 'string' || (v !== '' && !isSafeModelValue(v)))) {
+          throw makeIpcError(
+            'InvalidPayload',
+            `agent switch-model: "${String(v)}" is not a model or effort name. ` +
+              'Pick a value from the menu; names hold only letters, digits and . _ - [ ].',
+          );
+        }
+      }
+      return modelSwitcher.switch(sessionId, {
+        ...(model !== undefined ? { model } : {}),
+        ...(effort !== undefined ? { effort } : {}),
+      });
     },
   );
 

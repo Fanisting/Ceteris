@@ -38,11 +38,13 @@ import {
 } from '@shared/legado-dynamic-ids';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import { SHELVE_AFTER_HOURS_MAX } from '@shared/shelf';
+import { DEFAULT_COLON_COMMANDS, colonCommandsProblem } from '@shared/colon-commands';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
   QUICK_LAUNCH_MAX_ITEMS,
   isValidQuickLaunchItems,
 } from '@shared/quick-launch';
+import { isValidFolderAgentDefaults, sanitizeFolderDefaults } from '@shared/agent-model';
 import type { BuiltinThemeId, Settings } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
@@ -134,6 +136,13 @@ export const DEFAULT_SETTINGS: Settings = {
     tabControl: false,
     // 协调者引导 (ADR-024):老设置文件缺这个字段,deep merge 补 false,升级后也会看到一次
     tabControlGuideSeen: false,
+    // 扩展一次装好的卡片 (ADR-041):同上,升级后也会出现一次
+    setupSeen: false,
+    // ADR-020:`name:` 命令默认关,列表先放两个 CLI 都有的斜杠命令。
+    colonCommands: {
+      enabled: false,
+      commands: DEFAULT_COLON_COMMANDS.map((c) => ({ ...c })),
+    },
   },
   // BETA-031 AI 助手默认全 disabled,用户开启 + 填 key 后才生效
   ai: {
@@ -161,6 +170,8 @@ export const DEFAULT_SETTINGS: Settings = {
     hostToken: '',
     savedHosts: [],
   },
+  // ADR-038:没有文件夹默认值 = 每个 agent 用自己的配置
+  agents: { folderDefaults: [] },
 };
 
 const VALID_THEMES: BuiltinThemeId[] = [
@@ -244,6 +255,8 @@ export class SettingsManager extends EventEmitter {
     const migrated = stripUnknownLegacyFields(result.value);
     // 不论从哪加载,都要走一遍 deep merge 防止用户文件少字段
     const merged = deepMerge(this.defaults, migrated as DeepPartial<Settings>);
+    // ADR-038:手改坏的文件夹默认值只丢掉坏的那几项;否则之后任何一次 update 都会校验失败
+    merged.agents = { folderDefaults: sanitizeFolderDefaults(merged.agents?.folderDefaults) };
     // 版本不兼容直接拒绝 (CP-4 加迁移逻辑;CP-2 简单粗暴)
     if (merged.version !== 1) {
       throw new SettingsError(
@@ -312,6 +325,7 @@ export class SettingsManager extends EventEmitter {
   replaceAll(newSettings: Partial<Settings>): void {
     const cleaned = stripUnknownLegacyFields(newSettings);
     const merged = deepMerge(this.defaults, cleaned as DeepPartial<Settings>);
+    merged.agents = { folderDefaults: sanitizeFolderDefaults(merged.agents?.folderDefaults) };
     if (merged.version !== 1) {
       throw new SettingsError(
         'IncompatibleVersion',
@@ -661,6 +675,12 @@ export function validateSettings(s: Settings): void {
       `behavior.remoteSetupGuideSeen=${String(s.behavior.remoteSetupGuideSeen)} 必须是 true 或 false`,
     );
   }
+  if (typeof s.extensions.setupSeen !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.setupSeen=${String(s.extensions.setupSeen)} 必须是 true 或 false`,
+    );
+  }
   if (typeof s.extensions.tabControl !== 'boolean') {
     throw new SettingsError(
       'InvalidSettings',
@@ -677,6 +697,20 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `extensions.terminalMath=${String(s.extensions.terminalMath)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.extensions.colonCommands?.enabled !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.colonCommands.enabled=${String(s.extensions.colonCommands?.enabled)} 必须是 true 或 false`,
+    );
+  }
+  const colonProblem = colonCommandsProblem(s.extensions.colonCommands.commands);
+  if (colonProblem) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `extensions.colonCommands.commands 无效:${colonProblem}`,
+      { field: 'extensions.colonCommands.commands', got: s.extensions.colonCommands.commands },
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {
@@ -698,6 +732,14 @@ export function validateSettings(s: Settings): void {
       `behavior.quickLaunch 无效:必须是最多 ${QUICK_LAUNCH_MAX_ITEMS} 项的不重复列表,` +
         `每项为 { kind: 'template' | 'shell', id }。`,
       { field: 'behavior.quickLaunch', got: s.behavior.quickLaunch },
+    );
+  }
+  if (!isValidFolderAgentDefaults(s.agents?.folderDefaults)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      'agents.folderDefaults 无效:必须是 { pathId, agent: claude-code | codex, model, effort } 的列表,' +
+        '每个文件夹每个 agent 至多一项,model / effort 为空串或只含字母、数字、. _ - [ ]。',
+      { field: 'agents.folderDefaults', got: s.agents?.folderDefaults },
     );
   }
   if (!['default', 'last-used'].includes(s.shell.newTerminalShellPolicy)) {

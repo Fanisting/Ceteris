@@ -1189,6 +1189,20 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * ADR-048: turn the tab's bell on or off. With it on, done-notifier.ts shows a system
+   * notification each time the agent finishes a turn. All windows see the change through
+   * sessionStateChanged. Idempotent; an unknown sessionId is ignored, like renameSession.
+   */
+  setNotifyOnDone(sessionId: string, notify: boolean): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    if ((managed.info.notifyOnDone ?? false) === notify) return;
+    managed.info.notifyOnDone = notify;
+    logger.info('SessionManager', `setNotifyOnDone sid=${sessionId} → ${notify}`);
+    this.emitStateChanged(managed, { notifyOnDone: notify });
+  }
+
+  /**
    * ADR-038: record the model, effort and Claude Code session id a tab now runs with, after
    * agent-model-switch.ts relaunched the agent in it. '' means the agent's own default.
    * 副作用: emits sessionStateChanged. Unknown ids are ignored.

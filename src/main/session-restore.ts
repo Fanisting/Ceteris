@@ -96,6 +96,8 @@ export interface SessionRestoreDeps {
   create(input: RestoreCreateInput): Promise<SessionInfo>;
   rename(sessionId: string, name: string): void;
   setRole(sessionId: string, role: SessionRole | null): void;
+  /** ADR-048: turns the tab's bell back on. Optional so older test hosts need not pass it. */
+  setNotifyOnDone?(sessionId: string, notify: boolean): void;
   setAgentSession(sessionId: string, agent: ResumableAgent, agentSessionId: string): void;
   /** Puts a tab in the shelf (ShelfManager.putBack); resolves once the shelf is loaded */
   shelve(tab: Omit<ShelfEntry, 'id' | 'shelvedAt' | 'reason'>): Promise<void>;
@@ -253,6 +255,7 @@ export class SessionRestorer {
         lastEnterAt: this.deps.lastEnterAt(s.id),
         shown: s.ownerWindowId !== null,
         resume: this.deps.agentSession(s.id),
+        ...(s.notifyOnDone ? { notify: true } : {}),
       });
     }
     tabs.sort((a, b) => a.createdAt - b.createdAt);
@@ -382,6 +385,7 @@ export class SessionRestorer {
     // Role first: setRole renames the tab to the role's name, and a name the user gave it
     // afterwards must win.
     if (tab.role) this.deps.setRole(sessionId, tab.role);
+    if (tab.notify) this.deps.setNotifyOnDone?.(sessionId, true);
     if (tab.keepName && tab.displayName) {
       try {
         this.deps.rename(sessionId, tab.displayName);

@@ -108,6 +108,8 @@ import {
   type CloseSessionPayload,
   type SetCoordinatorPayload,
   type SetRolePayload,
+  type SetNotifyPayload,
+  type NotifyTestResponse,
   type CommandEnvelope,
   type CreateSessionPayload,
   type CreateSessionResponse,
@@ -222,6 +224,7 @@ import {
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
 import type { ShelfManager } from './shelf-manager';
+import type { DoneNotifier } from './done-notifier';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -325,6 +328,8 @@ export interface IpcLayerDeps {
   customThemes?: CustomThemeStore;
   /** 收纳盒(ADR-036)。可选:单测不带它,此时 snapshot.shelf 为空,cmd:shelf:* 抛错 */
   shelfManager?: ShelfManager;
+  /** 系统通知(ADR-048)。可选:单测不带它,此时 cmd:notify:test 回 shown: false */
+  doneNotifier?: DoneNotifier;
 }
 
 let installed = false;
@@ -980,6 +985,27 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       }
       sessionManager.setRole(sessionId, role);
     },
+  );
+
+  // ADR-048:标签的铃铛。开着时 agent 回答完弹系统通知 (done-notifier.ts)
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_NOTIFY,
+    (_e, envelope: CommandEnvelope<SetNotifyPayload>): void => {
+      const { sessionId, notify } = envelope.payload;
+      if (typeof notify !== 'boolean') {
+        throw new Error(
+          `[IPC] set-notify: notify=${JSON.stringify(notify)} for sessionId="${sessionId}" is not a boolean. ` +
+            `Expected true or false; check the bell button in AgentModelControls.tsx.`,
+        );
+      }
+      sessionManager.setNotifyOnDone(sessionId, notify);
+    },
+  );
+
+  // ADR-048:设置页"发一条测试通知",在用户面前这台机器上弹 (link 里是本地命令)
+  handleCommand(
+    COMMAND_CHANNELS.NOTIFY_TEST,
+    (): NotifyTestResponse => ({ shown: deps.doneNotifier?.showTest() ?? false }),
   );
 
   // STM-3:清除手动重命名标记

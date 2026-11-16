@@ -3,7 +3,8 @@
  * - .folder-agent-rows: rows under an opened folder, `CC [Opus] [high]`, stacked like
  *   session rows; plain coloured text, underline on hover
  * - .agent-status-line: the selected tab's model and effort, two unfilled outlined buttons
- *   with the split icons' 32px height and the shared block corner, in the same row
+ *   with the split icons' 32px height and the shared block corner, in the same row, then
+ *   the tab's notification bell (ADR-048)
  * Effort steps: low (muted) → mid (primary) → high (success) → top (danger).
  */
 
@@ -146,4 +147,19 @@
   padding: 0 8px;
   font-style: italic;
   color: var(--md-primary, #f0f);
+}
+
+/* ADR-048: the tab's bell, the same outlined box as model and effort. Off is muted, on takes
+   the primary colour like the model name. */
+.agent-status-pick.notify {
+  padding: 0 8px;
+  color: var(--md-on-surface-variant, #f0f);
+}
+
+.agent-status-pick.notify.on {
+  color: var(--md-primary, #f0f);
+}
+
+.agent-status-pick.notify svg {
+  display: block;
 }

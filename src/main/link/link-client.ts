@@ -87,6 +87,11 @@ export interface LinkClientDeps {
   onStatusChange: (linkId: string, status: LinkClientStatus) => void;
   /** Fires once per connection, after the hidden remote window exists. */
   onRemoteWindowCreated?: (windowId: string) => void;
+  /**
+   * Sees every Host event delivered to the remote window, after delivery. ADR-048 uses it
+   * to notify on this machine when a tab this window holds finishes a turn.
+   */
+  onRemoteEvent?: (windowId: string, channel: string, envelope: unknown) => void;
 }
 
 /**
@@ -526,6 +531,7 @@ export class LinkClient {
     const win = this.deps.windowManager.getById(this.windowId);
     if (!win || win.isDestroyed()) return;
     win.webContents.send(msg.channel, applyLocalThemeToLinkEvent(msg.channel, msg.envelope));
+    this.deps.onRemoteEvent?.(this.windowId, msg.channel, msg.envelope);
   }
 
   private startHeartbeat(): void {

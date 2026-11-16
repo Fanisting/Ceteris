@@ -45,6 +45,8 @@ export interface LinkManagerDeps {
   getOwnedSessionIds: (windowId: string) => string[];
   /** 连接状态变化时通知 renderer(设置页的状态条)。 */
   onStatusChange: () => void;
+  /** Client side: every Host event a remote window received (see LinkClientDeps). */
+  onRemoteEvent?: (windowId: string, channel: string, envelope: unknown) => void;
 }
 
 export class LinkManager {
@@ -152,6 +154,7 @@ export class LinkManager {
       onStatusChange: () => this.deps.onStatusChange(),
       onRemoteWindowCreated: (windowId) =>
         this.deps.onRemoteWindowCreated?.(windowId, options.reveal ?? false),
+      ...(this.deps.onRemoteEvent ? { onRemoteEvent: this.deps.onRemoteEvent } : {}),
     });
     this.clients.set(linkId, client);
     client.connect();

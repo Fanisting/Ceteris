@@ -53,6 +53,8 @@ export interface RestoreTab {
   shown: boolean;
   /** The id the agent announced (ceteris-tabs hook); null means look it up at launch */
   resume: { agent: ResumableAgent; sessionId: string } | null;
+  /** ADR-048: the tab's bell was on. Written only when true; older files lack it. */
+  notify?: boolean;
 }
 
 export interface RestoreFile {
@@ -201,6 +203,7 @@ export function sanitizeRestoreFile(raw: unknown): RestoreFile {
       lastEnterAt: num(x.lastEnterAt, 0),
       shown: x.shown === true,
       resume,
+      ...(x.notify === true ? { notify: true } : {}),
     });
   }
   out.tabs.sort((a, b) => a.createdAt - b.createdAt);

@@ -172,6 +172,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   // ADR-038:没有文件夹默认值 = 每个 agent 用自己的配置
   agents: { folderDefaults: [] },
+  // ADR-048:总开关默认开,但每个标签的铃铛默认关,所以不点铃铛什么都不弹
+  notifications: { enabled: true },
 };
 
 const VALID_THEMES: BuiltinThemeId[] = [
@@ -711,6 +713,12 @@ export function validateSettings(s: Settings): void {
       'InvalidSettings',
       `extensions.colonCommands.commands 无效:${colonProblem}`,
       { field: 'extensions.colonCommands.commands', got: s.extensions.colonCommands.commands },
+    );
+  }
+  if (typeof s.notifications?.enabled !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `notifications.enabled=${String(s.notifications?.enabled)} 必须是 true 或 false`,
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {

@@ -153,6 +153,13 @@ describe('sanitizeRestoreFile', () => {
     expect(out.tabs[0]!.resume).toEqual({ agent: 'codex', sessionId: 'id1' });
   });
 
+  it('keeps the bell only when it was on (ADR-048)', () => {
+    const out = sanitizeRestoreFile({
+      tabs: [tab({ notify: true }), { ...tab(), createdAt: 2000, notify: 'yes' }],
+    });
+    expect(out.tabs.map((t) => t.notify)).toEqual([true, undefined]);
+  });
+
   it('sorts by creation and keeps only the newest RESTORE_MAX_TABS', () => {
     const many = Array.from({ length: RESTORE_MAX_TABS + 5 }, (_, i) =>
       tab({ createdAt: RESTORE_MAX_TABS + 5 - i }),

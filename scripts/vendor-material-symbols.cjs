@@ -107,6 +107,11 @@ const SYMBOLS = [
   ['ZoomOut', 'zoom_out', 'default'],
   ['FitWidth', 'fit_width', 'default'],
   ['Sync', 'sync', 'default'],
+
+  // ADR-048 系统通知:设置分类与标签的铃铛
+  ['Notifications', 'notifications', 'default'],
+  ['NotificationsActive', 'notifications_active', 'fill1'],
+  ['NotificationsOff', 'notifications_off', 'default'],
 ];
 
 /** 只接受 SVG path 指令用到的字符,挡住任何混进 d 属性的非路径内容。 */

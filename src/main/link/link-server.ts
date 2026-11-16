@@ -14,9 +14,13 @@
  * - **断开 = 关窗**。socket 断掉时注销虚拟窗口,ipc.ts 注册的 onWindowClosed
  *   会把它持有的 session 全部转为无主。PTY 一直在跑,Host 本机窗口可以立刻
  *   接管 —— 这正是 Ceteris "会话不随窗口死" 哲学在远程场景下的自然延伸。
- * - **重连恢复归属**。意外断线时记下该客户端持有的 session,同一 windowId 重连后
- *   重新接管。这里不保留"挂起的虚拟窗口",因为那样 Host 本机在客户端回来之前
- *   无法使用这些 session。只恢复仍然无主的 session,已被别处接管的不抢。
+ * - **重连恢复归属**。意外断线时记下该客户端持有的 session(和分屏列表),同一
+ *   windowId 重连后先恢复分屏再逐个接管。这里不保留"挂起的虚拟窗口"(没有宽限期),
+ *   因为那样 Host 本机在客户端回来之前无法使用这些 session。只恢复仍然无主的
+ *   session,已被别处接管的不抢。ADR-050 重新评估过宽限期,结论不变。
+ * - **原地恢复**(ADR-050)。auth 带 resume 时,Host 在一个同步块里依次写出 auth-ok、
+ *   resume(snapshot)、漏掉的输出、认证期间攒下的事件(outbox),之后才放行实时
+ *   事件。客户端因此不必 reload 窗口。
  * - **新连接取代旧连接**。Wi-Fi 切换或休眠唤醒后,客户端重连往往早于 Host 判定
  *   旧连接超时。新连接带着相同 windowId 通过认证时立即断开旧连接,否则客户端
  *   窗口与 Host 分配的 id 对不上,窗口会静默失效。
@@ -61,9 +65,20 @@ import {
   type LinkHostStatus,
   type LinkMessage,
   type LinkPong,
+  type LinkResume,
+  type LinkResumeRequest,
   LINK_DEFAULT_PORT,
 } from '@shared/link-protocol';
-import { COMMAND_CHANNELS, PROTOCOL_VERSION, type CommandEnvelope } from '@shared/protocol';
+import {
+  COMMAND_CHANNELS,
+  EVENT_CHANNELS,
+  PROTOCOL_VERSION,
+  type CommandEnvelope,
+  type EventEnvelope,
+  type OutputSinceResponse,
+  type SessionOutputPayload,
+} from '@shared/protocol';
+import type { AppSnapshot } from '@shared/types';
 import { encodeFrame, FrameDecodeError, FrameDecoder } from './frame-codec';
 import {
   createCipherPair,
@@ -83,8 +98,18 @@ export interface LinkServerDeps {
   getToken: () => string;
   /** 列出某窗口持有的 session,意外断线时记下,重连后恢复。 */
   getOwnedSessionIds: (windowId: string) => string[];
+  /** 列出某窗口分屏里的 session。和归属一起记下,重连后先恢复它(ADR-050)。 */
+  getPaneSessionIds: (windowId: string) => string[];
   /** 覆盖写缓冲上限,仅测试使用。 */
   maxWriteBacklogBytes?: number;
+  /** 每个出站帧额外等待的毫秒数,模拟中继延迟。只有 dev / beta 构建会传非 0。 */
+  outboundDelayMs?: number;
+}
+
+/** 断线客户端留下的待恢复记录。 */
+interface ResumableOwnership {
+  sessionIds: string[];
+  paneSessionIds: string[];
 }
 
 /** LinkConnection 需要 LinkServer 提供的能力。 */
@@ -92,9 +117,52 @@ interface ConnectionHooks {
   onClosed: (conn: LinkConnection) => void;
   /** 断开占用该 windowId 的旧连接(如果有)。 */
   releaseWindow: (windowId: string) => void;
-  rememberOwned: (windowId: string, sessionIds: string[]) => void;
+  rememberOwned: (windowId: string, owned: ResumableOwnership) => void;
   /** 取出并清除某 windowId 的待恢复记录,过期视为不存在。 */
-  takeResumable: (windowId: string) => string[];
+  takeResumable: (windowId: string) => ResumableOwnership;
+}
+
+/**
+ * 认证期间最多攒多少条事件(ADR-050)。
+ *
+ * 恢复归属要逐个 claim,每次 claim 都序列化一次终端状态,期间 agent 的输出照样在
+ * 产生。正常情况下几十条;超过上限说明 Host 极忙,此时放弃原地恢复,让客户端
+ * reload,比在内存里无限攒事件安全。
+ */
+const RESUME_OUTBOX_MAX_EVENTS = 10_000;
+
+/** 一次 resume 最多处理的 session 数,防止畸形请求让 Host 做大量无用功。 */
+const RESUME_MAX_SESSIONS = 512;
+
+/** 无法原地恢复时回的 resume:客户端收到后 reload 窗口。 */
+const RESUME_UNAVAILABLE: LinkResume = { type: 'resume', snapshot: null, sessions: [] };
+
+/**
+ * 校验 auth.resume。它来自已认证的客户端,但仍按不可信输入处理:畸形条目丢弃,
+ * 条目数封顶。
+ *
+ * @returns null 表示没带 resume(首次连接或老客户端)
+ */
+export function parseResumeRequest(raw: unknown): LinkResumeRequest | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const list = (raw as { sessions?: unknown }).sessions;
+  if (!Array.isArray(list)) return { sessions: [] };
+  const seen = new Set<string>();
+  const sessions: LinkResumeRequest['sessions'] = [];
+  for (const item of list) {
+    if (sessions.length >= RESUME_MAX_SESSIONS) break;
+    const { sessionId, afterSeq } = (item ?? {}) as { sessionId?: unknown; afterSeq?: unknown };
+    if (typeof sessionId !== 'string' || seen.has(sessionId)) continue;
+    if (typeof afterSeq !== 'number' || !Number.isInteger(afterSeq) || afterSeq < -1) continue;
+    seen.add(sessionId);
+    sessions.push({ sessionId, afterSeq });
+  }
+  return { sessions };
+}
+
+/** 补发的输出包成与 ipc.ts wrapEvent 同构的信封。 */
+function wrapEvent<P>(payload: P): EventEnvelope<P> {
+  return { eventId: randomUUID(), timestamp: Date.now(), payload };
 }
 
 /**
@@ -152,6 +220,19 @@ class LinkConnection {
   private handshakeTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private lastInboundAt = Date.now();
+
+  /**
+   * ADR-050:认证期间(虚拟窗口已注册、auth-ok 未发)发给这个窗口的事件。只在
+   * auth 带 resume 时启用;null 表示不攒,沿用"未就绪就丢"的老行为。
+   */
+  private outbox: Array<{ channel: string; envelope: unknown }> | null = null;
+  private outboxOverflowed = false;
+
+  /**
+   * 正在恢复中的归属记录(已从 LinkServer 取出,尚未恢复完)。恢复中途断开时,
+   * destroy 把它与已接管的合并后重新记下,下次重连仍能恢复全部 session。
+   */
+  private restoring: ResumableOwnership | null = null;
 
   constructor(
     private readonly socket: Socket,
@@ -347,8 +428,14 @@ class LinkConnection {
   /**
    * 完成认证:校验内层 IPC 协议版本,注册虚拟窗口,恢复归属,回 auth-ok。
    *
-   * 归属必须在 auth-ok 之前恢复:客户端收到 auth-ok 就会 reload 窗口并拉
-   * snapshot,那一刻 session 必须已经归它所有,否则窗口会打开成空白页。
+   * 归属必须在 auth-ok 之前恢复:客户端收到 auth-ok 后窗口就会拉 snapshot(首次
+   * 连接)或用 resume 里的 snapshot 同步(重连),那一刻 session 必须已经归它所有,
+   * 否则窗口会打开成空白页。
+   *
+   * 带 resume 时(ADR-050)的写出顺序,全部在一个同步块里:
+   *   auth-ok → resume(snapshot)→ 漏掉的输出 → outbox → 之后的实时事件
+   * outbox 从虚拟窗口注册起就在攒,snapshot 之后发生的变化一定在它里面;它在
+   * snapshot 之后按原顺序重放,窗口最终状态与 Host 一致。
    */
   private async completeAuth(msg: LinkAuth): Promise<void> {
     if (msg.ipcProtocolVersion !== PROTOCOL_VERSION) {
@@ -367,6 +454,9 @@ class LinkConnection {
     this.clientVersion = msg.clientVersion || 'unknown';
 
     if (msg.preferredWindowId) this.hooks.releaseWindow(msg.preferredWindowId);
+
+    const resumeRequest = parseResumeRequest(msg.resume);
+    if (resumeRequest) this.outbox = [];
 
     let info;
     try {
@@ -388,6 +478,11 @@ class LinkConnection {
 
     await this.restoreOwnership(info.id);
     if (this.isClosed()) return;
+    const resume = resumeRequest ? await this.buildResume(info.id, resumeRequest) : null;
+    if (this.isClosed()) return;
+    this.restoring = null;
+
+    // 从这里到 flush outbox 必须是同步的:中间不能插进任何实时事件。
     this.state = 'ready';
 
     if (this.handshakeTimer) {
@@ -402,6 +497,23 @@ class LinkConnection {
       hostName: hostname(),
       hostVersion: app.getVersion(),
     });
+
+    if (resume && this.outboxOverflowed) {
+      logger.warn(
+        'LinkServer',
+        `认证期间事件超过 ${RESUME_OUTBOX_MAX_EVENTS} 条(window=${info.id}),` +
+          `放弃原地恢复,客户端将 reload`,
+      );
+      this.writeEncrypted<LinkResume>(RESUME_UNAVAILABLE);
+    } else if (resume) {
+      this.writeEncrypted<LinkResume>(resume.message);
+      for (const payload of resume.outputs) {
+        this.pushEvent(EVENT_CHANNELS.SESSION_OUTPUT, wrapEvent(payload));
+      }
+    }
+    const outbox = this.outbox ?? [];
+    this.outbox = null;
+    for (const e of outbox) this.pushEvent(e.channel, e.envelope);
 
     this.startHeartbeat();
 
@@ -419,7 +531,30 @@ class LinkConnection {
    * 接管失败是正常情况:session 可能已被 Host 本机接管或已经关闭,此时尊重现状。
    */
   private async restoreOwnership(windowId: string): Promise<void> {
-    for (const sessionId of this.hooks.takeResumable(windowId)) {
+    const pending = this.hooks.takeResumable(windowId);
+    const { sessionIds, paneSessionIds } = pending;
+    this.restoring = pending;
+    // 每次 dispatch 之前都要确认连接还在:等待期间连接可能已断开(socket 关闭、握手
+    // 超时),虚拟窗口已注销。此时再 claim 会让 session 归一个已经不存在的窗口,
+    // Host 本机窗口接管时只会拿到 SessionAlreadyOwned;再写分屏列表也会让已删除的
+    // 记录复活。没恢复完的部分由 destroy 记回去,下次重连接着恢复。
+    if (paneSessionIds.length > 0 && !this.isClosed()) {
+      try {
+        await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_SET_PANE_SESSIONS, {
+          windowId,
+          requestId: randomUUID(),
+          payload: { sessionIds: paneSessionIds },
+        });
+      } catch (err) {
+        logger.warn(
+          'LinkServer',
+          `恢复分屏列表失败 window=${windowId}:` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    for (const sessionId of sessionIds) {
+      if (this.isClosed()) return;
       try {
         await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_CLAIM, {
           windowId,
@@ -435,6 +570,83 @@ class LinkConnection {
         );
       }
     }
+  }
+
+  /**
+   * ADR-050:为重连的客户端准备 resume:取 snapshot,再取它报告的每个 session
+   * 漏掉的输出。都走 dispatchLocalCommand,与普通转发命令同一条路径。
+   *
+   * 只补本窗口(恢复归属之后)仍持有的 session:输出只推给 owner,这条规则在
+   * 补发时也成立。
+   *
+   * @returns snapshot 为 null 的 resume 表示无法原地恢复,客户端会 reload
+   */
+  private async buildResume(
+    windowId: string,
+    request: LinkResumeRequest,
+  ): Promise<{ message: LinkResume; outputs: SessionOutputPayload[] }> {
+    const fallback = { message: RESUME_UNAVAILABLE, outputs: [] };
+    let snapshot: AppSnapshot;
+    try {
+      snapshot = (await dispatchLocalCommand(COMMAND_CHANNELS.APP_GET_SNAPSHOT, {
+        windowId,
+        requestId: randomUUID(),
+        payload: { myWindowId: windowId },
+      })) as AppSnapshot;
+    } catch (err) {
+      logger.warn(
+        'LinkServer',
+        `resume 取 snapshot 失败 window=${windowId},客户端将 reload:` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return fallback;
+    }
+
+    if (this.isClosed()) return fallback;
+    const owners = new Map(snapshot.sessions.map((s) => [s.id, s.ownerWindowId]));
+    const sessions: LinkResume['sessions'] = [];
+    const outputs: SessionOutputPayload[] = [];
+    for (const { sessionId, afterSeq } of request.sessions) {
+      const owner = owners.get(sessionId);
+      if (owner === undefined) {
+        sessions.push({ sessionId, status: 'unknown-session' });
+        continue;
+      }
+      if (owner !== windowId) {
+        sessions.push({ sessionId, status: 'not-owner' });
+        continue;
+      }
+      if (this.isClosed()) return fallback;
+      let res: OutputSinceResponse;
+      try {
+        res = (await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_OUTPUT_SINCE, {
+          windowId,
+          requestId: randomUUID(),
+          payload: { sessionId, afterSeq },
+        })) as OutputSinceResponse;
+      } catch (err) {
+        logger.warn(
+          'LinkServer',
+          `resume 取输出失败 session=${sessionId},改为整段重拉:` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+        res = { status: 'gap' };
+      }
+      if (res.status === 'ok') {
+        sessions.push({ sessionId, status: 'replayed' });
+        for (const c of res.chunks) outputs.push({ sessionId, data: c.data, seq: c.seq });
+      } else {
+        sessions.push({ sessionId, status: res.status });
+      }
+    }
+
+    logger.info(
+      'LinkServer',
+      `resume window=${windowId}:` +
+        sessions.map((s) => `${s.sessionId}=${s.status}`).join(' ') +
+        ` 补发 ${outputs.length} 段输出`,
+    );
+    return { message: { type: 'resume', snapshot, sessions }, outputs };
   }
 
   /**
@@ -480,10 +692,23 @@ class LinkConnection {
     }
   }
 
-  /** 把一条事件推给客户端。写失败静默(见 WindowManager.send 的约定)。 */
+  /**
+   * 把一条事件推给客户端。写失败静默(见 WindowManager.send 的约定)。
+   *
+   * 认证期间:带 resume 的连接攒进 outbox(ADR-050),其余丢弃。
+   */
   private pushEvent(channel: string, envelope: unknown): void {
-    if (this.state !== 'ready') return;
-    this.writeEncrypted<LinkEventPush>({ type: 'evt', channel, envelope });
+    if (this.state === 'ready') {
+      this.writeEncrypted<LinkEventPush>({ type: 'evt', channel, envelope });
+      return;
+    }
+    if (this.state !== 'authenticating' || !this.outbox || this.outboxOverflowed) return;
+    if (this.outbox.length >= RESUME_OUTBOX_MAX_EVENTS) {
+      this.outboxOverflowed = true;
+      this.outbox = [];
+      return;
+    }
+    this.outbox.push({ channel, envelope });
   }
 
   private startHeartbeat(): void {
@@ -502,10 +727,25 @@ class LinkConnection {
     }, LINK_HEARTBEAT_INTERVAL_MS);
   }
 
+  /**
+   * 写一个帧。设了人工延迟时推迟写出:同一延迟的 setTimeout 按注册顺序触发,
+   * 帧序不会乱。
+   */
+  private writeFrame(frame: Buffer): void {
+    const delay = this.deps.outboundDelayMs ?? 0;
+    if (delay <= 0) {
+      this.socket.write(frame);
+      return;
+    }
+    setTimeout(() => {
+      if (!this.socket.destroyed) this.socket.write(frame);
+    }, delay);
+  }
+
   /** 写一个明文帧(仅握手阶段)。 */
   private writePlain<T>(msg: T): void {
     if (this.socket.destroyed) return;
-    this.socket.write(encodeFrame(Buffer.from(JSON.stringify(msg), 'utf8')));
+    this.writeFrame(encodeFrame(Buffer.from(JSON.stringify(msg), 'utf8')));
   }
 
   /** 写一个加密帧。 */
@@ -523,7 +763,7 @@ class LinkConnection {
     }
     try {
       const plaintext = Buffer.from(JSON.stringify(msg), 'utf8');
-      this.socket.write(encodeFrame(this.send.encrypt(plaintext)));
+      this.writeFrame(encodeFrame(this.send.encrypt(plaintext)));
     } catch (err) {
       // 写失败(socket 已断 / 帧超限)不能向上抛:调用方多半是事件广播,
       // 一个客户端出问题不该影响其他窗口。
@@ -558,11 +798,16 @@ class LinkConnection {
       );
       // 必须在注销之前读:注销会触发 handleWindowClosed 清空归属
       if (!NON_RESUMABLE_REASONS.has(reason)) {
-        this.hooks.rememberOwned(
-          this.virtualWindowId,
-          this.deps.getOwnedSessionIds(this.virtualWindowId),
-        );
+        const owned = this.deps.getOwnedSessionIds(this.virtualWindowId);
+        const panes = this.deps.getPaneSessionIds(this.virtualWindowId);
+        // 恢复归属做到一半就断开时,只算"现在持有的"会丢掉还没来得及接管的那些
+        const pending = this.restoring;
+        this.hooks.rememberOwned(this.virtualWindowId, {
+          sessionIds: pending ? [...new Set([...pending.sessionIds, ...owned])] : owned,
+          paneSessionIds: panes.length > 0 || !pending ? panes : pending.paneSessionIds,
+        });
       }
+      this.restoring = null;
       this.deps.windowManager.unregisterVirtualWindow(this.virtualWindowId);
       this.virtualWindowId = null;
     }
@@ -582,7 +827,7 @@ export class LinkServer {
   private server: Server | null = null;
   private readonly connections = new Set<LinkConnection>();
   /** windowId → 断线时持有的 session。跨 stop/start 保留:换绑定地址也会断开客户端。 */
-  private readonly resumable = new Map<string, { sessionIds: string[]; expiresAt: number }>();
+  private readonly resumable = new Map<string, ResumableOwnership & { expiresAt: number }>();
   private boundAddress = '';
   private boundPort = 0;
   private lastError = '';
@@ -688,7 +933,7 @@ export class LinkServer {
     const conn = new LinkConnection(socket, this.deps, {
       onClosed: (c) => this.connections.delete(c),
       releaseWindow: (windowId) => this.releaseWindow(windowId),
-      rememberOwned: (windowId, sessionIds) => this.rememberOwned(windowId, sessionIds),
+      rememberOwned: (windowId, owned) => this.rememberOwned(windowId, owned),
       takeResumable: (windowId) => this.takeResumable(windowId),
     });
     this.connections.add(conn);
@@ -703,23 +948,23 @@ export class LinkServer {
     }
   }
 
-  private rememberOwned(windowId: string, sessionIds: string[]): void {
+  private rememberOwned(windowId: string, owned: ResumableOwnership): void {
     const now = Date.now();
     for (const [id, entry] of this.resumable) {
       if (entry.expiresAt <= now) this.resumable.delete(id);
     }
-    if (sessionIds.length === 0) {
+    if (owned.sessionIds.length === 0) {
       this.resumable.delete(windowId);
       return;
     }
-    this.resumable.set(windowId, { sessionIds, expiresAt: now + LINK_RESUME_TTL_MS });
+    this.resumable.set(windowId, { ...owned, expiresAt: now + LINK_RESUME_TTL_MS });
   }
 
-  private takeResumable(windowId: string): string[] {
+  private takeResumable(windowId: string): ResumableOwnership {
     const entry = this.resumable.get(windowId);
     this.resumable.delete(windowId);
-    if (!entry || entry.expiresAt <= Date.now()) return [];
-    return entry.sessionIds;
+    if (!entry || entry.expiresAt <= Date.now()) return { sessionIds: [], paneSessionIds: [] };
+    return { sessionIds: entry.sessionIds, paneSessionIds: entry.paneSessionIds };
   }
 }
 

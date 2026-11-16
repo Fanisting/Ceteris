@@ -6,7 +6,9 @@
  *     what new tabs of that agent in the folder start with.
  *   - AgentStatusLine: in the split-view row under the terminals, the selected tab's model and
  *     effort as two buttons the size of the split icons. Each opens its choice. Usage numbers
- *     are not shown here (the user keeps them in the OMC status line).
+ *     are not shown here (the user keeps them in the OMC status line). A third button, the
+ *     bell (ADR-048), turns system notifications for this tab on or off; it is off for every
+ *     new tab and hidden while Settings, Notifications is off.
  *
  * @关键设计:
  * - Coloured text, no fills or outlines at rest; the buttons share the split icons' 32px
@@ -53,12 +55,14 @@ import {
   type AgentSwitchModelResponse,
   type AgentUsagePayload,
   type AgentUsageResponse,
+  type SetNotifyPayload,
 } from '@shared/protocol';
 import type { SessionInfo } from '@shared/types';
 import { useAppState } from '../store';
 import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useToast } from './Toast';
 import { useTranslation } from './LanguageProvider';
+import { Icon } from './icons';
 
 const AGENT_SHORT: Record<ModelAgent, string> = { 'claude-code': 'CC', codex: 'CX' };
 const AGENT_NAME: Record<ModelAgent, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
@@ -500,6 +504,37 @@ export function AgentStatusLine(): JSX.Element | null {
     }
   };
 
+  // ADR-048: the bell. main stores it on the session, so every window shows the same state.
+  const notificationsOn = state.settings.notifications?.enabled !== false;
+  const bell = session.notifyOnDone === true;
+  const agentName = AGENT_NAME[agent];
+  const toggleBell = (): void => {
+    window.api
+      .invoke<SetNotifyPayload, void>(COMMAND_CHANNELS.SESSION_SET_NOTIFY, {
+        sessionId: session.id,
+        notify: !bell,
+      })
+      .then(() => {
+        if (bell) return;
+        toast.push({
+          kind: 'success',
+          message: tx(
+            `${agentName} 回答完时会弹系统通知 (Ceteris 不在前台时),点通知回到这个标签。`,
+            `You get a system notification when ${agentName} finishes while Ceteris is in the background. Click it to come back to this tab.`,
+          ),
+        });
+      })
+      .catch((err: unknown) =>
+        toast.push({
+          kind: 'error',
+          message: tx(
+            `没能切换通知:${err instanceof Error ? err.message : String(err)}`,
+            `Could not change notifications: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        }),
+      );
+  };
+
   const openModels = (e: MouseEvent<HTMLElement>): void =>
     openAt(
       ctxMenu,
@@ -555,6 +590,28 @@ export function AgentStatusLine(): JSX.Element | null {
             {effortText || UNKNOWN_VALUE}
           </button>
         </>
+      )}
+      {notificationsOn && (
+        <button
+          type="button"
+          className={`agent-status-pick notify${bell ? ' on' : ''}`}
+          onClick={toggleBell}
+          aria-pressed={bell}
+          title={
+            bell
+              ? tx(
+                  '回答完会弹系统通知。点一下关掉',
+                  'Notifies you when this tab finishes. Click to turn off',
+                )
+              : tx(
+                  '回答完时弹系统通知。点一下打开',
+                  'Notify me when this tab finishes. Click to turn on',
+                )
+          }
+          aria-label={tx('这个标签的通知', 'Notifications for this tab')}
+        >
+          <Icon name={bell ? 'bellOn' : 'bellOff'} size={16} />
+        </button>
       )}
     </div>
   );

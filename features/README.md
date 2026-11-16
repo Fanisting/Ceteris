@@ -17,7 +17,9 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [One folder list with tags](folder-list-and-tags.md) | A single folder list with coloured tag filters | 0.3.0 |
 | [Folder blocks](folder-blocks.md) | Show sidebar folders as pebbles with status dots | 0.4.1 |
 | [Status filters](status-filters.md) | Running and Needs you filters across all folders | 0.4.1 |
+| [Back to the last session](back-to-last-session.md) | A chip left of Running returns to the session you were just on | Next |
 | [Settings export and import](settings-export-import.md) | Move your settings between machines | 0.1.0 |
+| [Responsive terminals under heavy output](output-flow-control.md) | Ctrl+C and typing stay quick while a program floods output, without slowing it; agent redraws arrive whole | Next |
 
 ## Files
 
@@ -44,6 +46,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Remote file tree](remote-file-tree.md) | Browse server folders read-only over SFTP | 0.3.0 |
 | [SSH login prompts](ssh-login-prompts.md) | Answer password, Duo and host key prompts in a dialog | 0.4.1 |
 | [Ceteris Link](ceteris-link.md) | Open the live terminal tabs of another computer | 0.3.0 |
+| [Type ahead on remote agent tabs](remote-type-ahead.md) | Type a prompt locally, Enter sends it to the host in one message | Next |
 
 ## Agents
 
@@ -55,6 +58,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Agent tab titles](agent-tab-titles.md) | Short, readable titles, optionally written by a model | 0.4.1 |
 | [Model and effort](agent-model-effort.md) | Folder defaults and per tab switching for Claude Code and Codex | 0.4.3 |
 | [Choice notice](agent-choice-notice.md) | A notice points to the tab waiting for your decision, and answers it | 0.4.3 |
+| [Done notifications](done-notifications.md) | A system notification when a belled agent tab finishes; click to go back | Next |
 | [name: commands](name-commands.md) | Type compact: and get /compact in Claude Code or Codex | 0.4.3 |
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar | 0.4.1 |
 | [Coordinator tour](coordinator-tour.md) | An animated guide to roles and tab control | 0.4.1 |

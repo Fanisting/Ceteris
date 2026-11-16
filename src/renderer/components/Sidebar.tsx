@@ -27,6 +27,7 @@ import {
   useState,
   useMemo,
   useRef,
+  type Dispatch,
   type DragEvent,
   type MouseEvent,
 } from 'react';
@@ -56,8 +57,7 @@ import {
   type PickFolderResponse,
   type FocusSessionOwnerResponse,
 } from '@shared/protocol';
-import type {
-  SshProfile, PathNode, SessionInfo } from '@shared/types';
+import type { SshProfile, PathNode, SessionInfo } from '@shared/types';
 import { disambiguatePathNames } from '@shared/path-display';
 import { countTags, matchesTags } from '@shared/path-tags';
 import {
@@ -67,7 +67,10 @@ import {
 } from '@shared/session-status';
 import { useTranslation } from './LanguageProvider';
 import {
+  type AppAction,
+  type AppState,
   findMyOwnedSessionId,
+  findPathNode,
   useAppDispatch,
   useAppState,
   useAppStateRef,
@@ -83,6 +86,7 @@ import { buildSessionContextMenu } from './sessionContextMenu';
 import { CelebrationBurst } from './CelebrationBurst';
 import { FolderAgentDefaultsRows } from './AgentModelControls';
 import { MODEL_AGENTS } from '@shared/agent-model';
+import { backTarget } from '@shared/recent-sessions';
 
 /**
  * 状态点颜色 (软件定义书 6.2.4 状态指示):
@@ -209,9 +213,7 @@ export function Sidebar(): JSX.Element {
   // 而不依赖 setState updater(updater 内 throw 会把异常抛到 commit)。
   // document.body.style.cursor 临时锁成 ew-resize,防止拖动越过 sidebar 边界
   // 进入终端区时鼠标光标抖。
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() =>
-    readSidebarWidthFromStorage(),
-  );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => readSidebarWidthFromStorage());
   const widthRef = useRef(sidebarWidth);
   widthRef.current = sidebarWidth;
   const isResizingRef = useRef(false);
@@ -296,6 +298,26 @@ export function Sidebar(): JSX.Element {
       : taggedFolders.filter((n) => n.sessionIds.some((sid) => statusOf(sid) === statusFilter));
   const reachableTags = new Set(countTags(visibleFolders).map((c) => c.name));
 
+  // ADR-049:the back chip names the session it returns to, so it needs no hover to read.
+  // It ignores the tag and status filters: it goes back to where the user was, wherever
+  // that is, and switches the list to local or remote to match.
+  const backId = backTarget(state.recentSessionIds, state.selectedSessionId, (id) =>
+    state.sessions.has(id),
+  );
+  const backSession = backId ? (state.sessions.get(backId) ?? null) : null;
+  const backNode = backSession ? findPathNode(state.pathTree, backSession.pathId) : undefined;
+  const backFolder = backNode ? (backNode.displayName ?? formatPathDisplayName(backNode)) : '';
+  const goBack = (): void => {
+    if (!backSession) return;
+    if (backNode) {
+      const backSegment: SidebarSegment = backNode.kind === 'ssh' ? 'remote' : 'local';
+      if (backSegment !== segment) {
+        dispatch({ type: 'view/set-sidebar-segment', segment: backSegment });
+      }
+    }
+    openSessionFromSidebar(backSession, dispatch, state);
+  };
+
   const toggleTag = (tag: string): void => {
     setSelectedTags(
       activeTags.includes(tag) ? activeTags.filter((x) => x !== tag) : [...activeTags, tag],
@@ -304,10 +326,10 @@ export function Sidebar(): JSX.Element {
 
   const addRemoteBookmark = async (profile: SshProfile, path: string): Promise<void> => {
     try {
-      await window.api.invoke<unknown, AddBookmarkResponse>(
-        COMMAND_CHANNELS.REMOTE_BOOKMARK_ADD,
-        { sshProfileId: profile.id, remotePath: path },
-      );
+      await window.api.invoke<unknown, AddBookmarkResponse>(COMMAND_CHANNELS.REMOTE_BOOKMARK_ADD, {
+        sshProfileId: profile.id,
+        remotePath: path,
+      });
       toast.push({ kind: 'success', message: `已添加远程文件夹 ${path}` });
     } catch (err) {
       toast.push({
@@ -357,10 +379,9 @@ export function Sidebar(): JSX.Element {
         {},
       );
       if (result.path === null) return;
-      await window.api.invoke<unknown, AddBookmarkResponse>(
-        COMMAND_CHANNELS.BOOKMARK_ADD,
-        { path: result.path },
-      );
+      await window.api.invoke<unknown, AddBookmarkResponse>(COMMAND_CHANNELS.BOOKMARK_ADD, {
+        path: result.path,
+      });
     } catch (err) {
       toast.push({
         kind: 'error',
@@ -437,10 +458,9 @@ export function Sidebar(): JSX.Element {
       const path = (file as File & { path?: string }).path;
       if (!path) continue;
       try {
-        await window.api.invoke<unknown, AddBookmarkResponse>(
-          COMMAND_CHANNELS.BOOKMARK_ADD,
-          { path },
-        );
+        await window.api.invoke<unknown, AddBookmarkResponse>(COMMAND_CHANNELS.BOOKMARK_ADD, {
+          path,
+        });
       } catch (err) {
         console.error('[Sidebar] drop add-bookmark failed', err);
       }
@@ -481,10 +501,29 @@ export function Sidebar(): JSX.Element {
       {/* ADR-023:Running / Needs you 总在,所以这一栏不再只在有标签时出现 */}
       <div className="sidebar-tag-bar">
         <div className="sidebar-tags" role="group" aria-label={tx('按标签筛选', 'Filter by tag')}>
+          {backSession && (
+            <button
+              type="button"
+              className="tag-chip back-chip"
+              title={tx(
+                `回到上一个会话:${backSession.displayName}(${backFolder})`,
+                `Back to ${backSession.displayName} in ${backFolder}`,
+              )}
+              onClick={goBack}
+            >
+              <ArrowBack size={14} />
+              <span className="back-chip-label">
+                {backFolder
+                  ? `${backSession.displayName} · ${backFolder}`
+                  : backSession.displayName}
+              </span>
+            </button>
+          )}
           {SESSION_STATUS_FILTERS.map((status) => {
             const active = statusFilter === status;
             const count = statusCounts[status];
-            const label = status === 'running' ? tx('运行中', 'Running') : tx('等你处理', 'Needs you');
+            const label =
+              status === 'running' ? tx('运行中', 'Running') : tx('等你处理', 'Needs you');
             return (
               <button
                 key={status}
@@ -647,7 +686,6 @@ const MAX_ROW_DOTS = 5;
 
 /** Most session dots a pebble shows before it writes +N; few, so pebbles stay small. */
 const MAX_BLOCK_SESSION_DOTS = 5;
-
 
 /**
  * A session's dot colour (ADR-021): warning while an agent waits at a prompt (approval or choice), the
@@ -877,10 +915,7 @@ function PathItem({
   // ADR-038: a model row only for agents that have a tab in this folder
   const agentsHere = MODEL_AGENTS.filter((a) => allSessions.some((s) => s.templateId === a));
   // BETA-014:优先用 FolderList 算好的去重名;退到本节点 displayName / 末段
-  const displayName =
-    displayNameOverride ??
-    node.displayName ??
-    formatPathDisplayName(node);
+  const displayName = displayNameOverride ?? node.displayName ?? formatPathDisplayName(node);
 
   // M1-C:行内重命名 (仅收藏支持)
   const [renaming, setRenaming] = useState(false);
@@ -929,12 +964,11 @@ function PathItem({
     e.stopPropagation();
     // 在该 path 下用默认模板新建 session
     // 优先级:bookmark.defaultTemplateId > 全局 defaultTemplateId > 'shell' 兜底
-    const templateId =
-      node.defaultTemplateId ?? state.defaultTemplateId ?? 'shell';
+    const templateId = node.defaultTemplateId ?? state.defaultTemplateId ?? 'shell';
     try {
       const dims = state.lastTerminalDims;
       const res = await window.api.invoke<unknown, CreateSessionResponse>(
-          COMMAND_CHANNELS.SESSION_CREATE,
+        COMMAND_CHANNELS.SESSION_CREATE,
         {
           pathId: node.id,
           templateId,
@@ -1001,9 +1035,7 @@ function PathItem({
         onSelect: () => {
           window.api
             .invoke(COMMAND_CHANNELS.BOOKMARK_REMOVE, { pathId: node.id })
-            .then(() =>
-              toast.push({ kind: 'success', message: `已从列表移除 ${displayName}` }),
-            )
+            .then(() => toast.push({ kind: 'success', message: `已从列表移除 ${displayName}` }))
             .catch((err: unknown) =>
               toast.push({
                 kind: 'error',
@@ -1229,11 +1261,7 @@ function PathItem({
         </div>
         {/* ADR-038: model and effort that new agent tabs in this folder start with */}
         {statusFilter === null && (
-          <FolderAgentDefaultsRows
-            pathId={node.id}
-            folderName={displayName}
-            agents={agentsHere}
-          />
+          <FolderAgentDefaultsRows pathId={node.id} folderName={displayName} agents={agentsHere} />
         )}
         {sessionList || (
           <p className="sidebar-empty path-open-folder-empty">
@@ -1339,8 +1367,7 @@ function SessionItemImpl({
   const toast = useToast();
   const stateRef = useAppStateRef();
   const isMine = session.ownerWindowId === myWindowId;
-  const ownedByOther =
-    session.ownerWindowId !== null && session.ownerWindowId !== myWindowId;
+  const ownedByOther = session.ownerWindowId !== null && session.ownerWindowId !== myWindowId;
 
   // M1-C:行内重命名
   const [renaming, setRenaming] = useState(false);
@@ -1400,62 +1427,7 @@ function SessionItemImpl({
 
   const handleClick = (): void => {
     if (renaming) return;
-    // 本窗口已是 owner → 仅切 view
-    if (isMine) {
-      dispatch({ type: 'view/select-path', pathId: session.pathId });
-      dispatch({ type: 'view/select-session', sessionId: session.id });
-      return;
-    }
-    // 其他窗口持有 → 聚焦那个窗口,所有权不变 (软件定义书 8.4)。
-    // 持有方在另一台机器上时无法聚焦,main 会交接给本窗口,这里跟着选中。
-    if (ownedByOther) {
-      window.api
-        .invoke<{ sessionId: string }, FocusSessionOwnerResponse>(
-          COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
-          { sessionId: session.id },
-        )
-        .then((res) => {
-          if (res.transferred) dispatch({ type: 'view/select-session', sessionId: session.id });
-        })
-        .catch((err) => console.error('[Sidebar] focus-owner failed', err));
-      return;
-    }
-    // 无主 → 乐观接管 (与 Tab.handleClick orphan 分支同协议:本地立即
-    // 改 owner + select,消除 EmptyPathState 闪烁;失败回滚)
-    const prevOwnedId = findMyOwnedSessionId(stateRef.current);
-    if (prevOwnedId && prevOwnedId !== session.id) {
-      dispatch({
-        type: 'sessions/owner-changed',
-        sessionId: prevOwnedId,
-        ownerWindowId: null,
-      });
-    }
-    dispatch({
-      type: 'sessions/owner-changed',
-      sessionId: session.id,
-      ownerWindowId: myWindowId,
-    });
-    dispatch({ type: 'view/select-path', pathId: session.pathId });
-    dispatch({ type: 'view/select-session', sessionId: session.id });
-
-    window.api
-      .invoke(COMMAND_CHANNELS.SESSION_CLAIM, { sessionId: session.id })
-      .catch((err) => {
-        console.error('[Sidebar] claim failed, rolling back', err);
-        dispatch({
-          type: 'sessions/owner-changed',
-          sessionId: session.id,
-          ownerWindowId: null,
-        });
-        if (prevOwnedId && prevOwnedId !== session.id) {
-          dispatch({
-            type: 'sessions/owner-changed',
-            sessionId: prevOwnedId,
-            ownerWindowId: myWindowId,
-          });
-        }
-        dispatch({ type: 'view/select-session', sessionId: prevOwnedId });
-      });
+    openSessionFromSidebar(session, dispatch, stateRef.current);
   };
 
   // ADR-008:currentCwd 与 originalCwd 不一致时显示 ⚠️ tooltip 真实 cwd。
@@ -1493,9 +1465,7 @@ function SessionItemImpl({
         )}
         {session.state === 'exited' &&
           typeof session.exitCode === 'number' &&
-          session.exitCode !== 0 && (
-            <CloseBold size={11} className="session-state-dot-icon fail" />
-          )}
+          session.exitCode !== 0 && <CloseBold size={11} className="session-state-dot-icon fail" />}
       </span>
       {celebrate && (
         <CelebrationBurst
@@ -1525,7 +1495,9 @@ function SessionItemImpl({
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="session-name" title={session.displayName}>{session.displayName}</span>
+        <span className="session-name" title={session.displayName}>
+          {session.displayName}
+        </span>
       )}
       {cwdDrifted && !renaming && (
         <span className="session-cwd-drift" aria-label="当前目录已变" title={session.currentCwd}>
@@ -1533,10 +1505,7 @@ function SessionItemImpl({
         </span>
       )}
       {session.state === 'exited' && !renaming && (
-        <span
-          className="session-exit-code"
-          title={`已退出 (exitCode=${session.exitCode ?? 0})`}
-        >
+        <span className="session-exit-code" title={`已退出 (exitCode=${session.exitCode ?? 0})`}>
           <Icon name="circleDot" size={11} />
         </span>
       )}
@@ -1558,6 +1527,78 @@ function SessionItemImpl({
  * session 引用保持不变 — 默认浅比较即可正确跳过无关项重渲。
  */
 const SessionItem = memo(SessionItemImpl);
+
+/**
+ * Show a session the way a click on its sidebar row does. Shared by the rows and the
+ * back chip (ADR-049), so both follow the same ownership rules (软件定义书 8.4).
+ *
+ * @param session the session to show
+ * @param dispatch store dispatch
+ * @param state the store state at click time (for this window's id and its owned session)
+ * 副作用:选中 path 与 session;另一窗口持有时 invoke SESSION_FOCUS_OWNER;无主时乐观接管
+ * 并 invoke SESSION_CLAIM,失败回滚 owner 与选中。不抛出,IPC 失败只记 console。
+ */
+function openSessionFromSidebar(
+  session: SessionInfo,
+  dispatch: Dispatch<AppAction>,
+  state: AppState,
+): void {
+  const myWindowId = state.myWindowId;
+  // 本窗口已是 owner → 仅切 view
+  if (session.ownerWindowId === myWindowId) {
+    dispatch({ type: 'view/select-path', pathId: session.pathId });
+    dispatch({ type: 'view/select-session', sessionId: session.id });
+    return;
+  }
+  // 其他窗口持有 → 聚焦那个窗口,所有权不变 (软件定义书 8.4)。
+  // 持有方在另一台机器上时无法聚焦,main 会交接给本窗口,这里跟着选中。
+  if (session.ownerWindowId !== null) {
+    window.api
+      .invoke<{ sessionId: string }, FocusSessionOwnerResponse>(
+        COMMAND_CHANNELS.SESSION_FOCUS_OWNER,
+        { sessionId: session.id },
+      )
+      .then((res) => {
+        if (res.transferred) dispatch({ type: 'view/select-session', sessionId: session.id });
+      })
+      .catch((err) => console.error('[Sidebar] focus-owner failed', err));
+    return;
+  }
+  // 无主 → 乐观接管 (与 Tab.handleClick orphan 分支同协议:本地立即
+  // 改 owner + select,消除 EmptyPathState 闪烁;失败回滚)
+  const prevOwnedId = findMyOwnedSessionId(state);
+  if (prevOwnedId && prevOwnedId !== session.id) {
+    dispatch({
+      type: 'sessions/owner-changed',
+      sessionId: prevOwnedId,
+      ownerWindowId: null,
+    });
+  }
+  dispatch({
+    type: 'sessions/owner-changed',
+    sessionId: session.id,
+    ownerWindowId: myWindowId,
+  });
+  dispatch({ type: 'view/select-path', pathId: session.pathId });
+  dispatch({ type: 'view/select-session', sessionId: session.id });
+
+  window.api.invoke(COMMAND_CHANNELS.SESSION_CLAIM, { sessionId: session.id }).catch((err) => {
+    console.error('[Sidebar] claim failed, rolling back', err);
+    dispatch({
+      type: 'sessions/owner-changed',
+      sessionId: session.id,
+      ownerWindowId: null,
+    });
+    if (prevOwnedId && prevOwnedId !== session.id) {
+      dispatch({
+        type: 'sessions/owner-changed',
+        sessionId: prevOwnedId,
+        ownerWindowId: myWindowId,
+      });
+    }
+    dispatch({ type: 'view/select-session', sessionId: prevOwnedId });
+  });
+}
 
 /**
  * 比较两个路径是否指向同一目录。Windows 大小写无关,POSIX 大小写敏感。

@@ -139,7 +139,7 @@ export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
               '3. 在另一台电脑添加这台电脑的 100.x.y.z 地址,并粘贴令牌。',
             '1. Install Tailscale on both PCs (tailscale.com/download) and log in to the same account.\n' +
               '2. Turn on remote access here, then copy the access token.\n' +
-              '3. On the other PC, add this PC\'s 100.x.y.z address and paste the token.',
+              "3. On the other PC, add this PC's 100.x.y.z address and paste the token.",
           ),
           confirmLabel: tx('开始', 'Start'),
         });
@@ -211,7 +211,6 @@ export function LinkPanel({ setError }: LinkPanelProps): JSX.Element {
 
   return (
     <section className="settings-panel">
-
       <p className="settings-info-text" style={{ marginBottom: 16 }}>
         {tx(
           '把这台机器上正在跑的终端标签页(包括 AI agent)挂载到另一台机器。' +
@@ -530,7 +529,11 @@ function SavedHostList({
                   {active && (
                     <>
                       {' · '}
-                      <LinkStateBadge state={active.state} rttMs={active.rttMs} />
+                      <LinkStateBadge
+                        state={active.state}
+                        rttMs={active.rttMs}
+                        laggy={active.laggy}
+                      />
                     </>
                   )}
                 </span>
@@ -649,14 +652,16 @@ function SavedHostList({
 }
 
 /**
- * 连接状态徽章。颜色语义:绿=连着,黄=正在重连,灰=空闲/已关闭。
+ * 连接状态徽章。颜色语义:绿=连着,黄=正在重连或连着但变慢(ADR-050),灰=空闲/已关闭。
  */
 function LinkStateBadge({
   state,
   rttMs,
+  laggy,
 }: {
   state: LinkStatusResponse['clients'][number]['state'];
   rttMs: number | null;
+  laggy: boolean;
 }): JSX.Element {
   const { tx } = useTranslation();
   const label: Record<typeof state, string> = {
@@ -666,16 +671,27 @@ function LinkStateBadge({
     reconnecting: tx('重连中…', 'Reconnecting…'),
     closed: tx('已断开', 'Disconnected'),
   };
+  const slow = state === 'connected' && laggy;
   const tone =
-    state === 'connected'
+    state === 'connected' && !slow
       ? 'ok'
-      : state === 'reconnecting' || state === 'connecting'
+      : slow || state === 'reconnecting' || state === 'connecting'
         ? 'warn'
         : 'idle';
   return (
-    <span className={`link-status link-status-${tone}`}>
-      {label[state]}
-      {state === 'connected' && rttMs !== null && ` (${rttMs}ms)`}
+    <span
+      className={`link-status link-status-${tone}`}
+      title={
+        slow
+          ? tx(
+              '连接变慢:Host 3 秒没有回音。超过 15 秒会自动重连。',
+              'Link slow: no reply for 3 s. Reconnects after 15 s.',
+            )
+          : undefined
+      }
+    >
+      {slow ? tx('变慢', 'Slow') : label[state]}
+      {state === 'connected' && !slow && rttMs !== null && ` (${rttMs}ms)`}
     </span>
   );
 }

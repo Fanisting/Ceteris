@@ -32,6 +32,9 @@ import {
   Info,
   InkEraser,
   LinkIcon,
+  Notifications,
+  NotificationsActive,
+  NotificationsOff,
   OpenInNew,
   Palette,
   Psychology,
@@ -67,6 +70,7 @@ export const Icons = {
   systemIntegration: LinkIcon,
   ai: Psychology, // BETA-031 AI 助手
   extensions: DeployedCode, // ADR-019 可选扩展
+  notifications: Notifications, // ADR-048 系统通知
   advanced: Build,
   about: Info,
 
@@ -91,6 +95,9 @@ export const Icons = {
   circleDot: RadioChecked,
   close: Close,
   plus: Add,
+  // ADR-048:标签的铃铛,开 / 关
+  bellOn: NotificationsActive,
+  bellOff: NotificationsOff,
 
   // 勘误第二轮 #4:内置模板 / shell 的图标。没有真品牌 SVG,用语义贴近的
   // 矢量图标替原 emoji,至少视觉上一致、矢量化、随主题色变。

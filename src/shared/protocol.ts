@@ -73,10 +73,20 @@ export const COMMAND_CHANNELS = {
   SESSION_ANSWER_CHOICE: 'cmd:session:answer-choice',
   SESSION_RESIZE: 'cmd:session:resize',
   SESSION_GET_SCROLLBACK: 'cmd:session:get-scrollback',
+  /**
+   * ADR-051:owner 窗口报告已解析的输出字节数,main 据此 pause / resume PTY。
+   * 无返回值;非 owner 的 ack 被忽略。payload 见 AckOutputPayload。
+   */
+  SESSION_ACK_OUTPUT: 'cmd:session:ack-output',
   /** BETA-028:导出 scrollback 为 UTF-8 字符串,供终端工具栏"复制全部"按钮 */
   SESSION_EXPORT_SCROLLBACK: 'cmd:session:export-scrollback',
   /** BETA-028:清空 main 端的 scrollback ring buffer(配合 term.clear() 使用) */
   SESSION_CLEAR_SCROLLBACK: 'cmd:session:clear-scrollback',
+  /**
+   * ADR-050:取某 session 在 afterSeq 之后 emit 过的输出(Host 上最近约 1 MiB)。
+   * Ceteris Link 重连时 Host 用它补发断线期间漏掉的输出,本地窗口一般用不到。
+   */
+  SESSION_OUTPUT_SINCE: 'cmd:session:output-since',
   /**
    * 公式图片扩展 (ADR-019):renderer 报告终端的前景 / 背景色与格子宽高比,
    * main 写进之后新 session 的 LATEX_MATH_* 环境变量。payload 见 claude-math-images.ts。
@@ -110,6 +120,10 @@ export const COMMAND_CHANNELS = {
    * 角色名、放进上方一行;清除时名字还没被改过就恢复原名。
    */
   SESSION_SET_ROLE: 'cmd:session:set-role',
+  /** ADR-048: turn a tab's bell on or off (SessionInfo.notifyOnDone) */
+  SESSION_SET_NOTIFY: 'cmd:session:set-notify',
+  /** ADR-048: show a test system notification on the machine in front of the user */
+  NOTIFY_TEST: 'cmd:notify:test',
   /**
    * 右键 Tab → "在新窗口中打开"。原子地把 session 从调用方窗口释放,
    * 创建新窗口并把所有权直接转给新窗口,新窗口启动时从 URL ?selectSessionId
@@ -328,6 +342,12 @@ export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHAN
 export const EVENT_CHANNELS = {
   // App / Window
   APP_STATE_CHANGED: 'evt:app:state-changed',
+  /**
+   * ADR-050:定向推给一个窗口的完整新 snapshot,窗口用它替换 store 里的数据,
+   * 视图状态(选中的文件夹和标签、展开状态)保留。Ceteris Link 重连后由 Client 的
+   * main 进程注入,代替整页 reload。
+   */
+  APP_RESYNC: 'evt:app:resync',
   WINDOW_ASSIGNED_ID: 'evt:window:assigned-id',
   WINDOW_LIST_UPDATED: 'evt:window:list-updated',
   WINDOW_FOCUS_REQUESTED: 'evt:window:focus-requested',
@@ -338,6 +358,11 @@ export const EVENT_CHANNELS = {
   SESSION_CREATED: 'evt:session:created',
   SESSION_STATE_CHANGED: 'evt:session:state-changed',
   SESSION_OUTPUT: 'evt:session:output',
+  /**
+   * ADR-051:owner 落后太多,main 丢掉了扣着的输出;owner 应重放快照
+   * (cmd:session:get-scrollback)。只发给 owner。payload 见 OutputResyncPayload。
+   */
+  SESSION_OUTPUT_RESYNC: 'evt:session:output-resync',
   SESSION_EXITED: 'evt:session:exited',
   SESSION_OWNER_CHANGED: 'evt:session:owner-changed',
   SESSION_DESTROYED: 'evt:session:destroyed',
@@ -555,6 +580,18 @@ export interface SetCoordinatorPayload {
   coordinator: boolean;
 }
 
+/** ADR-048: cmd:session:set-notify */
+export interface SetNotifyPayload {
+  sessionId: string;
+  /** true = a finished turn in this tab shows a system notification */
+  notify: boolean;
+}
+
+/** ADR-048: cmd:notify:test. shown = false when the system has no notification service. */
+export interface NotifyTestResponse {
+  shown: boolean;
+}
+
 export interface SetRolePayload {
   sessionId: string;
   /** null clears the role: the tab becomes a Worker again */
@@ -614,6 +651,25 @@ export interface ClaimSessionResponse {
   lastSeq: number;
 }
 
+/** cmd:session:output-since 的 payload(ADR-050)。 */
+export interface OutputSincePayload {
+  sessionId: string;
+  /** 调用方已拿到的最后一个 seq;-1 表示什么都没拿到 */
+  afterSeq: number;
+}
+
+/**
+ * cmd:session:output-since 的返回值(ADR-050)。
+ *
+ * - ok:seq > afterSeq 的全部输出,按 seq 升序,data 与 evt:session:output 同为 base64
+ * - gap:其中一部分已被挤出最近输出环,调用方应改用 cmd:session:get-scrollback
+ * - unknown-session:session 不存在(已关闭)
+ */
+export type OutputSinceResponse =
+  | { status: 'ok'; chunks: Array<{ seq: number; data: string }> }
+  | { status: 'gap' }
+  | { status: 'unknown-session' };
+
 export interface GetScrollbackPayload {
   sessionId: string;
 }
@@ -637,6 +693,9 @@ export interface GetScrollbackResponse {
    *  渲染端用 seq > lastSeq 去重 evt:session:output。 */
   lastSeq: number;
 }
+
+/** ADR-051:cmd:session:ack-output 与 evt:session:output-resync 的 payload,定义与校验在 output-flow.ts。 */
+export type { AckOutputPayload, OutputResyncPayload } from './output-flow';
 
 export interface ReleaseSessionPayload {
   sessionId: string;
@@ -1383,7 +1442,8 @@ export interface WindowFocusRequestedPayload {
     | 'tray-click'
     | 'manual'
     | 'tray-session-click' // M1-H:托盘"正在运行的会话"子菜单点击
-    | 'tray-open-settings'; // M1-H:托盘"设置…"菜单
+    | 'tray-open-settings' // M1-H:托盘"设置…"菜单
+    | 'notification-click'; // ADR-048:点了"agent 回答完"的系统通知
   selectSessionId?: string;
 }
 
@@ -1403,6 +1463,17 @@ export interface SessionOutputPayload {
   data: string;
   /** 自该 session 创建以来的事件序号,单调递增,从 0 开始 */
   seq: number;
+}
+
+/**
+ * evt:app:resync 的 payload(ADR-050)。
+ *
+ * snapshot 与 cmd:app:get-snapshot 的返回值同构。replaySessionIds 里的 session
+ * 漏掉的输出已经补不回来,窗口要像第一次显示它那样重新拉 scrollback。
+ */
+export interface AppResyncPayload {
+  snapshot: AppSnapshot;
+  replaySessionIds: string[];
 }
 
 export interface SessionExitedPayload {
@@ -1672,4 +1743,9 @@ export interface LinkConnectionStatePayload {
    * 重发一条已执行的命令比让用户自己看一眼终端危险得多。
    */
   unconfirmedInputs: number;
+  /**
+   * ADR-050:连着,但 Host 最近没有回音(ping 后 3 秒,或输入后 1 秒)。
+   * 只是提示,不影响任何行为;15 秒没有回音才算断线。
+   */
+  laggy: boolean;
 }

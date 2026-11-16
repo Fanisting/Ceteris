@@ -6,8 +6,14 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.6 · 最后更新:2026-11-10
+文档版本:1.7 · 最后更新:2026-11-16
 
+> **v1.7 变更**(输出流控,软件定义书 ADR-051):
+> - 新增 `cmd:session:ack-output`(owner 报告已解析的输出字节,main 据此扣住或放出输出;PTY 从不暂停)
+> - 新增事件 `evt:session:output-resync`(main 丢掉了扣着的输出,owner 重放快照)
+> - `cmd:session:get-scrollback` 的 lastSeq 改在 fence 处取,快照与 live 输出不再丢字或重复
+> - 第 8.1 节按代码更新:聚合窗口是 8ms 且为 leading edge(含 DEC 2026 序列的块除外),2026 同步输出帧不拆开;新增第 8.5 节流控
+>
 > **v1.6 变更**(收纳盒,软件定义书 ADR-036):
 > - 新增 `cmd:shelf:put`、`cmd:shelf:restore`、`cmd:shelf:remove`、`cmd:shelf:clear` 与事件 `evt:shelf:changed`;snapshot 加 `shelf`
 > - domain 白名单加 `shelf`
@@ -233,6 +239,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
 | `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
 | `cmd:session:get-scrollback` | 获取 session 的 scrollback 缓冲(切换 owner 时用) |
+| `cmd:session:output-since` | **(ADR-050)** 取某 session 在 afterSeq 之后 emit 过的输出(最近约 1 MiB),Link 重连补发用 |
 | `cmd:shelf:put` | **(ADR-036)** 把一个 session 收进收纳盒(结束进程,留下 resume id) |
 | `cmd:shelf:restore` | **(ADR-036)** 在本窗口重新打开收纳盒里的一个标签 |
 | `cmd:shelf:remove` | **(ADR-036)** 从收纳盒移除一条 |
@@ -275,6 +282,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | Channel | 推送范围 |
 |---------|---------|
 | `evt:app:state-changed` | 全部 |
+| `evt:app:resync` | **(ADR-050)** 仅目标窗口;Link 重连后由 Client main 注入的完整 snapshot,代替整页 reload |
 | `evt:window:assigned-id` | 仅目标窗口(初始化用) |
 | `evt:window:list-updated` | 全部 |
 | `evt:window:focus-requested` | 仅目标窗口 |
@@ -282,6 +290,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:session:created` | 全部 |
 | `evt:session:state-changed` | 全部(单事件涵盖 state / currentCwd / displayName / exitCode 等子集变化) |
 | `evt:session:output` | 仅 owner |
+| `evt:session:output-resync` | **(ADR-051)** 仅 owner;丢掉了扣着的输出,owner 应重放快照 |
 | `evt:session:exited` | 全部 |
 | `evt:session:owner-changed` | 全部 |
 | `evt:session:destroyed` | 全部 |
@@ -868,6 +877,28 @@ interface ShelfRemovePayload { entryId: string }
 
 ---
 
+#### `cmd:session:output-since`
+**(ADR-050)** 取某 session 在 `afterSeq` 之后 emit 过的 `evt:session:output`。数据来自 Host SessionManager 的最近输出环(每个 session 约 1 MiB,按解码后字节,最旧的先丢),不碰 headless 终端,开销很小。Ceteris Link 重连时 Host 用它给客户端补发断线期间漏掉的输出(`docs/ceteris-link-protocol.md` 6.2);本地窗口一般不用。
+
+```typescript
+// Payload
+interface OutputSincePayload {
+  sessionId: string;
+  afterSeq: number;             // 已拿到的最后一个 seq;-1 = 什么都没拿到
+}
+// Response
+type OutputSinceResponse =
+  | { status: 'ok'; chunks: Array<{ seq: number; data: string }> } // seq 升序,data 为 base64
+  | { status: 'gap' }             // 一部分已被挤出环,改用 cmd:session:get-scrollback
+  | { status: 'unknown-session' };
+```
+
+还在 8 ms 聚合窗口里、尚未 emit 的字节不在结果里;它们稍后照常以更大的 seq emit,调用方按 seq 去重。
+
+**Errors**:`afterSeq` 不是整数时抛错。
+
+---
+
 #### `cmd:session:get-scrollback`
 获取 session 的 scrollback 缓冲。一般用于 owner 切换或窗口刷新。
 
@@ -885,6 +916,32 @@ interface GetScrollbackResponse {
 
 **Errors**:
 - `SessionNotFound`
+
+> ADR-051:`lastSeq` 是快照的精确边界。main 先同步发出 8ms 冷却和未闭合 2026 帧里的字节,取最后一个已写进 headless 的 seq 作边界,写一个空 fence,在 fence 回调里 serialize。seq <= lastSeq 的输出都在快照里,> lastSeq 的都不在,renderer 按 seq > lastSeq 写入即可,不丢、不双写。调用方是 owner 时,main 同时清零未确认计数、丢掉扣着的输出(快照已含),并在下一条 ack 之前不再扣(重放期间 renderer 不发 ack)。`cmd:session:claim` 带回的快照不动流控:本窗口已持有时 claim 不会重放。
+
+---
+
+#### `cmd:session:ack-output` (ADR-051)
+owner 窗口报告它的 xterm 已解析完多少字节 `evt:session:output`,main 据此扣住或放出输出(规则见 [8.5](#85-输出流控adr-051))。高频、fire and forget。
+
+```typescript
+// Payload
+interface AckOutputPayload {
+  sessionId: string;
+  bytes: number;      // 自上次 ack 以来解析完的字节数(data 解码后的长度),非负整数
+  detach?: boolean;   // true = 这个 TerminalView 卸载了:发出扣着的,下次 ack 前不再扣
+}
+// Response: void
+```
+
+**语义**:
+- 只有当前 owner 的 ack 生效;其他窗口的 ack、未知或已退出 session 的 ack 静默忽略(换 owner 时的正常竞态,不报错)
+- 计数在 0 处截住
+- Link 远程窗口:默认转发给 Host,`windowId` 是虚拟窗口 id
+- renderer 侧:错误信息表明 Host 不认识这条命令(`未知 channel`、`No handler registered`)或 `InvalidPayload` 时,这个视图不再发 ack;其他失败把字节记回去,随下一条 ack 再发
+
+**Errors**:
+- `InvalidPayload`:sessionId 不是非空字符串、bytes 不是非负整数、detach 不是布尔值
 
 ### 5.3 Bookmark / Path
 
@@ -1679,6 +1736,25 @@ interface AgentUsage {
 ```
 renderer 面板打开时每 5 秒、关着时每 30 秒调一次;main 每次只读文件新增的字节。从不抛错,读失败记 warn 返回 null。
 
+### 5.14 系统通知 (ADR-048)
+
+规则在 `src/main/done-notifier.ts`。总开关是 `settings.notifications.enabled`,走 `cmd:settings:update`。
+
+#### `cmd:session:set-notify`
+```typescript
+interface SetNotifyPayload { sessionId: string; notify: boolean } // 回复 void
+```
+打开或关掉标签的铃铛。main 设 `SessionInfo.notifyOnDone` 并广播 `evt:session:state-changed`(changes 含 `notifyOnDone`)。幂等;未知 sessionId 静默。Link 远程窗口里转发给 Host。**Errors**:notify 不是布尔值时抛错。
+
+#### `cmd:notify:test`
+```typescript
+// payload: undefined
+interface NotifyTestResponse { shown: boolean } // false = 系统没有可用的通知服务
+```
+在用户面前这台机器上弹一条测试通知,不看总开关和铃铛。列在 `LINK_LOCAL_ONLY_CHANNELS`,远程窗口里也在本机弹。
+
+点通知时 main 给持有标签的窗口发 `evt:window:focus-requested`,`reason: 'notification-click'`,带 `selectSessionId`。
+
 ## 6. 事件清单 (Main → Renderer)
 
 ### 6.1 应用与窗口
@@ -1695,6 +1771,20 @@ interface AppStateChangedPayload {
 ```
 
 **频率**:窗口数变化或 session 总数变化时。Main 应做 throttle(100ms)避免风暴。
+
+---
+
+#### `evt:app:resync`
+**(ADR-050)** 一份完整的新 snapshot,定向推给一个窗口。窗口用它替换 store 里的数据(path 树、session、窗口列表、模板、设置、收纳盒),保留视图状态(选中的文件夹和标签、展开状态、分屏);选中的文件夹或标签已经不在时清掉。bookmarks 列表不在 snapshot 里,保留原值。
+
+目前只有 Ceteris Link 的 Client main 发它:重连后 Host 回的 resume 里带 snapshot,Client 注入这个事件,代替整页 reload(`docs/ceteris-link-protocol.md` 6.2)。
+
+```typescript
+interface AppResyncPayload {
+  snapshot: AppSnapshot;        // 与 cmd:app:get-snapshot 的返回值同构
+  replaySessionIds: string[];   // 漏掉的输出补不回来的 session,窗口重建它们的终端并重拉 scrollback
+}
+```
 
 ---
 
@@ -1778,6 +1868,17 @@ interface SessionOutputPayload {
 ```
 
 详细规格见 [第 8 节](#8-pty-字节流传输)。
+
+---
+
+#### `evt:session:output-resync` (ADR-051)
+owner 落后太多(扣着的输出将超过 1 MiB),main 丢掉了扣着的输出。**仅推送给 owner**,每段积压只发一次。owner 的 TerminalView 收到后就地重跑挂载时的快照重放:把 RIS(`ESC c`)写进 xterm 的写队列,排在已排队的输出之后,解析到它时整个终端(含 scrollback)重置,在它的回调里再 `cmd:session:get-scrollback`。不直接调 `term.reset()`,它不清写队列。重放进行中收到时,这一轮结束后再跑一轮,只有最后一轮 reveal。
+
+```typescript
+interface OutputResyncPayload {
+  sessionId: string;
+}
+```
 
 ---
 
@@ -2018,11 +2119,12 @@ try {
 
 PTY 会产生大量小包(每次 PTY 写都触发 onData)。直接每次都通过 IPC 推送会有性能问题。
 
-**Main 端实现**:
-- 每个 session 有一个 16ms 的聚合窗口
-- 16ms 内的所有 onData 字节合并成一个 buffer
-- 每 16ms 发一次 `evt:session:output`,只发给 owner
-- 若 owner 是 null,**不发送但仍写 scrollback**
+**Main 端实现**(`SessionManager.queueEmit`,ADR-051 起):
+- 每个 session 有一个 8ms 的聚合窗口,leading edge:最近 8ms 内没发过时,新到的第一块立即发出,并开始 8ms 冷却;冷却期间的 onData 字节合并成一个 buffer,冷却到点时一起发出并续上冷却。连续输出因此每 8ms 一条,按键回显不用等
+- 含 DEC 2026 序列(开或关)的块不走 leading edge,等普通的 8ms:Codex 常在一帧之后几 ms 单独写一次光标归位,两者要在同一条里到达 xterm(CURSOR-2)
+- 批次结束在 DEC 2026 同步输出帧里(`ESC[?2026h` 之后、`ESC[?2026l` 之前)时扣住,等帧闭合再发;最多扣 50ms 或 256 KiB,超过就照常发出。跨 chunk 的序列也能识别
+- `evt:session:output` 只发给 owner
+- 若 owner 是 null,**不发送但仍写 scrollback**(headless 镜像)
 - 若 owner 切换,新 owner 通过 `cmd:session:get-scrollback` 拉取历史,再开始接收增量
 
 ### 8.2 数据格式
@@ -2055,6 +2157,16 @@ V1 不暴露 scrollback 大小给用户配置,V1.1 可加。
 ### 8.4 输入方向(Renderer → Main)
 
 输入比输出小很多,直接通过 `cmd:session:send-input` 即时发送,不聚合。
+
+### 8.5 输出流控(ADR-051)
+
+main 记下每个 session 发给 owner、还没被确认的输出字节(UTF-8 字节,即 `data` 解码后的长度)。超过 100 000 后,之后的批次不发,扣在 main 里;owner 用 `cmd:session:ack-output` 确认到 5 000 以下时,扣着的合成一条 `evt:session:output` 发出(seq 是其中最后一块的)。renderer 在 xterm 解析完一段后确认,每满 5 000 字节发一条;窗口隐藏时收到就确认。
+
+**PTY 从不暂停**:main 照常全速读,headless 镜像和快照始终完整。暂停 PTY 会在程序退出时丢掉最后的输出(unix 上 node-pty 在退出 200 ms 后销毁暂停的 socket;Windows 自带 ConPTY 的冲刷计时器只被 data 事件续期)。
+
+扣着的将超过 1 MiB 时,main 丢掉积压,发一次 `evt:session:output-resync`,owner 重放快照。快照的 lastSeq 盖住所有被丢的 seq。
+
+不会扣的情况:session 没有 owner;当前 owner 还没确认过一次(旧版 Link 客户端从不确认)。清零并丢掉扣着的:换 owner、释放、窗口关闭、owner 的 TerminalView 取快照(之后到下一条 ack 前不再扣)。清零并发出扣着的:TerminalView 卸载(`detach: true`)、session 退出或销毁(排在 `evt:session:exited` 之前)。扣 2 秒没有任何确认时看门狗全部发出,并在 owner 再次确认之前不再扣。
 
 ---
 

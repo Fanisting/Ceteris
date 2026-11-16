@@ -233,6 +233,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `cmd:session:rename` | **(M1-C)** 重命名 session 的显示名 |
 | `cmd:session:set-coordinator` | **(ADR-023)** 标记或取消 coordinator,标签移到标签栏上方一行 |
 | `cmd:session:get-scrollback` | 获取 session 的 scrollback 缓冲(切换 owner 时用) |
+| `cmd:session:output-since` | **(ADR-050)** 取某 session 在 afterSeq 之后 emit 过的输出(最近约 1 MiB),Link 重连补发用 |
 | `cmd:shelf:put` | **(ADR-036)** 把一个 session 收进收纳盒(结束进程,留下 resume id) |
 | `cmd:shelf:restore` | **(ADR-036)** 在本窗口重新打开收纳盒里的一个标签 |
 | `cmd:shelf:remove` | **(ADR-036)** 从收纳盒移除一条 |
@@ -275,6 +276,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | Channel | 推送范围 |
 |---------|---------|
 | `evt:app:state-changed` | 全部 |
+| `evt:app:resync` | **(ADR-050)** 仅目标窗口;Link 重连后由 Client main 注入的完整 snapshot,代替整页 reload |
 | `evt:window:assigned-id` | 仅目标窗口(初始化用) |
 | `evt:window:list-updated` | 全部 |
 | `evt:window:focus-requested` | 仅目标窗口 |
@@ -865,6 +867,28 @@ interface ShelfRemovePayload { entryId: string }
 ```
 
 **Side Effects**:每次变化广播 `evt:shelf:changed`(`ShelfChangedPayload`:`{ entries: ShelfEntry[]; shelvedSessionId?: string }`),收纳时 `shelvedSessionId` 是刚收起的 session,此时它还在,窗口用它的信息画"滑进盒子"的动画。自动收纳由 main 每分钟按 `settings.behavior.shelveIdleAfterHours` 扫描,不经 IPC。
+
+---
+
+#### `cmd:session:output-since`
+**(ADR-050)** 取某 session 在 `afterSeq` 之后 emit 过的 `evt:session:output`。数据来自 Host SessionManager 的最近输出环(每个 session 约 1 MiB,按解码后字节,最旧的先丢),不碰 headless 终端,开销很小。Ceteris Link 重连时 Host 用它给客户端补发断线期间漏掉的输出(`docs/ceteris-link-protocol.md` 6.2);本地窗口一般不用。
+
+```typescript
+// Payload
+interface OutputSincePayload {
+  sessionId: string;
+  afterSeq: number;             // 已拿到的最后一个 seq;-1 = 什么都没拿到
+}
+// Response
+type OutputSinceResponse =
+  | { status: 'ok'; chunks: Array<{ seq: number; data: string }> } // seq 升序,data 为 base64
+  | { status: 'gap' }             // 一部分已被挤出环,改用 cmd:session:get-scrollback
+  | { status: 'unknown-session' };
+```
+
+还在 8 ms 聚合窗口里、尚未 emit 的字节不在结果里;它们稍后照常以更大的 seq emit,调用方按 seq 去重。
+
+**Errors**:`afterSeq` 不是整数时抛错。
 
 ---
 
@@ -1695,6 +1719,20 @@ interface AppStateChangedPayload {
 ```
 
 **频率**:窗口数变化或 session 总数变化时。Main 应做 throttle(100ms)避免风暴。
+
+---
+
+#### `evt:app:resync`
+**(ADR-050)** 一份完整的新 snapshot,定向推给一个窗口。窗口用它替换 store 里的数据(path 树、session、窗口列表、模板、设置、收纳盒),保留视图状态(选中的文件夹和标签、展开状态、分屏);选中的文件夹或标签已经不在时清掉。bookmarks 列表不在 snapshot 里,保留原值。
+
+目前只有 Ceteris Link 的 Client main 发它:重连后 Host 回的 resume 里带 snapshot,Client 注入这个事件,代替整页 reload(`docs/ceteris-link-protocol.md` 6.2)。
+
+```typescript
+interface AppResyncPayload {
+  snapshot: AppSnapshot;        // 与 cmd:app:get-snapshot 的返回值同构
+  replaySessionIds: string[];   // 漏掉的输出补不回来的 session,窗口重建它们的终端并重拉 scrollback
+}
+```
 
 ---
 

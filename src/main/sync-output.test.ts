@@ -32,6 +32,18 @@ describe('SyncOutputTracker', () => {
     }
   });
 
+  it('sawSequence tells whether the last chunk completed a begin or end sequence', () => {
+    const t = new SyncOutputTracker();
+    feed(t, 'plain');
+    expect(t.sawSequence).toBe(false);
+    feed(t, `${BEGIN}x${END}`);
+    expect(t.sawSequence).toBe(true);
+    feed(t, 'q\x1b[?20');
+    expect(t.sawSequence).toBe(false);
+    feed(t, '26l');
+    expect(t.sawSequence).toBe(true);
+  });
+
   it('a chunk without sequences keeps the state', () => {
     const t = new SyncOutputTracker();
     feed(t, BEGIN);

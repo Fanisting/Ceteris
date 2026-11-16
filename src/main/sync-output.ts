@@ -30,7 +30,17 @@ const TAIL = BEGIN.length - 1;
 
 export class SyncOutputTracker {
   private open = false;
+  private saw = false;
   private tail = '';
+
+  /**
+   * Whether the last feed() completed a begin or end sequence (also one split across
+   * chunks). SessionManager does not emit such a chunk on the leading edge, so a write
+   * that follows the frame within 8 ms (Codex's cursor return) joins the same batch.
+   */
+  get sawSequence(): boolean {
+    return this.saw;
+  }
 
   /** Whether the stream is inside a frame after the last feed(). */
   get isOpen(): boolean {
@@ -47,7 +57,8 @@ export class SyncOutputTracker {
     const text = this.tail + bytes.toString('latin1');
     const begin = text.lastIndexOf(BEGIN);
     const end = text.lastIndexOf(END);
-    if (begin !== -1 || end !== -1) this.open = begin > end;
+    this.saw = begin !== -1 || end !== -1;
+    if (this.saw) this.open = begin > end;
     this.tail = text.slice(-TAIL);
     return this.open;
   }

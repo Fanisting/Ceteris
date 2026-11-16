@@ -1860,7 +1860,13 @@ export class SessionManager extends EventEmitter {
    *   帧已闭合 / 无帧:
    *     emitBatchMs <= 0 (测试) ──> 立即 flush
    *     冷却中 ──> 留在 pending,冷却到点时 flush 并再起一轮冷却
-   *     空闲 (最近 8ms 没 emit) ──> 立即 flush (leading edge)
+   *     空闲 (最近 8ms 没 emit),chunk 不含 2026 序列 ──> 立即 flush (leading edge)
+   *     空闲,chunk 含 2026 序列 ──> 不走 leading edge,等普通的 8ms
+   *
+   * 为什么含 2026 序列的 chunk 要等:Codex 常把一帧 (`?2026h ... ?2026l`) 和帧外的
+   * 光标归位分成两次写,相隔几 ms。8ms 批次原本把两者合进一条 IPC;立即发出帧会
+   * 把它们拆开,光标在两个位置之间跳 (docs/issues/cursor-2-codex-tui-jitter-vs-vscode.md
+   * 实验 3:批次改 0 后每次退格都闪)。普通 shell 回显不含 2026,照样立即上屏。
    *
    * 为什么扣整批而不是在 `ESC[?2026h` 处切开:seq 是按 chunk 编的,切开要给
    * 半个 chunk 编号,会动 lastSeq 去重的不变量;帧通常几 ms 内闭合,扣整批
@@ -1898,7 +1904,11 @@ export class SessionManager extends EventEmitter {
       return;
     }
     if (managed.pendingEmitTimer !== null) return; // 冷却中:由冷却计时器 flush
-    this.emitNowAndCoolDown(managed); // leading edge
+    if (managed.syncOutput.sawSequence) {
+      this.armCooldown(managed); // 含 2026 序列:等 8ms,让帧外的光标归位赶上同一批
+    } else {
+      this.emitNowAndCoolDown(managed); // leading edge
+    }
   }
 
   /** flush pendingEmit 并起一轮 emitBatchMs 冷却。 */

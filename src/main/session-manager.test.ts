@@ -2948,6 +2948,8 @@ describe('SessionManager: emit timing (ADR-051)', () => {
     vi.advanceTimersByTime(20);
     expect(out).toEqual([]);
     fp.emitData(`bottom${END}`);
+    expect(out).toEqual([]); // a chunk with a 2026 sequence waits the normal 8 ms
+    vi.advanceTimersByTime(8);
     expect(out).toEqual([`${BEGIN}topmiddlebottom${END}`]);
   });
 
@@ -2962,7 +2964,24 @@ describe('SessionManager: emit timing (ADR-051)', () => {
     vi.advanceTimersByTime(20);
     expect(out).toEqual(['\x1b[?20']);
     fp.emitData('026l');
+    vi.advanceTimersByTime(8);
     expect(out).toEqual(['\x1b[?20', `26hframeend${END}`]);
+  });
+
+  it('keeps a closed frame and the cursor return written right after it in one batch (Codex)', async () => {
+    const { fp, out } = await batched();
+    fp.emitData(`${BEGIN}\x1b[33;2Hstatus${END}`);
+    vi.advanceTimersByTime(3);
+    expect(out).toEqual([]);
+    fp.emitData('\x1b[32;3H'); // the cursor return outside the frame, a few ms later
+    vi.advanceTimersByTime(5);
+    expect(out).toEqual([`${BEGIN}\x1b[33;2Hstatus${END}\x1b[32;3H`]);
+  });
+
+  it('still emits plain echo without 2026 sequences on the leading edge', async () => {
+    const { fp, out } = await batched();
+    fp.emitData('k');
+    expect(out).toEqual(['k']);
   });
 
   it('emits an unclosed 2026 frame after 50 ms and then lets output flow unheld', async () => {

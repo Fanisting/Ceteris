@@ -55,6 +55,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Agent tab titles](agent-tab-titles.md) | Short, readable titles, optionally written by a model | 0.4.1 |
 | [Model and effort](agent-model-effort.md) | Folder defaults and per tab switching for Claude Code and Codex | 0.4.3 |
 | [Choice notice](agent-choice-notice.md) | A notice points to the tab waiting for your decision, and answers it | 0.4.3 |
+| [Done notifications](done-notifications.md) | A system notification when a belled agent tab finishes; click to go back | Next |
 | [name: commands](name-commands.md) | Type compact: and get /compact in Claude Code or Codex | 0.4.3 |
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar | 0.4.1 |
 | [Coordinator tour](coordinator-tour.md) | An animated guide to roles and tab control | 0.4.1 |

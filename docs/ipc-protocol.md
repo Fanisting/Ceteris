@@ -1679,6 +1679,25 @@ interface AgentUsage {
 ```
 renderer 面板打开时每 5 秒、关着时每 30 秒调一次;main 每次只读文件新增的字节。从不抛错,读失败记 warn 返回 null。
 
+### 5.14 系统通知 (ADR-048)
+
+规则在 `src/main/done-notifier.ts`。总开关是 `settings.notifications.enabled`,走 `cmd:settings:update`。
+
+#### `cmd:session:set-notify`
+```typescript
+interface SetNotifyPayload { sessionId: string; notify: boolean } // 回复 void
+```
+打开或关掉标签的铃铛。main 设 `SessionInfo.notifyOnDone` 并广播 `evt:session:state-changed`(changes 含 `notifyOnDone`)。幂等;未知 sessionId 静默。Link 远程窗口里转发给 Host。**Errors**:notify 不是布尔值时抛错。
+
+#### `cmd:notify:test`
+```typescript
+// payload: undefined
+interface NotifyTestResponse { shown: boolean } // false = 系统没有可用的通知服务
+```
+在用户面前这台机器上弹一条测试通知,不看总开关和铃铛。列在 `LINK_LOCAL_ONLY_CHANNELS`,远程窗口里也在本机弹。
+
+点通知时 main 给持有标签的窗口发 `evt:window:focus-requested`,`reason: 'notification-click'`,带 `selectSessionId`。
+
 ## 6. 事件清单 (Main → Renderer)
 
 ### 6.1 应用与窗口

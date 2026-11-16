@@ -149,6 +149,17 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/behavior\.quickLaunch/);
   });
 
+  it('behavior.mainAgent 默认空串且未问过 (ADR-042),非字符串 throw', () => {
+    expect(DEFAULT_SETTINGS.behavior.mainAgent).toBe('');
+    expect(DEFAULT_SETTINGS.behavior.mainAgentAsked).toBe(false);
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    (bad.behavior as { mainAgent: unknown }).mainAgent = 3;
+    expect(() => validateSettings(bad)).toThrowError(/behavior\.mainAgent=/);
+    bad.behavior.mainAgent = 'codex';
+    (bad.behavior as { mainAgentAsked: unknown }).mainAgentAsked = 'yes';
+    expect(() => validateSettings(bad)).toThrowError(/behavior\.mainAgentAsked/);
+  });
+
   it('非法 `name:` 命令列表 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     bad.extensions.colonCommands.commands = [{ name: 'a b', command: '/x' }];

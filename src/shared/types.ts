@@ -583,6 +583,17 @@ export interface Settings {
      */
     remoteSetupGuideSeen: boolean;
     /**
+     * ADR-042:the user's main agent, a template id. '' = not chosen; then the first installed
+     * agent stands in (resolveMainAgent in shared/main-agent.ts). Asked once at first start,
+     * changed with the wide card's Change in the Agents section of the new tab page.
+     */
+    mainAgent: string;
+    /**
+     * ADR-042:whether the first start main agent card was answered (Continue or Later).
+     * Default false, and older settings files get false too, so existing users are asked once.
+     */
+    mainAgentAsked: boolean;
+    /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell
      * (PowerShell 7+, bash 5+, zsh, fish, Claude Code REPL)把粘贴

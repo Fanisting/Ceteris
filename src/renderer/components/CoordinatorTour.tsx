@@ -27,9 +27,11 @@
  *   every animation frame together with where the target is. Right-clicking a tab, ticking
  *   Coordinator or turning the setting on moves the tour forward by itself.
  * - It does not assume Claude Code. It points at whichever agent comes first among the quick
- *   launch icons, the Fintuner runs the same agent as the coordinator, and the setting and plugin
- *   steps (Claude Code only) drop out for a coordinator running another agent, or when the user
- *   says they do not use Claude Code (canControlTabs in @shared/coordinator-tour).
+ *   launch icons (the main agent comes first there, ADR-042), the Fintuner runs the same agent
+ *   as the coordinator, and the setting and plugin steps drop out for a coordinator running an
+ *   agent other than Claude Code or Codex, or when the user says they use neither
+ *   (canControlTabs in @shared/coordinator-tour). For a Codex coordinator the plugin step
+ *   writes the ceteris-tabs entry into ~/.codex/config.toml instead of typing plugin commands.
  * - Targets are found through data attributes: the first agent data-quick-key inside
  *   data-guide="ghost-tab" (an agent icon among the quick launch icons, falling back to
  *   the tab itself and then to data-guide="new-tab", the +),
@@ -65,10 +67,12 @@ import {
   type TabControlStatus,
 } from '@shared/tab-control';
 import type { CreateSessionResponse, SetRolePayload } from '@shared/protocol';
+import type { CodexMcpStatus } from '@shared/codex-mcp';
 import { SESSION_ROLE_NAMES, WORKER_ROLE_NAME, type SessionRole } from '@shared/session-role';
 import { COORDINATOR_JOB_PROMPT, FINTUNER_PROMPT } from '@shared/coordinator-prompts';
 import { useAppDispatch, useAppState, useAppStateRef } from '../store';
 import { useTranslation } from './LanguageProvider';
+import { useMainAgent } from './main-agent-ui';
 import { useToast } from './Toast';
 import { typeIntoSession, useTypeIntoNewTerminal, waitUntilSettled } from './type-into-terminal';
 import { useQuickLaunch } from './useQuickLaunch';
@@ -216,6 +220,7 @@ export function CoordinatorTour(): JSX.Element | null {
   const bubbleRef = useRef<HTMLDivElement>(null);
 
   const quickLaunch = useQuickLaunch(state.selectedPathId, 16);
+  const mainAgent = useMainAgent();
 
   const showError = (message: string): void => {
     toast.push({ kind: 'error', message });
@@ -254,8 +259,10 @@ export function CoordinatorTour(): JSX.Element | null {
         .filter((s) => !s.role && !s.coordinator && !fintunerBaseline.sessions.has(s.id))
         .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null)
     : null;
-  // 标签控制只有 Claude Code 能用:协调者跑的是别的 agent,或用户说不用,就跳过那两步
+  // 标签控制 Claude Code 和 Codex 能用:协调者跑的是别的 agent,或用户说都不用,就跳过那两步
   const controlSupported = !noClaude && (coord ? canControlTabs(coord.templateId) : true);
+  // ADR-042:Codex 协调者的"插件"是 config.toml 里的一项,由 main 写,不用开终端
+  const coordIsCodex = coord?.templateId === 'codex';
 
   // 动画帧循环读的是这一帧的状态;放进 ref,循环本身不用随每次渲染重建
   const inputRef = useRef<Omit<CoordinatorTourInput, 'menuOpen' | 'hasFolderTab'>>({
@@ -383,15 +390,22 @@ export function CoordinatorTour(): JSX.Element | null {
     return () => cancelAnimationFrame(frame);
   }, [active]);
 
-  // 插件装没装:打开时查一次,没装就每 3 秒再查,用户在新终端按完 Enter 这一步自己前进
+  // 插件装没装:打开时查一次,没装就每 3 秒再查,用户在新终端按完 Enter 这一步自己前进。
+  // Codex 协调者查的是 config.toml 里有没有 ceteris-tabs 那一项。
   useEffect(() => {
     if (!active || pluginInstalled) return;
     let cancelled = false;
     const check = (): void => {
-      window.api
-        .invoke<unknown, TabControlStatus>(COMMAND_CHANNELS.EXTENSIONS_TAB_CONTROL_STATUS, {})
-        .then((res) => {
-          if (!cancelled) setPluginInstalled(res.pluginInstalled);
+      const status: Promise<boolean> = coordIsCodex
+        ? window.api
+            .invoke<unknown, CodexMcpStatus>(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_STATUS, {})
+            .then((res) => res.configured)
+        : window.api
+            .invoke<unknown, TabControlStatus>(COMMAND_CHANNELS.EXTENSIONS_TAB_CONTROL_STATUS, {})
+            .then((res) => res.pluginInstalled);
+      status
+        .then((installed) => {
+          if (!cancelled) setPluginInstalled(installed);
         })
         .catch((err: unknown) => console.warn('[CoordinatorTour] status check failed', err));
     };
@@ -401,7 +415,7 @@ export function CoordinatorTour(): JSX.Element | null {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [active, pluginInstalled]);
+  }, [active, pluginInstalled, coordIsCodex]);
 
   useEffect(() => {
     if (!active || marketplaceDir) return;
@@ -557,10 +571,14 @@ export function CoordinatorTour(): JSX.Element | null {
   const coordAgentKey = coord ? `template:${coord.templateId}` : null;
   const fintunerItem =
     quickLaunch.items.find((i) => i.key === coordAgentKey && isAgentKey(i.key)) ??
+    quickLaunch.items.find((i) => i.key === `template:${mainAgent ?? ''}`) ??
     quickLaunch.items.find((i) => isAgentKey(i.key)) ??
     null;
+  // 快捷启动里一个 agent 都没有时:协调者的 agent,否则用户的主 agent (ADR-042)
   const fintunerTemplateId =
-    coord && isAgentKey(`template:${coord.templateId}`) ? coord.templateId : 'claude-code';
+    coord && isAgentKey(`template:${coord.templateId}`)
+      ? coord.templateId
+      : (mainAgent ?? 'claude-code');
   const openFintuner = async (): Promise<void> => {
     let sessionId: string | null = null;
     if (fintunerItem) {
@@ -588,6 +606,24 @@ export function CoordinatorTour(): JSX.Element | null {
   pasteBriefRef.current = pasteBrief;
 
   const install = (): void => {
+    if (coordIsCodex) {
+      // Codex 读的是 config.toml,写完要重开协调者的 Codex 才加载这个服务器
+      window.api
+        .invoke<unknown, CodexMcpStatus>(COMMAND_CHANNELS.EXTENSIONS_CODEX_MCP_INSTALL, {})
+        .then((res) => {
+          setPluginInstalled(res.configured);
+          toast.push({
+            kind: 'info',
+            message: tx(
+              `已写入 ${res.configPath}。在 ${COORD_NAME} 里退出 Codex 再开一次,它才会加载 ceteris-tabs。`,
+              `Written to ${res.configPath}. Quit Codex in ${COORD_NAME} and start it again so it loads ceteris-tabs.`,
+            ),
+            durationMs: 10000,
+          });
+        })
+        .catch((err: unknown) => showError(err instanceof Error ? err.message : String(err)));
+      return;
+    }
     const dir = marketplaceDir;
     if (dir) void typer.run((shellId) => tabControlInstallLine(shellId, dir), showError);
   };
@@ -641,17 +677,25 @@ export function CoordinatorTour(): JSX.Element | null {
     enable: {
       title: tx(`允许 ${COORD_NAME} 控制标签`, `Let ${COORD_NAME} control tabs`),
       body: tx(
-        '需要 Claude Code,且只有协调者标签能用。',
-        'Needs Claude Code, and only coordinator tabs get it.',
+        '需要 Claude Code 或 Codex,且只有协调者标签能用。',
+        'Needs Claude Code or Codex, and only coordinator tabs get it.',
       ),
     },
-    plugin: {
-      title: tx('给 Claude Code 装 ceteris-tabs', 'Add ceteris-tabs to Claude Code'),
-      body: tx(
-        '命令输入到新终端,你按 Enter 才执行。',
-        'The commands go into a new terminal; you press Enter.',
-      ),
-    },
+    plugin: coordIsCodex
+      ? {
+          title: tx('给 Codex 加上 ceteris-tabs', 'Add ceteris-tabs to Codex'),
+          body: tx(
+            'Ceteris 把它写进 ~/.codex/config.toml;之后重开一次协调者里的 Codex。',
+            'Ceteris writes it into ~/.codex/config.toml; then restart Codex in the coordinator tab.',
+          ),
+        }
+      : {
+          title: tx('给 Claude Code 装 ceteris-tabs', 'Add ceteris-tabs to Claude Code'),
+          body: tx(
+            '命令输入到新终端,你按 Enter 才执行。',
+            'The commands go into a new terminal; you press Enter.',
+          ),
+        },
     start: controlSupported
       ? {
           title: tx(`在 ${COORD_NAME} 里交代任务`, `Give ${COORD_NAME} a job`),
@@ -666,8 +710,8 @@ export function CoordinatorTour(): JSX.Element | null {
             `Watch your ${WORKER_NAME}s from ${COORD_NAME}`,
           ),
           body: tx(
-            '自动派活目前只支持 Claude Code。用其他 agent 时,这一行和“运行中 / 等你处理”帮你看谁在跑、谁在等你。',
-            'Handing out work by itself needs Claude Code for now. With other agents, this row and the Running / Needs you filters show who runs and who waits for you.',
+            '自动派活目前只支持 Claude Code 和 Codex。用其他 agent 时,这一行和“运行中 / 等你处理”帮你看谁在跑、谁在等你。',
+            'Handing out work by itself needs Claude Code or Codex for now. With other agents, this row and the Running / Needs you filters show who runs and who waits for you.',
           ),
         },
     'fintuner-open': {
@@ -816,7 +860,10 @@ export function CoordinatorTour(): JSX.Element | null {
         )}
         {(step === 'enable' || step === 'plugin') && (
           <button type="button" className="ctour-link" onClick={() => setNoClaude(true)}>
-            {tx('不用 Claude Code?跳过这两步', 'Not using Claude Code? Skip these two steps')}
+            {tx(
+              '不用 Claude Code 或 Codex?跳过这两步',
+              'Using neither Claude Code nor Codex? Skip these two steps',
+            )}
           </button>
         )}
         <div className="ctour-actions">
@@ -863,10 +910,12 @@ export function CoordinatorTour(): JSX.Element | null {
             <button
               type="button"
               className="ctour-primary"
-              disabled={typer.preparing || !marketplaceDir}
+              disabled={!coordIsCodex && (typer.preparing || !marketplaceDir)}
               onClick={install}
             >
-              {tx('输入安装命令', 'Type the commands')}
+              {coordIsCodex
+                ? tx('写入配置', 'Write the entry')
+                : tx('输入安装命令', 'Type the commands')}
             </button>
           )}
           {step === 'start' && (

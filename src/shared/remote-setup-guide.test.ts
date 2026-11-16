@@ -103,6 +103,7 @@ describe('pickGuideTemplateId', () => {
   it('取快捷启动里第一个 agent', () => {
     expect(
       pickGuideTemplateId(
+        null,
         [
           { kind: 'shell', id: 'pwsh' },
           { kind: 'template', id: 'codex' },
@@ -116,6 +117,7 @@ describe('pickGuideTemplateId', () => {
   it('跳过 shell 和 admin-shell 模板', () => {
     expect(
       pickGuideTemplateId(
+        null,
         [
           { kind: 'template', id: 'shell' },
           { kind: 'template', id: 'admin-shell' },
@@ -126,10 +128,24 @@ describe('pickGuideTemplateId', () => {
   });
 
   it('列表里的模板已被删除时跳过它', () => {
-    expect(pickGuideTemplateId([{ kind: 'template', id: 'gone' }], templates)).toBe('claude-code');
+    expect(pickGuideTemplateId(null, [{ kind: 'template', id: 'gone' }], templates)).toBe(
+      'claude-code',
+    );
+  });
+
+  it('主 agent 优先于快捷启动 (ADR-042)', () => {
+    expect(pickGuideTemplateId('codex', [{ kind: 'template', id: 'claude-code' }], templates)).toBe(
+      'codex',
+    );
+  });
+
+  it('主 agent 的模板已被删除时退回快捷启动', () => {
+    expect(pickGuideTemplateId('aider', [{ kind: 'template', id: 'codex' }], templates)).toBe(
+      'codex',
+    );
   });
 
   it('列表为空时用 Claude Code', () => {
-    expect(pickGuideTemplateId([], templates)).toBe('claude-code');
+    expect(pickGuideTemplateId(null, [], templates)).toBe('claude-code');
   });
 });

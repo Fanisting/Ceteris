@@ -24,6 +24,7 @@
  * - 不要把指南正文放进 prompt (放 guides/ 下的文件,agent 自己读)
  */
 import { AGENT_TEMPLATE_IDS } from './agent-title';
+import { isAgentTemplateId } from './main-agent';
 import type { QuickLaunchItem } from './quick-launch';
 
 /** Host: let other machines connect here. Client: connect this machine to another one. */
@@ -88,18 +89,22 @@ export function buildRemoteSetupPrompt(input: RemoteSetupPromptInput): string {
 }
 
 /**
- * The agent template the guide tab uses: the first agent in the user's quick launch list that
- * still exists, so the guide opens in whatever the user normally starts, else Claude Code.
+ * The agent template the guide tab uses: the user's main agent (ADR-042) when its template still
+ * exists, else the first agent in the quick launch list that still exists, else Claude Code.
  * Plain shells (shell / admin-shell and detected shells) are skipped; they cannot read a guide.
+ *
+ * @param mainAgent the resolved main agent (useMainAgent), null when there is none
  */
 export function pickGuideTemplateId(
+  mainAgent: string | null,
   quickLaunch: readonly QuickLaunchItem[],
   templates: ReadonlyArray<{ id: string }>,
 ): string {
   const ids = new Set(templates.map((t) => t.id));
+  if (mainAgent && isAgentTemplateId(mainAgent) && ids.has(mainAgent)) return mainAgent;
   for (const item of quickLaunch) {
     if (item.kind !== 'template') continue;
-    if (item.id === 'shell' || item.id === 'admin-shell') continue;
+    if (!isAgentTemplateId(item.id)) continue;
     if (ids.has(item.id)) return item.id;
   }
   return AGENT_TEMPLATE_IDS[0] ?? 'claude-code';

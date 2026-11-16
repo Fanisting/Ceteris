@@ -59,6 +59,7 @@ import type {
   WindowInfo,
 } from '@shared/types';
 import type { ShelfEntry } from '@shared/shelf';
+import { forgetSession, rememberSession } from '@shared/recent-sessions';
 import { openPdf } from './pdf-view-store';
 
 /**
@@ -139,6 +140,13 @@ export interface AppState {
   shelf: ShelfEntry[];
   /** ADR-036:tabs animating into the box right now, see ShelfGhost. */
   shelfGhosts: ShelfGhost[];
+
+  /**
+   * ADR-049:sessions this window showed, newest first, for the sidebar's back chip.
+   * In memory only, like the selection. Filled by AppStateProvider after each commit,
+   * see recent-sessions.ts.
+   */
+  recentSessionIds: readonly string[];
 }
 
 /**
@@ -179,6 +187,7 @@ export type AppAction =
   | { type: 'templates/update'; templates: Template[]; defaultTemplateId: string }
   | { type: 'view/select-path'; pathId: string | null }
   | { type: 'view/select-session'; sessionId: string | null }
+  | { type: 'view/remember-session'; sessionId: string }
   | { type: 'view/set-pane-layout'; layout: PaneLayoutId }
   | { type: 'view/set-sidebar-segment'; segment: SidebarSegment }
   | { type: 'view/toggle-path-expand'; pathId: string }
@@ -359,6 +368,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         sessions,
         unseenDoneSessionIds: withoutId(state.unseenDoneSessionIds, action.sessionId),
+        recentSessionIds: forgetSession(state.recentSessionIds, action.sessionId),
       };
       // 当前选中的 session 被销毁 → 取消选中
       // With split panes the selection moves to a pane still on screen instead: with
@@ -448,6 +458,11 @@ function reducer(state: AppState, action: AppAction): AppState {
         selectedSessionId: action.sessionId,
         unseenDoneSessionIds: withoutId(state.unseenDoneSessionIds, action.sessionId),
       };
+
+    case 'view/remember-session': {
+      const recentSessionIds = rememberSession(state.recentSessionIds, action.sessionId);
+      return recentSessionIds === state.recentSessionIds ? state : { ...state, recentSessionIds };
+    }
 
     case 'view/set-pane-layout':
       return { ...state, paneLayout: action.layout };
@@ -575,6 +590,7 @@ export function makeDefaultState(myWindowId: string, myWindowNumber: number): Ap
     unseenDoneSessionIds: new Set(),
     shelf: [],
     shelfGhosts: [],
+    recentSessionIds: [],
   };
 }
 
@@ -612,6 +628,14 @@ export function AppStateProvider({
   // (我们用 React 18 严格模式 mount 时会赋两次,值仍正确)。
   const stateRef = useRef(state);
   stateRef.current = state;
+  // ADR-049:record the selection once it is committed, not inside the reducer. One click
+  // often dispatches select-path (which picks some owned session of that folder) and then
+  // select-session; React batches both, so only the session the user landed on is kept.
+  const selectedSessionId = state.selectedSessionId;
+  useEffect(() => {
+    if (selectedSessionId)
+      dispatch({ type: 'view/remember-session', sessionId: selectedSessionId });
+  }, [selectedSessionId]);
   return (
     <AppStateRefContext.Provider value={stateRef}>
       <AppContext.Provider value={value}>{children}</AppContext.Provider>

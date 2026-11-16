@@ -88,6 +88,18 @@ class FakePty {
   kill(): void {
     this.killed = true;
   }
+  /** ADR-051: flow control calls; paused mirrors the socket state, the counters the calls */
+  public paused = false;
+  public pauseCalls = 0;
+  public resumeCalls = 0;
+  pause(): void {
+    this.paused = true;
+    this.pauseCalls++;
+  }
+  resume(): void {
+    this.paused = false;
+    this.resumeCalls++;
+  }
 
   // 测试触发器
   emitData(s: string): void {
@@ -2421,7 +2433,7 @@ describe('SessionManager — sendInput / resize', () => {
   });
 
   // PER-2 / F1:IPC chunk 聚合
-  it('emitBatchMs > 0 时多次 chunk 在窗口内合并成一条 sessionOutput', async () => {
+  it('emitBatchMs > 0 时第一块 leading edge 立即 emit,窗口内之后的 chunk 合并成一条', async () => {
     vi.useFakeTimers();
     try {
       const { mgr } = makeManager({ emitBatchMs: 8 });
@@ -2437,18 +2449,21 @@ describe('SessionManager — sendInput / resize', () => {
       mgr.on('sessionOutput', (p: { data: string; seq: number }) => {
         outputs.push({ data: p.data, seq: p.seq });
       });
+      // ADR-051 leading edge:空闲后的第一块立即 emit
+      fp.emitData('lead');
+      expect(outputs.length).toBe(1);
       fp.emitData('aaa');
       fp.emitData('bbb');
       fp.emitData('ccc');
-      // 同步内未 flush
-      expect(outputs.length).toBe(0);
+      // 冷却窗口内未 flush
+      expect(outputs.length).toBe(1);
       // 8ms 后 flush 一次
       vi.advanceTimersByTime(10);
-      expect(outputs.length).toBe(1);
+      expect(outputs.length).toBe(2);
       // base64 解码后是 'aaabbbccc'
-      expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe('aaabbbccc');
-      // seq 是最后一条 chunk 对应的(3 个 chunk → outputSeq 0,1,2)
-      expect(outputs[0]!.seq).toBe(2);
+      expect(Buffer.from(outputs[1]!.data, 'base64').toString('utf8')).toBe('aaabbbccc');
+      // seq 是最后一条 chunk 对应的(lead + 3 个 chunk → outputSeq 0,1,2,3)
+      expect(outputs[1]!.seq).toBe(3);
     } finally {
       vi.useRealTimers();
     }
@@ -2544,16 +2559,19 @@ describe('SessionManager — PER-2 emit 聚合 / state-replay 不变量', () => 
       outputs.push(p);
     });
 
-    // chunk1 入 pendingEmit,8ms timer 未到 → 还未 emit
+    // ADR-051:第一块 leading edge 立即 emit 并开始 8ms 冷却
+    fp.emitData('LEAD');
+    expect(outputs).toHaveLength(1);
+    // chunk2 入 pendingEmit,冷却未到 → 还未 emit
     fp.emitData('AAAA');
-    expect(outputs).toHaveLength(0);
+    expect(outputs).toHaveLength(1);
 
     // CURSOR-1 新语义:getScrollbackForReplay 内部 flushPendingEmit + drain + serialize。
-    // 返回时 chunk1 已通过 sessionOutput 发出,lastSeq 反映该 chunk 的 seq。
+    // 返回时 chunk2 已通过 sessionOutput 发出,lastSeq 反映该 chunk 的 seq。
     const res = await mgr.getScrollbackForReplay(info.id);
-    expect(outputs).toHaveLength(1);
-    expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe('AAAA');
-    expect(outputs[0]!.seq).toBe(res.lastSeq);
+    expect(outputs).toHaveLength(2);
+    expect(Buffer.from(outputs[1]!.data, 'base64').toString('utf8')).toBe('AAAA');
+    expect(outputs[1]!.seq).toBe(res.lastSeq);
 
     // serialize 输出反映 headless 已经接受了 AAAA(headless 已 drain)
     const ansi = Buffer.from(res.data, 'base64').toString('utf8');
@@ -2577,17 +2595,279 @@ describe('SessionManager — PER-2 emit 聚合 / state-replay 不变量', () => 
         outputs.push(p);
       });
 
-      // chunk 进 pendingEmit;timer 还没到
+      // 第一块 leading edge 立即 emit;第二块进 pendingEmit,冷却还没到
+      fp.emitData('LEAD');
       fp.emitData('LAST');
-      expect(outputs).toHaveLength(0);
+      expect(outputs).toHaveLength(1);
 
       // 立刻 close → destroySession 内必须 flush 最后一段
       mgr.closeSession(info.id);
-      expect(outputs).toHaveLength(1);
-      expect(Buffer.from(outputs[0]!.data, 'base64').toString('utf8')).toBe('LAST');
+      expect(outputs).toHaveLength(2);
+      expect(Buffer.from(outputs[1]!.data, 'base64').toString('utf8')).toBe('LAST');
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('SessionManager: output flow control (ADR-051)', () => {
+  const HIGH = 100_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Owner w1, immediate emits, owner already acked once (engaged) unless engage=false. */
+  async function flooded(
+    opts: { engage?: boolean } = {},
+  ): Promise<{ mgr: SessionManager; fp: FakePty; id: string }> {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w1',
+      cols: 80,
+      rows: 24,
+    });
+    if (opts.engage !== false) mgr.ackOutput(info.id, 'w1', 0);
+    return { mgr, fp: FakePty.instances[0]!, id: info.id };
+  }
+
+  it('pauses the PTY once unacknowledged output goes above 100 000 bytes', async () => {
+    const { fp } = await flooded();
+    fp.emitData('x'.repeat(HIGH));
+    expect(fp.paused).toBe(false);
+    fp.emitData('x');
+    expect(fp.paused).toBe(true);
+    expect(fp.pauseCalls).toBe(1);
+  });
+
+  it('never pauses before the owner has acked once', async () => {
+    const { fp } = await flooded({ engage: false });
+    fp.emitData('x'.repeat(HIGH * 3));
+    expect(fp.paused).toBe(false);
+  });
+
+  it('resumes only when acks bring the count below 5 000', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.ackOutput(id, 'w1', HIGH + 1 - 5_000); // 5 000 left: not below
+    expect(fp.paused).toBe(true);
+    mgr.ackOutput(id, 'w1', 1); // 4 999 left
+    expect(fp.paused).toBe(false);
+    expect(fp.resumeCalls).toBe(1);
+  });
+
+  it('clamps an over-ack at zero, so later output is still counted in full', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(10));
+    mgr.ackOutput(id, 'w1', 1_000_000);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(true);
+  });
+
+  it('ignores acks from a window that is not the owner', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.ackOutput(id, 'other-window', HIGH + 1);
+    expect(fp.paused).toBe(true);
+  });
+
+  it('ignores acks for unknown and exited sessions without throwing', async () => {
+    const { mgr, fp, id } = await flooded();
+    expect(() => mgr.ackOutput('no-such-session', 'w1', 10)).not.toThrow();
+    fp.emitExit(0);
+    expect(() => mgr.ackOutput(id, 'w1', 10)).not.toThrow();
+  });
+
+  it('never pauses a session without an owner window', async () => {
+    const { mgr, fp, id } = await flooded();
+    mgr.releaseOwner(id, 'w1');
+    fp.emitData('x'.repeat(HIGH * 3));
+    expect(fp.paused).toBe(false);
+  });
+
+  it('an owner change resets the count and resumes; the new owner must ack before pausing', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.transferOwner(id, 'w2');
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(false);
+    mgr.ackOutput(id, 'w2', 0);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(true);
+  });
+
+  it('closing the owner window (or a Link client disconnecting) resumes', async () => {
+    const { mgr, fp } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.handleWindowClosed('w1');
+    expect(fp.paused).toBe(false);
+  });
+
+  it('a detach ack resets, resumes and stops pausing until the next ack', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.ackOutput(id, 'w1', 0, true);
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(false);
+  });
+
+  it('a replay snapshot resets the count and resumes', async () => {
+    vi.useRealTimers(); // the headless drain inside getScrollbackForReplay needs real timers
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(true);
+    await mgr.getScrollbackForReplay(id);
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH)); // counted from zero again
+    expect(fp.paused).toBe(false);
+  });
+
+  it('the watchdog resumes after 2 s without an ack and stays off until the owner acks', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    vi.advanceTimersByTime(1_500);
+    mgr.ackOutput(id, 'w1', 10); // still above LOW: stays paused, watchdog restarts
+    vi.advanceTimersByTime(1_999);
+    expect(fp.paused).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH * 2));
+    expect(fp.paused).toBe(false);
+    mgr.ackOutput(id, 'w1', 0);
+    fp.emitData('x');
+    expect(fp.paused).toBe(true);
+  });
+
+  it('resumes a paused PTY when it exits, and before it is killed on close', async () => {
+    const a = await flooded();
+    a.fp.emitData('x'.repeat(HIGH + 1));
+    a.fp.emitExit(0);
+    expect(a.fp.paused).toBe(false);
+
+    const b = await flooded();
+    b.fp.emitData('x'.repeat(HIGH + 1));
+    const order: string[] = [];
+    b.fp.resume = () => order.push('resume');
+    b.fp.kill = () => order.push('kill');
+    b.mgr.closeSession(b.id);
+    expect(order).toEqual(['resume', 'kill']);
+    // No watchdog left behind that would touch the dead PTY
+    vi.advanceTimersByTime(10_000);
+    expect(order).toEqual(['resume', 'kill']);
+  });
+});
+
+describe('SessionManager: emit timing (ADR-051)', () => {
+  const BEGIN = '\x1b[?2026h';
+  const END = '\x1b[?2026l';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function batched(): Promise<{ fp: FakePty; out: string[] }> {
+    const { mgr } = makeManager({ emitBatchMs: 8 });
+    await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w1',
+      cols: 80,
+      rows: 24,
+    });
+    const out: string[] = [];
+    mgr.on('sessionOutput', (p: { data: string }) => {
+      out.push(Buffer.from(p.data, 'base64').toString('utf8'));
+    });
+    return { fp: FakePty.instances[0]!, out };
+  }
+
+  it('emits the first chunk after a quiet period at once (leading edge)', async () => {
+    const { fp, out } = await batched();
+    fp.emitData('a');
+    expect(out).toEqual(['a']);
+    vi.advanceTimersByTime(20); // quiet for longer than the batch window
+    fp.emitData('b');
+    expect(out).toEqual(['a', 'b']);
+  });
+
+  it('coalesces a steady stream into one emit per 8 ms after the first chunk', async () => {
+    const { fp, out } = await batched();
+    fp.emitData('0');
+    for (let t = 1; t <= 15; t++) {
+      vi.advanceTimersByTime(1);
+      fp.emitData(String(t % 10));
+    }
+    // t=0 leading edge; the cooldown flushes 1..7 at t=8 (before chunk 8 arrives); 8..15 at t=16
+    expect(out).toEqual(['0', '1234567']);
+    vi.advanceTimersByTime(1);
+    expect(out).toEqual(['0', '1234567', '89012345']);
+    vi.advanceTimersByTime(8); // nothing pending: back to idle
+    fp.emitData('z');
+    expect(out).toEqual(['0', '1234567', '89012345', 'z']);
+  });
+
+  it('holds a batch inside an open DEC 2026 frame and emits it whole when the frame closes', async () => {
+    const { fp, out } = await batched();
+    fp.emitData(`${BEGIN}top`);
+    vi.advanceTimersByTime(20);
+    fp.emitData('middle');
+    vi.advanceTimersByTime(20);
+    expect(out).toEqual([]);
+    fp.emitData(`bottom${END}`);
+    expect(out).toEqual([`${BEGIN}topmiddlebottom${END}`]);
+  });
+
+  it('finds a 2026 frame whose sequences are split across chunks', async () => {
+    const { fp, out } = await batched();
+    fp.emitData('\x1b[?20');
+    fp.emitData('26hframe');
+    vi.advanceTimersByTime(20);
+    // The first piece went out on the leading edge before the frame was visible
+    expect(out).toEqual(['\x1b[?20']);
+    fp.emitData('end\x1b[?2');
+    vi.advanceTimersByTime(20);
+    expect(out).toEqual(['\x1b[?20']);
+    fp.emitData('026l');
+    expect(out).toEqual(['\x1b[?20', `26hframeend${END}`]);
+  });
+
+  it('emits an unclosed 2026 frame after 50 ms and then lets output flow unheld', async () => {
+    const { fp, out } = await batched();
+    fp.emitData(`${BEGIN}stuck`);
+    vi.advanceTimersByTime(49);
+    expect(out).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(out).toEqual([`${BEGIN}stuck`]);
+    vi.advanceTimersByTime(20);
+    fp.emitData('after');
+    expect(out).toEqual([`${BEGIN}stuck`, 'after']);
+  });
+
+  it('emits an open 2026 frame at once when it reaches 256 KiB', async () => {
+    const { fp, out } = await batched();
+    fp.emitData(BEGIN);
+    fp.emitData('x'.repeat(256 * 1024));
+    expect(out).toHaveLength(1);
+    expect(out[0]!.length).toBe(BEGIN.length + 256 * 1024);
+  });
+
+  it('flushes a held 2026 frame before the session exits', async () => {
+    const { fp, out } = await batched();
+    fp.emitData(`${BEGIN}last frame`);
+    fp.emitExit(0);
+    expect(out).toEqual([`${BEGIN}last frame`]);
+    vi.advanceTimersByTime(100);
+    expect(out).toHaveLength(1);
   });
 });
 

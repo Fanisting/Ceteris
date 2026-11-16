@@ -6,8 +6,12 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.6 · 最后更新:2026-11-10
+文档版本:1.7 · 最后更新:2026-11-16
 
+> **v1.7 变更**(输出流控,软件定义书 ADR-051):
+> - 新增 `cmd:session:ack-output`(owner 报告已解析的输出字节,main 据此 pause / resume PTY)
+> - 第 8.1 节按代码更新:聚合窗口是 8ms 且为 leading edge,DEC 2026 同步输出帧不拆开;新增第 8.5 节流控
+>
 > **v1.6 变更**(收纳盒,软件定义书 ADR-036):
 > - 新增 `cmd:shelf:put`、`cmd:shelf:restore`、`cmd:shelf:remove`、`cmd:shelf:clear` 与事件 `evt:shelf:changed`;snapshot 加 `shelf`
 > - domain 白名单加 `shelf`
@@ -885,6 +889,31 @@ interface GetScrollbackResponse {
 
 **Errors**:
 - `SessionNotFound`
+
+> ADR-051:调用时 main 把该 session 的未确认输出计数清零并 resume PTY(快照之前发出的输出 renderer 会按 lastSeq 丢掉,永远不会确认)。
+
+---
+
+#### `cmd:session:ack-output` (ADR-051)
+owner 窗口报告它的 xterm 已解析完多少字节 `evt:session:output`,main 据此 pause / resume PTY(规则见 [8.5](#85-输出流控adr-051))。高频、fire and forget。
+
+```typescript
+// Payload
+interface AckOutputPayload {
+  sessionId: string;
+  bytes: number;      // 自上次 ack 以来解析完的字节数(data 解码后的长度),非负整数
+  detach?: boolean;   // true = 这个 TerminalView 卸载了:清零并在下次 ack 前不再暂停
+}
+// Response: void
+```
+
+**语义**:
+- 只有当前 owner 的 ack 生效;其他窗口的 ack、未知或已退出 session 的 ack 静默忽略(换 owner 时的正常竞态,不报错)
+- 计数在 0 处截住
+- Link 远程窗口:默认转发给 Host,`windowId` 是虚拟窗口 id
+
+**Errors**:
+- `InvalidPayload`:sessionId 不是非空字符串、bytes 不是非负整数、detach 不是布尔值
 
 ### 5.3 Bookmark / Path
 
@@ -2037,11 +2066,11 @@ try {
 
 PTY 会产生大量小包(每次 PTY 写都触发 onData)。直接每次都通过 IPC 推送会有性能问题。
 
-**Main 端实现**:
-- 每个 session 有一个 16ms 的聚合窗口
-- 16ms 内的所有 onData 字节合并成一个 buffer
-- 每 16ms 发一次 `evt:session:output`,只发给 owner
-- 若 owner 是 null,**不发送但仍写 scrollback**
+**Main 端实现**(`SessionManager.queueEmit`,ADR-051 起):
+- 每个 session 有一个 8ms 的聚合窗口,leading edge:最近 8ms 内没发过时,新到的第一块立即发出,并开始 8ms 冷却;冷却期间的 onData 字节合并成一个 buffer,冷却到点时一起发出并续上冷却。连续输出因此每 8ms 一条,按键回显不用等
+- 批次结束在 DEC 2026 同步输出帧里(`ESC[?2026h` 之后、`ESC[?2026l` 之前)时扣住,等帧闭合再发;最多扣 50ms 或 256 KiB,超过就照常发出。跨 chunk 的序列也能识别
+- `evt:session:output` 只发给 owner
+- 若 owner 是 null,**不发送但仍写 scrollback**(headless 镜像)
 - 若 owner 切换,新 owner 通过 `cmd:session:get-scrollback` 拉取历史,再开始接收增量
 
 ### 8.2 数据格式
@@ -2074,6 +2103,12 @@ V1 不暴露 scrollback 大小给用户配置,V1.1 可加。
 ### 8.4 输入方向(Renderer → Main)
 
 输入比输出小很多,直接通过 `cmd:session:send-input` 即时发送,不聚合。
+
+### 8.5 输出流控(ADR-051)
+
+main 记下每个 session 发给 owner、还没被确认的输出字节(UTF-8 字节,即 `data` 解码后的长度)。超过 100 000 时 `pty.pause()`,owner 用 `cmd:session:ack-output` 确认到 5 000 以下时 `pty.resume()`。renderer 在 xterm 解析完一段后确认,每满 5 000 字节发一条;窗口隐藏时收到就确认。
+
+不会暂停的情况:session 没有 owner;当前 owner 还没确认过一次(旧版 Link 客户端从不确认)。会清零并继续的情况:换 owner、释放、窗口关闭、快照(`cmd:session:get-scrollback`)、TerminalView 卸载(`detach: true`)、session 退出或销毁。暂停 2 秒没有任何确认时看门狗强制继续,并在 owner 再次确认之前不再暂停。
 
 ---
 

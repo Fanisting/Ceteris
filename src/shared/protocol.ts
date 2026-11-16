@@ -73,6 +73,11 @@ export const COMMAND_CHANNELS = {
   SESSION_ANSWER_CHOICE: 'cmd:session:answer-choice',
   SESSION_RESIZE: 'cmd:session:resize',
   SESSION_GET_SCROLLBACK: 'cmd:session:get-scrollback',
+  /**
+   * ADR-051:owner 窗口报告已解析的输出字节数,main 据此 pause / resume PTY。
+   * 无返回值;非 owner 的 ack 被忽略。payload 见 AckOutputPayload。
+   */
+  SESSION_ACK_OUTPUT: 'cmd:session:ack-output',
   /** BETA-028:导出 scrollback 为 UTF-8 字符串,供终端工具栏"复制全部"按钮 */
   SESSION_EXPORT_SCROLLBACK: 'cmd:session:export-scrollback',
   /** BETA-028:清空 main 端的 scrollback ring buffer(配合 term.clear() 使用) */
@@ -653,6 +658,9 @@ export interface GetScrollbackResponse {
    *  渲染端用 seq > lastSeq 去重 evt:session:output。 */
   lastSeq: number;
 }
+
+/** ADR-051:cmd:session:ack-output 的 payload,定义与校验在 output-flow.ts。无返回值。 */
+export type { AckOutputPayload } from './output-flow';
 
 export interface ReleaseSessionPayload {
   sessionId: string;

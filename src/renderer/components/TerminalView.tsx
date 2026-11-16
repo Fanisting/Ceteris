@@ -14,6 +14,9 @@
  *   theme 实时切 (xterm 支持 term.options.theme = newTheme 运行时切换)
  * - 字节流: PTY → main → evt:session:output → atob → xterm.write
  *           xterm.onData → utf8 → base64 → cmd:session:send-input → main
+ * - **输出流控 ack** (ADR-051):live 输出 xterm 解析完后经 OutputAcker 攒成
+ *   5 KB 一条 cmd:session:ack-output;窗口隐藏时收到就 ack;卸载时带 detach
+ *   把余数发掉。main 按未 ack 量 pause / resume PTY,见 output-flow-control.ts
  * - **Scrollback 重放协议** (避免历史与实时输出竞态):
  *   1. mount 时立即注册 output listener,但置于"buffering"模式 (data 进
  *      pending 数组,不直接 write)
@@ -96,9 +99,11 @@ import {
   CloseFullscreen,
   OpenInFull,
 } from './material-symbols';
+import { OutputAcker } from '@shared/output-flow';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
+  type AckOutputPayload,
   type CreateSessionResponse,
   type GetScrollbackPayload,
   type GetScrollbackResponse,
@@ -1764,6 +1769,40 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     // Remote windows only: on a local terminal the echo is already instant.
     let echo: LocalEcho | null = null;
     const outputDecoder = new TextDecoder();
+
+    // ADR-051 输出流控:每段写进 xterm 的 live 输出,解析完后 ack 给 main
+    // (攒够 FLOW_ACK_CHUNK 才发一条),main 据此 pause / resume PTY。
+    // fire and forget:ack 丢了最多让 main 的看门狗 2 秒后自己 resume,不值得 toast。
+    // 只 ack seq > lastReplayedSeq 的那些:更早的已含在快照里,main 在快照时清零过。
+    // 一条 ack 被拒后这个视图不再发:比 ADR-051 旧的 Link Host 不认识这条命令,每条
+    // ack 都会在 Host 日志里留一条 warn。不发 ack 是安全的:main 只在收到过 ack 后
+    // 才暂停,最坏一次由看门狗在 2 秒内放开。
+    let acksRefused = false;
+    const acker = new OutputAcker((bytes, detach) => {
+      if (acksRefused) return;
+      window.api
+        .invoke<AckOutputPayload, void>(COMMAND_CHANNELS.SESSION_ACK_OUTPUT, {
+          sessionId: session.id,
+          bytes,
+          ...(detach ? { detach: true } : {}),
+        })
+        .catch(() => {
+          acksRefused = true;
+        });
+    });
+    // 窗口最小化或被完全遮住时 Chromium 节流计时器,xterm 分片解析的回调可能
+    // 晚好几秒;这时改为收到就 ack,看不见的窗口不拖住 PTY。
+    acker.setHidden(document.hidden);
+    const onVisibility = (): void => acker.setHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    const writeLive = (bytes: Uint8Array): void => {
+      const parsed = acker.received(bytes.length);
+      term.write(bytes, () => {
+        parsed?.();
+        echo?.noteOutput(outputDecoder.decode(bytes, { stream: true }));
+      });
+    };
+
     void window.api
       .invoke<undefined, LinkConnectionStatePayload | null>(
         COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
@@ -1840,9 +1879,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           pending.push({ seq: payload.seq, bytes });
           return;
         }
-        if (payload.seq > lastReplayedSeq) {
-          term.write(bytes, () => echo?.noteOutput(outputDecoder.decode(bytes, { stream: true })));
-        }
+        if (payload.seq > lastReplayedSeq) writeLive(bytes);
       },
     );
 
@@ -1872,7 +1909,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         if (disposed) return;
         lastReplayedSeq = res.lastSeq;
         for (const c of pending) {
-          if (c.seq > lastReplayedSeq) term.write(c.bytes);
+          if (c.seq > lastReplayedSeq) term.write(c.bytes, acker.received(c.bytes.length));
         }
         pending = [];
         replayed = true;
@@ -1913,7 +1950,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       .catch((err) => {
         console.warn('[TerminalView] get-scrollback failed, falling back', err);
         if (disposed) return;
-        for (const c of pending) term.write(c.bytes);
+        for (const c of pending) term.write(c.bytes, acker.received(c.bytes.length));
         pending = [];
         replayed = true;
         // BETA-018 + SCROLL-1:fallback 路径同样走 fence + scrollToBottom
@@ -2204,6 +2241,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
 
     return () => {
       disposed = true;
+      // ADR-051:把还欠的 ack 连同 detach 一起发掉,main 在下一个 TerminalView ack 前不再暂停
+      acker.dispose();
+      document.removeEventListener('visibilitychange', onVisibility);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();

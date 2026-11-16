@@ -29,6 +29,7 @@ import {
 import type { NextPromptUsageTracker } from './next-prompt-usage';
 import type { TemplateUsageTracker } from './template-usage';
 import { templateUsageKey } from '@shared/template-usage';
+import { checkAckPayload, type AckOutputPayload } from '@shared/output-flow';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -1043,6 +1044,26 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // CURSOR-1:走 state-replay 路径(SerializeAddon),不再返回裸字节。
       // 详见 SessionManager.getScrollbackForReplay 与 docs/issues/cursor-1-...
       return sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
+    },
+  );
+
+  // ADR-051:owner 的 renderer 报告已解析的输出字节,SessionManager 据此 resume PTY。
+  // 高频 (流量大时每秒上百条),不打 debug 日志;只在 payload 非法时报错。
+  // 非 owner 的 ack 由 SessionManager.ackOutput 静默忽略 (换 owner 时的正常竞态)。
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_ACK_OUTPUT,
+    (_e, envelope: CommandEnvelope<AckOutputPayload>): void => {
+      const problem = checkAckPayload(envelope.payload);
+      if (problem) {
+        throw makeIpcError(
+          'InvalidPayload',
+          `ack-output from windowId=${envelope.windowId}: ${problem}. ` +
+            'Likely a renderer built against another protocol version (reload the window) ' +
+            'or a Link client of a different Ceteris version (update both ends).',
+        );
+      }
+      const p = envelope.payload;
+      sessionManager.ackOutput(p.sessionId, envelope.windowId, p.bytes, p.detach === true);
     },
   );
 

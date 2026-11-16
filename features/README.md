@@ -19,6 +19,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Status filters](status-filters.md) | Running and Needs you filters across all folders | 0.4.1 |
 | [Back to the last session](back-to-last-session.md) | A chip left of Running returns to the session you were just on | Next |
 | [Settings export and import](settings-export-import.md) | Move your settings between machines | 0.1.0 |
+| [Responsive terminals under heavy output](output-flow-control.md) | Ctrl+C and typing stay quick while a program floods output; agent redraws arrive whole | Next |
 
 ## Files
 

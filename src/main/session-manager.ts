@@ -13,6 +13,12 @@
  *   或应用退出销毁。重启功能不再提供。
  * - PTY 字节流仅推送给 owner;新 owner 通过 cmd:session:get-scrollback 拉
  *   历史,渲染端用 lastSeq 去重 evt:session:output
+ * - **输出流控** (ADR-051):每次 emit 给 owner 的字节记进 OutputFlowControl,
+ *   owner 的 renderer 解析完后经 cmd:session:ack-output 回 ack;未 ack 超过
+ *   100 KB 就 pty.pause(),回落到 5 KB 以下 resume。无主 session 永不暂停;
+ *   换 owner、replay 快照、退出都清零并 resume;2 秒无 ack 的看门狗兜底
+ * - **emit 时机** (ADR-051):空闲后的第一块输出立即 emit (leading edge),之后
+ *   8ms 内的输出合并;DEC 2026 同步输出帧未闭合时扣住整批,最多 50ms / 256 KiB
  * - **OSC 1337 解析器**每个 session 一份,从字节流剥离序列后再转发
  *   xterm,避免 OSC 在终端里渲染成乱码
  * - **active / idle 计时**:每次有 passthrough 字节 → state=active + 重置
@@ -32,7 +38,7 @@
  *   (默认从 getPlatformAdapter() 拿)
  *
  * @对应文档章节:
- *   软件定义书.md 5.1.2、5.1.3、5.1.8、8.3、ADR-003、ADR-008
+ *   软件定义书.md 5.1.2、5.1.3、5.1.8、8.3、ADR-003、ADR-008、ADR-051
  *   ipc-protocol.md 5.2、6.2
  *   AGENTS.md CP-3 完成标志
  *
@@ -76,6 +82,12 @@ import xtermSerialize from '@xterm/addon-serialize';
 const { SerializeAddon } = xtermSerialize;
 type SerializeAddon = InstanceType<typeof SerializeAddon>;
 import { Osc1337Parser } from './osc1337-parser';
+import {
+  DEFAULT_FLOW_CONTROL,
+  OutputFlowControl,
+  type FlowControlOptions,
+} from './output-flow-control';
+import { SyncOutputTracker } from './sync-output';
 import { PlaceholderFilter } from './placeholder-filter';
 import { TerminalLookFile, mathImagesEnv, type TerminalLook } from './claude-math-images';
 import { pathRefFromId } from './path-manager';
@@ -156,8 +168,19 @@ const RESIZE_QUIET_MS = 500;
  * PER-2 / F1:sessionOutput IPC 聚合窗口 (ms)。
  * 8ms 在 125 FPS 频率 — 视觉上无延迟,但能把 burst 输出场景下每秒数百次
  * IPC 压成 ~30-60 次,降低 renderer base64 解码 + xterm parse CPU 占用。
+ *
+ * ADR-051 起是 leading edge:最近 8ms 内没 emit 过时,新到的第一块立即 emit,
+ * 之后 8ms 内到的再合并。按键回显因此不再多等 8ms。详见 queueEmit。
  */
 const EMIT_BATCH_MS = 8;
+
+/**
+ * ADR-051:DEC 2026 同步输出帧最多扣住多久 (ms) / 多少字节,超过就照常 emit。
+ * Claude Code 一帧重绘通常几 ms 内闭合;50ms 的上限让没闭合帧的程序 (崩了、
+ * 被 Ctrl+C 打断) 最多让屏幕慢 50ms。256 KiB 远大于一帧整屏重绘。
+ */
+const SYNC_HOLD_MS = 50;
+const SYNC_HOLD_MAX_BYTES = 256 * 1024;
 
 /**
  * 启动期 grace 窗口 (M1-I,P1-4)。
@@ -478,7 +501,17 @@ interface ManagedSession {
    * scrollback append 仍同步,scrollbackLastSeq 仍准。
    */
   pendingEmit: { bytes: Buffer; lastSeq: number } | null;
+  /**
+   * ADR-051 起含义:emit 后的冷却计时器。非 null = 最近 emitBatchMs 内 emit 过,
+   * 新输出进 pendingEmit 等它到点;null = 空闲,新输出 leading edge 立即 emit。
+   */
   pendingEmitTimer: NodeJS.Timeout | null;
+  /** ADR-051:未 ack 字节计数与 pty.pause / resume,见 output-flow-control.ts */
+  flow: OutputFlowControl;
+  /** ADR-051:是否在 DEC 2026 同步输出帧内 (跨 chunk 记状态) */
+  syncOutput: SyncOutputTracker;
+  /** ADR-051:扣住未闭合 2026 帧的上限计时器 (SYNC_HOLD_MS);null = 没在扣 */
+  syncHoldTimer: NodeJS.Timeout | null;
   /**
    * BETA-006 v2:headless terminal 镜像。每个 session 跟着 PTY passthrough
    * 字节同步 write,buffer 维护"已渲染"字符矩阵 — 复核时读这里拿干净文本,
@@ -617,6 +650,8 @@ export interface SessionManagerOptions {
    * id (the pipe path and the tab's token). Called once per local or SSH spawn.
    */
   controlEnv?: (sessionId: string) => Record<string, string>;
+  /** ADR-051:流控阈值。生产不传 (100 KB / 5 KB / 2 s);测试可调 */
+  flowControl?: Partial<FlowControlOptions>;
 }
 
 export class SessionManager extends EventEmitter {
@@ -630,6 +665,7 @@ export class SessionManager extends EventEmitter {
   private readonly inputQuietMs: number;
   private readonly skipCwdValidation: boolean;
   private readonly emitBatchMs: number;
+  private readonly flowOptions: FlowControlOptions;
   private readonly appVersion: string;
   private readonly tmuxSocket: string | undefined;
   /**
@@ -688,6 +724,7 @@ export class SessionManager extends EventEmitter {
     this.skipCwdValidation = options.skipCwdValidation ?? false;
     // 测试缺省传 0(立即 emit,保持时序断言)
     this.emitBatchMs = options.emitBatchMs ?? EMIT_BATCH_MS;
+    this.flowOptions = { ...DEFAULT_FLOW_CONTROL, ...options.flowControl };
     this.appVersion = options.appVersion ?? '';
     this.tmuxSocket = options.tmuxSocket;
     this.terminalLookFile = options.terminalLookFile
@@ -999,6 +1036,15 @@ export class SessionManager extends EventEmitter {
       aiTitled: false,
       pendingEmit: null,
       pendingEmitTimer: null,
+      // getPty 走 sessions Map:退出后 managed.pty 置 null、destroy 后不在 Map 里,
+      // 两种情况都拿到 null,不会对死掉的 PTY 调 pause / resume。
+      flow: new OutputFlowControl(
+        sessionId,
+        () => this.sessions.get(sessionId)?.pty ?? null,
+        this.flowOptions,
+      ),
+      syncOutput: new SyncOutputTracker(),
+      syncHoldTimer: null,
       // BETA-006 v2 + CURSOR-1:headless 镜像,scrollback 行数对齐 renderer
       // 端 xterm 的 5000(`TerminalView.tsx` Terminal 构造 scrollback: 5000)
       // —— headless serialize 出来的状态要能完整覆盖 renderer 可见 + 滚动区。
@@ -1314,6 +1360,8 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.info.ownerWindowId = windowId;
+    // ADR-051:旧计数属于旧 owner;新 owner 要先 ack 一次才会暂停
+    managed.flow.reset('owner changed', true);
     this.emit('sessionOwnerChanged', {
       sessionId,
       oldOwnerWindowId: oldOwner,
@@ -1371,6 +1419,7 @@ export class SessionManager extends EventEmitter {
         !panes?.has(managed.info.id)
       ) {
         managed.info.ownerWindowId = null;
+        managed.flow.reset('owner released', true); // ADR-051:无主 session 永不暂停
         this.emit('sessionOwnerChanged', {
           sessionId: managed.info.id,
           oldOwnerWindowId: windowId,
@@ -1397,6 +1446,7 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.info.ownerWindowId = null;
+    managed.flow.reset('owner released', true); // ADR-051:无主 session 永不暂停
     this.emit('sessionOwnerChanged', {
       sessionId,
       oldOwnerWindowId: windowId,
@@ -1628,6 +1678,10 @@ export class SessionManager extends EventEmitter {
     //    drain 解析到的边界,不会有竞态。drain 后到达的字节会通过 8ms 自然
     //    batch 走 live emit,renderer seq > lastSeq 过滤兜底。
     let ansi = addon.serialize({ scrollback: 5000 });
+    // ADR-051:seq <= 这里返回的 lastSeq 的输出,renderer 会丢掉 (快照已含),永远
+    // 不会 ack。与读 lastSeq 在同一同步块内清零,之后的计数只含 seq > lastSeq
+    // 的字节,正好是 renderer 会写入并 ack 的那些。不 disengage:读者没换。
+    managed.flow.reset('replay snapshot', false);
 
     // XTERM-SERIALIZE-POLYFILL:0.14.0 stable 的 _serializeModes 不覆盖光标
     // 可见性(?25l)与滚动区(DECSTBM),master / 0.15.0-beta 已修。直读
@@ -1791,43 +1845,96 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * PER-2:把一次 PTY chunk 入 pendingEmit 缓冲,8ms 后(或 destroy 前)
-   * 通过 flushPendingEmit 一起 append 进 scrollback、推 scrollbackLastSeq、
-   * 发 sessionOutput event。
+   * PER-2:把一次 PTY chunk 入 pendingEmit 缓冲,到点(或 destroy 前)通过
+   * flushPendingEmit 一起推 scrollbackLastSeq、发 sessionOutput event。
    *
-   * 关键不变量:在 pendingEmit 窗口内,scrollback 内容和 scrollbackLastSeq
-   * 都不变;getScrollback 看到的快照永远等于"已 emit 的全部历史",pending
-   * 字节对 renderer 不可见。flush 之后三者一起原子前进。
+   * 关键不变量:在 pendingEmit 窗口内,scrollbackLastSeq 不变;getScrollback
+   * 看到的快照永远等于"已 emit 的全部历史",pending 字节对 renderer 不可见。
+   * flush 时两者一起原子前进。ADR-051 的改动只决定"什么时候 flush",不碰这条。
    *
-   * emitBatchMs <= 0 路径(测试用):立即同步 append + emit,保留与历史
-   * 单测的时序断言一致。
+   * 何时 flush (ADR-051),每个 chunk 按顺序判断:
+   *
+   *   2026 帧未闭合 ──> 扣住 (pending 满 SYNC_HOLD_MAX_BYTES 或 SYNC_HOLD_MS 到点
+   *                     就放弃这一帧,照常 flush)
+   *   帧已闭合 / 无帧:
+   *     emitBatchMs <= 0 (测试) ──> 立即 flush
+   *     冷却计时器为 null (最近 8ms 没 emit) ──> 立即 flush (leading edge),起冷却
+   *     冷却中 ──> 留在 pending,冷却到点时 flush 并再起一轮冷却
+   *
+   * 为什么扣整批而不是在 `ESC[?2026h` 处切开:seq 是按 chunk 编的,切开要给
+   * 半个 chunk 编号,会动 lastSeq 去重的不变量;帧通常几 ms 内闭合,扣整批
+   * 只让帧前的那点字节晚几 ms。
    */
   private queueEmit(managed: ManagedSession, bytes: Buffer, seq: number): void {
-    if (this.emitBatchMs <= 0) {
-      // 立即路径 — 推 lastSeq + emit 在同一同步块内完成。CURSOR-1 后:
-      // headless terminal 是状态源(handlePtyData 内同步 write),无需在此
-      // append 任何裸字节存储。
-      managed.scrollbackLastSeq = seq;
-      const payload: SessionOutputPayload = {
-        sessionId: managed.info.id,
-        data: bytes.toString('base64'),
-        seq,
-      };
-      this.emit('sessionOutput', payload);
-      return;
-    }
     if (managed.pendingEmit === null) {
       managed.pendingEmit = { bytes, lastSeq: seq };
     } else {
       managed.pendingEmit.bytes = Buffer.concat([managed.pendingEmit.bytes, bytes]);
       managed.pendingEmit.lastSeq = seq;
     }
-    if (managed.pendingEmitTimer === null) {
-      managed.pendingEmitTimer = setTimeout(() => {
-        managed.pendingEmitTimer = null;
-        this.flushPendingEmit(managed);
-      }, this.emitBatchMs);
+
+    if (managed.syncOutput.feed(bytes)) {
+      if (managed.pendingEmit.bytes.length >= SYNC_HOLD_MAX_BYTES) {
+        this.releaseSyncHold(managed, `frame reached ${SYNC_HOLD_MAX_BYTES} bytes`);
+        return;
+      }
+      if (managed.syncHoldTimer === null) {
+        managed.syncHoldTimer = setTimeout(() => {
+          managed.syncHoldTimer = null;
+          this.releaseSyncHold(managed, `frame open after ${SYNC_HOLD_MS} ms`);
+        }, SYNC_HOLD_MS);
+      }
+      return;
     }
+
+    // 帧闭合 (或根本没有帧):不再需要上限计时器
+    if (managed.syncHoldTimer !== null) {
+      clearTimeout(managed.syncHoldTimer);
+      managed.syncHoldTimer = null;
+    }
+    if (this.emitBatchMs <= 0) {
+      this.flushPendingEmit(managed);
+      return;
+    }
+    if (managed.pendingEmitTimer === null) {
+      this.emitNowAndCoolDown(managed); // leading edge
+    }
+    // 否则冷却中:留在 pending,由冷却计时器 flush
+  }
+
+  /**
+   * flush pendingEmit 并起一轮 emitBatchMs 冷却。冷却到点时若 pending 有字节且
+   * 不在 2026 帧内就再 flush 一次并续上冷却,否则回到空闲 (计时器 null)。
+   * 持续输出时因此每 8ms emit 一次;安静 8ms 后下一块又能 leading edge。
+   */
+  private emitNowAndCoolDown(managed: ManagedSession): void {
+    this.flushPendingEmit(managed);
+    if (this.emitBatchMs <= 0 || managed.pendingEmitTimer !== null) return;
+    managed.pendingEmitTimer = setTimeout(() => {
+      managed.pendingEmitTimer = null;
+      if (managed.pendingEmit && !managed.syncOutput.isOpen) {
+        this.emitNowAndCoolDown(managed);
+      }
+    }, this.emitBatchMs);
+  }
+
+  /**
+   * 2026 帧扣太久或太大:放弃这一帧 (下一个 `ESC[?2026h` 之前不再扣),照常 emit。
+   * 程序崩溃或被 Ctrl+C 打断时帧永远不会闭合,不放弃的话后续输出会被一直扣着。
+   */
+  private releaseSyncHold(managed: ManagedSession, reason: string): void {
+    if (managed.syncHoldTimer !== null) {
+      clearTimeout(managed.syncHoldTimer);
+      managed.syncHoldTimer = null;
+    }
+    managed.syncOutput.abandon();
+    logger.debug(
+      'SessionManager',
+      `sync output hold released sessionId=${managed.info.id}: ${reason}`,
+    );
+    if (!managed.pendingEmit) return;
+    if (this.emitBatchMs <= 0) this.flushPendingEmit(managed);
+    else this.emitNowAndCoolDown(managed);
   }
 
   private flushPendingEmit(managed: ManagedSession): void {
@@ -1844,7 +1951,30 @@ export class SessionManager extends EventEmitter {
       data: bytes.toString('base64'),
       seq: lastSeq,
     };
+    // ADR-051:在 emit 处计数 (不是 onData),见 output-flow-control.ts 文件头。
+    // 先计数再 emit:emit 的监听者 (ipc) 同步发出去,renderer 的 ack 不可能先到。
+    managed.flow.emitted(bytes.length, managed.info.ownerWindowId !== null);
     this.emit('sessionOutput', payload);
+  }
+
+  /**
+   * ADR-051:owner 窗口的 renderer 报告它已解析 `bytes` 字节输出。
+   *
+   * @param sessionId 目标 session
+   * @param windowId 发 ack 的窗口 (IPC 信封里的 windowId;Link 客户端是虚拟窗口 id)
+   * @param bytes 自上次 ack 以来解析完的字节数,调用方已校验为非负整数
+   * @param detach true = 那个 TerminalView 卸载了,清零并在下次 ack 前不再暂停
+   *
+   * 静默忽略 (都是正常竞态,不是错误):session 不存在或已退出 (没有流控可记);
+   * 发送方不是当前 owner (换 owner 之前发出、之后才到的 ack 属于旧计数)。
+   *
+   * @副作用 可能调 pty.resume()
+   */
+  ackOutput(sessionId: string, windowId: string, bytes: number, detach = false): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || !managed.pty) return;
+    if (managed.info.ownerWindowId !== windowId) return;
+    managed.flow.ack(bytes, detach);
   }
 
   /**
@@ -1864,6 +1994,11 @@ export class SessionManager extends EventEmitter {
     if (managed.pendingEmitTimer) {
       clearTimeout(managed.pendingEmitTimer);
       managed.pendingEmitTimer = null;
+    }
+    // ADR-051:扣着的 2026 帧也要发出去,退出前最后一帧不能丢
+    if (managed.syncHoldTimer) {
+      clearTimeout(managed.syncHoldTimer);
+      managed.syncHoldTimer = null;
     }
     if (managed.pendingEmit) {
       this.flushPendingEmit(managed);
@@ -2424,6 +2559,13 @@ export class SessionManager extends EventEmitter {
       clearTimeout(managed.pendingEmitTimer);
       managed.pendingEmitTimer = null;
     }
+    if (managed.syncHoldTimer) {
+      clearTimeout(managed.syncHoldTimer);
+      managed.syncHoldTimer = null;
+    }
+    // ADR-051:清看门狗,并在 PTY 还在时 resume。两个调用方 (退出、销毁) 都在
+    // managed.pty 置 null / kill 之前调本函数,所以这里的 resume 还能落到 PTY 上。
+    managed.flow.dispose();
   }
 
   private emitStateChanged(managed: ManagedSession, changes: Partial<SessionInfo>): void {

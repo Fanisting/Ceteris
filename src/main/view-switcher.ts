@@ -149,9 +149,42 @@ export class ViewSwitcher {
       to.focus();
       return;
     }
-    this.remotes.set(targetId, fromRemote ? (this.remotes.get(fromWindowId) ?? null) : fromWindowId);
+    this.remotes.set(
+      targetId,
+      fromRemote ? (this.remotes.get(fromWindowId) ?? null) : fromWindowId,
+    );
     this.swap(from, to);
     this.notify();
+  }
+
+  /**
+   * ADR-048: bring one window to the front, local or remote, for a notification click. A
+   * hidden view takes the place of the visible one, as a title bar switch would.
+   * Unknown or closed windows are ignored.
+   */
+  showView(windowId: string): void {
+    const wm = this.deps.windowManager;
+    const to = wm.getById(windowId);
+    if (!to || to.isDestroyed()) return;
+    if (to.isVisible()) {
+      if (to.isMinimized()) to.restore();
+      to.focus();
+      return;
+    }
+    const fromId = this.visibleWindowId();
+    const from = fromId ? wm.getById(fromId) : null;
+    if (fromId && this.remotes.has(windowId)) {
+      this.switchTo(fromId, windowId);
+      return;
+    }
+    if (fromId && from && !from.isDestroyed() && this.remotes.has(fromId)) {
+      // A local window hidden behind a remote view: swap back to it.
+      this.swap(from, to);
+      this.notify();
+      return;
+    }
+    to.show();
+    to.focus();
   }
 
   private swap(from: BrowserWindow, to: BrowserWindow): void {

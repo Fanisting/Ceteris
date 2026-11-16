@@ -110,6 +110,10 @@ export const COMMAND_CHANNELS = {
    * 角色名、放进上方一行;清除时名字还没被改过就恢复原名。
    */
   SESSION_SET_ROLE: 'cmd:session:set-role',
+  /** ADR-048: turn a tab's bell on or off (SessionInfo.notifyOnDone) */
+  SESSION_SET_NOTIFY: 'cmd:session:set-notify',
+  /** ADR-048: show a test system notification on the machine in front of the user */
+  NOTIFY_TEST: 'cmd:notify:test',
   /**
    * 右键 Tab → "在新窗口中打开"。原子地把 session 从调用方窗口释放,
    * 创建新窗口并把所有权直接转给新窗口,新窗口启动时从 URL ?selectSessionId
@@ -553,6 +557,18 @@ export interface RenameSessionPayload {
 export interface SetCoordinatorPayload {
   sessionId: string;
   coordinator: boolean;
+}
+
+/** ADR-048: cmd:session:set-notify */
+export interface SetNotifyPayload {
+  sessionId: string;
+  /** true = a finished turn in this tab shows a system notification */
+  notify: boolean;
+}
+
+/** ADR-048: cmd:notify:test. shown = false when the system has no notification service. */
+export interface NotifyTestResponse {
+  shown: boolean;
 }
 
 export interface SetRolePayload {
@@ -1383,7 +1399,8 @@ export interface WindowFocusRequestedPayload {
     | 'tray-click'
     | 'manual'
     | 'tray-session-click' // M1-H:托盘"正在运行的会话"子菜单点击
-    | 'tray-open-settings'; // M1-H:托盘"设置…"菜单
+    | 'tray-open-settings' // M1-H:托盘"设置…"菜单
+    | 'notification-click'; // ADR-048:点了"agent 回答完"的系统通知
   selectSessionId?: string;
 }
 

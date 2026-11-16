@@ -17,10 +17,19 @@
  *
  * @对应文档章节: 软件定义书.md 8.1、9.2.1;AGENTS.md 检查点 1/2
  */
-import { app, Menu, net, safeStorage, session as electronSession } from 'electron';
+import {
+  app,
+  Menu,
+  net,
+  Notification,
+  safeStorage,
+  session as electronSession,
+  type BrowserWindow,
+} from 'electron';
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { WindowManager } from './window-manager';
 import { TrayManager } from './tray';
 import { SessionManager } from './session-manager';
@@ -55,9 +64,22 @@ import { SftpPool } from './sftp-client';
 import { AskpassServer } from './askpass-server';
 import { TabControlServer } from './tab-control-server';
 import { AgentTitler } from './agent-titler';
+import {
+  DoneNotifier,
+  TabHolders,
+  type NotificationRequest,
+  type NotifyTarget,
+} from './done-notifier';
+import { resolveLocale } from '@shared/i18n';
 import { suggestAgentTitle } from './agent-title-client';
 import { NEXT_PROMPT_DEFAULT_MODEL, nextPromptConfigured } from '@shared/next-prompt';
-import type { SessionStateChangedPayload } from '@shared/protocol';
+import {
+  EVENT_CHANNELS,
+  type EventEnvelope,
+  type SessionOwnerChangedPayload,
+  type SessionStateChangedPayload,
+  type WindowFocusRequestedPayload,
+} from '@shared/protocol';
 import { PromptBroker } from './askpass-prompts';
 import { AIClient } from './ai-client';
 import { setExplorerLabel, WindowsAdapter } from './platform/windows';
@@ -171,6 +193,61 @@ function logDevDebugPort(requested: number, startedAt: number, attempt = 0): voi
   });
 }
 
+/**
+ * ADR-048: notifications on screen, by key. Electron drops a notification's click handler
+ * when nothing references it, so each stays here until it is closed or replaced; a new one
+ * for the same tab replaces the old one in the system's list too.
+ */
+const openNotifications = new Map<string, Notification>();
+
+/**
+ * Shows a native notification (Windows toast, macOS Notification Center, Linux libnotify).
+ * @returns false when the system has no notification service (Notification.isSupported)
+ */
+function showSystemNotification(request: NotificationRequest): boolean {
+  if (!Notification.isSupported()) {
+    logger.warn('notify', 'system notifications are not supported here; nothing shown');
+    return false;
+  }
+  openNotifications.get(request.key)?.close();
+  const n = new Notification({ title: request.title, body: request.body });
+  const drop = (): void => {
+    if (openNotifications.get(request.key) === n) openNotifications.delete(request.key);
+  };
+  n.on('click', () => {
+    drop();
+    request.onClick();
+  });
+  n.on('close', drop);
+  n.on('failed', (_e, error) => {
+    drop();
+    logger.warn('notify', `notification failed key=${request.key}: ${error}`);
+  });
+  openNotifications.set(request.key, n);
+  n.show();
+  return true;
+}
+
+/** Takes a tab's notification off the screen and out of the list, when the tab closes. */
+function dismissSystemNotification(key: string): void {
+  openNotifications.get(key)?.close();
+  openNotifications.delete(key);
+}
+
+/** Asks a window to select a tab, as the tray's running sessions menu does. */
+function selectTabIn(win: BrowserWindow, sessionId: string): void {
+  if (win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  win.focus();
+  const envelope: EventEnvelope<WindowFocusRequestedPayload> = {
+    eventId: randomUUID(),
+    timestamp: Date.now(),
+    payload: { reason: 'notification-click', selectSessionId: sessionId },
+  };
+  win.webContents.send(EVENT_CHANNELS.WINDOW_FOCUS_REQUESTED, envelope);
+}
+
 function bootstrap(): void {
   // DEV-COEXIST(2026-05-16):dev 模式下改 app 名,让 npm run dev 与打包版
   // Ceteris.exe 互不冲突。Electron 把以下 4 类资源全部按 `productName` 派生:
@@ -191,6 +268,12 @@ function bootstrap(): void {
     app.setName('Ceteris Beta');
   } else if (process.env['PORTABLE_EXECUTABLE_DIR']) {
     app.setName('Ceteris (portable)');
+  }
+  // ADR-048: Windows names a notification and picks its icon by the AppUserModelID of the
+  // Start menu shortcut, which the installer creates with the builder's appId. Without this
+  // the toast header reads electron.app.Ceteris. Dev and portable have no such shortcut.
+  if (process.platform === 'win32' && app.isPackaged && !process.env['PORTABLE_EXECUTABLE_DIR']) {
+    app.setAppUserModelId(isBetaBuild() ? 'com.fanisting.ceteris.beta' : 'com.fanisting.ceteris');
   }
 
   // M1-D:全局崩溃兜底 — daily driver 最大风险是"未捕获异常让主进程死掉,
@@ -396,6 +479,7 @@ function bootstrap(): void {
     create: (input) => sessionManager.createSession(input),
     rename: (id, name) => sessionManager.renameSession(id, name),
     setRole: (id, role) => sessionManager.setRole(id, role),
+    setNotifyOnDone: (id, notify) => sessionManager.setNotifyOnDone(id, notify),
     setAgentSession: (id, agent, agentId) => sessionManager.setAgentSession(id, agent, agentId),
     shelve: async (tab) => {
       await shelfReady;
@@ -679,8 +763,113 @@ function bootstrap(): void {
         getRemoteLabel: (windowId) => linkManager.getWindowLabel(windowId),
       });
 
+      // ADR-048:agent 回答完的系统通知。一个窗口只持有它正在显示的标签 (8.4 单焦点),
+      // 后台标签的 owner 是 null,所以按"最后显示它的窗口" (TabHolders) 决定由哪台机器弹:
+      // 本机窗口 → 本机;Link 远程窗口 (Host 上的虚拟窗口) → 那台 Client (onRemoteEvent)。
+      const doneNotifier = new DoneNotifier({
+        enabled: () => settingsManager.get().notifications?.enabled !== false,
+        show: showSystemNotification,
+        chinese: () =>
+          resolveLocale(settingsManager.get().appearance.language, app.getLocale()) === 'zh-CN',
+        templateName: (id) => templatesManager.get(id)?.name ?? null,
+      });
+      const localHolders = new TabHolders();
+      const isFront = (win: BrowserWindow | null): boolean =>
+        !!win && !win.isDestroyed() && win.isVisible() && win.isFocused();
+      const localWindowOf = (windowId: string | null | undefined): BrowserWindow | null => {
+        if (!windowId || windowManager.isVirtualWindow(windowId)) return null;
+        if (windowManager.isWindowRemote(windowId)) return null;
+        const win = windowManager.getById(windowId);
+        return win && !win.isDestroyed() ? win : null;
+      };
+      const holderOfLocal = (sessionId: string): string | null =>
+        localHolders.holderOf(sessionId, sessionManager.get(sessionId)?.ownerWindowId ?? null);
+      const focusTabWindow = (sessionId: string): void => {
+        let win = localWindowOf(holderOfLocal(sessionId));
+        if (!win) {
+          // Never shown, or its window closed: the local window used last
+          const recent = windowManager.getMostRecentlyActive();
+          const recentId = recent
+            ? windowManager.list().find((w) => w.electronWindowId === recent.webContents.id)?.id
+            : undefined;
+          win = localWindowOf(recentId);
+        }
+        if (!win) {
+          // No local window at all: open one that owns the tab from the start
+          const created = windowManager.createWindowFromFactory({ selectSessionId: sessionId });
+          if (sessionManager.get(sessionId)?.ownerWindowId === null) {
+            sessionManager.claimOwner(sessionId, created.id);
+          }
+          return;
+        }
+        const id = windowManager.list().find((w) => w.electronWindowId === win.webContents.id)?.id;
+        if (id) viewSwitcher.showView(id);
+        // The window's NotificationClickBridge claims the tab, as a sidebar click would
+        selectTabIn(win, sessionId);
+      };
+      const localTarget = (sessionId: string): NotifyTarget => ({
+        holderInFront: () => {
+          const win = localWindowOf(holderOfLocal(sessionId));
+          return win ? isFront(win) : isFront(windowManager.getMostRecentlyActive());
+        },
+        focus: () => focusTabWindow(sessionId),
+        lastEnterAt: () => sessionManager.getLastEnterAt(sessionId),
+      });
+      sessionManager.on('sessionOwnerChanged', (e: SessionOwnerChangedPayload) =>
+        localHolders.note(e.sessionId, e.newOwnerWindowId),
+      );
+      sessionManager.on('sessionStateChanged', (p: SessionStateChangedPayload) => {
+        localHolders.note(p.sessionId, p.full.ownerWindowId ?? null);
+        const holder = localHolders.holderOf(p.sessionId, p.full.ownerWindowId ?? null);
+        // Last shown in a Link client's window: that machine notifies, see onRemoteEvent
+        const remote = holder !== null && windowManager.isVirtualWindow(holder);
+        doneNotifier.observe(p, remote ? null : localTarget(p.sessionId));
+      });
+      sessionManager.on('sessionDestroyed', (p: { sessionId: string }) => {
+        localHolders.forget(p.sessionId);
+        doneNotifier.forget(p.sessionId);
+        dismissSystemNotification(p.sessionId);
+      });
+      // Client side: Host tabs, by the remote window that last showed them
+      const remoteHolders = new TabHolders();
+
       const linkManager: LinkManager = new LinkManager({
         windowManager,
+        // ADR-048:Host 推来的事件里,这个远程窗口最后显示过的标签跑完了就在本机通知
+        onRemoteEvent: (windowId, channel, envelope) => {
+          const payload = (envelope as EventEnvelope<unknown> | null)?.payload;
+          if (channel === EVENT_CHANNELS.SESSION_DESTROYED) {
+            const id = (payload as { sessionId?: string } | undefined)?.sessionId;
+            if (id) {
+              remoteHolders.forget(id);
+              doneNotifier.forget(id);
+              dismissSystemNotification(id);
+            }
+            return;
+          }
+          if (channel === EVENT_CHANNELS.SESSION_OWNER_CHANGED) {
+            const e = payload as SessionOwnerChangedPayload | undefined;
+            if (e?.sessionId) remoteHolders.note(e.sessionId, e.newOwnerWindowId);
+            return;
+          }
+          if (channel !== EVENT_CHANNELS.SESSION_STATE_CHANGED) return;
+          const p = payload as SessionStateChangedPayload | undefined;
+          if (!p?.full) return;
+          remoteHolders.note(p.sessionId, p.full.ownerWindowId ?? null);
+          const mine =
+            remoteHolders.holderOf(p.sessionId, p.full.ownerWindowId ?? null) === windowId;
+          const target: NotifyTarget | null = mine
+            ? {
+                holderInFront: () => isFront(windowManager.getById(windowId)),
+                focus: () => {
+                  viewSwitcher.showView(windowId);
+                  const win = windowManager.getById(windowId);
+                  if (win && !win.isDestroyed()) selectTabIn(win, p.sessionId);
+                },
+              }
+            : null;
+          doneNotifier.observe(p, target);
+        },
         onRemoteWindowCreated: (windowId, reveal) =>
           viewSwitcher.handleRemoteCreated(windowId, reveal),
         getSettings: () => settingsManager.get().link,
@@ -719,6 +908,7 @@ function bootstrap(): void {
         updateChecker,
         customThemes,
         shelfManager,
+        doneNotifier,
       });
       updateChecker.refreshSchedule();
       // 读不到 shelf.json 只是盒子空着,不影响启动

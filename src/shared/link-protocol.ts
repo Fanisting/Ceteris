@@ -423,6 +423,8 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:ai:connect-openrouter',
   'cmd:ai:cancel-openrouter-connect',
   'cmd:ai:disconnect-openrouter',
+  // The test notification shows on the machine in front of the user (ADR-048).
+  'cmd:notify:test',
 ]);
 
 /**

@@ -247,6 +247,7 @@ function makeStubSettingsManager(
       savedHosts: [],
     },
     agents: { folderDefaults },
+    notifications: { enabled: true },
   };
   return {
     get: (): Settings => settings,

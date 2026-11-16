@@ -368,6 +368,11 @@ export interface SessionInfo {
   agentEffort?: string;
   /** ADR-038: the `--session-id` given to Claude Code at launch, so its transcript is found */
   agentLaunchId?: string;
+  /**
+   * ADR-048: the user turned on this tab's bell, so a finished agent turn shows a system
+   * notification (when settings.notifications.enabled). Absent or false = off, the default.
+   */
+  notifyOnDone?: boolean;
 }
 
 /**
@@ -805,6 +810,15 @@ export interface Settings {
    */
   agents: {
     folderDefaults: FolderAgentDefault[];
+  };
+
+  /**
+   * ADR-048: native system notifications when an agent tab finishes a turn. `enabled` is the
+   * master switch; each tab still opts in with its bell (SessionInfo.notifyOnDone, off by
+   * default), so turning this on alone shows nothing.
+   */
+  notifications: {
+    enabled: boolean;
   };
 }
 

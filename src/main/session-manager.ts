@@ -2508,7 +2508,19 @@ export function buildSshLaunchParams(
     controlPath?: string;
   } = {},
 ): { args: string[]; env: Record<string, string> } {
-  const args = ['-tt', '-p', String(profile.port), '-o', 'ServerAliveInterval=30'];
+  // Keepalive: probe every 15 s, give up after 3 missed replies, so a dead link (laptop
+  // sleep, Tailscale drop) ends the session in about 45 s instead of about 90 s with the
+  // old 30 s interval. The count is explicit because ssh_config may change the default.
+  // Same pair as buildSftpArgs in sftp-client.ts.
+  const args = [
+    '-tt',
+    '-p',
+    String(profile.port),
+    '-o',
+    'ServerAliveInterval=15',
+    '-o',
+    'ServerAliveCountMax=3',
+  ];
   if (profile.authType === 'keyFile' && profile.keyFilePath) {
     args.push('-i', profile.keyFilePath);
   }

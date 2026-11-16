@@ -147,7 +147,10 @@ export function buildSftpArgs(profile: SftpProfile, allowPrompts: boolean): stri
     '-o',
     'ConnectTimeout=10',
     '-o',
-    'ServerAliveInterval=30',
+    // Same keepalive pair as buildSshLaunchParams: a dead link fails in about 45 s.
+    'ServerAliveInterval=15',
+    '-o',
+    'ServerAliveCountMax=3',
     '-o',
     `BatchMode=${allowPrompts ? 'no' : 'yes'}`,
     // A wrong saved password must count as one failure, not three against the account.

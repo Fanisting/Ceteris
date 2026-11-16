@@ -525,7 +525,9 @@ describe('SessionManager — createSession', () => {
       '-p',
       '22',
       '-o',
-      'ServerAliveInterval=30',
+      'ServerAliveInterval=15',
+      '-o',
+      'ServerAliveCountMax=3',
       'alice@example.com',
       'cd "$HOME"/\'repo\' && exec "${SHELL:-/bin/sh}" -l',
     ]);

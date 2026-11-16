@@ -630,6 +630,41 @@ describe('IPC SESSION_ACK_OUTPUT (ADR-051)', () => {
   });
 });
 
+describe('IPC snapshots and flow control (ADR-051)', () => {
+  async function install(owner: string | null): Promise<{
+    call: (channel: string) => Promise<unknown>;
+    snapshot: ReturnType<typeof vi.fn>;
+  }> {
+    const { installIpcLayer } = await freshIpc();
+    const { deps, stubs } = makeStubs();
+    const snapshot = vi.fn();
+    snapshot.mockResolvedValue({ data: '', lastSeq: 3 });
+    const sm = stubs.sessionManager as Record<string, unknown>;
+    sm['getScrollbackForReplay'] = snapshot;
+    sm['claimOwner'] = vi.fn();
+    sm['get'] = vi.fn(() => ({ id: 's1', ownerWindowId: owner }));
+    installIpcLayer(deps as Parameters<typeof installIpcLayer>[0]);
+    const call = async (channel: string) =>
+      handlers.get(channel)!({}, { windowId: 'w1', requestId: 'r', payload: { sessionId: 's1' } });
+    return { call, snapshot };
+  }
+
+  it('claim takes its snapshot without forOwner, so held output of a mounted view survives', async () => {
+    const { call, snapshot } = await install('w1');
+    await call(COMMAND_CHANNELS.SESSION_CLAIM);
+    expect(snapshot).toHaveBeenCalledWith('s1');
+  });
+
+  it('get-scrollback resets flow control only when the owner asks', async () => {
+    const owner = await install('w1');
+    await owner.call(COMMAND_CHANNELS.SESSION_GET_SCROLLBACK);
+    expect(owner.snapshot).toHaveBeenCalledWith('s1', { forOwner: true });
+    const other = await install('w2');
+    await other.call(COMMAND_CHANNELS.SESSION_GET_SCROLLBACK);
+    expect(other.snapshot).toHaveBeenCalledWith('s1', { forOwner: false });
+  });
+});
+
 describe('IPC show-in-explorer', () => {
   let dir: string;
   beforeEach(async () => {

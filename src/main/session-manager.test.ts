@@ -2761,6 +2761,34 @@ describe('SessionManager: output flow control (ADR-051)', () => {
     expect(out.map((o) => o.text.slice(0, 5))).toEqual(['xxxxx', 'xxxxx', 'after']);
   });
 
+  it('a claim by the current owner while output is held does not drop it (the live view keeps it)', async () => {
+    vi.useRealTimers();
+    const { mgr, fp, id, out } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('HELD');
+    // What the claim IPC handler does: claimOwner (a no-op for the owner), then a snapshot
+    // without forOwner, which the already mounted TerminalView never replays.
+    mgr.claimOwner(id, 'w1');
+    await mgr.getScrollbackForReplay(id);
+    mgr.ackOutput(id, 'w1', HIGH + 1);
+    expect(out.at(-1)!.text).toBe('HELD');
+  });
+
+  it('after the owner snapshot nothing is held until the next ack, so a flood cannot loop resyncs', async () => {
+    vi.useRealTimers();
+    const { mgr, fp, id, out, events } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    await mgr.getScrollbackForReplay(id, { forOwner: true });
+    // The renderer is replaying: it buffers live output and sends no acks.
+    for (let i = 0; i < 8; i++) fp.emitData(String(i).repeat(300_000));
+    expect(events).not.toContain('resync');
+    expect(out).toHaveLength(9);
+    mgr.ackOutput(id, 'w1', 0); // replay done: the first ack engages again
+    fp.emitData('one more'); // sent; the count is above HIGH, so holding starts after it
+    fp.emitData('held');
+    expect(out.at(-1)!.text).not.toBe('held');
+  });
+
   it('a snapshot taken by a window that is not the owner keeps what is held for the owner', async () => {
     vi.useRealTimers();
     const { mgr, fp, id, out } = await flooded();

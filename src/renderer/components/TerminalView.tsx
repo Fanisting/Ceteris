@@ -101,6 +101,7 @@ import {
   OpenInFull,
 } from './material-symbols';
 import { isPermanentAckError, OutputAcker } from '@shared/output-flow';
+import { ReplayRounds } from '@shared/replay-rounds';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -1691,7 +1692,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       .catch(() => {});
 
     // ── Scrollback replay 协议 ──
-    let replayed = false;
+    // ADR-051:重放分轮 (挂载一轮,每次 evt:session:output-resync 再一轮),
+    // 由 ReplayRounds 排序:重置走写队列 (RIS),不会让队列里的旧输出落在新快照前后。
+    const rounds = new ReplayRounds(
+      (data, parsed) => term.write(data, parsed),
+      () => startReplay(),
+    );
     let pending: Array<{ seq: number; bytes: Uint8Array }> = [];
     let lastReplayedSeq = -1;
 
@@ -1749,7 +1755,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       (payload) => {
         if (payload.sessionId !== session.id) return;
         const bytes = decodeBase64ToBytes(payload.data);
-        if (!replayed) {
+        if (rounds.isReplaying) {
           pending.push({ seq: payload.seq, bytes });
           return;
         }
@@ -1759,9 +1765,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
 
     // ADR-051:owner 落后太多时 main 丢掉扣着的输出并发 evt:session:output-resync,
     // 这里就地重跑同一套快照重放 (不重建 TerminalView)。快照的 lastSeq 盖住所有被丢的
-    // seq,之后的 live 输出按 seq > lastSeq 写入:不丢、不双写。重放进行中又收到 resync
-    // 时,等这一轮结束再跑一轮:这一轮的快照可能早于那次丢弃。
-    let replayAgain = false;
+    // seq,之后的 live 输出按 seq > lastSeq 写入:不丢、不双写。顺序见 ReplayRounds:
+    // 重放中又收到 resync 时这一轮结束后再跑一轮;只有最后一轮 reveal 并锚底。
     const startReplay = (): void => {
       void window.api
         .invoke<GetScrollbackPayload, GetScrollbackResponse>(
@@ -1792,8 +1797,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
             if (c.seq > lastReplayedSeq) term.write(c.bytes, acker.received(c.bytes.length));
           }
           pending = [];
-          replayed = true;
-          replayAgainIfAsked();
+          if (!rounds.done()) return; // 又排了一轮:由最后一轮 reveal
           // BETA-018 + SCROLL-1 第一轮:scrollback 重放完后锚底,消除"从上
           // 往下刷屏"观感。重放是同步内容回灌,不是历史浏览,应当锚定底部。
           //
@@ -1833,8 +1837,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           if (disposed) return;
           for (const c of pending) term.write(c.bytes, acker.received(c.bytes.length));
           pending = [];
-          replayed = true;
-          replayAgainIfAsked();
+          if (!rounds.done()) return;
           // BETA-018 + SCROLL-1:fallback 路径同样走 fence + scrollToBottom
           // + host reveal,保持 viewport 与 visibility 行为一致。即便走到
           // catch(get-scrollback rejected),也必须 reveal host,否则终端
@@ -1849,30 +1852,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           });
         });
     };
-    const resync = (): void => {
-      if (disposed) return;
-      if (!replayed) {
-        replayAgain = true;
-        return;
-      }
-      replayed = false;
-      pending = [];
-      echo?.reset();
-      term.reset();
-      startReplay();
-    };
-    const replayAgainIfAsked = (): void => {
-      if (!replayAgain) return;
-      replayAgain = false;
-      resync();
-    };
     const cleanupResync = window.api.on<OutputResyncPayload>(
       EVENT_CHANNELS.SESSION_OUTPUT_RESYNC,
       (payload) => {
-        if (payload.sessionId === session.id) resync();
+        if (payload.sessionId !== session.id || disposed) return;
+        echo?.reset();
+        rounds.resync();
       },
     );
-    startReplay();
+    rounds.start();
 
     // ResizeObserver — trailing debounce 150ms (用户勘误后续 #4)
     let lastCols = cols;
@@ -2082,6 +2070,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       acker.dispose();
       document.removeEventListener('visibilitychange', onVisibility);
       cleanupResync();
+      rounds.dispose();
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();

@@ -17,6 +17,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [One folder list with tags](folder-list-and-tags.md) | A single folder list with coloured tag filters | 0.3.0 |
 | [Folder blocks](folder-blocks.md) | Show sidebar folders as pebbles with status dots | 0.4.1 |
 | [Status filters](status-filters.md) | Running and Needs you filters across all folders | 0.4.1 |
+| [Back to the last session](back-to-last-session.md) | A chip left of Running returns to the session you were just on | Next |
 | [Settings export and import](settings-export-import.md) | Move your settings between machines | 0.1.0 |
 
 ## Files

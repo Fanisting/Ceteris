@@ -78,6 +78,11 @@ export const COMMAND_CHANNELS = {
   /** BETA-028:清空 main 端的 scrollback ring buffer(配合 term.clear() 使用) */
   SESSION_CLEAR_SCROLLBACK: 'cmd:session:clear-scrollback',
   /**
+   * ADR-050:取某 session 在 afterSeq 之后 emit 过的输出(Host 上最近约 1 MiB)。
+   * Ceteris Link 重连时 Host 用它补发断线期间漏掉的输出,本地窗口一般用不到。
+   */
+  SESSION_OUTPUT_SINCE: 'cmd:session:output-since',
+  /**
    * 公式图片扩展 (ADR-019):renderer 报告终端的前景 / 背景色与格子宽高比,
    * main 写进之后新 session 的 LATEX_MATH_* 环境变量。payload 见 claude-math-images.ts。
    */
@@ -613,6 +618,25 @@ export interface ClaimSessionResponse {
   /** 与 scrollback 同时刻的 lastSeq,用于 renderer 去重。 */
   lastSeq: number;
 }
+
+/** cmd:session:output-since 的 payload(ADR-050)。 */
+export interface OutputSincePayload {
+  sessionId: string;
+  /** 调用方已拿到的最后一个 seq;-1 表示什么都没拿到 */
+  afterSeq: number;
+}
+
+/**
+ * cmd:session:output-since 的返回值(ADR-050)。
+ *
+ * - ok:seq > afterSeq 的全部输出,按 seq 升序,data 与 evt:session:output 同为 base64
+ * - gap:其中一部分已被挤出最近输出环,调用方应改用 cmd:session:get-scrollback
+ * - unknown-session:session 不存在(已关闭)
+ */
+export type OutputSinceResponse =
+  | { status: 'ok'; chunks: Array<{ seq: number; data: string }> }
+  | { status: 'gap' }
+  | { status: 'unknown-session' };
 
 export interface GetScrollbackPayload {
   sessionId: string;

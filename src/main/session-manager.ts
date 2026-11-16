@@ -30,6 +30,9 @@
  *   通过 PlatformAdapter.buildShellLaunchParams 让 hook 之后再 exec command
  * - spawn 函数可注入 (PtySpawnFn) 便于测试;PlatformAdapter 也可注入
  *   (默认从 getPlatformAdapter() 拿)
+ * - **最近输出环** (ADR-050):每个 session 记下最近约 1 MiB 已 emit 的输出,
+ *   Ceteris Link 重连后用 getOutputSince 只补断线期间漏掉的一段。环在构造函数里
+ *   订阅自己的 sessionOutput 事件追加,不碰 emit 批处理路径
  *
  * @对应文档章节:
  *   软件定义书.md 5.1.2、5.1.3、5.1.8、8.3、ADR-003、ADR-008
@@ -49,6 +52,7 @@ import { homedir } from 'node:os';
 import { basename, resolve as resolvePath } from 'node:path';
 import { spawn as defaultSpawnPty, type IPty, type IDisposable } from 'node-pty';
 import type {
+  OutputSinceResponse,
   SessionExitedPayload,
   SessionOutputPayload,
   SessionStateChangedPayload,
@@ -88,6 +92,7 @@ import {
   validateDimensions,
 } from './pty-utils';
 import { logger } from './logger';
+import { OutputRing } from './output-ring';
 import { activateCeterisUnicodeWidth } from '@shared/terminal-unicode-width';
 import { SESSION_ROLE_NAMES, type SessionRole } from '@shared/session-role';
 import { TAB_CONTROL_ENV_NAMES } from '@shared/tab-control';
@@ -694,7 +699,26 @@ export class SessionManager extends EventEmitter {
       ? new TerminalLookFile(options.terminalLookFile)
       : undefined;
     this.controlEnv = options.controlEnv;
+
+    // ADR-050:最近输出环。订阅自己的事件而不是在 queueEmit / flushPendingEmit 里
+    // 追加,这样 emit 的批处理时序完全不受影响,两条 emit 路径也不会漏掉一条。
+    // 环只收 emit 出去的字节,与 renderer 能看到的 seq 一一对应。
+    this.on('sessionOutput', (p: SessionOutputPayload) => {
+      if (!this.sessions.has(p.sessionId)) return;
+      let ring = this.outputRings.get(p.sessionId);
+      if (!ring) {
+        ring = new OutputRing();
+        this.outputRings.set(p.sessionId, ring);
+      }
+      ring.append(p.seq, p.data);
+    });
+    this.on('sessionDestroyed', (p: { sessionId: string }) => {
+      this.outputRings.delete(p.sessionId);
+    });
   }
+
+  /** ADR-050:sessionId → 最近输出环。第一次有输出时才建,session 销毁时删。 */
+  private readonly outputRings = new Map<string, OutputRing>();
 
   // ──────────────────────────────────────────────────────────────────
   // 生命周期
@@ -1554,6 +1578,30 @@ export class SessionManager extends EventEmitter {
   get(sessionId: string): SessionInfo | null {
     const m = this.sessions.get(sessionId);
     return m ? { ...m.info } : null;
+  }
+
+  /**
+   * ADR-050:取某 session 在 afterSeq 之后 emit 过的输出,供 Link 重连补发。
+   *
+   * 只读最近输出环,不 flush pendingEmit:还在 8ms 聚合窗口里的字节会照常以更大
+   * 的 seq emit 出去,调用方按 seq 去重即可。
+   *
+   * @param sessionId 目标 session
+   * @param afterSeq 调用方已拿到的最后一个 seq,-1 表示什么都没拿到
+   * @returns status 'ok' 带 chunks(可能为空);'gap' 表示环已丢掉其中一部分,
+   *   调用方应退回 cmd:session:get-scrollback;'unknown-session' 表示 session 不存在
+   */
+  getOutputSince(sessionId: string, afterSeq: number): OutputSinceResponse {
+    if (!this.sessions.has(sessionId)) return { status: 'unknown-session' };
+    const ring = this.outputRings.get(sessionId);
+    if (!ring) return { status: 'ok', chunks: [] };
+    const res = ring.since(afterSeq);
+    return res.gap ? { status: 'gap' } : { status: 'ok', chunks: res.chunks };
+  }
+
+  /** ADR-050:某窗口分屏里的 session。Link 断线时记下,重连后先恢复它再接管。 */
+  getPaneSessions(windowId: string): string[] {
+    return [...(this.paneSessions.get(windowId) ?? [])];
   }
 
   count(): number {

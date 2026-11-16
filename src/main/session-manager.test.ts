@@ -3039,3 +3039,79 @@ describe('planAgentLaunch (ADR-038)', () => {
     expect(planAgentLaunch('claude-code', 'ssh:prof:/home/x', [], [])?.launchId).toBeUndefined();
   });
 });
+
+describe('最近输出环 (ADR-050)', () => {
+  const create = (mgr: SessionManager) =>
+    mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w',
+      cols: 80,
+      rows: 24,
+    });
+
+  it('getOutputSince 返回 afterSeq 之后 emit 过的输出,data 与 sessionOutput 一致', async () => {
+    const { mgr } = makeManager();
+    const info = await create(mgr);
+    const fp = FakePty.instances[0]!;
+    fp.emitData('one');
+    fp.emitData('two');
+    fp.emitData('three');
+    const res = mgr.getOutputSince(info.id, 0);
+    expect(res.status).toBe('ok');
+    const chunks = res.status === 'ok' ? res.chunks : [];
+    expect(chunks.map((c) => [c.seq, Buffer.from(c.data, 'base64').toString()])).toEqual([
+      [1, 'two'],
+      [2, 'three'],
+    ]);
+  });
+
+  it('批处理开着时,环与 emit 出去的 sessionOutput 时时一致,聚合窗口里的字节不提前出现', async () => {
+    // 不断言具体的批处理时机(那是 emit 路径自己的规则,可能改成首包立即发),
+    // 只断言环里永远恰好是已经 emit 过的那些 payload。
+    vi.useFakeTimers();
+    try {
+      const { mgr } = makeManager({ emitBatchMs: 8 });
+      const info = await create(mgr);
+      const fp = FakePty.instances[0]!;
+      const emitted: Array<{ seq: number; data: string }> = [];
+      mgr.on('sessionOutput', (p: { seq: number; data: string }) =>
+        emitted.push({ seq: p.seq, data: p.data }),
+      );
+      const ringMatches = (): void =>
+        expect(mgr.getOutputSince(info.id, -1)).toEqual({ status: 'ok', chunks: [...emitted] });
+      fp.emitData('a');
+      fp.emitData('b');
+      ringMatches();
+      vi.advanceTimersByTime(10);
+      ringMatches();
+      fp.emitData('c');
+      ringMatches();
+      vi.advanceTimersByTime(10);
+      ringMatches();
+      const all = emitted.map((e) => Buffer.from(e.data, 'base64').toString()).join('');
+      expect(all).toBe('abc');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('没有输出的 session 返回空;不存在或已关闭的 session 返回 unknown-session', async () => {
+    const { mgr } = makeManager();
+    const info = await create(mgr);
+    expect(mgr.getOutputSince(info.id, -1)).toEqual({ status: 'ok', chunks: [] });
+    expect(mgr.getOutputSince('nope', -1)).toEqual({ status: 'unknown-session' });
+    FakePty.instances[0]!.emitData('x');
+    mgr.closeSession(info.id);
+    expect(mgr.getOutputSince(info.id, -1)).toEqual({ status: 'unknown-session' });
+  });
+
+  it('getPaneSessions 返回 setPaneSessions 记下的列表,窗口关闭后清空', () => {
+    const { mgr } = makeManager();
+    expect(mgr.getPaneSessions('w')).toEqual([]);
+    mgr.setPaneSessions('w', ['a', 'b']);
+    expect(mgr.getPaneSessions('w')).toEqual(['a', 'b']);
+    mgr.handleWindowClosed('w');
+    expect(mgr.getPaneSessions('w')).toEqual([]);
+  });
+});

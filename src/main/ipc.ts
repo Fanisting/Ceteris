@@ -131,6 +131,8 @@ import {
   type GetProtocolVersionResponse,
   type GetScrollbackPayload,
   type GetScrollbackResponse,
+  type OutputSincePayload,
+  type OutputSinceResponse,
   type GetSettingsResponse,
   type GetSnapshotPayload,
   type ImportSettingsResponse,
@@ -1017,6 +1019,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // CURSOR-1:走 state-replay 路径(SerializeAddon),不再返回裸字节。
       // 详见 SessionManager.getScrollbackForReplay 与 docs/issues/cursor-1-...
       return sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_OUTPUT_SINCE,
+    (_e, envelope: CommandEnvelope<OutputSincePayload>): OutputSinceResponse => {
+      // ADR-050:Link 重连补发用。只读最近输出环,不碰 headless 终端,所以很便宜。
+      const { sessionId, afterSeq } = envelope.payload;
+      if (typeof afterSeq !== 'number' || !Number.isInteger(afterSeq)) {
+        throw new Error(
+          `[ipc] output-since:afterSeq 必须是整数,收到 ${String(afterSeq)}(session=${sessionId})。` +
+            `可能原因:(1) 调用方传了 lastSeq 之外的值;(2) 两端版本不一致。建议:传 -1 取全部。`,
+        );
+      }
+      return sessionManager.getOutputSince(sessionId, afterSeq);
     },
   );
 

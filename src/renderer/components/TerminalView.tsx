@@ -16,7 +16,8 @@
  *           xterm.onData → utf8 → base64 → cmd:session:send-input → main
  * - **输出流控 ack** (ADR-051):live 输出 xterm 解析完后经 OutputAcker 攒成
  *   5 KB 一条 cmd:session:ack-output;窗口隐藏时收到就 ack;卸载时带 detach
- *   把余数发掉。main 按未 ack 量 pause / resume PTY,见 output-flow-control.ts
+ *   把余数发掉。main 按未 ack 量把输出扣在 main 或放出,见 output-flow-control.ts;
+ *   收到 evt:session:output-resync 时就地重跑快照重放
  * - **Scrollback 重放协议** (避免历史与实时输出竞态):
  *   1. mount 时立即注册 output listener,但置于"buffering"模式 (data 进
  *      pending 数组,不直接 write)
@@ -99,11 +100,12 @@ import {
   CloseFullscreen,
   OpenInFull,
 } from './material-symbols';
-import { OutputAcker } from '@shared/output-flow';
+import { isPermanentAckError, OutputAcker } from '@shared/output-flow';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
   type AckOutputPayload,
+  type OutputResyncPayload,
   type CreateSessionResponse,
   type GetScrollbackPayload,
   type GetScrollbackResponse,
@@ -1698,14 +1700,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     const outputDecoder = new TextDecoder();
 
     // ADR-051 输出流控:每段写进 xterm 的 live 输出,解析完后 ack 给 main
-    // (攒够 FLOW_ACK_CHUNK 才发一条),main 据此 pause / resume PTY。
-    // fire and forget:ack 丢了最多让 main 的看门狗 2 秒后自己 resume,不值得 toast。
+    // (攒够 FLOW_ACK_CHUNK 才发一条);owner 落后太多时 main 把输出扣在自己那边,
+    // ack 跟上后一次发来。PTY 从不暂停。fire and forget,不 toast。
     // 只 ack seq > lastReplayedSeq 的那些:更早的已含在快照里,main 在快照时清零过。
-    // 一条 ack 被拒后这个视图不再发:比 ADR-051 旧的 Link Host 不认识这条命令,每条
-    // ack 都会在 Host 日志里留一条 warn。不发 ack 是安全的:main 只在收到过 ack 后
-    // 才暂停,最坏一次由看门狗在 2 秒内放开。
+    // 失败分两种:Host 不认识这条命令 (比 ADR-051 旧的 Link Host,每条都会在它的日志里
+    // 留一条 warn) 或 payload 被拒,以后也不会成功,这个视图不再发;别的失败 (Link 重连中、
+    // 超时) 把字节还给 acker,随下一条 ack 再发。不发 ack 是安全的:main 只在收到过
+    // ack 后才扣,最坏由看门狗在 2 秒内放出。
     let acksRefused = false;
-    const acker = new OutputAcker((bytes, detach) => {
+    const acker: OutputAcker = new OutputAcker((bytes, detach) => {
       if (acksRefused) return;
       window.api
         .invoke<AckOutputPayload, void>(COMMAND_CHANNELS.SESSION_ACK_OUTPUT, {
@@ -1713,8 +1716,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           bytes,
           ...(detach ? { detach: true } : {}),
         })
-        .catch(() => {
-          acksRefused = true;
+        .catch((err: unknown) => {
+          if (isPermanentAckError(err)) acksRefused = true;
+          else if (!detach) acker.giveBack(bytes);
         });
     });
     // 窗口最小化或被完全遮住时 Chromium 节流计时器,xterm 分片解析的回调可能
@@ -1753,89 +1757,122 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       },
     );
 
-    void window.api
-      .invoke<GetScrollbackPayload, GetScrollbackResponse>(
-        COMMAND_CHANNELS.SESSION_GET_SCROLLBACK,
-        { sessionId: session.id },
-      )
-      .then(async (res) => {
-        if (disposed) return;
-        if (res.data) {
-          // FLK-1:分片 write 避免 2MB scrollback 同步阻塞主线程 100-300ms
-          // (用户看到的"切 session 后黑屏一下,然后内容瞬间涌出"卡顿)。
-          // 16KB 切片 + setTimeout(0) 让出主线程,让 xterm RAF 和 IPC 都有
-          // 机会运行,期间用户敲键的回显也能正常显示。
-          const all = decodeBase64ToBytes(res.data);
-          const CHUNK = 16 * 1024;
-          for (let i = 0; i < all.length; i += CHUNK) {
-            if (disposed) return;
-            term.write(all.subarray(i, i + CHUNK));
-            // 大于一片才让出 — 小 scrollback 一次过完
-            if (all.length > CHUNK && i + CHUNK < all.length) {
-              await new Promise((r) => setTimeout(r, 0));
+    // ADR-051:owner 落后太多时 main 丢掉扣着的输出并发 evt:session:output-resync,
+    // 这里就地重跑同一套快照重放 (不重建 TerminalView)。快照的 lastSeq 盖住所有被丢的
+    // seq,之后的 live 输出按 seq > lastSeq 写入:不丢、不双写。重放进行中又收到 resync
+    // 时,等这一轮结束再跑一轮:这一轮的快照可能早于那次丢弃。
+    let replayAgain = false;
+    const startReplay = (): void => {
+      void window.api
+        .invoke<GetScrollbackPayload, GetScrollbackResponse>(
+          COMMAND_CHANNELS.SESSION_GET_SCROLLBACK,
+          { sessionId: session.id },
+        )
+        .then(async (res) => {
+          if (disposed) return;
+          if (res.data) {
+            // FLK-1:分片 write 避免 2MB scrollback 同步阻塞主线程 100-300ms
+            // (用户看到的"切 session 后黑屏一下,然后内容瞬间涌出"卡顿)。
+            // 16KB 切片 + setTimeout(0) 让出主线程,让 xterm RAF 和 IPC 都有
+            // 机会运行,期间用户敲键的回显也能正常显示。
+            const all = decodeBase64ToBytes(res.data);
+            const CHUNK = 16 * 1024;
+            for (let i = 0; i < all.length; i += CHUNK) {
+              if (disposed) return;
+              term.write(all.subarray(i, i + CHUNK));
+              // 大于一片才让出 — 小 scrollback 一次过完
+              if (all.length > CHUNK && i + CHUNK < all.length) {
+                await new Promise((r) => setTimeout(r, 0));
+              }
             }
           }
-        }
-        if (disposed) return;
-        lastReplayedSeq = res.lastSeq;
-        for (const c of pending) {
-          if (c.seq > lastReplayedSeq) term.write(c.bytes, acker.received(c.bytes.length));
-        }
-        pending = [];
-        replayed = true;
-        // BETA-018 + SCROLL-1 第一轮:scrollback 重放完后锚底,消除"从上
-        // 往下刷屏"观感。重放是同步内容回灌,不是历史浏览,应当锚定底部。
-        //
-        // SCROLL-1 第一轮 fence:scrollToBottom **必须**在 fence callback 内,
-        // 而不是这里直接调。因为 `term.write()` 是异步排队 — 上面所有 write
-        // 调用返回时,xterm parser 通常还在分批消化 writeBuffer,buffer 里
-        // 只有已 parse 完的那部分行。直接 scrollToBottom 锚的"底"在后续
-        // parser 解析新行时会被持续往下推 → 视觉上仍是从顶部往下铺。
-        // 空 chunk + callback 走 xterm 内部 FIFO writeBuffer,callback
-        // 由 parser drain 后触发(d.ts:1216:"callback that fires when
-        // the data was processed by the parser") — 等价于一道 drain fence,
-        // 锚的"底"才是真正的最终底。
-        //
-        // SCROLL-1 第二轮(2026-05-24,KBD-1 同 PR):第一轮 fence 只解决
-        // "最终 scroll 位置"对不对,**没解决** "分片 write + setTimeout(0)
-        // yield 之间,xterm RAF 把每个 chunk 处理后的中间 buffer 画到 canvas
-        // 上"的中间帧暴露问题 — 用户报"刷屏速度快多了但还在抖"。修法是
-        // 从 mount 起 host visibility:hidden + inert(见 JSX),fence cb +
-        // scrollToBottom + 一帧 RAF(留给 xterm renderer 把最终 viewport
-        // 画进 canvas)后才 setHostRevealed(true) reveal。第一可见帧 =
-        // 终态 canvas 合成结果。
-        //
-        // disposed 兜底:fence / RAF 都是异步,期间用户可能已切走 / 关窗,
-        // 组件已 dispose,跳过避免 throw / setState on unmounted。
-        // 详见 docs/issues/scroll-1-session-switch-progressive-refresh.md。
-        term.write(REPLAY_FENCE, () => {
           if (disposed) return;
-          term.scrollToBottom();
-          requestAnimationFrame(() => {
+          lastReplayedSeq = res.lastSeq;
+          for (const c of pending) {
+            if (c.seq > lastReplayedSeq) term.write(c.bytes, acker.received(c.bytes.length));
+          }
+          pending = [];
+          replayed = true;
+          replayAgainIfAsked();
+          // BETA-018 + SCROLL-1 第一轮:scrollback 重放完后锚底,消除"从上
+          // 往下刷屏"观感。重放是同步内容回灌,不是历史浏览,应当锚定底部。
+          //
+          // SCROLL-1 第一轮 fence:scrollToBottom **必须**在 fence callback 内,
+          // 而不是这里直接调。因为 `term.write()` 是异步排队 — 上面所有 write
+          // 调用返回时,xterm parser 通常还在分批消化 writeBuffer,buffer 里
+          // 只有已 parse 完的那部分行。直接 scrollToBottom 锚的"底"在后续
+          // parser 解析新行时会被持续往下推 → 视觉上仍是从顶部往下铺。
+          // 空 chunk + callback 走 xterm 内部 FIFO writeBuffer,callback
+          // 由 parser drain 后触发(d.ts:1216:"callback that fires when
+          // the data was processed by the parser") — 等价于一道 drain fence,
+          // 锚的"底"才是真正的最终底。
+          //
+          // SCROLL-1 第二轮(2026-05-24,KBD-1 同 PR):第一轮 fence 只解决
+          // "最终 scroll 位置"对不对,**没解决** "分片 write + setTimeout(0)
+          // yield 之间,xterm RAF 把每个 chunk 处理后的中间 buffer 画到 canvas
+          // 上"的中间帧暴露问题 — 用户报"刷屏速度快多了但还在抖"。修法是
+          // 从 mount 起 host visibility:hidden + inert(见 JSX),fence cb +
+          // scrollToBottom + 一帧 RAF(留给 xterm renderer 把最终 viewport
+          // 画进 canvas)后才 setHostRevealed(true) reveal。第一可见帧 =
+          // 终态 canvas 合成结果。
+          //
+          // disposed 兜底:fence / RAF 都是异步,期间用户可能已切走 / 关窗,
+          // 组件已 dispose,跳过避免 throw / setState on unmounted。
+          // 详见 docs/issues/scroll-1-session-switch-progressive-refresh.md。
+          term.write(REPLAY_FENCE, () => {
             if (disposed) return;
-            setHostRevealed(true);
+            term.scrollToBottom();
+            requestAnimationFrame(() => {
+              if (disposed) return;
+              setHostRevealed(true);
+            });
+          });
+        })
+        .catch((err) => {
+          console.warn('[TerminalView] get-scrollback failed, falling back', err);
+          if (disposed) return;
+          for (const c of pending) term.write(c.bytes, acker.received(c.bytes.length));
+          pending = [];
+          replayed = true;
+          replayAgainIfAsked();
+          // BETA-018 + SCROLL-1:fallback 路径同样走 fence + scrollToBottom
+          // + host reveal,保持 viewport 与 visibility 行为一致。即便走到
+          // catch(get-scrollback rejected),也必须 reveal host,否则终端
+          // 永远是隐藏的,用户看不到任何输出。
+          term.write(REPLAY_FENCE, () => {
+            if (disposed) return;
+            term.scrollToBottom();
+            requestAnimationFrame(() => {
+              if (disposed) return;
+              setHostRevealed(true);
+            });
           });
         });
-      })
-      .catch((err) => {
-        console.warn('[TerminalView] get-scrollback failed, falling back', err);
-        if (disposed) return;
-        for (const c of pending) term.write(c.bytes, acker.received(c.bytes.length));
-        pending = [];
-        replayed = true;
-        // BETA-018 + SCROLL-1:fallback 路径同样走 fence + scrollToBottom
-        // + host reveal,保持 viewport 与 visibility 行为一致。即便走到
-        // catch(get-scrollback rejected),也必须 reveal host,否则终端
-        // 永远是隐藏的,用户看不到任何输出。
-        term.write(REPLAY_FENCE, () => {
-          if (disposed) return;
-          term.scrollToBottom();
-          requestAnimationFrame(() => {
-            if (disposed) return;
-            setHostRevealed(true);
-          });
-        });
-      });
+    };
+    const resync = (): void => {
+      if (disposed) return;
+      if (!replayed) {
+        replayAgain = true;
+        return;
+      }
+      replayed = false;
+      pending = [];
+      echo?.reset();
+      term.reset();
+      startReplay();
+    };
+    const replayAgainIfAsked = (): void => {
+      if (!replayAgain) return;
+      replayAgain = false;
+      resync();
+    };
+    const cleanupResync = window.api.on<OutputResyncPayload>(
+      EVENT_CHANNELS.SESSION_OUTPUT_RESYNC,
+      (payload) => {
+        if (payload.sessionId === session.id) resync();
+      },
+    );
+    startReplay();
 
     // ResizeObserver — trailing debounce 150ms (用户勘误后续 #4)
     let lastCols = cols;
@@ -2044,6 +2081,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       // ADR-051:把还欠的 ack 连同 detach 一起发掉,main 在下一个 TerminalView ack 前不再暂停
       acker.dispose();
       document.removeEventListener('visibilitychange', onVisibility);
+      cleanupResync();
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();

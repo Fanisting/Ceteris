@@ -2618,9 +2618,13 @@ describe('SessionManager: output flow control (ADR-051)', () => {
   });
 
   /** Owner w1, immediate emits, owner already acked once (engaged) unless engage=false. */
-  async function flooded(
-    opts: { engage?: boolean } = {},
-  ): Promise<{ mgr: SessionManager; fp: FakePty; id: string }> {
+  async function flooded(opts: { engage?: boolean } = {}): Promise<{
+    mgr: SessionManager;
+    fp: FakePty;
+    id: string;
+    out: Array<{ text: string; seq: number }>;
+    events: string[];
+  }> {
     const { mgr } = makeManager();
     const info = await mgr.createSession({
       pathId: '/p',
@@ -2629,48 +2633,69 @@ describe('SessionManager: output flow control (ADR-051)', () => {
       cols: 80,
       rows: 24,
     });
+    const out: Array<{ text: string; seq: number }> = [];
+    const events: string[] = [];
+    mgr.on('sessionOutput', (p: { data: string; seq: number }) => {
+      const text = Buffer.from(p.data, 'base64').toString('utf8');
+      out.push({ text, seq: p.seq });
+      events.push(`output:${text.length > 20 ? text.length : text}`);
+    });
+    mgr.on('sessionOutputResync', () => events.push('resync'));
+    mgr.on('sessionExited', () => events.push('exited'));
+    mgr.on('sessionDestroyed', () => events.push('destroyed'));
     if (opts.engage !== false) mgr.ackOutput(info.id, 'w1', 0);
-    return { mgr, fp: FakePty.instances[0]!, id: info.id };
+    return { mgr, fp: FakePty.instances[0]!, id: info.id, out, events };
   }
 
-  it('pauses the PTY once unacknowledged output goes above 100 000 bytes', async () => {
-    const { fp } = await flooded();
+  it('holds output in main once unacknowledged output goes above 100 000 bytes', async () => {
+    const { fp, out } = await flooded();
     fp.emitData('x'.repeat(HIGH));
-    expect(fp.paused).toBe(false);
-    fp.emitData('x');
-    expect(fp.paused).toBe(true);
-    expect(fp.pauseCalls).toBe(1);
+    fp.emitData('y'); // pushes the count above HIGH: still sent, holding starts after it
+    fp.emitData('held');
+    expect(out.map((o) => o.text.slice(0, 4))).toEqual(['xxxx', 'y']);
   });
 
-  it('never pauses before the owner has acked once', async () => {
-    const { fp } = await flooded({ engage: false });
+  it('never pauses the PTY, so a program exiting under backpressure loses nothing', async () => {
+    const { fp } = await flooded();
     fp.emitData('x'.repeat(HIGH * 3));
-    expect(fp.paused).toBe(false);
+    fp.emitData('more');
+    expect(fp.pauseCalls).toBe(0);
   });
 
-  it('resumes only when acks bring the count below 5 000', async () => {
-    const { mgr, fp, id } = await flooded();
+  it('never holds before the owner has acked once', async () => {
+    const { fp, out } = await flooded({ engage: false });
+    fp.emitData('x'.repeat(HIGH * 3));
+    fp.emitData('still sent');
+    expect(out.at(-1)!.text).toBe('still sent');
+  });
+
+  it('sends what it held as one batch once acks bring the count below 5 000', async () => {
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('a');
+    fp.emitData('b');
     mgr.ackOutput(id, 'w1', HIGH + 1 - 5_000); // 5 000 left: not below
-    expect(fp.paused).toBe(true);
+    expect(out).toHaveLength(1);
     mgr.ackOutput(id, 'w1', 1); // 4 999 left
-    expect(fp.paused).toBe(false);
-    expect(fp.resumeCalls).toBe(1);
+    expect(out).toHaveLength(2);
+    expect(out[1]).toEqual({ text: 'ab', seq: 2 });
   });
 
   it('clamps an over-ack at zero, so later output is still counted in full', async () => {
-    const { mgr, fp, id } = await flooded();
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(10));
     mgr.ackOutput(id, 'w1', 1_000_000);
     fp.emitData('x'.repeat(HIGH + 1));
-    expect(fp.paused).toBe(true);
+    fp.emitData('held');
+    expect(out).toHaveLength(2);
   });
 
   it('ignores acks from a window that is not the owner', async () => {
-    const { mgr, fp, id } = await flooded();
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('held');
     mgr.ackOutput(id, 'other-window', HIGH + 1);
-    expect(fp.paused).toBe(true);
+    expect(out).toHaveLength(1);
   });
 
   it('ignores acks for unknown and exited sessions without throwing', async () => {
@@ -2680,84 +2705,186 @@ describe('SessionManager: output flow control (ADR-051)', () => {
     expect(() => mgr.ackOutput(id, 'w1', 10)).not.toThrow();
   });
 
-  it('never pauses a session without an owner window', async () => {
-    const { mgr, fp, id } = await flooded();
+  it('never holds output of a session without an owner window', async () => {
+    const { mgr, fp, id, out } = await flooded();
     mgr.releaseOwner(id, 'w1');
     fp.emitData('x'.repeat(HIGH * 3));
-    expect(fp.paused).toBe(false);
+    fp.emitData('sent');
+    expect(out.at(-1)!.text).toBe('sent');
   });
 
-  it('an owner change resets the count and resumes; the new owner must ack before pausing', async () => {
-    const { mgr, fp, id } = await flooded();
+  it('an owner change drops what was held; the new owner must ack before anything is held', async () => {
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('for w1 only');
     mgr.transferOwner(id, 'w2');
-    expect(fp.paused).toBe(false);
+    expect(out.map((o) => o.text)).not.toContain('for w1 only');
     fp.emitData('x'.repeat(HIGH + 1));
-    expect(fp.paused).toBe(false);
+    fp.emitData('sent to w2');
+    expect(out.at(-1)!.text).toBe('sent to w2');
     mgr.ackOutput(id, 'w2', 0);
     fp.emitData('x'.repeat(HIGH + 1));
-    expect(fp.paused).toBe(true);
+    fp.emitData('held for w2');
+    expect(out.at(-1)!.text).not.toBe('held for w2');
   });
 
-  it('closing the owner window (or a Link client disconnecting) resumes', async () => {
-    const { mgr, fp } = await flooded();
+  it('closing the owner window (or a Link client disconnecting) stops holding', async () => {
+    const { mgr, fp, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('dropped');
     mgr.handleWindowClosed('w1');
-    expect(fp.paused).toBe(false);
+    fp.emitData('flows');
+    expect(out.map((o) => o.text)).toEqual(['x'.repeat(HIGH + 1), 'flows']);
   });
 
-  it('a detach ack resets, resumes and stops pausing until the next ack', async () => {
-    const { mgr, fp, id } = await flooded();
+  it('a detach ack sends what is held and stops holding until the next ack', async () => {
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('held');
     mgr.ackOutput(id, 'w1', 0, true);
-    expect(fp.paused).toBe(false);
+    expect(out.at(-1)!.text).toBe('held');
     fp.emitData('x'.repeat(HIGH + 1));
-    expect(fp.paused).toBe(false);
+    fp.emitData('flows');
+    expect(out.at(-1)!.text).toBe('flows');
   });
 
-  it('a replay snapshot resets the count and resumes', async () => {
-    vi.useRealTimers(); // the headless drain inside getScrollbackForReplay needs real timers
-    const { mgr, fp, id } = await flooded();
+  it("the owner's replay snapshot drops what was held, since the snapshot contains it", async () => {
+    vi.useRealTimers(); // the headless fence inside getScrollbackForReplay needs real timers
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
-    expect(fp.paused).toBe(true);
-    await mgr.getScrollbackForReplay(id);
-    expect(fp.paused).toBe(false);
+    fp.emitData('HELD');
+    const res = await mgr.getScrollbackForReplay(id, { forOwner: true });
+    expect(Buffer.from(res.data, 'base64').toString('utf8')).toContain('HELD');
+    expect(res.lastSeq).toBe(1);
     fp.emitData('x'.repeat(HIGH)); // counted from zero again
-    expect(fp.paused).toBe(false);
+    fp.emitData('after');
+    expect(out.map((o) => o.text.slice(0, 5))).toEqual(['xxxxx', 'xxxxx', 'after']);
   });
 
-  it('the watchdog resumes after 2 s without an ack and stays off until the owner acks', async () => {
-    const { mgr, fp, id } = await flooded();
+  it('a snapshot taken by a window that is not the owner keeps what is held for the owner', async () => {
+    vi.useRealTimers();
+    const { mgr, fp, id, out } = await flooded();
     fp.emitData('x'.repeat(HIGH + 1));
-    vi.advanceTimersByTime(1_500);
-    mgr.ackOutput(id, 'w1', 10); // still above LOW: stays paused, watchdog restarts
-    vi.advanceTimersByTime(1_999);
-    expect(fp.paused).toBe(true);
-    vi.advanceTimersByTime(1);
-    expect(fp.paused).toBe(false);
-    fp.emitData('x'.repeat(HIGH * 2));
-    expect(fp.paused).toBe(false);
-    mgr.ackOutput(id, 'w1', 0);
-    fp.emitData('x');
-    expect(fp.paused).toBe(true);
+    fp.emitData('HELD');
+    await mgr.getScrollbackForReplay(id, { forOwner: false });
+    mgr.ackOutput(id, 'w1', HIGH + 1);
+    expect(out.at(-1)!.text).toBe('HELD');
   });
 
-  it('resumes a paused PTY when it exits, and before it is killed on close', async () => {
-    const a = await flooded();
-    a.fp.emitData('x'.repeat(HIGH + 1));
-    a.fp.emitExit(0);
-    expect(a.fp.paused).toBe(false);
+  it('the watchdog sends what is held after 2 s without an ack and stays off until the owner acks', async () => {
+    const { mgr, fp, id, out } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('held');
+    vi.advanceTimersByTime(1_500);
+    mgr.ackOutput(id, 'w1', 10); // still above LOW: keeps holding, watchdog restarts
+    vi.advanceTimersByTime(1_999);
+    expect(out).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(out.at(-1)!.text).toBe('held');
+    fp.emitData('x'.repeat(HIGH * 2));
+    fp.emitData('flows');
+    expect(out.at(-1)!.text).toBe('flows');
+    mgr.ackOutput(id, 'w1', 0);
+    fp.emitData('one more'); // sent; the count is above HIGH, so holding starts after it
+    fp.emitData('held again');
+    expect(out.at(-1)!.text).not.toBe('held again');
+  });
 
-    const b = await flooded();
-    b.fp.emitData('x'.repeat(HIGH + 1));
-    const order: string[] = [];
-    b.fp.resume = () => order.push('resume');
-    b.fp.kill = () => order.push('kill');
-    b.mgr.closeSession(b.id);
-    expect(order).toEqual(['resume', 'kill']);
-    // No watchdog left behind that would touch the dead PTY
-    vi.advanceTimersByTime(10_000);
-    expect(order).toEqual(['resume', 'kill']);
+  it('past 1 MiB held it drops the backlog and asks the owner to resync, once per backlog', async () => {
+    vi.useRealTimers();
+    const { mgr, fp, id, events } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('a'.repeat(600_000));
+    fp.emitData('b'.repeat(600_000)); // 1 200 000 > 1 MiB
+    fp.emitData('c'.repeat(600_000));
+    fp.emitData('d'.repeat(600_000));
+    expect(events.filter((e) => e === 'resync')).toHaveLength(1);
+    await mgr.getScrollbackForReplay(id, { forOwner: true }); // the owner resyncs
+    mgr.ackOutput(id, 'w1', 0);
+    fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('e'.repeat(600_000));
+    fp.emitData('f'.repeat(600_000));
+    expect(events.filter((e) => e === 'resync')).toHaveLength(2);
+  });
+
+  it('sends what is held before the session exited event', async () => {
+    const { fp, events } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('last words');
+    fp.emitExit(1);
+    expect(events.slice(-2)).toEqual(['output:last words', 'exited']);
+  });
+
+  it('sends what is held before the session is destroyed', async () => {
+    const { mgr, fp, id, events } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    fp.emitData('last words');
+    mgr.closeSession(id);
+    expect(events.indexOf('output:last words')).toBeGreaterThan(-1);
+    expect(events.indexOf('output:last words')).toBeLessThan(events.indexOf('destroyed'));
+    vi.advanceTimersByTime(10_000); // no watchdog left behind
+    expect(events.filter((e) => e === 'output:last words')).toHaveLength(1);
+  });
+});
+
+describe('SessionManager: replay snapshot boundary (ADR-051)', () => {
+  const BEGIN = '\x1b[?2026h';
+  const END = '\x1b[?2026l';
+
+  // Real timers: the headless fence needs them. emitBatchMs 8 as in production.
+  async function live(): Promise<{
+    mgr: SessionManager;
+    fp: FakePty;
+    id: string;
+    out: Array<{ text: string; seq: number }>;
+  }> {
+    const { mgr } = makeManager({ emitBatchMs: 8 });
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w1',
+      cols: 80,
+      rows: 24,
+    });
+    const out: Array<{ text: string; seq: number }> = [];
+    mgr.on('sessionOutput', (p: { data: string; seq: number }) => {
+      out.push({ text: Buffer.from(p.data, 'base64').toString('utf8'), seq: p.seq });
+    });
+    return { mgr, fp: FakePty.instances[0]!, id: info.id, out };
+  }
+  const snapshotText = (res: { data: string }): string =>
+    Buffer.from(res.data, 'base64').toString('utf8');
+
+  it('output arriving while the snapshot is taken is not in it and comes after its lastSeq', async () => {
+    const { mgr, fp, id, out } = await live();
+    const pending = mgr.getScrollbackForReplay(id, { forOwner: true });
+    fp.emitData('LATE'); // leading edge: emitted at once
+    const res = await pending;
+    expect(snapshotText(res)).not.toContain('LATE');
+    const late = out.find((o) => o.text.includes('LATE'))!;
+    expect(late.seq).toBeGreaterThan(res.lastSeq);
+  });
+
+  it('output held in the 8 ms batch is in the snapshot and never sent above its lastSeq', async () => {
+    const { mgr, fp, id, out } = await live();
+    fp.emitData('LEAD');
+    fp.emitData('BATCHED'); // waits in the cooldown
+    const res = await mgr.getScrollbackForReplay(id, { forOwner: true });
+    expect(snapshotText(res)).toContain('BATCHED');
+    for (const o of out.filter((x) => x.text.includes('BATCHED'))) {
+      expect(o.seq).toBeLessThanOrEqual(res.lastSeq);
+    }
+  });
+
+  it('a held 2026 frame is in the snapshot; its closing chunk comes after lastSeq on its own', async () => {
+    const { mgr, fp, id, out } = await live();
+    fp.emitData(`${BEGIN}frame`);
+    const res = await mgr.getScrollbackForReplay(id, { forOwner: true });
+    expect(snapshotText(res)).toContain('frame');
+    fp.emitData(`${END}`);
+    await new Promise((r) => setTimeout(r, 20));
+    const after = out.filter((o) => o.seq > res.lastSeq);
+    expect(after.map((o) => o.text)).toEqual([END]);
   });
 });
 
@@ -2813,7 +2940,7 @@ describe('SessionManager: emit timing (ADR-051)', () => {
     expect(out).toEqual(['0', '1234567', '89012345', 'z']);
   });
 
-  it('holds a batch inside an open DEC 2026 frame and emits it whole when the frame closes', async () => {
+  it('holds a batch inside an open DEC 2026 frame and emits it whole once the frame closes', async () => {
     const { fp, out } = await batched();
     fp.emitData(`${BEGIN}top`);
     vi.advanceTimersByTime(20);

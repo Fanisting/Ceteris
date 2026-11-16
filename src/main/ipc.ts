@@ -1049,10 +1049,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 动作和 history-replay 时序耦合 (TerminalView 重新挂载场景非 claim 触发)
       // CURSOR-1 后:替换路径 = getScrollbackForReplay(state-replay 架构,
       // 返回完整终端状态 ANSI 流),需 async + await。
-      // 调用方刚成为 owner:快照清零流控 (ADR-051)
-      const sb = await sessionManager.getScrollbackForReplay(envelope.payload.sessionId, {
-        forOwner: true,
-      });
+      // ADR-051:不传 forOwner。真换 owner 时 claimOwner 已清零流控;本窗口本来就是 owner
+      // 时 claimOwner 直接返回,已挂着的 TerminalView 不会用这份快照重放,此时丢掉扣着的
+      // 输出就真丢了。TerminalView 自己的 get-scrollback 才清零。
+      const sb = await sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
       return { scrollback: sb.data, lastSeq: sb.lastSeq };
     },
   );

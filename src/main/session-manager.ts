@@ -1715,8 +1715,9 @@ export class SessionManager extends EventEmitter {
    *   scrollbackLastSeq 却可能不在快照里 → renderer 丢掉它;反过来,冷却或
    *   2026 帧里扣着的 chunk 已解析进快照,seq 却大于返回的 lastSeq → 写两次。
    *
-   * @param opts.forOwner 调用方是当前 owner (TerminalView 挂载、claim 之后):
-   *   清零流控计数并丢掉扣着的输出。非 owner 调用不动流控,扣着的仍归 owner。
+   * @param opts.forOwner 调用方是当前 owner 的 TerminalView,正要用这份快照重放:
+   *   清零流控计数、丢掉扣着的输出,并在下一条 ack 前不再扣。其他调用 (claim、非 owner)
+   *   不动流控,扣着的仍归 owner 的 live 视图。
    *
    * session 不存在返回 { data: '', lastSeq: -1 }。
    */
@@ -1733,7 +1734,10 @@ export class SessionManager extends EventEmitter {
 
     // 1) 同步块:flush、清流控、取边界、写 fence,中间不让出事件循环。
     this.flushPendingEmit(managed);
-    if (opts.forOwner) managed.flow.reset('replay snapshot', false);
+    // disengage:重放期间 renderer 把 live 输出攒在本地、不发 ack;仍 engaged 的话持续
+    // 大量输出会让 main 扣满 1 MiB、要求 resync、再重放,循环下去。重放完的第一条 ack
+    // 重新 engage。
+    if (opts.forOwner) managed.flow.reset('replay snapshot', true);
     const boundary = managed.outputSeq - 1;
 
     // 2) fence 回调里 serialize:此时 headless 恰好解析到 boundary。

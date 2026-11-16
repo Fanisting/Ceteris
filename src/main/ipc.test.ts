@@ -591,6 +591,45 @@ describe('IPC PDF 自动刷新与登录提示', () => {
   });
 });
 
+describe('IPC SESSION_ACK_OUTPUT (ADR-051)', () => {
+  async function install(): Promise<{
+    ack: (payload: unknown) => Promise<unknown>;
+    ackOutput: ReturnType<typeof vi.fn>;
+  }> {
+    const { installIpcLayer } = await freshIpc();
+    const { deps, stubs } = makeStubs();
+    const ackOutput = vi.fn();
+    (stubs.sessionManager as Record<string, unknown>)['ackOutput'] = ackOutput;
+    installIpcLayer(deps as Parameters<typeof installIpcLayer>[0]);
+    const handler = handlers.get(COMMAND_CHANNELS.SESSION_ACK_OUTPUT)!;
+    const ack = async (payload: unknown) =>
+      handler({}, { windowId: 'w1', requestId: 'r', payload });
+    return { ack, ackOutput };
+  }
+
+  it('passes a valid ack on with the envelope windowId, detach defaulting to false', async () => {
+    const { ack, ackOutput } = await install();
+    await ack({ sessionId: 's1', bytes: 5000 });
+    await ack({ sessionId: 's1', bytes: 0, detach: true });
+    expect(ackOutput).toHaveBeenNthCalledWith(1, 's1', 'w1', 5000, false);
+    expect(ackOutput).toHaveBeenNthCalledWith(2, 's1', 'w1', 0, true);
+  });
+
+  it.each([
+    ['not an object', null],
+    ['missing sessionId', { bytes: 10 }],
+    ['negative bytes', { sessionId: 's1', bytes: -1 }],
+    ['fractional bytes', { sessionId: 's1', bytes: 1.5 }],
+    ['string bytes', { sessionId: 's1', bytes: '10' }],
+    ['NaN bytes', { sessionId: 's1', bytes: Number.NaN }],
+    ['detach not boolean', { sessionId: 's1', bytes: 1, detach: 'yes' }],
+  ])('rejects an invalid payload (%s) without touching SessionManager', async (_name, payload) => {
+    const { ack, ackOutput } = await install();
+    await expect(ack(payload)).rejects.toMatchObject({ code: 'InvalidPayload' });
+    expect(ackOutput).not.toHaveBeenCalled();
+  });
+});
+
 describe('IPC show-in-explorer', () => {
   let dir: string;
   beforeEach(async () => {

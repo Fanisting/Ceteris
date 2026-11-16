@@ -13,6 +13,10 @@
  *   或应用退出销毁。重启功能不再提供。
  * - PTY 字节流仅推送给 owner;新 owner 通过 cmd:session:get-scrollback 拉
  *   历史,渲染端用 lastSeq 去重 evt:session:output
+ * - **输出流控** (ADR-051):每次 emit 给 owner 的字节记进 OutputFlowControl,
+ *   owner 的 renderer 解析完后经 cmd:session:ack-output 回 ack;未 ack 超过
+ *   100 KB 就 pty.pause(),回落到 5 KB 以下 resume。无主 session 永不暂停;
+ *   换 owner、replay 快照、退出都清零并 resume;2 秒无 ack 的看门狗兜底
  * - **OSC 1337 解析器**每个 session 一份,从字节流剥离序列后再转发
  *   xterm,避免 OSC 在终端里渲染成乱码
  * - **active / idle 计时**:每次有 passthrough 字节 → state=active + 重置
@@ -32,7 +36,7 @@
  *   (默认从 getPlatformAdapter() 拿)
  *
  * @对应文档章节:
- *   软件定义书.md 5.1.2、5.1.3、5.1.8、8.3、ADR-003、ADR-008
+ *   软件定义书.md 5.1.2、5.1.3、5.1.8、8.3、ADR-003、ADR-008、ADR-051
  *   ipc-protocol.md 5.2、6.2
  *   AGENTS.md CP-3 完成标志
  *
@@ -76,6 +80,11 @@ import xtermSerialize from '@xterm/addon-serialize';
 const { SerializeAddon } = xtermSerialize;
 type SerializeAddon = InstanceType<typeof SerializeAddon>;
 import { Osc1337Parser } from './osc1337-parser';
+import {
+  DEFAULT_FLOW_CONTROL,
+  OutputFlowControl,
+  type FlowControlOptions,
+} from './output-flow-control';
 import { PlaceholderFilter } from './placeholder-filter';
 import { TerminalLookFile, mathImagesEnv, type TerminalLook } from './claude-math-images';
 import { pathRefFromId } from './path-manager';
@@ -479,6 +488,8 @@ interface ManagedSession {
    */
   pendingEmit: { bytes: Buffer; lastSeq: number } | null;
   pendingEmitTimer: NodeJS.Timeout | null;
+  /** ADR-051:未 ack 字节计数与 pty.pause / resume,见 output-flow-control.ts */
+  flow: OutputFlowControl;
   /**
    * BETA-006 v2:headless terminal 镜像。每个 session 跟着 PTY passthrough
    * 字节同步 write,buffer 维护"已渲染"字符矩阵 — 复核时读这里拿干净文本,
@@ -617,6 +628,8 @@ export interface SessionManagerOptions {
    * id (the pipe path and the tab's token). Called once per local or SSH spawn.
    */
   controlEnv?: (sessionId: string) => Record<string, string>;
+  /** ADR-051:流控阈值。生产不传 (100 KB / 5 KB / 2 s);测试可调 */
+  flowControl?: Partial<FlowControlOptions>;
 }
 
 export class SessionManager extends EventEmitter {
@@ -630,6 +643,7 @@ export class SessionManager extends EventEmitter {
   private readonly inputQuietMs: number;
   private readonly skipCwdValidation: boolean;
   private readonly emitBatchMs: number;
+  private readonly flowOptions: FlowControlOptions;
   private readonly appVersion: string;
   private readonly tmuxSocket: string | undefined;
   /**
@@ -688,6 +702,7 @@ export class SessionManager extends EventEmitter {
     this.skipCwdValidation = options.skipCwdValidation ?? false;
     // 测试缺省传 0(立即 emit,保持时序断言)
     this.emitBatchMs = options.emitBatchMs ?? EMIT_BATCH_MS;
+    this.flowOptions = { ...DEFAULT_FLOW_CONTROL, ...options.flowControl };
     this.appVersion = options.appVersion ?? '';
     this.tmuxSocket = options.tmuxSocket;
     this.terminalLookFile = options.terminalLookFile
@@ -999,6 +1014,13 @@ export class SessionManager extends EventEmitter {
       aiTitled: false,
       pendingEmit: null,
       pendingEmitTimer: null,
+      // getPty 走 sessions Map:退出后 managed.pty 置 null、destroy 后不在 Map 里,
+      // 两种情况都拿到 null,不会对死掉的 PTY 调 pause / resume。
+      flow: new OutputFlowControl(
+        sessionId,
+        () => this.sessions.get(sessionId)?.pty ?? null,
+        this.flowOptions,
+      ),
       // BETA-006 v2 + CURSOR-1:headless 镜像,scrollback 行数对齐 renderer
       // 端 xterm 的 5000(`TerminalView.tsx` Terminal 构造 scrollback: 5000)
       // —— headless serialize 出来的状态要能完整覆盖 renderer 可见 + 滚动区。
@@ -1300,6 +1322,8 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.info.ownerWindowId = windowId;
+    // ADR-051:旧计数属于旧 owner;新 owner 要先 ack 一次才会暂停
+    managed.flow.reset('owner changed', true);
     this.emit('sessionOwnerChanged', {
       sessionId,
       oldOwnerWindowId: oldOwner,
@@ -1357,6 +1381,7 @@ export class SessionManager extends EventEmitter {
         !panes?.has(managed.info.id)
       ) {
         managed.info.ownerWindowId = null;
+        managed.flow.reset('owner released', true); // ADR-051:无主 session 永不暂停
         this.emit('sessionOwnerChanged', {
           sessionId: managed.info.id,
           oldOwnerWindowId: windowId,
@@ -1383,6 +1408,7 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.info.ownerWindowId = null;
+    managed.flow.reset('owner released', true); // ADR-051:无主 session 永不暂停
     this.emit('sessionOwnerChanged', {
       sessionId,
       oldOwnerWindowId: windowId,
@@ -1614,6 +1640,10 @@ export class SessionManager extends EventEmitter {
     //    drain 解析到的边界,不会有竞态。drain 后到达的字节会通过 8ms 自然
     //    batch 走 live emit,renderer seq > lastSeq 过滤兜底。
     let ansi = addon.serialize({ scrollback: 5000 });
+    // ADR-051:seq <= 这里返回的 lastSeq 的输出,renderer 会丢掉 (快照已含),永远
+    // 不会 ack。与读 lastSeq 在同一同步块内清零,之后的计数只含 seq > lastSeq
+    // 的字节,正好是 renderer 会写入并 ack 的那些。不 disengage:读者没换。
+    managed.flow.reset('replay snapshot', false);
 
     // XTERM-SERIALIZE-POLYFILL:0.14.0 stable 的 _serializeModes 不覆盖光标
     // 可见性(?25l)与滚动区(DECSTBM),master / 0.15.0-beta 已修。直读
@@ -1778,35 +1808,25 @@ export class SessionManager extends EventEmitter {
 
   /**
    * PER-2:把一次 PTY chunk 入 pendingEmit 缓冲,8ms 后(或 destroy 前)
-   * 通过 flushPendingEmit 一起 append 进 scrollback、推 scrollbackLastSeq、
-   * 发 sessionOutput event。
+   * 通过 flushPendingEmit 一起推 scrollbackLastSeq、发 sessionOutput event。
    *
-   * 关键不变量:在 pendingEmit 窗口内,scrollback 内容和 scrollbackLastSeq
-   * 都不变;getScrollback 看到的快照永远等于"已 emit 的全部历史",pending
-   * 字节对 renderer 不可见。flush 之后三者一起原子前进。
+   * 关键不变量:在 pendingEmit 窗口内,scrollbackLastSeq 不变;getScrollback
+   * 看到的快照永远等于"已 emit 的全部历史",pending 字节对 renderer 不可见。
+   * flush 之后两者一起原子前进。
    *
-   * emitBatchMs <= 0 路径(测试用):立即同步 append + emit,保留与历史
-   * 单测的时序断言一致。
+   * emitBatchMs <= 0 路径(测试用):立即 flush,保留与历史单测的时序断言一致。
+   * 两条路径都走 flushPendingEmit,ADR-051 的流控计数只在那里做一次。
    */
   private queueEmit(managed: ManagedSession, bytes: Buffer, seq: number): void {
-    if (this.emitBatchMs <= 0) {
-      // 立即路径 — 推 lastSeq + emit 在同一同步块内完成。CURSOR-1 后:
-      // headless terminal 是状态源(handlePtyData 内同步 write),无需在此
-      // append 任何裸字节存储。
-      managed.scrollbackLastSeq = seq;
-      const payload: SessionOutputPayload = {
-        sessionId: managed.info.id,
-        data: bytes.toString('base64'),
-        seq,
-      };
-      this.emit('sessionOutput', payload);
-      return;
-    }
     if (managed.pendingEmit === null) {
       managed.pendingEmit = { bytes, lastSeq: seq };
     } else {
       managed.pendingEmit.bytes = Buffer.concat([managed.pendingEmit.bytes, bytes]);
       managed.pendingEmit.lastSeq = seq;
+    }
+    if (this.emitBatchMs <= 0) {
+      this.flushPendingEmit(managed);
+      return;
     }
     if (managed.pendingEmitTimer === null) {
       managed.pendingEmitTimer = setTimeout(() => {
@@ -1830,7 +1850,30 @@ export class SessionManager extends EventEmitter {
       data: bytes.toString('base64'),
       seq: lastSeq,
     };
+    // ADR-051:在 emit 处计数 (不是 onData),见 output-flow-control.ts 文件头。
+    // 先计数再 emit:emit 的监听者 (ipc) 同步发出去,renderer 的 ack 不可能先到。
+    managed.flow.emitted(bytes.length, managed.info.ownerWindowId !== null);
     this.emit('sessionOutput', payload);
+  }
+
+  /**
+   * ADR-051:owner 窗口的 renderer 报告它已解析 `bytes` 字节输出。
+   *
+   * @param sessionId 目标 session
+   * @param windowId 发 ack 的窗口 (IPC 信封里的 windowId;Link 客户端是虚拟窗口 id)
+   * @param bytes 自上次 ack 以来解析完的字节数,调用方已校验为非负整数
+   * @param detach true = 那个 TerminalView 卸载了,清零并在下次 ack 前不再暂停
+   *
+   * 静默忽略 (都是正常竞态,不是错误):session 不存在或已退出 (没有流控可记);
+   * 发送方不是当前 owner (换 owner 之前发出、之后才到的 ack 属于旧计数)。
+   *
+   * @副作用 可能调 pty.resume()
+   */
+  ackOutput(sessionId: string, windowId: string, bytes: number, detach = false): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || !managed.pty) return;
+    if (managed.info.ownerWindowId !== windowId) return;
+    managed.flow.ack(bytes, detach);
   }
 
   /**
@@ -2410,6 +2453,9 @@ export class SessionManager extends EventEmitter {
       clearTimeout(managed.pendingEmitTimer);
       managed.pendingEmitTimer = null;
     }
+    // ADR-051:清看门狗,并在 PTY 还在时 resume。两个调用方 (退出、销毁) 都在
+    // managed.pty 置 null / kill 之前调本函数,所以这里的 resume 还能落到 PTY 上。
+    managed.flow.dispose();
   }
 
   private emitStateChanged(managed: ManagedSession, changes: Partial<SessionInfo>): void {

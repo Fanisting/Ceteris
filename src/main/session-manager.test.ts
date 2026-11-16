@@ -88,6 +88,18 @@ class FakePty {
   kill(): void {
     this.killed = true;
   }
+  /** ADR-051: flow control calls; paused mirrors the socket state, the counters the calls */
+  public paused = false;
+  public pauseCalls = 0;
+  public resumeCalls = 0;
+  pause(): void {
+    this.paused = true;
+    this.pauseCalls++;
+  }
+  resume(): void {
+    this.paused = false;
+    this.resumeCalls++;
+  }
 
   // 测试触发器
   emitData(s: string): void {
@@ -2585,6 +2597,160 @@ describe('SessionManager — PER-2 emit 聚合 / state-replay 不变量', () => 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('SessionManager: output flow control (ADR-051)', () => {
+  const HIGH = 100_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Owner w1, immediate emits, owner already acked once (engaged) unless engage=false. */
+  async function flooded(
+    opts: { engage?: boolean } = {},
+  ): Promise<{ mgr: SessionManager; fp: FakePty; id: string }> {
+    const { mgr } = makeManager();
+    const info = await mgr.createSession({
+      pathId: '/p',
+      templateId: 'shell',
+      ownerWindowId: 'w1',
+      cols: 80,
+      rows: 24,
+    });
+    if (opts.engage !== false) mgr.ackOutput(info.id, 'w1', 0);
+    return { mgr, fp: FakePty.instances[0]!, id: info.id };
+  }
+
+  it('pauses the PTY once unacknowledged output goes above 100 000 bytes', async () => {
+    const { fp } = await flooded();
+    fp.emitData('x'.repeat(HIGH));
+    expect(fp.paused).toBe(false);
+    fp.emitData('x');
+    expect(fp.paused).toBe(true);
+    expect(fp.pauseCalls).toBe(1);
+  });
+
+  it('never pauses before the owner has acked once', async () => {
+    const { fp } = await flooded({ engage: false });
+    fp.emitData('x'.repeat(HIGH * 3));
+    expect(fp.paused).toBe(false);
+  });
+
+  it('resumes only when acks bring the count below 5 000', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.ackOutput(id, 'w1', HIGH + 1 - 5_000); // 5 000 left: not below
+    expect(fp.paused).toBe(true);
+    mgr.ackOutput(id, 'w1', 1); // 4 999 left
+    expect(fp.paused).toBe(false);
+    expect(fp.resumeCalls).toBe(1);
+  });
+
+  it('clamps an over-ack at zero, so later output is still counted in full', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(10));
+    mgr.ackOutput(id, 'w1', 1_000_000);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(true);
+  });
+
+  it('ignores acks from a window that is not the owner', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.ackOutput(id, 'other-window', HIGH + 1);
+    expect(fp.paused).toBe(true);
+  });
+
+  it('ignores acks for unknown and exited sessions without throwing', async () => {
+    const { mgr, fp, id } = await flooded();
+    expect(() => mgr.ackOutput('no-such-session', 'w1', 10)).not.toThrow();
+    fp.emitExit(0);
+    expect(() => mgr.ackOutput(id, 'w1', 10)).not.toThrow();
+  });
+
+  it('never pauses a session without an owner window', async () => {
+    const { mgr, fp, id } = await flooded();
+    mgr.releaseOwner(id, 'w1');
+    fp.emitData('x'.repeat(HIGH * 3));
+    expect(fp.paused).toBe(false);
+  });
+
+  it('an owner change resets the count and resumes; the new owner must ack before pausing', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.transferOwner(id, 'w2');
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(false);
+    mgr.ackOutput(id, 'w2', 0);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(true);
+  });
+
+  it('closing the owner window (or a Link client disconnecting) resumes', async () => {
+    const { mgr, fp } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.handleWindowClosed('w1');
+    expect(fp.paused).toBe(false);
+  });
+
+  it('a detach ack resets, resumes and stops pausing until the next ack', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    mgr.ackOutput(id, 'w1', 0, true);
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(false);
+  });
+
+  it('a replay snapshot resets the count and resumes', async () => {
+    vi.useRealTimers(); // the headless drain inside getScrollbackForReplay needs real timers
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    expect(fp.paused).toBe(true);
+    await mgr.getScrollbackForReplay(id);
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH)); // counted from zero again
+    expect(fp.paused).toBe(false);
+  });
+
+  it('the watchdog resumes after 2 s without an ack and stays off until the owner acks', async () => {
+    const { mgr, fp, id } = await flooded();
+    fp.emitData('x'.repeat(HIGH + 1));
+    vi.advanceTimersByTime(1_500);
+    mgr.ackOutput(id, 'w1', 10); // still above LOW: stays paused, watchdog restarts
+    vi.advanceTimersByTime(1_999);
+    expect(fp.paused).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(fp.paused).toBe(false);
+    fp.emitData('x'.repeat(HIGH * 2));
+    expect(fp.paused).toBe(false);
+    mgr.ackOutput(id, 'w1', 0);
+    fp.emitData('x');
+    expect(fp.paused).toBe(true);
+  });
+
+  it('resumes a paused PTY when it exits, and before it is killed on close', async () => {
+    const a = await flooded();
+    a.fp.emitData('x'.repeat(HIGH + 1));
+    a.fp.emitExit(0);
+    expect(a.fp.paused).toBe(false);
+
+    const b = await flooded();
+    b.fp.emitData('x'.repeat(HIGH + 1));
+    const order: string[] = [];
+    b.fp.resume = () => order.push('resume');
+    b.fp.kill = () => order.push('kill');
+    b.mgr.closeSession(b.id);
+    expect(order).toEqual(['resume', 'kill']);
+    // No watchdog left behind that would touch the dead PTY
+    vi.advanceTimersByTime(10_000);
+    expect(order).toEqual(['resume', 'kill']);
   });
 });
 

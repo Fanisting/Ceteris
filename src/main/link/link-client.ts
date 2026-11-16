@@ -12,8 +12,13 @@
  *   与 session.ownerWindowId 比对时天然对得上。详见 window-manager 里
  *   forcedWindowId 的注释。
  * - **重连保持身份**。auth 时带上 preferredWindowId,Host 复用同一个虚拟窗口
- *   id,于是重连只需要 reload 一次 renderer,窗口位置、窗口 id、session 归属
- *   全部原样恢复。
+ *   id,窗口位置、窗口 id、session 归属全部原样恢复。
+ * - **重连不 reload**(ADR-050)。这里记下每个 session 已经交给窗口的最后一个
+ *   seq,重连时随 auth 报给 Host。Host 回一条 resume(完整 snapshot)并补发漏掉的
+ *   输出;snapshot 作为 evt:app:resync 注入窗口,输出照常注入。窗口里的 xterm
+ *   不重建,用户看不到闪烁。只有 Host 无法原地恢复时才退回 reload。
+ * - **活性**(ADR-050)。每 5 秒 ping;ping 后 3 秒或输入后 1 秒没有任何入站帧就
+ *   标记"变慢"推给窗口;15 秒没有入站就断开重连。规则在 link-liveness.ts。
  * - **本地窗口关闭 = 断开连接**。用户关掉远程窗口就是"我不看了",此时主动
  *   断开;Host 那边虚拟窗口注销,session 转无主继续跑。
  *
@@ -21,14 +26,18 @@
  *
  * @不要在这里做的事:
  * - 不要缓存 / 改写 Host 推来的事件 payload(Client 是纯管道,任何"聪明"的
- *   本地状态都会与 Host 产生分歧)
+ *   本地状态都会与 Host 产生分歧)。唯一的例外是每个 session 的最后一个 seq
+ *   (lastSeqBySession):它只用于重连补发和去重,不改写任何 payload
  * - 不要在这里判断哪些命令该转发(那是 shouldForwardToHost 的职责,统一在
  *   ipc.ts 的 handleCommand 里判断)
  *
  * @常见问题排查:
  * - 连上但窗口空白 → 看 renderer DevTools:多半是 get-snapshot 转发失败
  * - 一直 reconnecting → 看日志里的 lastError;token 不一致表现为握手后立刻断
- * - 打字有明显延迟 → 检查两端到 Tailscale 的 RTT;Link 本身不引入缓冲
+ * - 打字有明显延迟 → 检查两端到 Tailscale 的 RTT;Link 本身不引入缓冲。
+ *   dev / beta 构建可设 CETERIS_LINK_DELAY_MS 人为加延迟复现
+ * - 重连后某个终端闪了一下重画 → 日志里搜 "resume":gap 表示漏掉的输出超过了
+ *   Host 的 1 MiB 最近输出环,该 session 重新拉了 scrollback
  */
 import { connect, type Socket } from 'node:net';
 import { hostname } from 'node:os';
@@ -36,7 +45,6 @@ import { app } from 'electron';
 import {
   LINK_HANDSHAKE_TIMEOUT_MS,
   LINK_HEARTBEAT_INTERVAL_MS,
-  LINK_HEARTBEAT_TIMEOUT_MS,
   LINK_PROTOCOL_VERSION,
   type LinkAuth,
   type LinkAuthOk,
@@ -51,13 +59,21 @@ import {
   type LinkHelloAck,
   type LinkMessage,
   type LinkPing,
+  type LinkResume,
+  type LinkResumeRequest,
 } from '@shared/link-protocol';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
   PROTOCOL_VERSION,
+  type AppResyncPayload,
+  type EventEnvelope,
   type LinkConnectionStatePayload,
+  type SessionDestroyedPayload,
+  type SessionOutputPayload,
+  type SessionOwnerChangedPayload,
 } from '@shared/protocol';
+import type { AppSnapshot } from '@shared/types';
 import { encodeFrame, FrameDecodeError, FrameDecoder } from './frame-codec';
 import {
   createCipherPair,
@@ -66,6 +82,7 @@ import {
   generateHandshakeNonce,
   type LinkCipherStream,
 } from './link-crypto';
+import { computeReconnectDelay, LinkLiveness } from './link-liveness';
 import type { CreateWindowOptions, WindowManager } from '../window-manager';
 import { logger } from '../logger';
 import { applyLocalThemeToLinkEvent } from '../ipc';
@@ -85,18 +102,14 @@ export interface LinkClientDeps {
   getWindowOptions: () => CreateWindowOptions;
   /** 连接状态变化时回调,供 LinkManager 广播给 renderer 渲染状态条 */
   onStatusChange: (linkId: string, status: LinkClientStatus) => void;
+  /**
+   * 每个出站帧额外等待的毫秒数,模拟 DERP 中继延迟。只有 dev / beta 构建会传非 0,
+   * 见 link-liveness.ts 的 readLinkDelayMs。
+   */
+  outboundDelayMs?: number;
   /** Fires once per connection, after the hidden remote window exists. */
   onRemoteWindowCreated?: (windowId: string) => void;
 }
-
-/**
- * 重连退避序列(毫秒)。
- *
- * 前几次快速重试覆盖"Wi-Fi 抖一下"这类瞬时故障;之后拉长到 30 秒,避免
- * Host 关机时客户端每秒疯狂重连、刷爆日志也浪费电。到顶后保持 30 秒不再增长,
- * 这样用户把 Host 开机后最多等半分钟就会自动恢复,不需要手动点重连。
- */
-const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
 
 /** 一次转发命令的等待上限。超时后向 renderer reject,避免 UI 永远转圈。 */
 const COMMAND_TIMEOUT_MS = 30_000;
@@ -133,6 +146,8 @@ export class LinkClient {
     number,
     {
       channel: string;
+      /** get-scrollback / claim 的目标 session,结果回来时记它的 lastSeq */
+      sessionId: string | null;
       resolve: (v: unknown) => void;
       reject: (e: Error) => void;
       timer: NodeJS.Timeout;
@@ -143,11 +158,25 @@ export class LinkClient {
 
   private reconnectAttempt = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  /** 当前这次重连实际要等的毫秒数(含抖动),供状态条显示 */
+  private reconnectDelayMs: number | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private handshakeTimer: NodeJS.Timeout | null = null;
-  private lastInboundAt = 0;
+  /** 活性判断(ADR-050)。认证通过时新建,断开时丢弃 */
+  private liveness: LinkLiveness | null = null;
+  private livenessTimer: NodeJS.Timeout | null = null;
+  private laggy = false;
   /** 用户主动断开时置位,阻止自动重连 */
   private disposed = false;
+
+  /**
+   * ADR-050:sessionId → 已交给窗口的最后一个 seq。来源是注入的 evt:session:output
+   * 和转发回来的 get-scrollback / claim 结果。重连时作为 resume 请求发给 Host,
+   * 平时用来丢掉重复的输出。session 关闭或被别的窗口接管时删除。
+   */
+  private readonly lastSeqBySession = new Map<string, number>();
+  /** 这次认证带了 resume,auth-ok 之后等 Host 的 resume 消息 */
+  private resumeRequested = false;
 
   constructor(
     readonly id: string,
@@ -182,12 +211,8 @@ export class LinkClient {
       address: this.targetAddress,
       rttMs: this.rttMs,
       lastError: this.lastError,
-      nextRetryInMs:
-        this.state === 'reconnecting'
-          ? (RECONNECT_BACKOFF_MS[
-              Math.min(this.reconnectAttempt, RECONNECT_BACKOFF_MS.length - 1)
-            ] ?? null)
-          : null,
+      nextRetryInMs: this.state === 'reconnecting' ? this.reconnectDelayMs : null,
+      laggy: this.state === 'connected' && this.laggy,
     };
   }
 
@@ -199,6 +224,7 @@ export class LinkClient {
       address: this.targetAddress,
       lastError: this.lastError,
       unconfirmedInputs: this.unconfirmedInputs,
+      laggy: this.state === 'connected' && this.laggy,
     };
   }
 
@@ -230,7 +256,6 @@ export class LinkClient {
     socket.setNoDelay(true); // 终端交互延迟敏感,理由同 link-server
 
     socket.on('connect', () => {
-      this.lastInboundAt = Date.now();
       logger.info('LinkClient', `TCP 已连上 ${this.targetAddress},开始握手`);
       this.awaitingAuthOk = true;
       this.writePlain<LinkHello>({
@@ -322,8 +347,19 @@ export class LinkClient {
         );
       }, COMMAND_TIMEOUT_MS);
 
-      this.pending.set(id, { channel, resolve, reject, timer });
+      const sessionId = (payload as { sessionId?: unknown } | null)?.sessionId;
+      this.pending.set(id, {
+        channel,
+        sessionId: typeof sessionId === 'string' ? sessionId : null,
+        resolve,
+        reject,
+        timer,
+      });
       this.writeEncrypted<LinkCommandForward>({ type: 'cmd', id, channel, payload });
+      if (channel === COMMAND_CHANNELS.SESSION_SEND_INPUT && this.liveness) {
+        this.liveness.noteInputSent(Date.now());
+        this.scheduleLivenessCheck();
+      }
     });
   }
 
@@ -337,7 +373,14 @@ export class LinkClient {
 
   private handleData(chunk: Buffer): void {
     if (this.state === 'closed') return;
-    this.lastInboundAt = Date.now();
+    // 任何入站字节都算活动,也清掉"变慢"(ADR-050)
+    // 不在这里重排定时器:大量输出时每个 chunk 都重建定时器太浪费。已排的定时器
+    // 到点后按最新的入站时间重新判断,并排下一次。
+    if (this.liveness) {
+      this.liveness.noteInbound(Date.now());
+      this.setLaggy(false);
+      if (!this.livenessTimer) this.scheduleLivenessCheck();
+    }
 
     let frames: Buffer[];
     try {
@@ -392,12 +435,23 @@ export class LinkClient {
     this.recv = pair.recv;
     this.decoder.raiseLimit();
 
+    // 窗口已经存在 = 这是重连。带上 resume,Host 原地同步,不用 reload(ADR-050)。
+    const resume: LinkResumeRequest | null = this.windowCreated
+      ? {
+          sessions: [...this.lastSeqBySession].map(([sessionId, afterSeq]) => ({
+            sessionId,
+            afterSeq,
+          })),
+        }
+      : null;
+    this.resumeRequested = resume !== null;
     this.writeEncrypted<LinkAuth>({
       type: 'auth',
       clientName: hostname(),
       clientVersion: app.getVersion(),
       ipcProtocolVersion: PROTOCOL_VERSION,
       ...(this.windowId ? { preferredWindowId: this.windowId } : {}),
+      ...(resume ? { resume } : {}),
     });
   }
 
@@ -426,6 +480,9 @@ export class LinkClient {
         break;
       case 'bye':
         this.fail(`Host 主动断开:${msg.reason}`);
+        break;
+      case 'resume':
+        this.applyResume(msg);
         break;
       default:
         logger.info('LinkClient', `忽略未知消息类型:${String((msg as { type: string }).type)}`);
@@ -478,22 +535,113 @@ export class LinkClient {
         `已连接 ${msg.hostName}(${this.targetAddress}),创建远程窗口 ` +
           `${msg.virtualWindowId}(Window ${msg.virtualWindowNumber})`,
       );
+    } else if (this.resumeRequested) {
+      // 重连路径(ADR-050):窗口里的状态停在断线那一刻。Host 紧接着发 resume,
+      // 由 applyResume 原地同步,不再整页 reload。
+      logger.info('LinkClient', `重连成功,等待 Host 的 resume(窗口 ${msg.virtualWindowId})`);
     } else {
-      // 重连路径:窗口还在,但它的 renderer 持有的是断线前的旧状态(session
-      // 列表、scrollback、owner 归属都可能已经变了)。最稳的做法是整页 reload:
-      // renderer 会重新 handshake、重新拉 snapshot、重新 claim,回到与 Host
-      // 完全一致的状态。相比"手工对账增量事件",reload 慢一点但不可能出错。
-      const win = this.deps.windowManager.getById(msg.virtualWindowId);
-      if (win && !win.isDestroyed()) {
-        logger.info('LinkClient', `重连成功,reload 远程窗口 ${msg.virtualWindowId}`);
-        win.webContents.reload();
-      }
+      this.reloadWindow('重连时没有带 resume');
     }
 
+    this.liveness = new LinkLiveness(Date.now());
+    this.laggy = false;
+    this.scheduleLivenessCheck();
     this.startHeartbeat();
     // setState('connected') 发生在窗口创建之前,那一刻还没有 webContents 可推。
     // 这里补一次,确保新窗口一挂载就能拿到"已连接 + Host 名字"。
     this.pushConnectionStateToWindow();
+  }
+
+  /**
+   * 处理 Host 的 resume(ADR-050):用新 snapshot 原地同步窗口,不 reload。
+   *
+   * 时序由 Host 保证:resume 之后依次是漏掉的输出(普通 evt 帧)和认证期间攒下的
+   * 事件,所以这里只需按顺序注入。重叠的输出靠 lastSeqBySession 去重。
+   *
+   * @副作用 向窗口发 evt:app:resync;删掉不再属于本窗口的 session 的 seq 记录;
+   *   Host 无法原地恢复时 reload 窗口(最后手段)
+   */
+  private applyResume(msg: LinkResume): void {
+    this.resumeRequested = false;
+    const replaySessionIds: string[] = [];
+    for (const s of msg.sessions) {
+      if (s.status === 'replayed') continue;
+      this.lastSeqBySession.delete(s.sessionId);
+      if (s.status === 'gap') replaySessionIds.push(s.sessionId);
+    }
+    if (!msg.snapshot) {
+      this.lastSeqBySession.clear();
+      this.reloadWindow('Host 无法原地恢复');
+      return;
+    }
+    logger.info(
+      'LinkClient',
+      `resume:${msg.sessions.length} 个 session,需要重新拉 scrollback 的 ` +
+        `${replaySessionIds.length} 个(${replaySessionIds.join(',') || '无'})`,
+    );
+    const envelope: EventEnvelope<AppResyncPayload> = {
+      eventId: `link-resume-${Date.now()}`,
+      timestamp: Date.now(),
+      payload: { snapshot: msg.snapshot as AppSnapshot, replaySessionIds },
+    };
+    this.sendToWindow(EVENT_CHANNELS.APP_RESYNC, envelope);
+  }
+
+  /** 整页 reload 远程窗口:renderer 重新握手、拉 snapshot。只在无法原地恢复时用。 */
+  private reloadWindow(reason: string): void {
+    if (!this.windowId) return;
+    const win = this.deps.windowManager.getById(this.windowId);
+    if (win && !win.isDestroyed()) {
+      logger.info('LinkClient', `reload 远程窗口 ${this.windowId}:${reason}`);
+      win.webContents.reload();
+    }
+  }
+
+  /**
+   * 记下"窗口已经拿到 seq 为止的输出"。只前进不后退。
+   *
+   * @returns false 表示这个 seq 已经交过,调用方应丢弃这条输出
+   */
+  private advanceSeq(sessionId: string, seq: number): boolean {
+    const prev = this.lastSeqBySession.get(sessionId);
+    if (prev !== undefined && seq <= prev) return false;
+    this.lastSeqBySession.set(sessionId, seq);
+    return true;
+  }
+
+  /**
+   * 维护 lastSeqBySession。
+   *
+   * @returns false 表示这条事件是重复的输出,不该注入
+   */
+  private trackEvent(msg: LinkEventPush): boolean {
+    // payload 来自网络,形状不对时不参与去重,原样交给窗口(与改动前的行为一致)
+    const payload = (msg.envelope as EventEnvelope<unknown> | null)?.payload;
+    if (!payload || typeof payload !== 'object') return true;
+    switch (msg.channel) {
+      case EVENT_CHANNELS.SESSION_OUTPUT: {
+        const p = payload as Partial<SessionOutputPayload>;
+        if (typeof p.sessionId !== 'string' || typeof p.seq !== 'number') return true;
+        return this.advanceSeq(p.sessionId, p.seq);
+      }
+      case EVENT_CHANNELS.SESSION_DESTROYED:
+        this.lastSeqBySession.delete((payload as SessionDestroyedPayload).sessionId);
+        return true;
+      case EVENT_CHANNELS.SESSION_OWNER_CHANGED: {
+        const p = payload as SessionOwnerChangedPayload;
+        if (p.newOwnerWindowId !== this.windowId) this.lastSeqBySession.delete(p.sessionId);
+        return true;
+      }
+      default:
+        return true;
+    }
+  }
+
+  private sendToWindow(channel: string, envelope: unknown): void {
+    if (!this.windowId) return;
+    const win = this.deps.windowManager.getById(this.windowId);
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send(channel, applyLocalThemeToLinkEvent(channel, envelope));
   }
 
   private resolveCommand(msg: LinkCommandResult): void {
@@ -503,6 +651,17 @@ export class LinkClient {
     clearTimeout(entry.timer);
 
     if (msg.ok) {
+      // get-scrollback 与 claim 带"快照时刻的 lastSeq",窗口之后只写更大的 seq。
+      // 记下它,重连时没有新输出的 session 也能补(ADR-050)。
+      const lastSeq = (msg.result as { lastSeq?: unknown } | null)?.lastSeq;
+      if (
+        entry.sessionId &&
+        typeof lastSeq === 'number' &&
+        (entry.channel === COMMAND_CHANNELS.SESSION_GET_SCROLLBACK ||
+          entry.channel === COMMAND_CHANNELS.SESSION_CLAIM)
+      ) {
+        this.advanceSeq(entry.sessionId, lastSeq);
+      }
       entry.resolve(msg.result);
       return;
     }
@@ -520,8 +679,12 @@ export class LinkClient {
    *
    * 直接原样 webContents.send:envelope 已经是 Host 端 wrapEvent 包好的结构,
    * preload 的 on() 会剥掉外壳把 payload 交给业务代码,与本地路径完全一致。
+   *
+   * ADR-050:顺带维护 lastSeqBySession。重复的输出(seq 不大于已交出的)丢弃:
+   * 重连补发与认证期间攒下的事件可能有重叠。
    */
   private injectEvent(msg: LinkEventPush): void {
+    if (!this.trackEvent(msg)) return;
     if (!this.windowId) return;
     const win = this.deps.windowManager.getById(this.windowId);
     if (!win || win.isDestroyed()) return;
@@ -532,23 +695,73 @@ export class LinkClient {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
       if (this.state !== 'connected') return;
-      if (Date.now() - this.lastInboundAt > LINK_HEARTBEAT_TIMEOUT_MS) {
-        this.fail('心跳超时,连接已失效(Host 可能休眠或网络中断)。正在重连…');
-        return;
-      }
       this.writeEncrypted<LinkPing>({ type: 'ping', t: Date.now() });
+      this.liveness?.notePingSent(Date.now());
+      this.scheduleLivenessCheck();
     }, LINK_HEARTBEAT_INTERVAL_MS);
   }
 
+  /**
+   * 在活性判定下一次可能变化的时刻再看一次。发 ping、发输入、定时器到点后重排
+   * (入站只在没有定时器时才排),任何时刻只有一个活性定时器。
+   */
+  private scheduleLivenessCheck(): void {
+    if (!this.liveness) return;
+    if (this.livenessTimer) clearTimeout(this.livenessTimer);
+    const now = Date.now();
+    const delay = Math.max(0, this.liveness.nextCheckAt(now) - now);
+    this.livenessTimer = setTimeout(() => {
+      this.livenessTimer = null;
+      this.checkLiveness();
+    }, delay);
+  }
+
+  private checkLiveness(): void {
+    if (!this.liveness || this.isClosed()) return;
+    const verdict = this.liveness.verdict(Date.now());
+    if (verdict.dead) {
+      this.fail('心跳超时,连接已失效(Host 可能休眠或网络中断)。正在重连…');
+      return;
+    }
+    this.setLaggy(verdict.laggy);
+    this.scheduleLivenessCheck();
+  }
+
+  /** 切换"变慢"标记,有变化才推给窗口和设置页。 */
+  private setLaggy(laggy: boolean): void {
+    if (this.laggy === laggy) return;
+    this.laggy = laggy;
+    if (this.state !== 'connected') return;
+    if (laggy) logger.info('LinkClient', `${this.targetAddress} 没有回音,标记为变慢`);
+    this.deps.onStatusChange(this.id, this.getStatus());
+    this.pushConnectionStateToWindow();
+  }
+
+  /**
+   * 写一个帧。设了人工延迟时推迟写出:同一延迟的 setTimeout 按注册顺序触发,
+   * 帧序(以及 GCM 计数器的顺序)不会乱。
+   */
+  private writeFrame(frame: Buffer): void {
+    const socket = this.socket;
+    if (!socket || socket.destroyed) return;
+    const delay = this.deps.outboundDelayMs ?? 0;
+    if (delay <= 0) {
+      socket.write(frame);
+      return;
+    }
+    setTimeout(() => {
+      if (!socket.destroyed) socket.write(frame);
+    }, delay);
+  }
+
   private writePlain<T>(msg: T): void {
-    if (!this.socket || this.socket.destroyed) return;
-    this.socket.write(encodeFrame(Buffer.from(JSON.stringify(msg), 'utf8')));
+    this.writeFrame(encodeFrame(Buffer.from(JSON.stringify(msg), 'utf8')));
   }
 
   private writeEncrypted<T>(msg: T): void {
     if (!this.socket || this.socket.destroyed || !this.send) return;
     try {
-      this.socket.write(encodeFrame(this.send.encrypt(Buffer.from(JSON.stringify(msg), 'utf8'))));
+      this.writeFrame(encodeFrame(this.send.encrypt(Buffer.from(JSON.stringify(msg), 'utf8'))));
     } catch (err) {
       this.fail(`发送失败:${err instanceof Error ? err.message : String(err)}`);
     }
@@ -581,10 +794,11 @@ export class LinkClient {
       return;
     }
 
+    // 退避从 0.5 秒起翻倍到 30 秒,带 ±20% 抖动(ADR-050)。先算好再切状态,
+    // 状态条拿到的就是这一次真实的等待时间。
+    const delay = computeReconnectDelay(this.reconnectAttempt);
+    this.reconnectDelayMs = delay;
     this.setState('reconnecting');
-    const delay =
-      RECONNECT_BACKOFF_MS[Math.min(this.reconnectAttempt, RECONNECT_BACKOFF_MS.length - 1)] ??
-      30_000;
     this.reconnectAttempt++;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => this.connect(), delay);
@@ -594,9 +808,14 @@ export class LinkClient {
     if (this.handshakeTimer) clearTimeout(this.handshakeTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.livenessTimer) clearTimeout(this.livenessTimer);
     this.handshakeTimer = null;
     this.heartbeatTimer = null;
     this.reconnectTimer = null;
+    this.livenessTimer = null;
+    this.liveness = null;
+    this.laggy = false;
+    this.resumeRequested = false;
 
     const socket = this.socket;
     this.socket = null;

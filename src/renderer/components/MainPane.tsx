@@ -332,7 +332,9 @@ export function MainPane(): JSX.Element {
                   className={`session-stage${layout === 'single' ? ' session-stage-beside' : ''}`}
                 >
                   <div className="session-terminal">
-                    <TerminalView session={s} />
+                    {/* ADR-050: a new epoch rebuilds this terminal so it fetches its
+                        scrollback again, after a Link resume could not fill the gap. */}
+                    <TerminalView key={state.terminalEpochs.get(s.id) ?? 0} session={s} />
                   </div>
                   {!(s.id === displayableId && spareSlot >= 0) && <PdfOverlay viewKey={s.id} />}
                 </div>

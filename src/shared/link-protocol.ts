@@ -27,8 +27,11 @@
  *
  * 握手时双方比对,不一致直接断开并告知用户升级。理由:Link 承载的是加密
  * 帧,版本错配下的行为无法优雅降级(密钥派生的 info 串就带版本号)。
+ *
+ * 2(ADR-050):auth 带 resume,Host 回 resume;心跳 5 秒。新客户端连旧 Host 会一直
+ * 等不到 resume,所以必须 bump,让两端在握手时就明确报"版本不一致"。
  */
-export const LINK_PROTOCOL_VERSION = 1 as const;
+export const LINK_PROTOCOL_VERSION = 2 as const;
 
 /**
  * 默认监听端口,用户可在设置里改。
@@ -154,14 +157,56 @@ export interface LinkAuth {
    * session.ownerWindowId 比对来判断"这个终端是不是我持有的"。如果每次重连
    * Host 都分配一个新 id,重连后 renderer 会认为自己一个 session 都不持有,
    * 于是去 claim 那些**其实还是它自己的** session,拿到一堆
-   * SessionAlreadyOwned 报错。复用 id 让重连对 renderer 完全透明,只要
-   * reload 一次就回到原状。
+   * SessionAlreadyOwned 报错。复用 id 让重连对 renderer 完全透明,配合 resume
+   * 连 reload 都不需要(ADR-050)。
    *
    * Host 拒绝 Host 本地真实窗口的 id,防止客户端冒充本地窗口抢走它的 session。
    * 如果该 id 被另一条 Link 连接占着,说明那是本客户端尚未超时的旧连接(Wi-Fi
    * 切换、休眠唤醒后常见),Host 会断开旧连接并把 id 交给新连接。
    */
   preferredWindowId?: string;
+  /**
+   * ADR-050:重连时带上。有它 Host 就在 auth-ok 之后紧接着发一条 resume,
+   * 客户端据此原地同步,不再 reload 窗口。首次连接时省略。
+   */
+  resume?: LinkResumeRequest;
+}
+
+/**
+ * ADR-050:客户端重连时报告"每个 session 我已经拿到哪个 seq 了"。
+ *
+ * 只列客户端 main 进程见过输出或 scrollback 的 session。没列出的 session 窗口
+ * 本来就没在显示,等它显示时会照常拉 scrollback。
+ */
+export interface LinkResumeRequest {
+  sessions: Array<{ sessionId: string; afterSeq: number }>;
+}
+
+/**
+ * ADR-050:Host → Client,紧跟在 auth-ok 之后(仅当 auth 带了 resume)。
+ *
+ * Host 在同一个同步块里依次写:auth-ok、resume、各 session 漏掉的输出(普通的
+ * evt:session:output 帧,原 seq)、认证期间攒下的事件。之后才是实时事件。所以
+ * 客户端收到 resume 时,snapshot 之前的事件一条都不会排在它后面。
+ */
+export interface LinkResume {
+  type: 'resume';
+  /**
+   * cmd:app:get-snapshot 的结果(以虚拟窗口身份取)。null 表示 Host 没能原地恢复
+   * (取 snapshot 失败或认证期间事件太多),客户端只能 reload 窗口。
+   */
+  snapshot: unknown;
+  /**
+   * 每个请求的 session 的结果:
+   * - replayed:漏掉的输出紧跟在后面,作为普通 evt:session:output 发来
+   * - gap:漏掉的部分已不在 Host 的最近输出环里,窗口要重新拉 scrollback
+   * - not-owner:断线期间被别的窗口接管了,不再推它的输出
+   * - unknown-session:session 已经关闭
+   */
+  sessions: Array<{
+    sessionId: string;
+    status: 'replayed' | 'gap' | 'not-owner' | 'unknown-session';
+  }>;
 }
 
 /**
@@ -280,17 +325,55 @@ export type LinkMessage =
   | LinkEventPush
   | LinkPing
   | LinkPong
-  | LinkBye;
-
-/** 心跳间隔:每 15 秒发一次 ping。 */
-export const LINK_HEARTBEAT_INTERVAL_MS = 15_000;
+  | LinkBye
+  | LinkResume;
 
 /**
- * 超过这个时长没收到对端任何字节(包括 pong)就判定连接已死。
+ * 心跳间隔:每 5 秒发一次 ping(ADR-050,原 15 秒)。
  *
- * 取 3 倍心跳间隔 + 余量:允许丢两个心跳周期,避免网络抖动导致误断。
+ * 一个 ping 是几十字节的密文帧,5 秒一次的流量可以忽略;换来的是空闲的终端也能
+ * 在几秒内发现连接变慢或断掉。VS Code 的远程终端也是 5 秒。
  */
-export const LINK_HEARTBEAT_TIMEOUT_MS = 50_000;
+export const LINK_HEARTBEAT_INTERVAL_MS = 5_000;
+
+/**
+ * 超过这个时长没收到对端任何字节(包括 pong)就判定连接已死(ADR-050,原 50 秒)。
+ *
+ * 3 个心跳周期:丢两个 pong 也不误判。15 秒足够跨过 Tailscale 从直连切到 DERP
+ * 中继的停顿,又比原来的 50 秒早得多开始重连。Host 每个心跳周期检查一次,所以
+ * Host 侧实际在 15 到 20 秒之间判定。
+ */
+export const LINK_HEARTBEAT_TIMEOUT_MS = 15_000;
+
+/**
+ * 发出 ping 后这么久没收到任何入站帧,客户端就显示"连接变慢"(ADR-050)。
+ *
+ * 只是提示,不断开。取 3 秒:DERP 中继的 RTT 在 50 到 150 ms,正常情况下 pong
+ * 远早于此到达;3 秒没回音说明链路确实卡住了,用户应当知道刚才的按键可能没到。
+ */
+export const LINK_LAGGY_AFTER_PING_MS = 3_000;
+
+/**
+ * 用户输入后这么久没收到任何入站帧,客户端就显示"连接变慢"(ADR-050)。
+ *
+ * 比 ping 的阈值短:用户正在打字时最需要知道回显为什么没出来。终端几乎总会回显,
+ * 即使不回显,send-input 的 cmd-result 也会在一个 RTT 内回来。思路来自 Wave 的
+ * connmonitor。
+ */
+export const LINK_LAGGY_AFTER_INPUT_MS = 1_000;
+
+/** 重连退避的起点:第一次重试在 0.5 秒后(ADR-050)。 */
+export const LINK_RECONNECT_BASE_MS = 500;
+
+/** 重连退避的上限:每次翻倍,最多 30 秒(ADR-050)。 */
+export const LINK_RECONNECT_MAX_MS = 30_000;
+
+/**
+ * 重连退避的随机抖动比例:实际等待在 [1 - 0.2, 1 + 0.2] 倍之间(ADR-050)。
+ *
+ * Host 重启后,几个客户端如果用完全相同的退避序列,会在同一瞬间一起撞上来。
+ */
+export const LINK_RECONNECT_JITTER = 0.2;
 
 /**
  * 握手必须在这个时长内完成,否则断开。防止有人开一堆连接占着不说话
@@ -317,7 +400,7 @@ export const LINK_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 /**
  * 单条连接允许积压在 socket 写缓冲里的字节数,超过就断开。
  *
- * 客户端休眠后要等最多 50 秒才判定心跳超时,这期间 agent 的输出全部堆在 Host
+ * 客户端休眠后要等 15 到 20 秒才判定心跳超时,这期间 agent 的输出全部堆在 Host
  * 内存里。断开是安全的:客户端重连后从 Host 的 headless 终端回放完整状态,
  * 不依赖这些字节。
  */
@@ -472,6 +555,8 @@ export interface LinkClientStatus {
   lastError: string;
   /** 处于 reconnecting 时,距下次重试的毫秒数 */
   nextRetryInMs: number | null;
+  /** ADR-050:连着但最近没有回音,见 LINK_LAGGY_AFTER_PING_MS */
+  laggy: boolean;
 }
 
 /**

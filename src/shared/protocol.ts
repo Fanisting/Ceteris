@@ -333,6 +333,12 @@ export type CommandChannel = (typeof COMMAND_CHANNELS)[keyof typeof COMMAND_CHAN
 export const EVENT_CHANNELS = {
   // App / Window
   APP_STATE_CHANGED: 'evt:app:state-changed',
+  /**
+   * ADR-050:定向推给一个窗口的完整新 snapshot,窗口用它替换 store 里的数据,
+   * 视图状态(选中的文件夹和标签、展开状态)保留。Ceteris Link 重连后由 Client 的
+   * main 进程注入,代替整页 reload。
+   */
+  APP_RESYNC: 'evt:app:resync',
   WINDOW_ASSIGNED_ID: 'evt:window:assigned-id',
   WINDOW_LIST_UPDATED: 'evt:window:list-updated',
   WINDOW_FOCUS_REQUESTED: 'evt:window:focus-requested',
@@ -1429,6 +1435,17 @@ export interface SessionOutputPayload {
   seq: number;
 }
 
+/**
+ * evt:app:resync 的 payload(ADR-050)。
+ *
+ * snapshot 与 cmd:app:get-snapshot 的返回值同构。replaySessionIds 里的 session
+ * 漏掉的输出已经补不回来,窗口要像第一次显示它那样重新拉 scrollback。
+ */
+export interface AppResyncPayload {
+  snapshot: AppSnapshot;
+  replaySessionIds: string[];
+}
+
 export interface SessionExitedPayload {
   sessionId: string;
   exitCode: number;
@@ -1696,4 +1713,9 @@ export interface LinkConnectionStatePayload {
    * 重发一条已执行的命令比让用户自己看一眼终端危险得多。
    */
   unconfirmedInputs: number;
+  /**
+   * ADR-050:连着,但 Host 最近没有回音(ping 后 3 秒,或输入后 1 秒)。
+   * 只是提示,不影响任何行为;15 秒没有回音才算断线。
+   */
+  laggy: boolean;
 }

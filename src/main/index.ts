@@ -691,6 +691,7 @@ function bootstrap(): void {
             .list()
             .filter((s) => s.ownerWindowId === windowId)
             .map((s) => s.id),
+        getPaneSessionIds: (windowId) => sessionManager.getPaneSessions(windowId),
         onStatusChange: () => {
           broadcastLinkStatus({
             host: linkManager.getHostStatus(),
@@ -982,7 +983,7 @@ function bootstrap(): void {
     void askpassServer.stop();
     void tabControlServer.stop();
     // 先关 Link:停止监听并断开所有连接,让对端立刻知道我们要走了,
-    // 而不是等它们的心跳超时(最长 50 秒)才发现。
+    // 而不是等它们的心跳超时(最长约 20 秒)才发现。
     if (linkManagerRef) {
       try {
         await linkManagerRef.shutdown();

@@ -30,10 +30,12 @@ import {
 import type { LinkConnectionStatePayload } from '@shared/protocol';
 import type { LinkSettings } from '@shared/types';
 import { LinkClient, type LinkClientConfig } from './link-client';
+import { readLinkDelayMs } from './link-liveness';
 import { LinkServer } from './link-server';
 import { setLinkCommandForwarder } from '../ipc';
 import type { CreateWindowOptions, WindowManager } from '../window-manager';
 import { logger } from '../logger';
+import { getChannel } from '../build-type';
 
 export interface LinkManagerDeps {
   windowManager: WindowManager;
@@ -43,6 +45,8 @@ export interface LinkManagerDeps {
   onRemoteWindowCreated?: (windowId: string, reveal: boolean) => void;
   /** 列出某窗口持有的 session,LinkServer 用它在重连后恢复归属。 */
   getOwnedSessionIds: (windowId: string) => string[];
+  /** 列出某窗口分屏里的 session,与归属一起在重连后恢复(ADR-050)。 */
+  getPaneSessionIds: (windowId: string) => string[];
   /** 连接状态变化时通知 renderer(设置页的状态条)。 */
   onStatusChange: () => void;
 }
@@ -53,12 +57,28 @@ export class LinkManager {
   private readonly clients = new Map<string, LinkClient>();
   private bindWatchTimer: NodeJS.Timeout | null = null;
   private rebinding = false;
+  /**
+   * 开发用人工延迟(ADR-050):CETERIS_LINK_DELAY_MS,只在 dev / beta 生效。两端的
+   * 出站帧都推迟这么久,在一台机器上就能复现 DERP 中继的手感。
+   */
+  private readonly outboundDelayMs = readLinkDelayMs(
+    process.env.CETERIS_LINK_DELAY_MS,
+    getChannel(),
+  );
 
   constructor(private readonly deps: LinkManagerDeps) {
+    if (this.outboundDelayMs > 0) {
+      logger.warn(
+        'LinkManager',
+        `CETERIS_LINK_DELAY_MS 生效:每个出站帧延迟 ${this.outboundDelayMs}ms`,
+      );
+    }
     this.server = new LinkServer({
       windowManager: deps.windowManager,
       getToken: () => this.deps.getSettings().hostToken,
       getOwnedSessionIds: deps.getOwnedSessionIds,
+      getPaneSessionIds: deps.getPaneSessionIds,
+      outboundDelayMs: this.outboundDelayMs,
     });
 
     // ipc.ts 的 handleCommand 判定"这是远程窗口且该命令要转发"之后,会调这个
@@ -150,6 +170,7 @@ export class LinkManager {
       windowManager: this.deps.windowManager,
       getWindowOptions: this.deps.getWindowOptions,
       onStatusChange: () => this.deps.onStatusChange(),
+      outboundDelayMs: this.outboundDelayMs,
       onRemoteWindowCreated: (windowId) =>
         this.deps.onRemoteWindowCreated?.(windowId, options.reveal ?? false),
     });

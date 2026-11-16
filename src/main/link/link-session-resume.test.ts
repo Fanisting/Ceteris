@@ -8,28 +8,69 @@
  * reload、写缓冲积压。这些只有真 socket 和真定时器才会暴露。替身只用在 Link 层
  * 之外:WindowManager 和命令 handler,它们的语义由各自的测试覆盖。
  *
- * @对应文档章节: docs/ceteris-link-protocol.md 第 6 章
+ * ADR-050 之后重连不再 reload 窗口:Host 回 resume(snapshot)并补发漏掉的输出,
+ * 客户端注入 evt:app:resync。这里的"重连完成"因此以 resync 到达为准。
+ *
+ * @对应文档章节: docs/ceteris-link-protocol.md 第 6 章;docs/软件定义书.md ADR-050
  */
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { COMMAND_CHANNELS, type CommandEnvelope } from '@shared/protocol';
-import { LINK_RESUME_TTL_MS } from '@shared/link-protocol';
+import { connect } from 'node:net';
+import { COMMAND_CHANNELS, EVENT_CHANNELS, type CommandEnvelope } from '@shared/protocol';
+import {
+  LINK_PROTOCOL_VERSION,
+  LINK_RESUME_TTL_MS,
+  type LinkHandshakeError,
+} from '@shared/link-protocol';
 import { generateLinkToken } from './link-crypto';
+import { encodeFrame, FrameDecoder } from './frame-codec';
+import { OutputRing } from '../output-ring';
 
 vi.mock('electron', () => ({ app: { getVersion: () => '0.0.0-test' } }));
 vi.mock('../logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-/** Host 上的业务层替身:记录 ownership 和收到的输入。 */
+/** Host 上的业务层替身:记录 ownership、分屏、最近输出环和收到的输入。 */
 class FakeHost {
   readonly realWindows = new Set<string>(['host-local-window']);
   readonly virtualWindows = new Map<string, (channel: string, envelope: unknown) => void>();
   readonly owners = new Map<string, string | null>();
+  readonly paneSessions = new Map<string, string[]>();
+  readonly rings = new Map<string, OutputRing>();
+  private readonly seqs = new Map<string, number>();
   readonly inputs: string[] = [];
   /** 为 true 时 send-input 永不返回,用来制造"已发出、未确认"的命令 */
   holdInputs = false;
+  /** claim 时顺带产生的输出,模拟 claim 序列化终端状态时 flush 出来的字节 */
+  outputOnClaim: string | null = null;
+  /** 最近输出环的容量,测试缺口时调小 */
+  ringCapBytes = 1024 * 1024;
   private nextNumber = 1;
+
+  /**
+   * 模拟一段 PTY 输出:进最近输出环;有 owner 且 owner 是在线的虚拟窗口时推过去,
+   * 与 ipc.ts 的 owner-only 路由一致。
+   */
+  emitOutput(sessionId: string, text: string): number {
+    const seq = (this.seqs.get(sessionId) ?? -1) + 1;
+    this.seqs.set(sessionId, seq);
+    const data = Buffer.from(text).toString('base64');
+    let ring = this.rings.get(sessionId);
+    if (!ring) {
+      ring = new OutputRing(this.ringCapBytes);
+      this.rings.set(sessionId, ring);
+    }
+    ring.append(seq, data);
+    const owner = this.owners.get(sessionId);
+    const send = owner ? this.virtualWindows.get(owner) : undefined;
+    send?.(EVENT_CHANNELS.SESSION_OUTPUT, {
+      eventId: randomUUID(),
+      timestamp: Date.now(),
+      payload: { sessionId, data, seq },
+    });
+    return seq;
+  }
 
   readonly windowManager = {
     registerVirtualWindow: (
@@ -45,7 +86,8 @@ class FakeHost {
     },
     unregisterVirtualWindow: (windowId: string): boolean => {
       const existed = this.virtualWindows.delete(windowId);
-      // 与 handleWindowClosed 一致:归属清空,PTY 不动
+      // 与 handleWindowClosed 一致:分屏列表删掉,归属清空,PTY 不动
+      this.paneSessions.delete(windowId);
       for (const [sessionId, owner] of this.owners) {
         if (owner === windowId) this.owners.set(sessionId, null);
       }
@@ -56,6 +98,8 @@ class FakeHost {
   getOwnedSessionIds = (windowId: string): string[] =>
     [...this.owners].filter(([, owner]) => owner === windowId).map(([id]) => id);
 
+  getPaneSessionIds = (windowId: string): string[] => this.paneSessions.get(windowId) ?? [];
+
   dispatch = async (channel: string, envelope: CommandEnvelope<unknown>): Promise<unknown> => {
     if (channel === COMMAND_CHANNELS.SESSION_CLAIM) {
       const { sessionId } = envelope.payload as { sessionId: string };
@@ -63,7 +107,32 @@ class FakeHost {
       if (owner === undefined) throw new Error('SessionNotFound');
       if (owner !== null && owner !== envelope.windowId) throw new Error('SessionAlreadyOwned');
       this.owners.set(sessionId, envelope.windowId);
+      // 与 SessionManager.claimOwner 一致:单焦点,分屏里的除外
+      const panes = this.paneSessions.get(envelope.windowId) ?? [];
+      for (const [id, o] of this.owners) {
+        if (o === envelope.windowId && id !== sessionId && !panes.includes(id)) {
+          this.owners.set(id, null);
+        }
+      }
+      if (this.outputOnClaim) this.emitOutput(sessionId, this.outputOnClaim);
       return {};
+    }
+    if (channel === COMMAND_CHANNELS.SESSION_SET_PANE_SESSIONS) {
+      const { sessionIds } = envelope.payload as { sessionIds: string[] };
+      this.paneSessions.set(envelope.windowId, sessionIds);
+      return undefined;
+    }
+    if (channel === COMMAND_CHANNELS.APP_GET_SNAPSHOT) {
+      return {
+        myWindowId: envelope.windowId,
+        sessions: [...this.owners].map(([id, ownerWindowId]) => ({ id, ownerWindowId })),
+      };
+    }
+    if (channel === COMMAND_CHANNELS.SESSION_OUTPUT_SINCE) {
+      const { sessionId, afterSeq } = envelope.payload as { sessionId: string; afterSeq: number };
+      if (!this.owners.has(sessionId)) return { status: 'unknown-session' };
+      const res = this.rings.get(sessionId)?.since(afterSeq) ?? { gap: false, chunks: [] };
+      return res.gap ? { status: 'gap' } : { status: 'ok', chunks: res.chunks };
     }
     if (channel === COMMAND_CHANNELS.SESSION_SEND_INPUT) {
       const { data } = envelope.payload as { data: string };
@@ -93,18 +162,24 @@ type Client = InstanceType<typeof LinkClient>;
 function makeClientWindowManager() {
   const events: Array<{ channel: string; envelope: unknown }> = [];
   const reload = vi.fn();
+  /** 每次向窗口发事件时调用,用来记录"那一刻"的 Host 状态 */
+  const onSend = vi.fn((_channel: string, _envelope: unknown): void => undefined);
   const windows = new Set<string>();
   const remote = new Map<string, string>();
   const win = {
     isDestroyed: () => false,
     webContents: {
-      send: (channel: string, envelope: unknown) => events.push({ channel, envelope }),
+      send: (channel: string, envelope: unknown) => {
+        events.push({ channel, envelope });
+        onSend(channel, envelope);
+      },
       reload,
     },
   };
   return {
     events,
     reload,
+    onSend,
     windows,
     manager: {
       markWindowRemote: (windowId: string, linkId: string) => remote.set(windowId, linkId),
@@ -140,6 +215,7 @@ async function startHost(opts: { maxWriteBacklogBytes?: number } = {}) {
     windowManager: host.windowManager as never,
     getToken: () => token,
     getOwnedSessionIds: host.getOwnedSessionIds,
+    getPaneSessionIds: host.getPaneSessionIds,
     ...opts,
   });
   servers.push(server);
@@ -173,6 +249,32 @@ function makeClient(
 const startClient = (port: number, token: string) => makeClient(port, token);
 
 const connected = (c: Client) => (): boolean => c.getStatus().state === 'connected';
+
+type ClientWindow = ReturnType<typeof makeClientWindowManager>;
+
+/** 窗口收到的 evt:app:resync 的 payload。 */
+const resyncs = (local: ClientWindow) =>
+  local.events
+    .filter((e) => e.channel === EVENT_CHANNELS.APP_RESYNC)
+    .map(
+      (e) => (e.envelope as { payload: { snapshot: unknown; replaySessionIds: string[] } }).payload,
+    );
+
+/** 窗口收到的某 session 的输出:[seq, 文本]。 */
+const outputs = (local: ClientWindow, sessionId: string): Array<[number, string]> =>
+  local.events
+    .filter((e) => e.channel === EVENT_CHANNELS.SESSION_OUTPUT)
+    .map(
+      (e) => (e.envelope as { payload: { sessionId: string; seq: number; data: string } }).payload,
+    )
+    .filter((p) => p?.sessionId === sessionId)
+    .map((p) => [p.seq, Buffer.from(p.data, 'base64').toString()]);
+
+/** 等到窗口完成第 n 次原地恢复。 */
+const restored =
+  (local: ClientWindow, n = 1) =>
+  (): boolean =>
+    resyncs(local).length >= n;
 
 /** 模拟网络中断:连接被切断,但 LinkClient 没有调用 disconnect。 */
 function dropConnection(client: Client): void {
@@ -223,24 +325,25 @@ describe('断线与重连', () => {
     expect(host.virtualWindows.size).toBe(0);
   });
 
-  it('重连保持 windowId,恢复归属,并且在 reload 之前完成', async () => {
+  it('重连保持 windowId,恢复归属,并且在 resync 之前完成,不 reload', async () => {
     const { host, port, token } = await startHost();
     const { client, local } = startClient(port, token);
     await waitFor(connected(client), '首次连接');
     const windowId = client.boundWindowId!;
     host.owners.set('s1', windowId);
 
-    let ownerAtReload: string | null | undefined;
-    local.reload.mockImplementation(() => {
-      ownerAtReload = host.owners.get('s1');
+    let ownerAtResync: string | null | undefined;
+    local.onSend.mockImplementation((channel) => {
+      if (channel === EVENT_CHANNELS.APP_RESYNC) ownerAtResync = host.owners.get('s1');
     });
 
     dropConnection(client);
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连后 reload');
+    await waitFor(restored(local), '重连后原地恢复');
 
     expect(client.boundWindowId).toBe(windowId);
-    expect(ownerAtReload).toBe(windowId);
+    expect(ownerAtResync).toBe(windowId);
     expect(host.owners.get('s1')).toBe(windowId);
+    expect(local.reload).not.toHaveBeenCalled();
   });
 
   it('断线期间被 Host 本机接管的 session 不会被抢回', async () => {
@@ -253,7 +356,7 @@ describe('断线与重连', () => {
     await waitFor(() => host.owners.get('s1') === null, '归属释放');
     host.owners.set('s1', 'host-local-window');
 
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     expect(host.owners.get('s1')).toBe('host-local-window');
   });
 
@@ -268,7 +371,7 @@ describe('断线与重连', () => {
     await waitFor(() => host.owners.get('kept') === null, '归属释放');
     host.owners.delete('gone');
 
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     expect(host.owners.get('kept')).toBe(client.boundWindowId);
   });
 
@@ -283,7 +386,7 @@ describe('断线与重连', () => {
     await waitFor(() => host.owners.get('s1') === null, '归属释放');
     vi.spyOn(Date, 'now').mockImplementation(() => realNow() + LINK_RESUME_TTL_MS + 1);
 
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     expect(host.owners.get('s1')).toBeNull();
   });
 
@@ -295,7 +398,7 @@ describe('断线与重连', () => {
     host.owners.set('s1', windowId);
 
     expect(server.disconnectClient(windowId)).toBe(true);
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     expect(host.owners.get('s1')).toBeNull();
   });
 
@@ -309,7 +412,7 @@ describe('断线与重连', () => {
     await server.stop();
     expect(await server.start({ bindAddress: '127.0.0.1', port })).toBe(true);
 
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     expect(host.owners.get('s1')).toBe(windowId);
   });
 });
@@ -343,7 +446,7 @@ describe('半开连接', () => {
   it('新连接拿回原 windowId,不会分配新 id 造成窗口失效', async () => {
     const { resumed, windowId, local } = await reconnectWhileOldConnectionLingers();
     expect(resumed.boundWindowId).toBe(windowId);
-    await waitFor(() => local.reload.mock.calls.length === 1, 'reload');
+    await waitFor(restored(local), '原地恢复');
   });
 
   it('旧连接被取代,Host 只保留一个客户端,归属恢复', async () => {
@@ -390,7 +493,7 @@ describe('命令语义', () => {
     await expect(pending).rejects.toThrow(/命令结果未知/);
     expect(client.getConnectionState().unconfirmedInputs).toBe(1);
 
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     await new Promise((r) => setTimeout(r, 100));
     expect(host.inputs).toEqual(['cmd']);
     expect(client.getConnectionState().unconfirmedInputs).toBe(1);
@@ -423,7 +526,7 @@ describe('命令语义', () => {
     ).rejects.toThrow(/连接当前不可用/);
     expect(client.getConnectionState().unconfirmedInputs).toBe(0);
 
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     await new Promise((r) => setTimeout(r, 100));
     expect(host.inputs).toEqual([]);
   });
@@ -435,7 +538,7 @@ describe('命令语义', () => {
 
     await client.forwardCommand(COMMAND_CHANNELS.SESSION_SEND_INPUT, { data: 'once' });
     dropConnection(client);
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
 
     expect(host.inputs).toEqual(['once']);
     expect(client.getConnectionState().unconfirmedInputs).toBe(0);
@@ -464,7 +567,262 @@ describe('背压', () => {
     expect(host.owners.get('s1')).toBeNull();
 
     socket.resume();
-    await waitFor(() => local.reload.mock.calls.length === 1, '重连');
+    await waitFor(restored(local), '重连');
     expect(host.owners.get('s1')).toBe(windowId);
+  });
+});
+
+describe('原地恢复(ADR-050)', () => {
+  /** 连上、持有 s1、窗口已经收到 s1 的前两段输出。 */
+  async function connectedWithOutput() {
+    const started = await startHost();
+    const { client, local } = startClient(started.port, started.token);
+    await waitFor(connected(client), '首次连接');
+    const windowId = client.boundWindowId!;
+    started.host.owners.set('s1', windowId);
+    started.host.emitOutput('s1', 'a');
+    started.host.emitOutput('s1', 'b');
+    await waitFor(() => outputs(local, 's1').length === 2, '首批输出');
+    return { ...started, client, local, windowId };
+  }
+
+  it('断线期间的输出按原 seq 补发,恰好一次,之后的实时输出照常', async () => {
+    const { host, client, local } = await connectedWithOutput();
+
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    host.emitOutput('s1', 'c'); // 无主,只进环
+    host.emitOutput('s1', 'd');
+
+    await waitFor(restored(local), '原地恢复');
+    await waitFor(() => outputs(local, 's1').length === 4, '补发');
+    host.emitOutput('s1', 'e');
+    await waitFor(() => outputs(local, 's1').length === 5, '实时输出');
+
+    expect(outputs(local, 's1')).toEqual([
+      [0, 'a'],
+      [1, 'b'],
+      [2, 'c'],
+      [3, 'd'],
+      [4, 'e'],
+    ]);
+    expect(resyncs(local)[0]!.replaySessionIds).toEqual([]);
+    expect(local.reload).not.toHaveBeenCalled();
+  });
+
+  it('补发的输出排在 resync 之后,窗口先拿到新 snapshot', async () => {
+    const { host, client, local } = await connectedWithOutput();
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    host.emitOutput('s1', 'c');
+
+    await waitFor(() => outputs(local, 's1').length === 3, '补发');
+    const order = local.events
+      .map((e) => e.channel)
+      .filter((c) => c === EVENT_CHANNELS.APP_RESYNC || c === EVENT_CHANNELS.SESSION_OUTPUT);
+    expect(order.slice(-2)).toEqual([EVENT_CHANNELS.APP_RESYNC, EVENT_CHANNELS.SESSION_OUTPUT]);
+  });
+
+  it('认证期间产生的输出在 resync 之后到达,与补发的重叠部分不重复', async () => {
+    const { host, client, local } = await connectedWithOutput();
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    host.emitOutput('s1', 'c');
+    // 重新接管时 Host 又产生一段输出:它既进了环(被补发),也进了 outbox
+    host.outputOnClaim = 'claim';
+
+    await waitFor(() => outputs(local, 's1').length === 4, '补发与 outbox');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(outputs(local, 's1')).toEqual([
+      [0, 'a'],
+      [1, 'b'],
+      [2, 'c'],
+      [3, 'claim'],
+    ]);
+  });
+
+  it('漏掉的输出超出最近输出环时,该 session 交给窗口重新拉 scrollback', async () => {
+    const started = await startHost();
+    started.host.ringCapBytes = 4;
+    const { client, local } = startClient(started.port, started.token);
+    await waitFor(connected(client), '首次连接');
+    started.host.owners.set('s1', client.boundWindowId);
+    started.host.emitOutput('s1', 'a');
+    await waitFor(() => outputs(local, 's1').length === 1, '首批输出');
+
+    dropConnection(client);
+    await waitFor(() => started.host.owners.get('s1') === null, '归属释放');
+    started.host.emitOutput('s1', 'xxxx');
+    started.host.emitOutput('s1', 'yyyy'); // 挤掉 seq 1,afterSeq=0 落在缺口里
+
+    await waitFor(restored(local), '原地恢复');
+    expect(resyncs(local)[0]!.replaySessionIds).toEqual(['s1']);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(outputs(local, 's1')).toEqual([[0, 'a']]);
+    expect(started.host.owners.get('s1')).toBe(client.boundWindowId);
+  });
+
+  it('断线期间关闭的 session 不补发,新 snapshot 里也没有它', async () => {
+    const { host, client, local } = await connectedWithOutput();
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    host.owners.delete('s1');
+
+    await waitFor(restored(local), '原地恢复');
+    const snapshot = resyncs(local)[0]!.snapshot as { sessions: Array<{ id: string }> };
+    expect(snapshot.sessions.map((s) => s.id)).not.toContain('s1');
+    expect(resyncs(local)[0]!.replaySessionIds).toEqual([]);
+    expect(outputs(local, 's1')).toHaveLength(2);
+  });
+
+  it('断线期间被 Host 本机接管的 session 不补发输出', async () => {
+    const { host, client, local } = await connectedWithOutput();
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    host.owners.set('s1', 'host-local-window');
+    host.emitOutput('s1', 'local');
+
+    await waitFor(restored(local), '原地恢复');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(outputs(local, 's1')).toHaveLength(2);
+    const snapshot = resyncs(local)[0]!.snapshot as {
+      sessions: Array<{ id: string; ownerWindowId: string | null }>;
+    };
+    expect(snapshot.sessions).toContainEqual({ id: 's1', ownerWindowId: 'host-local-window' });
+  });
+
+  it('分屏里的几个 session 重连后全部恢复,不只剩最后一个', async () => {
+    const { host, port, token } = await startHost();
+    const { client, local } = startClient(port, token);
+    await waitFor(connected(client), '首次连接');
+    const windowId = client.boundWindowId!;
+    host.owners.set('s1', windowId);
+    host.owners.set('s2', windowId);
+    host.paneSessions.set(windowId, ['s1', 's2']);
+
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    await waitFor(restored(local), '原地恢复');
+
+    expect(host.owners.get('s1')).toBe(windowId);
+    expect(host.owners.get('s2')).toBe(windowId);
+    expect(host.paneSessions.get(windowId)).toEqual(['s1', 's2']);
+  });
+
+  it('多次断线都原地恢复,seq 记录跨多次重连保持', async () => {
+    const { host, client, local } = await connectedWithOutput();
+    for (let round = 1; round <= 2; round++) {
+      dropConnection(client);
+      await waitFor(() => host.owners.get('s1') === null, `第 ${round} 次归属释放`);
+      host.emitOutput('s1', `r${round}`);
+      await waitFor(restored(local, round), `第 ${round} 次恢复`);
+      await waitFor(() => outputs(local, 's1').length === 2 + round, `第 ${round} 次补发`);
+    }
+    expect(outputs(local, 's1').map(([seq]) => seq)).toEqual([0, 1, 2, 3]);
+    expect(local.reload).not.toHaveBeenCalled();
+  });
+
+  it('Host 取不到 snapshot 时退回 reload', async () => {
+    const { host, client, local } = await connectedWithOutput();
+    dropConnection(client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+    const original = host.dispatch;
+    host.dispatch = async (channel, envelope) => {
+      if (channel === COMMAND_CHANNELS.APP_GET_SNAPSHOT) throw new Error('boom');
+      return original(channel, envelope);
+    };
+
+    await waitFor(() => local.reload.mock.calls.length === 1, 'reload');
+    expect(resyncs(local)).toHaveLength(0);
+  });
+});
+
+describe('变慢提示(ADR-050)', () => {
+  it('输入 1 秒没有回音时标记变慢,任何入站帧清掉', async () => {
+    const { host, port, token } = await startHost();
+    const { client, local } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+    host.holdInputs = true;
+
+    void client.forwardCommand(COMMAND_CHANNELS.SESSION_SEND_INPUT, { data: 'x' }).catch(() => {});
+    expect(client.getConnectionState().laggy).toBe(false);
+    await waitFor(() => client.getConnectionState().laggy, '变慢', 3000);
+    expect(client.getStatus().laggy).toBe(true);
+    const pushed = local.events
+      .filter((e) => e.channel === EVENT_CHANNELS.LINK_CONNECTION_STATE)
+      .map((e) => (e.envelope as { payload: { laggy: boolean } }).payload.laggy);
+    expect(pushed).toContain(true);
+
+    host.virtualWindows.get(client.boundWindowId!)!('evt:test:ping', { payload: {} });
+    await waitFor(() => !client.getConnectionState().laggy, '恢复');
+  });
+});
+
+describe('版本不一致', () => {
+  it('旧版本客户端的 hello 收到明确的 version-mismatch,不会进入认证', async () => {
+    const { host, port } = await startHost();
+    const socket = connect({ host: '127.0.0.1', port });
+    const decoder = new FrameDecoder();
+    const reply = new Promise<LinkHandshakeError>((resolve, reject) => {
+      socket.on('data', (chunk) => {
+        const [frame] = decoder.push(chunk);
+        if (frame) resolve(JSON.parse(frame.toString('utf8')) as LinkHandshakeError);
+      });
+      socket.on('error', reject);
+    });
+    socket.on('connect', () => {
+      socket.write(
+        encodeFrame(
+          Buffer.from(
+            JSON.stringify({
+              type: 'hello',
+              linkVersion: LINK_PROTOCOL_VERSION - 1,
+              clientPublicKey: Buffer.alloc(32).toString('base64'),
+              clientNonce: Buffer.alloc(16).toString('base64'),
+            }),
+            'utf8',
+          ),
+        ),
+      );
+    });
+
+    const msg = await reply;
+    socket.destroy();
+    expect(msg.type).toBe('handshake-error');
+    expect(msg.code).toBe('version-mismatch');
+    expect(msg.message).toContain(String(LINK_PROTOCOL_VERSION));
+    expect(host.virtualWindows.size).toBe(0);
+  });
+});
+
+describe('parseResumeRequest', () => {
+  it('没带 resume 返回 null,畸形条目丢弃,重复去掉', async () => {
+    const { parseResumeRequest } = await import('./link-server');
+    expect(parseResumeRequest(undefined)).toBeNull();
+    expect(parseResumeRequest({})).toEqual({ sessions: [] });
+    expect(
+      parseResumeRequest({
+        sessions: [
+          { sessionId: 'a', afterSeq: 3 },
+          { sessionId: 'a', afterSeq: 9 },
+          { sessionId: 'b', afterSeq: -2 },
+          { sessionId: 'c', afterSeq: 1.5 },
+          { sessionId: 7, afterSeq: 1 },
+          null,
+          { sessionId: 'd', afterSeq: -1 },
+        ],
+      }),
+    ).toEqual({
+      sessions: [
+        { sessionId: 'a', afterSeq: 3 },
+        { sessionId: 'd', afterSeq: -1 },
+      ],
+    });
+  });
+
+  it('条目数封顶', async () => {
+    const { parseResumeRequest } = await import('./link-server');
+    const many = Array.from({ length: 2000 }, (_, i) => ({ sessionId: `s${i}`, afterSeq: 0 }));
+    expect(parseResumeRequest({ sessions: many })!.sessions).toHaveLength(512);
   });
 });

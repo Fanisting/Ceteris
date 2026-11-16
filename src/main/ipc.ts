@@ -134,6 +134,9 @@ import {
   type GetProtocolVersionResponse,
   type GetScrollbackPayload,
   type GetScrollbackResponse,
+  type OutputSincePayload,
+  type OutputSinceResponse,
+  type AppResyncPayload,
   type GetSettingsResponse,
   type GetSnapshotPayload,
   type ImportSettingsResponse,
@@ -617,7 +620,23 @@ async function forwardWithLocalTheme(
  */
 export function applyLocalThemeToLinkEvent(channel: string, envelope: unknown): unknown {
   const theme = linkSettingsManager?.get().appearance.theme;
-  if (channel !== EVENT_CHANNELS.SETTINGS_CHANGED || !theme) return envelope;
+  if (!theme) return envelope;
+  // ADR-050:重连后注入的 resync 带完整 snapshot,里面的设置同样要换成本机主题。
+  if (channel === EVENT_CHANNELS.APP_RESYNC) {
+    const resync = envelope as EventEnvelope<AppResyncPayload>;
+    return {
+      ...resync,
+      payload: {
+        ...resync.payload,
+        snapshot: applyLocalThemeToResult(
+          COMMAND_CHANNELS.APP_GET_SNAPSHOT,
+          resync.payload.snapshot,
+          theme,
+        ),
+      },
+    };
+  }
+  if (channel !== EVENT_CHANNELS.SETTINGS_CHANGED) return envelope;
   const typed = envelope as EventEnvelope<SettingsChangedPayload>;
   return {
     ...typed,
@@ -1064,6 +1083,21 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       }
       const p = envelope.payload;
       sessionManager.ackOutput(p.sessionId, envelope.windowId, p.bytes, p.detach === true);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_OUTPUT_SINCE,
+    (_e, envelope: CommandEnvelope<OutputSincePayload>): OutputSinceResponse => {
+      // ADR-050:Link 重连补发用。只读最近输出环,不碰 headless 终端,所以很便宜。
+      const { sessionId, afterSeq } = envelope.payload;
+      if (typeof afterSeq !== 'number' || !Number.isInteger(afterSeq)) {
+        throw new Error(
+          `[ipc] output-since:afterSeq 必须是整数,收到 ${String(afterSeq)}(session=${sessionId})。` +
+            `可能原因:(1) 调用方传了 lastSeq 之外的值;(2) 两端版本不一致。建议:传 -1 取全部。`,
+        );
+      }
+      return sessionManager.getOutputSince(sessionId, afterSeq);
     },
   );
 

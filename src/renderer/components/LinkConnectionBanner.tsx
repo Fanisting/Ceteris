@@ -17,7 +17,10 @@
  *   不需要任何"我是不是远程窗口"的条件判断。
  * - 不提供"手动重连"按钮:LinkClient 已经在按退避序列自动重连,再加一个
  *   按钮只会让用户在它已经在重试时反复点。
- * - 挂载时主动拉一次状态:重连会 reload 窗口,reload 期间推送的事件收不到。
+ * - 挂载时主动拉一次状态:无法原地恢复的重连会 reload 窗口,reload 期间推送的
+ *   事件收不到。
+ * - ADR-050:连着但 Host 几秒没有回音时(laggy)显示一条同样样式的提示,回音一到
+ *   就消失。它不是错误,只说明刚才的按键可能还在路上。
  * - 重连后如果有未确认的输入,保留一条提示直到用户确认。这些输入可能已经执行,
  *   只有用户看过终端才知道要不要重发,所以 Ceteris 不替用户重发。
  */
@@ -64,6 +67,26 @@ export function LinkConnectionBanner(): JSX.Element | null {
 
   // 已连接且没有待确认的输入 = 一切正常,不打扰用户。
   if (conn.state === 'connected') {
+    if (!unconfirmedNotice && conn.laggy) {
+      return (
+        <div
+          className="link-banner link-banner-reconnecting"
+          role="status"
+          title={tx(
+            '连接变慢:Host 3 秒没有回音。超过 15 秒会自动重连。',
+            'Link slow: no reply for 3 s. Reconnects after 15 s.',
+          )}
+        >
+          <Icon name="server" size={14} />
+          <span className="link-banner-text">
+            {tx(
+              `与 ${conn.hostName || conn.address} 的连接变慢,输入可能延迟显示。`,
+              `Link to ${conn.hostName || conn.address} is slow. Input may show late.`,
+            )}
+          </span>
+        </div>
+      );
+    }
     if (!unconfirmedNotice) return null;
     return (
       <div className="link-banner link-banner-reconnecting" role="status">

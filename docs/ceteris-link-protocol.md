@@ -4,7 +4,7 @@
 > 与 `ipc-protocol.md` 的关系:那份定义"main 与 renderer 怎么说话",这份定义"两台机器怎么说话"。
 > Link 承载的正是前者的消息,原样搬运,不做任何语义翻译。
 >
-> 文档版本:1.0 · 最后更新:2026-08-04 · `LINK_PROTOCOL_VERSION = 1`
+> 文档版本:1.1 · 最后更新:2026-11-16 · `LINK_PROTOCOL_VERSION = 2`(ADR-050)
 
 ---
 
@@ -128,16 +128,33 @@ frame  = AES-256-GCM(key, nonce, plaintext) ‖ tag
 
 | type | 方向 | 说明 |
 |------|------|------|
-| `auth` | C → S | 客户端名、版本、IPC 协议版本、可选 `preferredWindowId` |
+| `auth` | C → S | 客户端名、版本、IPC 协议版本、可选 `preferredWindowId`、可选 `resume`(重连时,见 6.1) |
 | `auth-ok` | S → C | 分配的虚拟 windowId / windowNumber、Host 名与版本 |
+| `resume` | S → C | 仅当 auth 带了 `resume`:紧跟 auth-ok,带 snapshot 和每个 session 的补发结果(见 6.1) |
 | `auth-rejected` | S → C | IPC 版本不匹配、客户端数超限 |
 | `cmd` | C → S | 转发一条 `cmd:*`,带自增 `id` |
 | `cmd-result` | S → C | 对应 `id` 的结果或错误(保留 error code) |
 | `evt` | S → C | 转发一条 `evt:*`,含完整 EventEnvelope |
-| `ping` / `pong` | 双向 | 心跳,15 秒一次,50 秒无入站即判定连接已死 |
+| `ping` / `pong` | 双向 | 心跳,5 秒一次,15 秒无入站即判定连接已死(Host 每个心跳周期检查一次,实际 15 到 20 秒) |
 | `bye` | 双向 | 优雅关闭,收到后不触发重连退避 |
 
 **凭据错误不发 `handshake-error`**:令牌不对时静默断开,不告诉对方"你的令牌错了"还是"这里根本没开 Host 模式"。
+
+### 4.1 活性与重连(ADR-050)
+
+客户端把任何入站帧都当作活动,并据此判断三种状态(纯逻辑在 `src/main/link/link-liveness.ts`):
+
+| 状态 | 条件 | 效果 |
+|------|------|------|
+| 变慢(laggy) | 发 ping 后 3 秒(`LINK_LAGGY_AFTER_PING_MS`)或发终端输入后 1 秒(`LINK_LAGGY_AFTER_INPUT_MS`)仍无入站帧 | 只是提示:`laggy: true` 推给远程窗口的状态条和设置页徽章,下一个入站帧清掉 |
+| 已断 | 15 秒(`LINK_HEARTBEAT_TIMEOUT_MS`)无入站帧 | 断开并按退避重连 |
+| 正常 | 其余 | 无 |
+
+两个"变慢"计时都从上一次入站之后第一次发出算起,连续打字不会把计时往后推。
+
+重连退避:0.5 秒起翻倍,30 秒封顶,每次乘以 [0.8, 1.2] 之间的随机系数(`computeReconnectDelay`)。
+
+开发用:dev / beta 构建读 `CETERIS_LINK_DELAY_MS`,两端每个出站帧推迟这么多毫秒(上限 5 秒),在一台机器上模拟 DERP 中继。stable 忽略它。
 
 ---
 
@@ -184,15 +201,48 @@ socket 断开(任何原因)
 
 最后一步是这个特性与 Ceteris 核心哲学("会话不随窗口死")的接榫处:远程客户端断线在 Host 眼里与本地关掉一个窗口**是同一件事**,走同一条代码路径。
 
+意外断开(不是 `bye`,也不是被 Host 踢掉)时,Host 先记下这个窗口持有的 session 和分屏列表(`LINK_RESUME_TTL_MS` = 24 小时内有效)。同一 windowId 重连后,Host 先恢复分屏列表,再逐个 claim 仍然无主的 session。分屏列表必须先恢复:claim 会释放本窗口持有的其他 session,只有分屏里的除外。
+
+**没有宽限期**(ADR-050 评估过):断线立即释放归属,虚拟窗口不保留。宽限期内 Host 本机要用这些 session 就得走跨机交接,违背上面的核心约束。
+
 ### 6.1 重连保持身份
 
 renderer 用 `window.api.windowId`(取自 URL query)与 `session.ownerWindowId` 比对来判断"这个终端归不归我"。所以:
 
 - Client 的本地窗口用 Host 分配的虚拟 windowId 作为自己的 id(`createWindow` 的 `forcedWindowId`)。
 - 重连时 `auth.preferredWindowId` 带上旧 id,Host 复用它。
-- 于是重连只需 `webContents.reload()` 一次:renderer 重新握手、重新拉 snapshot、身份不变,之前接管的 session 仍然是它的。
 
 若每次重连都换新 id,renderer 重连后会认为自己一个 session 都不持有,进而去 claim 那些**其实还是它自己的** session,拿到一堆 `SessionAlreadyOwned`。
+
+### 6.2 原地恢复(ADR-050)
+
+重连不再 `webContents.reload()`。renderer 保留它的 xterm,只补上断线期间漏掉的东西。
+
+**Client 记什么**:每个 session 已经交给窗口的最后一个 seq,来自注入的 `evt:session:output` 和转发回来的 `cmd:session:get-scrollback` / `cmd:session:claim` 结果里的 `lastSeq`。session 关闭或被别的窗口接管时删掉。这是 Client 唯一的本地状态,只用于补发和去重,不改写任何 payload。
+
+**auth 里带什么**:
+
+```ts
+resume: { sessions: Array<{ sessionId: string; afterSeq: number }> }
+```
+
+**Host 怎么回**:恢复归属之后,取 snapshot(`cmd:app:get-snapshot`,以虚拟窗口身份)和每个 session 的 `cmd:session:output-since`,然后在**一个同步块**里依次写出:
+
+```
+auth-ok → resume { snapshot, sessions[] } → 补发的输出 → outbox → 之后才是实时事件
+```
+
+- 补发的输出是普通的 `evt` 帧,channel 为 `evt:session:output`,seq 是原值。
+- outbox 是虚拟窗口注册之后、auth-ok 之前本该发给它的事件。它从 snapshot 取得之前就开始攒,所以 snapshot 之后的每个变化都在里面;按原顺序重放到 snapshot 之上,窗口的最终状态与 Host 一致。outbox 超过 1 万条时放弃原地恢复。
+- 每个 session 的结果:`replayed`(输出紧跟其后)、`gap`(漏掉的部分已不在 Host 的 1 MiB 最近输出环里)、`not-owner`(断线期间被别的窗口接管)、`unknown-session`(已关闭)。只给本窗口仍持有的 session 补发输出,与 owner-only 路由一致。
+
+**Client 怎么用**:
+
+- 把 snapshot 作为 `evt:app:resync` 注入窗口,`replaySessionIds` 列出 `gap` 的 session。renderer 替换 store 数据、保留视图状态,并只重建这些 session 的终端,让它们照首次显示的路径重拉 scrollback。
+- 补发与 outbox 里的输出可能重叠,按 seq 丢掉不大于已交出 seq 的那些。
+- `snapshot: null` 表示 Host 无法原地恢复,Client 退回整页 reload。
+
+**最近输出环**:Host 的 SessionManager 给每个 session 记下最近约 1 MiB(按解码后字节)已 emit 的输出,从最旧的开始丢。emit 的 seq 并不连续(8 ms 聚合只带最后一个),所以连续性用"被丢掉的最后一个 seq"判断:`afterSeq` 不小于它,seq 大于 `afterSeq` 的输出就全在环里。实现:`src/main/output-ring.ts`。
 
 ---
 
@@ -216,6 +266,8 @@ Link 引入后,`ipc.ts` 的 `broadcastEvent` 有两处偏离"发给所有 Browse
 
 必须 bump:删除 / 重命名消息 type 或字段、字段类型变化、加密参数变化。
 
+**v2(ADR-050)**:新增 `resume` 消息和 `auth.resume` 字段本身可以不 bump,但新客户端连旧 Host 会一直等不到 resume,两端心跳规则也变了,所以还是 bump,让版本不一致在握手时就明确报出来。
+
 ---
 
 ## 9. 已知的协议层限制
@@ -223,3 +275,5 @@ Link 引入后,`ipc.ts` 的 `broadcastEvent` 有两处偏离"发给所有 Browse
 - 单 Host 同时最多 `LINK_MAX_CLIENTS = 8` 个客户端(与 WindowManager 的 20 窗口上限呼应)。
 - 无消息压缩。PTY 输出经 base64 后膨胀 4/3,实测在终端交互场景下带宽不是瓶颈,不值得引入压缩带来的 CRIME 类风险面。
 - 命令转发超时固定 30 秒,不可配置。
+- 原地恢复只覆盖每个 session 最近约 1 MiB 的输出。断线期间输出更多的 session 会重建终端并重拉 scrollback,用户会看到这一个终端重画一次。
+- 一次 resume 最多处理 512 个 session,多出的不补发。

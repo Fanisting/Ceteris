@@ -591,6 +591,80 @@ describe('IPC PDF 自动刷新与登录提示', () => {
   });
 });
 
+describe('IPC SESSION_ACK_OUTPUT (ADR-051)', () => {
+  async function install(): Promise<{
+    ack: (payload: unknown) => Promise<unknown>;
+    ackOutput: ReturnType<typeof vi.fn>;
+  }> {
+    const { installIpcLayer } = await freshIpc();
+    const { deps, stubs } = makeStubs();
+    const ackOutput = vi.fn();
+    (stubs.sessionManager as Record<string, unknown>)['ackOutput'] = ackOutput;
+    installIpcLayer(deps as Parameters<typeof installIpcLayer>[0]);
+    const handler = handlers.get(COMMAND_CHANNELS.SESSION_ACK_OUTPUT)!;
+    const ack = async (payload: unknown) =>
+      handler({}, { windowId: 'w1', requestId: 'r', payload });
+    return { ack, ackOutput };
+  }
+
+  it('passes a valid ack on with the envelope windowId, detach defaulting to false', async () => {
+    const { ack, ackOutput } = await install();
+    await ack({ sessionId: 's1', bytes: 5000 });
+    await ack({ sessionId: 's1', bytes: 0, detach: true });
+    expect(ackOutput).toHaveBeenNthCalledWith(1, 's1', 'w1', 5000, false);
+    expect(ackOutput).toHaveBeenNthCalledWith(2, 's1', 'w1', 0, true);
+  });
+
+  it.each([
+    ['not an object', null],
+    ['missing sessionId', { bytes: 10 }],
+    ['negative bytes', { sessionId: 's1', bytes: -1 }],
+    ['fractional bytes', { sessionId: 's1', bytes: 1.5 }],
+    ['string bytes', { sessionId: 's1', bytes: '10' }],
+    ['NaN bytes', { sessionId: 's1', bytes: Number.NaN }],
+    ['detach not boolean', { sessionId: 's1', bytes: 1, detach: 'yes' }],
+  ])('rejects an invalid payload (%s) without touching SessionManager', async (_name, payload) => {
+    const { ack, ackOutput } = await install();
+    await expect(ack(payload)).rejects.toMatchObject({ code: 'InvalidPayload' });
+    expect(ackOutput).not.toHaveBeenCalled();
+  });
+});
+
+describe('IPC snapshots and flow control (ADR-051)', () => {
+  async function install(owner: string | null): Promise<{
+    call: (channel: string) => Promise<unknown>;
+    snapshot: ReturnType<typeof vi.fn>;
+  }> {
+    const { installIpcLayer } = await freshIpc();
+    const { deps, stubs } = makeStubs();
+    const snapshot = vi.fn();
+    snapshot.mockResolvedValue({ data: '', lastSeq: 3 });
+    const sm = stubs.sessionManager as Record<string, unknown>;
+    sm['getScrollbackForReplay'] = snapshot;
+    sm['claimOwner'] = vi.fn();
+    sm['get'] = vi.fn(() => ({ id: 's1', ownerWindowId: owner }));
+    installIpcLayer(deps as Parameters<typeof installIpcLayer>[0]);
+    const call = async (channel: string) =>
+      handlers.get(channel)!({}, { windowId: 'w1', requestId: 'r', payload: { sessionId: 's1' } });
+    return { call, snapshot };
+  }
+
+  it('claim takes its snapshot without forOwner, so held output of a mounted view survives', async () => {
+    const { call, snapshot } = await install('w1');
+    await call(COMMAND_CHANNELS.SESSION_CLAIM);
+    expect(snapshot).toHaveBeenCalledWith('s1');
+  });
+
+  it('get-scrollback resets flow control only when the owner asks', async () => {
+    const owner = await install('w1');
+    await owner.call(COMMAND_CHANNELS.SESSION_GET_SCROLLBACK);
+    expect(owner.snapshot).toHaveBeenCalledWith('s1', { forOwner: true });
+    const other = await install('w2');
+    await other.call(COMMAND_CHANNELS.SESSION_GET_SCROLLBACK);
+    expect(other.snapshot).toHaveBeenCalledWith('s1', { forOwner: false });
+  });
+});
+
 describe('IPC show-in-explorer', () => {
   let dir: string;
   beforeEach(async () => {

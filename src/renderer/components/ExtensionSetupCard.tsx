@@ -7,10 +7,12 @@
  * - Shown while settings.extensions.setupSeen is false (new install, or first start after the
  *   update that added it), and again on the EXTENSION_SETUP_OPEN_EVENT from Settings. Later and
  *   Set up both write setupSeen = true, so it never comes back by itself.
- * - It goes before the other first-start guides: the quick launch bubble and the coordinator
- *   tour wait for setupSeen (MainPane.tsx, CoordinatorTour.tsx).
- * - Preselection follows what is on this machine: Claude Code items when ~/.claude exists,
- *   Codex items when the Codex home exists. The user can tick anything anyway.
+ * - It comes right after the main agent card (ADR-042, MainAgentCard.tsx) and before the other
+ *   first-start guides: the quick launch bubble and the coordinator tour wait for setupSeen
+ *   (MainPane.tsx, CoordinatorTour.tsx).
+ * - Preselection follows what is on this machine: the ceteris-tabs item of Claude Code when
+ *   ~/.claude exists and of Codex when the Codex home exists; the formula item only for the
+ *   main agent, whose group also comes first. The user can tick anything anyway.
  * - Set up does three things in order: flip the switches, write the Codex entry (main does it),
  *   then open ONE terminal with the command line typed and not run. The Enter is the consent,
  *   the same rule as the rows in Settings.
@@ -87,8 +89,8 @@ const ITEMS: Item[] = [
     group: 'ceteris',
     title: ['协调者控制标签页', 'Coordinator tab control'],
     detail: [
-      '标记为协调者的标签里的 Claude Code 可以新开、输入、读取同文件夹的其他标签',
-      'Claude Code in a tab marked Coordinator can open, type into and read the other tabs of its folder',
+      '标记为协调者的标签里的 Claude Code 或 Codex 可以新开、输入、读取同文件夹的其他标签',
+      'Claude Code or Codex in a tab marked Coordinator can open, type into and read the other tabs of its folder',
     ],
   },
 ];
@@ -105,6 +107,13 @@ export function ExtensionSetupCard(): JSX.Element | null {
   const toast = useToast();
   const typer = useTypeIntoNewTerminal();
   const seen = state.settings.extensions?.setupSeen;
+  // ADR-042:主 agent 那张卡片先答完;它的那一组排第一、两项都预勾
+  const mainAsked = state.settings.behavior?.mainAgentAsked === true;
+  const mainAgent = state.settings.behavior?.mainAgent ?? '';
+  const mainGroup: Item['group'] = mainAgent === 'codex' ? 'codex' : 'claude';
+  const groups = [...GROUPS].sort(
+    (a, b) => Number(b.id === mainGroup) - Number(a.id === mainGroup),
+  );
   // 第一次启动自动打开;设置页的按钮再打开
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<ExtensionSetupItemId>>(new Set());
@@ -113,8 +122,8 @@ export function ExtensionSetupCard(): JSX.Element | null {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (seen === false && !state.inSettingsView) setOpen(true);
-  }, [seen, state.inSettingsView]);
+    if (seen === false && mainAsked && !state.inSettingsView) setOpen(true);
+  }, [seen, mainAsked, state.inSettingsView]);
   useEffect(() => {
     const onOpen = (): void => setOpen(true);
     window.addEventListener(EXTENSION_SETUP_OPEN_EVENT, onOpen);
@@ -140,11 +149,13 @@ export function ExtensionSetupCard(): JSX.Element | null {
       const next = new Set<ExtensionSetupItemId>();
       const claudeHere = claude?.claudeInstalled ?? true;
       const codexHere = codex?.codexInstalled ?? true;
-      if (claudeHere) next.add('claude-tabs').add('claude-math');
+      if (claudeHere) next.add('claude-tabs');
+      if (claudeHere && mainGroup === 'claude') next.add('claude-math');
       if (codexHere) next.add('codex-tabs');
+      if (codexHere && mainGroup === 'codex') next.add('codex-math');
       setSelected(next);
     });
-  }, [open, preselected]);
+  }, [open, preselected, mainGroup]);
 
   const { isTop } = useOverlayRegistration(open);
   useEffect(() => {
@@ -236,7 +247,7 @@ export function ExtensionSetupCard(): JSX.Element | null {
           )}
         </div>
         <div className="extension-setup-groups">
-          {GROUPS.map((g) => (
+          {groups.map((g) => (
             <div key={g.id} className="extension-setup-group">
               <div className="extension-setup-group-title">{tx(g.title[0], g.title[1])}</div>
               {ITEMS.filter((it) => it.group === g.id).map((it) => (

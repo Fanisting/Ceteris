@@ -1520,6 +1520,51 @@ html[data-maximized='true'] .app-root.with-shell {
   padding-right: 34px;
 }
 
+/* ADR-042:主 agent 的卡片占满一行,强调色描边,右边"更换"在状态点左侧 */
+.template-button-wrap.main-agent-wrap {
+  grid-column: 1 / -1;
+}
+/* Material 外观把卡片的 border 设成 none,所以描边用内阴影画,两种外观都看得到 */
+.template-button.main-agent {
+  box-shadow: inset 0 0 0 1.5px var(--color-accent-special, #f0f);
+}
+.template-button.main-agent:hover:not(:disabled) {
+  box-shadow:
+    inset 0 0 0 1.5px var(--color-accent-special, #f0f),
+    var(--md-elevation-1, 0 0 0 transparent);
+}
+.template-button.main-agent.has-change {
+  padding-right: 76px;
+}
+.template-button-wrap.has-dot > .template-button.main-agent.has-change {
+  padding-right: 100px;
+}
+.template-main-note {
+  font-size: 11.5px;
+  color: var(--color-text-secondary, #f0f);
+}
+.template-main-change {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  color: var(--color-accent-secondary, var(--color-accent-special, #f0f));
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.template-button-wrap.has-dot > .template-main-change {
+  right: 36px;
+}
+.template-main-change:hover:not(:disabled) {
+  background-color: var(--color-bg-active, #f0f);
+}
+
 .agent-dot {
   position: absolute;
   top: 50%;
@@ -3247,6 +3292,51 @@ select.settings-input option {
   font-size: 11.5px;
   color: var(--color-text-secondary, #f0f);
   margin-bottom: 10px;
+}
+
+/* ADR-042:第一次启动问主 agent 的卡片 */
+.main-agent-panel {
+  width: 480px;
+}
+.main-agent-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.main-agent-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background-color: var(--color-bg-primary, #f0f);
+  border: 1px solid var(--color-bg-elevated, #f0f);
+  border-radius: var(--block-radius, 8px);
+  color: var(--color-text-primary, #f0f);
+  font-size: 13px;
+  transition:
+    border-color 80ms ease,
+    background-color 80ms ease;
+}
+.main-agent-choice:hover {
+  background-color: var(--color-bg-hover, #f0f);
+  border-color: var(--color-accent-special, #f0f);
+}
+.main-agent-choice.selected {
+  background-color: var(--color-bg-active, #f0f);
+  border-color: var(--color-accent-special, #f0f);
+  box-shadow: inset 0 0 0 1px var(--color-accent-special, #f0f);
+}
+.main-agent-choice-icon {
+  display: inline-flex;
+  color: var(--color-accent-special, #f0f);
+}
+.main-agent-choice-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .app-modal-panel.danger {
   border-color: var(--color-danger, #f0f);

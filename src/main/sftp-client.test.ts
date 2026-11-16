@@ -260,6 +260,12 @@ describe('buildSftpArgs', () => {
   it('用 sshpass 时才关 BatchMode', () => {
     expect(buildSftpArgs(PROFILE, true)).toContain('BatchMode=no');
   });
+
+  it('keepalive 每 15 秒一次,3 次无回应即断开', () => {
+    const args = buildSftpArgs(PROFILE, false);
+    expect(args).toContain('ServerAliveInterval=15');
+    expect(args).toContain('ServerAliveCountMax=3');
+  });
 });
 
 describe('SftpPool.list', () => {

@@ -14,6 +14,10 @@
  *   theme 实时切 (xterm 支持 term.options.theme = newTheme 运行时切换)
  * - 字节流: PTY → main → evt:session:output → atob → xterm.write
  *           xterm.onData → utf8 → base64 → cmd:session:send-input → main
+ * - **输出流控 ack** (ADR-051):live 输出 xterm 解析完后经 OutputAcker 攒成
+ *   5 KB 一条 cmd:session:ack-output;窗口隐藏时收到就 ack;卸载时带 detach
+ *   把余数发掉。main 按未 ack 量把输出扣在 main 或放出,见 output-flow-control.ts;
+ *   收到 evt:session:output-resync 时就地重跑快照重放
  * - **Scrollback 重放协议** (避免历史与实时输出竞态):
  *   1. mount 时立即注册 output listener,但置于"buffering"模式 (data 进
  *      pending 数组,不直接 write)
@@ -96,9 +100,13 @@ import {
   CloseFullscreen,
   OpenInFull,
 } from './material-symbols';
+import { isPermanentAckError, OutputAcker } from '@shared/output-flow';
+import { ReplayRounds } from '@shared/replay-rounds';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
+  type AckOutputPayload,
+  type OutputResyncPayload,
   type CreateSessionResponse,
   type GetScrollbackPayload,
   type GetScrollbackResponse,
@@ -129,6 +137,13 @@ import { activateInlineImages, reportTerminalLook } from '../inline-images';
 import { activateTerminalMath } from '../terminal-math-overlay';
 import { useAppDispatch, useAppState } from '../store';
 import { attachLocalEcho, type LocalEcho } from '../local-echo';
+import { attachTypeAheadView, type TypeAheadView } from '../type-ahead-view';
+import {
+  TYPE_AHEAD_SUBMIT_DELAY_MS,
+  TypeAhead,
+  agentPromptReady,
+  type TypeAheadWrite,
+} from '@shared/type-ahead';
 import { detectAgent } from '@shared/next-prompt';
 import { ColonTracker, findColonCommand } from '@shared/colon-commands';
 import type {
@@ -857,6 +872,28 @@ const SUGGEST_SCREEN_LINES = 60;
 /** Screen lines read to tell whether Claude Code or Codex owns the input (ADR-020). */
 const COLON_SCREEN_LINES = 40;
 
+/**
+ * Type ahead text survives the reload a Link reconnect does (ceteris-link-protocol.md 6.1),
+ * so a prompt typed while the link was down is still there afterwards. sessionStorage is per
+ * window and outlives a reload; a closed window takes it along, as it should.
+ */
+const TYPE_AHEAD_STORAGE_PREFIX = 'ceteris:type-ahead:';
+function loadTypeAhead(sessionId: string): string {
+  try {
+    return sessionStorage.getItem(TYPE_AHEAD_STORAGE_PREFIX + sessionId) ?? '';
+  } catch {
+    return '';
+  }
+}
+function saveTypeAhead(sessionId: string, text: string): void {
+  try {
+    if (text) sessionStorage.setItem(TYPE_AHEAD_STORAGE_PREFIX + sessionId, text);
+    else sessionStorage.removeItem(TYPE_AHEAD_STORAGE_PREFIX + sessionId);
+  } catch {
+    // Storage blocked: the text still lives in memory until a reload.
+  }
+}
+
 interface TerminalViewProps {
   /**
    * 必须满足 session.ownerWindowId === state.myWindowId — 父组件 MainPane 通过
@@ -997,6 +1034,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   toastRef.current = toast;
   // 防 toast 刷屏:多次 sendInput 失败短时间内只弹一次。
   const lastInputRejectToastAtRef = useRef(0);
+  // Type ahead (ADR-047) entry points for paste, drop, the next prompt suggestion and
+  // Shift+Enter; null unless this is a remote window. take and newline return false when the
+  // text is not held; send writes through the same queue as typed keys, so a paste cannot
+  // overtake a prompt that is still on its way.
+  const typeAheadRef = useRef<{
+    take(text: string): boolean;
+    send(data: string): void;
+    newline(): boolean;
+  } | null>(null);
 
   // ── 操作:复制 / 粘贴 / 清屏 / 搜索 ──
   //
@@ -1112,9 +1158,17 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         }
       }
 
+      // Type ahead (ADR-047): the paste joins the held prompt, in order with what was typed.
+      const typeAheadEntry = typeAheadRef.current;
+      if (typeAheadEntry?.take(text)) return;
+
       // bracketed paste 包裹(可通过 settings.behavior.bracketedPaste 关闭,
       // cmd.exe 等不支持 readline 的 shell 用户应当关闭以免看到字面 marker)
       const payload = bracketedPaste ? `\x1b[200~${text}\x1b[201~` : text;
+      if (typeAheadEntry) {
+        typeAheadEntry.send(payload);
+        return;
+      }
       const base64 = encodeStringToBase64(payload);
       await window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
         sessionId: session.id,
@@ -1183,6 +1237,13 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   const acceptSuggestion = (): void => {
     if (!suggestion) return;
     // Typed, not sent: the user reads it and presses Enter themselves.
+    const typeAheadEntry = typeAheadRef.current;
+    if (typeAheadEntry) {
+      if (!typeAheadEntry.take(suggestion)) typeAheadEntry.send(suggestion);
+      setSuggestion(null);
+      focusTerminal(termRef, searchVisibleRef);
+      return;
+    }
     void window.api.invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {
       sessionId: session.id,
       data: encodeStringToBase64(suggestion),
@@ -1353,9 +1414,29 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     //   - paste 类 action 的真正动作在 capture-phase 'paste' listener
     //     (见 term.open 之后的 PASTE-1 注册块),本 handler 只负责 consume
     //     keyboard event
+    let shiftEnterTaken = false;
     term.attachCustomKeyEventHandler((ev) => {
+      // Type ahead (ADR-047): Shift+Enter adds a line to the held prompt instead of sending.
+      // Enter also fires a keypress after the keydown; xterm sends '\r' from it when the
+      // keydown was refused here, so that keypress is refused too.
+      if (ev.type === 'keypress' && ev.key === 'Enter' && shiftEnterTaken) {
+        shiftEnterTaken = false;
+        return false;
+      }
       if (ev.type !== 'keydown') return true;
+      shiftEnterTaken = false;
       if (ev.isComposing || ev.keyCode === 229) return true;
+      if (
+        ev.key === 'Enter' &&
+        ev.shiftKey &&
+        !ev.ctrlKey &&
+        !ev.altKey &&
+        !ev.metaKey &&
+        typeAheadRef.current?.newline()
+      ) {
+        shiftEnterTaken = true;
+        return false;
+      }
       const binding = matchKeybinding(ev, {
         searchVisible: searchVisibleRef.current,
       });
@@ -1684,121 +1765,232 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       .catch(() => {});
 
     // ── Scrollback replay 协议 ──
-    let replayed = false;
+    // ADR-051:重放分轮 (挂载一轮,每次 evt:session:output-resync 再一轮),
+    // 由 ReplayRounds 排序:重置走写队列 (RIS),不会让队列里的旧输出落在新快照前后。
+    const rounds = new ReplayRounds(
+      (data, parsed) => term.write(data, parsed),
+      () => startReplay(),
+    );
     let pending: Array<{ seq: number; bytes: Uint8Array }> = [];
     let lastReplayedSeq = -1;
 
     // Remote windows only: on a local terminal the echo is already instant.
     let echo: LocalEcho | null = null;
     const outputDecoder = new TextDecoder();
+
+    // ADR-051 输出流控:每段写进 xterm 的 live 输出,解析完后 ack 给 main
+    // (攒够 FLOW_ACK_CHUNK 才发一条);owner 落后太多时 main 把输出扣在自己那边,
+    // ack 跟上后一次发来。PTY 从不暂停。fire and forget,不 toast。
+    // 只 ack seq > lastReplayedSeq 的那些:更早的已含在快照里,main 在快照时清零过。
+    // 失败分两种:Host 不认识这条命令 (比 ADR-051 旧的 Link Host,每条都会在它的日志里
+    // 留一条 warn) 或 payload 被拒,以后也不会成功,这个视图不再发;别的失败 (Link 重连中、
+    // 超时) 把字节还给 acker,随下一条 ack 再发。不发 ack 是安全的:main 只在收到过
+    // ack 后才扣,最坏由看门狗在 2 秒内放出。
+    let acksRefused = false;
+    const acker: OutputAcker = new OutputAcker((bytes, detach) => {
+      if (acksRefused) return;
+      window.api
+        .invoke<AckOutputPayload, void>(COMMAND_CHANNELS.SESSION_ACK_OUTPUT, {
+          sessionId: session.id,
+          bytes,
+          ...(detach ? { detach: true } : {}),
+        })
+        .catch((err: unknown) => {
+          if (isPermanentAckError(err)) acksRefused = true;
+          else if (!detach) acker.giveBack(bytes);
+        });
+    });
+    // 窗口最小化或被完全遮住时 Chromium 节流计时器,xterm 分片解析的回调可能
+    // 晚好几秒;这时改为收到就 ack,看不见的窗口不拖住 PTY。
+    acker.setHidden(document.hidden);
+    const onVisibility = (): void => acker.setHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    const writeLive = (bytes: Uint8Array): void => {
+      const parsed = acker.received(bytes.length);
+      term.write(bytes, () => {
+        parsed?.();
+        echo?.noteOutput(outputDecoder.decode(bytes, { stream: true }));
+      });
+    };
+
     void window.api
       .invoke<undefined, LinkConnectionStatePayload | null>(
         COMMAND_CHANNELS.LINK_GET_WINDOW_STATE,
         undefined,
       )
       .then((link) => {
-        if (link && !disposed) echo = attachLocalEcho(term);
+        if (!link || disposed) return;
+        echo = attachLocalEcho(term);
+        typeAhead = new TypeAhead(loadTypeAhead(session.id));
+        typeAheadView = attachTypeAheadView(
+          term,
+          tx('按 Enter 发送', 'sends on Enter'),
+          () => !typeAhead!.isLive && promptReady(),
+        );
+        showTypeAhead();
+        typeAheadRef.current = {
+          take(text) {
+            if (!typeAheadTakes() || !typeAhead!.insert(text)) return false;
+            setSuggestion(null);
+            showTypeAhead();
+            return true;
+          },
+          send: sendQueued,
+          newline() {
+            if (!typeAheadTakes() || typeAhead!.isLive) return false;
+            routeTypeAhead(typeAhead!.feed('\n'));
+            return true;
+          },
+        };
       })
       .catch(() => {});
+
+    // Type ahead (ADR-047), remote agent tabs only: the prompt stays here until Enter sends
+    // it in one message, so typing never waits on the link or on a busy agent's redraw.
+    let typeAhead: TypeAhead | null = null;
+    let typeAheadView: TypeAheadView | null = null;
+    /**
+     * Claude Code or Codex waits at its own input box: its footer is on or below the input
+     * cursor row and no approval or choice prompt is open. Read on every key, because an
+     * approval can replace the input box between two keys and its 1 must not be held.
+     */
+    const promptReady = (): boolean => {
+      const buffer = term.buffer.active;
+      const at = typeAheadView?.inputCell();
+      if (!at) return false;
+      const fromInput: string[] = [];
+      for (let y = at.y; y < term.rows; y++) {
+        fromInput.push(buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? '');
+      }
+      const screen: string[] = [];
+      for (let y = Math.max(0, buffer.length - COLON_SCREEN_LINES); y < buffer.length; y++) {
+        screen.push(buffer.getLine(y)?.translateToString(true) ?? '');
+      }
+      return agentPromptReady(fromInput.join('\n'), screen.join('\n'));
+    };
+    /**
+     * True when this key belongs to the type ahead: a live message runs or the agent's input
+     * box is showing. Held text that the screen no longer fits stays held, hidden, while keys
+     * go straight to whatever covers the input box.
+     */
+    const typeAheadTakes = (): boolean => typeAhead !== null && (typeAhead.isLive || promptReady());
+    const showTypeAhead = (): void => {
+      if (!typeAhead) return;
+      saveTypeAhead(session.id, typeAhead.text);
+      typeAheadView?.show(typeAhead.text);
+    };
 
     const cleanupOutput = window.api.on<SessionOutputPayload>(
       EVENT_CHANNELS.SESSION_OUTPUT,
       (payload) => {
         if (payload.sessionId !== session.id) return;
         const bytes = decodeBase64ToBytes(payload.data);
-        if (!replayed) {
+        if (rounds.isReplaying) {
           pending.push({ seq: payload.seq, bytes });
           return;
         }
-        if (payload.seq > lastReplayedSeq) {
-          term.write(bytes, () => echo?.noteOutput(outputDecoder.decode(bytes, { stream: true })));
-        }
+        if (payload.seq > lastReplayedSeq) writeLive(bytes);
       },
     );
 
-    void window.api
-      .invoke<GetScrollbackPayload, GetScrollbackResponse>(
-        COMMAND_CHANNELS.SESSION_GET_SCROLLBACK,
-        { sessionId: session.id },
-      )
-      .then(async (res) => {
-        if (disposed) return;
-        if (res.data) {
-          // FLK-1:分片 write 避免 2MB scrollback 同步阻塞主线程 100-300ms
-          // (用户看到的"切 session 后黑屏一下,然后内容瞬间涌出"卡顿)。
-          // 16KB 切片 + setTimeout(0) 让出主线程,让 xterm RAF 和 IPC 都有
-          // 机会运行,期间用户敲键的回显也能正常显示。
-          const all = decodeBase64ToBytes(res.data);
-          const CHUNK = 16 * 1024;
-          for (let i = 0; i < all.length; i += CHUNK) {
-            if (disposed) return;
-            term.write(all.subarray(i, i + CHUNK));
-            // 大于一片才让出 — 小 scrollback 一次过完
-            if (all.length > CHUNK && i + CHUNK < all.length) {
-              await new Promise((r) => setTimeout(r, 0));
+    // ADR-051:owner 落后太多时 main 丢掉扣着的输出并发 evt:session:output-resync,
+    // 这里就地重跑同一套快照重放 (不重建 TerminalView)。快照的 lastSeq 盖住所有被丢的
+    // seq,之后的 live 输出按 seq > lastSeq 写入:不丢、不双写。顺序见 ReplayRounds:
+    // 重放中又收到 resync 时这一轮结束后再跑一轮;只有最后一轮 reveal 并锚底。
+    const startReplay = (): void => {
+      void window.api
+        .invoke<GetScrollbackPayload, GetScrollbackResponse>(
+          COMMAND_CHANNELS.SESSION_GET_SCROLLBACK,
+          { sessionId: session.id },
+        )
+        .then(async (res) => {
+          if (disposed) return;
+          if (res.data) {
+            // FLK-1:分片 write 避免 2MB scrollback 同步阻塞主线程 100-300ms
+            // (用户看到的"切 session 后黑屏一下,然后内容瞬间涌出"卡顿)。
+            // 16KB 切片 + setTimeout(0) 让出主线程,让 xterm RAF 和 IPC 都有
+            // 机会运行,期间用户敲键的回显也能正常显示。
+            const all = decodeBase64ToBytes(res.data);
+            const CHUNK = 16 * 1024;
+            for (let i = 0; i < all.length; i += CHUNK) {
+              if (disposed) return;
+              term.write(all.subarray(i, i + CHUNK));
+              // 大于一片才让出 — 小 scrollback 一次过完
+              if (all.length > CHUNK && i + CHUNK < all.length) {
+                await new Promise((r) => setTimeout(r, 0));
+              }
             }
           }
-        }
-        if (disposed) return;
-        lastReplayedSeq = res.lastSeq;
-        for (const c of pending) {
-          if (c.seq > lastReplayedSeq) term.write(c.bytes);
-        }
-        pending = [];
-        replayed = true;
-        // BETA-018 + SCROLL-1 第一轮:scrollback 重放完后锚底,消除"从上
-        // 往下刷屏"观感。重放是同步内容回灌,不是历史浏览,应当锚定底部。
-        //
-        // SCROLL-1 第一轮 fence:scrollToBottom **必须**在 fence callback 内,
-        // 而不是这里直接调。因为 `term.write()` 是异步排队 — 上面所有 write
-        // 调用返回时,xterm parser 通常还在分批消化 writeBuffer,buffer 里
-        // 只有已 parse 完的那部分行。直接 scrollToBottom 锚的"底"在后续
-        // parser 解析新行时会被持续往下推 → 视觉上仍是从顶部往下铺。
-        // 空 chunk + callback 走 xterm 内部 FIFO writeBuffer,callback
-        // 由 parser drain 后触发(d.ts:1216:"callback that fires when
-        // the data was processed by the parser") — 等价于一道 drain fence,
-        // 锚的"底"才是真正的最终底。
-        //
-        // SCROLL-1 第二轮(2026-05-24,KBD-1 同 PR):第一轮 fence 只解决
-        // "最终 scroll 位置"对不对,**没解决** "分片 write + setTimeout(0)
-        // yield 之间,xterm RAF 把每个 chunk 处理后的中间 buffer 画到 canvas
-        // 上"的中间帧暴露问题 — 用户报"刷屏速度快多了但还在抖"。修法是
-        // 从 mount 起 host visibility:hidden + inert(见 JSX),fence cb +
-        // scrollToBottom + 一帧 RAF(留给 xterm renderer 把最终 viewport
-        // 画进 canvas)后才 setHostRevealed(true) reveal。第一可见帧 =
-        // 终态 canvas 合成结果。
-        //
-        // disposed 兜底:fence / RAF 都是异步,期间用户可能已切走 / 关窗,
-        // 组件已 dispose,跳过避免 throw / setState on unmounted。
-        // 详见 docs/issues/scroll-1-session-switch-progressive-refresh.md。
-        term.write(REPLAY_FENCE, () => {
           if (disposed) return;
-          term.scrollToBottom();
-          requestAnimationFrame(() => {
+          lastReplayedSeq = res.lastSeq;
+          for (const c of pending) {
+            if (c.seq > lastReplayedSeq) term.write(c.bytes, acker.received(c.bytes.length));
+          }
+          pending = [];
+          if (!rounds.done()) return; // 又排了一轮:由最后一轮 reveal
+          // BETA-018 + SCROLL-1 第一轮:scrollback 重放完后锚底,消除"从上
+          // 往下刷屏"观感。重放是同步内容回灌,不是历史浏览,应当锚定底部。
+          //
+          // SCROLL-1 第一轮 fence:scrollToBottom **必须**在 fence callback 内,
+          // 而不是这里直接调。因为 `term.write()` 是异步排队 — 上面所有 write
+          // 调用返回时,xterm parser 通常还在分批消化 writeBuffer,buffer 里
+          // 只有已 parse 完的那部分行。直接 scrollToBottom 锚的"底"在后续
+          // parser 解析新行时会被持续往下推 → 视觉上仍是从顶部往下铺。
+          // 空 chunk + callback 走 xterm 内部 FIFO writeBuffer,callback
+          // 由 parser drain 后触发(d.ts:1216:"callback that fires when
+          // the data was processed by the parser") — 等价于一道 drain fence,
+          // 锚的"底"才是真正的最终底。
+          //
+          // SCROLL-1 第二轮(2026-05-24,KBD-1 同 PR):第一轮 fence 只解决
+          // "最终 scroll 位置"对不对,**没解决** "分片 write + setTimeout(0)
+          // yield 之间,xterm RAF 把每个 chunk 处理后的中间 buffer 画到 canvas
+          // 上"的中间帧暴露问题 — 用户报"刷屏速度快多了但还在抖"。修法是
+          // 从 mount 起 host visibility:hidden + inert(见 JSX),fence cb +
+          // scrollToBottom + 一帧 RAF(留给 xterm renderer 把最终 viewport
+          // 画进 canvas)后才 setHostRevealed(true) reveal。第一可见帧 =
+          // 终态 canvas 合成结果。
+          //
+          // disposed 兜底:fence / RAF 都是异步,期间用户可能已切走 / 关窗,
+          // 组件已 dispose,跳过避免 throw / setState on unmounted。
+          // 详见 docs/issues/scroll-1-session-switch-progressive-refresh.md。
+          term.write(REPLAY_FENCE, () => {
             if (disposed) return;
-            setHostRevealed(true);
+            term.scrollToBottom();
+            requestAnimationFrame(() => {
+              if (disposed) return;
+              setHostRevealed(true);
+            });
+          });
+        })
+        .catch((err) => {
+          console.warn('[TerminalView] get-scrollback failed, falling back', err);
+          if (disposed) return;
+          for (const c of pending) term.write(c.bytes, acker.received(c.bytes.length));
+          pending = [];
+          if (!rounds.done()) return;
+          // BETA-018 + SCROLL-1:fallback 路径同样走 fence + scrollToBottom
+          // + host reveal,保持 viewport 与 visibility 行为一致。即便走到
+          // catch(get-scrollback rejected),也必须 reveal host,否则终端
+          // 永远是隐藏的,用户看不到任何输出。
+          term.write(REPLAY_FENCE, () => {
+            if (disposed) return;
+            term.scrollToBottom();
+            requestAnimationFrame(() => {
+              if (disposed) return;
+              setHostRevealed(true);
+            });
           });
         });
-      })
-      .catch((err) => {
-        console.warn('[TerminalView] get-scrollback failed, falling back', err);
-        if (disposed) return;
-        for (const c of pending) term.write(c.bytes);
-        pending = [];
-        replayed = true;
-        // BETA-018 + SCROLL-1:fallback 路径同样走 fence + scrollToBottom
-        // + host reveal,保持 viewport 与 visibility 行为一致。即便走到
-        // catch(get-scrollback rejected),也必须 reveal host,否则终端
-        // 永远是隐藏的,用户看不到任何输出。
-        term.write(REPLAY_FENCE, () => {
-          if (disposed) return;
-          term.scrollToBottom();
-          requestAnimationFrame(() => {
-            if (disposed) return;
-            setHostRevealed(true);
-          });
-        });
-      });
+    };
+    const cleanupResync = window.api.on<OutputResyncPayload>(
+      EVENT_CHANNELS.SESSION_OUTPUT_RESYNC,
+      (payload) => {
+        if (payload.sessionId !== session.id || disposed) return;
+        echo?.reset();
+        rounds.resync();
+      },
+    );
+    rounds.start();
 
     // ResizeObserver — trailing debounce 150ms (用户勘误后续 #4)
     let lastCols = cols;
@@ -1963,11 +2155,25 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         });
         return;
       }
+      if (typeAheadTakes()) {
+        setSuggestion(null);
+        routeTypeAhead(typeAhead!.feed(data, resolveColonCommand));
+        return;
+      }
+      sendQueued(data);
+    });
+
+    /**
+     * Sends one chunk the user typed: `name:` expansion, local echo, the write itself, and a
+     * toast when the Host refuses it.
+     * @returns true once the Host accepted the write; false when refused or the link failed
+     */
+    const sendInput = (data: string): Promise<boolean> => {
       const toSend = colonTracker.feed(data, resolveColonCommand);
       const base64 = encodeStringToBase64(toSend);
       setSuggestion(null);
       const echoId = echo?.noteInput(toSend) ?? null;
-      void window.api
+      return window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
           COMMAND_CHANNELS.SESSION_SEND_INPUT,
           { sessionId: session.id, data: base64 },
@@ -1975,14 +2181,14 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         .then((res) => {
           if (res.accepted) {
             if (echoId !== null) echo?.ack(echoId);
-            return;
+            return true;
           }
           echo?.reset();
           // Removing a focused terminal fires a blur, and its focus report reaches a
           // session that was just closed. That is not input the user lost.
-          if (disposed) return;
+          if (disposed) return false;
           const now = Date.now();
-          if (now - lastInputRejectToastAtRef.current < 5000) return;
+          if (now - lastInputRejectToastAtRef.current < 5000) return false;
           lastInputRejectToastAtRef.current = now;
           const msg =
             res.reason === 'pty-exited'
@@ -1995,19 +2201,82 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
                     ? 'PTY 写入失败,终端可能需要重启'
                     : '输入未送达';
           toastRef.current.push({ kind: 'warn', message: msg });
+          return false;
         })
         .catch((err) => {
           echo?.reset();
           console.error('[TerminalView] send-input failed', err);
+          return false;
         });
-    });
+    };
+
+    // While a type ahead submit is on its way (text, pause, Enter), later writes wait behind
+    // it, so a key pressed in the pause cannot land between the text and its Enter.
+    let submitChain: Promise<void> = Promise.resolve();
+    let submitsInFlight = 0;
+    const sendQueued = (data: string): void => {
+      if (submitsInFlight === 0) {
+        void sendInput(data);
+        return;
+      }
+      // Not awaited: queued keys go out back to back once the submit is through, before any
+      // key typed after them.
+      submitChain = submitChain.then(() => {
+        void sendInput(data);
+      });
+    };
+
+    /** Multi-line text goes as a paste when the program asked for that, so a newline cannot submit. */
+    const asTyped = (text: string): string =>
+      /\n/.test(text) && term.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text;
+
+    const routeTypeAhead = (writes: TypeAheadWrite[]): void => {
+      for (const w of writes) {
+        if (w.kind === 'key') sendQueued(w.data);
+        else if (w.kind === 'text') sendQueued(asTyped(w.text));
+        else submitTypeAhead(w.text);
+      }
+      showTypeAhead();
+    };
+
+    const submitTypeAhead = (text: string): void => {
+      submitsInFlight++;
+      submitChain = submitChain
+        .then(async () => {
+          if (!(await sendInput(asTyped(text)))) {
+            // Link down or the Host refused: keep the words, the user presses Enter again.
+            typeAhead?.restore(text);
+            showTypeAhead();
+            if (!disposed) {
+              toastRef.current.push({
+                kind: 'warn',
+                message: tx('未发送,输入的文字已保留', 'Not sent. Your text is kept.'),
+              });
+            }
+            return;
+          }
+          await new Promise((r) => setTimeout(r, TYPE_AHEAD_SUBMIT_DELAY_MS));
+          // Sent even if the tab unmounted meanwhile: the text is already in the agent's input.
+          await sendInput('\r');
+        })
+        .finally(() => {
+          submitsInFlight--;
+        });
+    };
 
     return () => {
       disposed = true;
+      // ADR-051:把还欠的 ack 连同 detach 一起发掉,main 在下一个 TerminalView ack 前不再暂停
+      acker.dispose();
+      document.removeEventListener('visibilitychange', onVisibility);
+      cleanupResync();
+      rounds.dispose();
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();
       echo?.dispose();
+      typeAheadView?.dispose();
+      typeAheadRef.current = null;
       cleanupOutput();
       detachImeWorkaround?.();
       detachImePositionLock?.();
@@ -2253,6 +2522,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         // Windows 路径不允许包含 ",所以只需对含空白的路径加双引号即可。
         .map((p) => (/\s/.test(p) ? `"${p}"` : p))
         .join(' ');
+      const typeAheadEntry = typeAheadRef.current;
+      if (typeAheadEntry) {
+        if (!typeAheadEntry.take(quoted)) typeAheadEntry.send(quoted);
+        focusTerminal(termRef, searchVisibleRef);
+        return;
+      }
       const base64 = encodeStringToBase64(quoted);
       window.api
         .invoke(COMMAND_CHANNELS.SESSION_SEND_INPUT, {

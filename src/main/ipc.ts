@@ -29,6 +29,11 @@ import {
 import type { NextPromptUsageTracker } from './next-prompt-usage';
 import type { TemplateUsageTracker } from './template-usage';
 import { templateUsageKey } from '@shared/template-usage';
+import {
+  checkAckPayload,
+  type AckOutputPayload,
+  type OutputResyncPayload,
+} from '@shared/output-flow';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -108,6 +113,8 @@ import {
   type CloseSessionPayload,
   type SetCoordinatorPayload,
   type SetRolePayload,
+  type SetNotifyPayload,
+  type NotifyTestResponse,
   type CommandEnvelope,
   type CreateSessionPayload,
   type CreateSessionResponse,
@@ -131,6 +138,9 @@ import {
   type GetProtocolVersionResponse,
   type GetScrollbackPayload,
   type GetScrollbackResponse,
+  type OutputSincePayload,
+  type OutputSinceResponse,
+  type AppResyncPayload,
   type GetSettingsResponse,
   type GetSnapshotPayload,
   type ImportSettingsResponse,
@@ -222,6 +232,7 @@ import {
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
 import type { ShelfManager } from './shelf-manager';
+import type { DoneNotifier } from './done-notifier';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
 import { pathRefFromId } from './path-manager';
@@ -325,6 +336,8 @@ export interface IpcLayerDeps {
   customThemes?: CustomThemeStore;
   /** 收纳盒(ADR-036)。可选:单测不带它,此时 snapshot.shelf 为空,cmd:shelf:* 抛错 */
   shelfManager?: ShelfManager;
+  /** 系统通知(ADR-048)。可选:单测不带它,此时 cmd:notify:test 回 shown: false */
+  doneNotifier?: DoneNotifier;
 }
 
 let installed = false;
@@ -611,7 +624,23 @@ async function forwardWithLocalTheme(
  */
 export function applyLocalThemeToLinkEvent(channel: string, envelope: unknown): unknown {
   const theme = linkSettingsManager?.get().appearance.theme;
-  if (channel !== EVENT_CHANNELS.SETTINGS_CHANGED || !theme) return envelope;
+  if (!theme) return envelope;
+  // ADR-050:重连后注入的 resync 带完整 snapshot,里面的设置同样要换成本机主题。
+  if (channel === EVENT_CHANNELS.APP_RESYNC) {
+    const resync = envelope as EventEnvelope<AppResyncPayload>;
+    return {
+      ...resync,
+      payload: {
+        ...resync.payload,
+        snapshot: applyLocalThemeToResult(
+          COMMAND_CHANNELS.APP_GET_SNAPSHOT,
+          resync.payload.snapshot,
+          theme,
+        ),
+      },
+    };
+  }
+  if (channel !== EVENT_CHANNELS.SETTINGS_CHANGED) return envelope;
   const typed = envelope as EventEnvelope<SettingsChangedPayload>;
   return {
     ...typed,
@@ -982,6 +1011,27 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // ADR-048:标签的铃铛。开着时 agent 回答完弹系统通知 (done-notifier.ts)
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_SET_NOTIFY,
+    (_e, envelope: CommandEnvelope<SetNotifyPayload>): void => {
+      const { sessionId, notify } = envelope.payload;
+      if (typeof notify !== 'boolean') {
+        throw new Error(
+          `[IPC] set-notify: notify=${JSON.stringify(notify)} for sessionId="${sessionId}" is not a boolean. ` +
+            `Expected true or false; check the bell button in AgentModelControls.tsx.`,
+        );
+      }
+      sessionManager.setNotifyOnDone(sessionId, notify);
+    },
+  );
+
+  // ADR-048:设置页"发一条测试通知",在用户面前这台机器上弹 (link 里是本地命令)
+  handleCommand(
+    COMMAND_CHANNELS.NOTIFY_TEST,
+    (): NotifyTestResponse => ({ shown: deps.doneNotifier?.showTest() ?? false }),
+  );
+
   // STM-3:清除手动重命名标记
   handleCommand(
     COMMAND_CHANNELS.SESSION_CLEAR_MANUAL_RENAME,
@@ -999,6 +1049,9 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 动作和 history-replay 时序耦合 (TerminalView 重新挂载场景非 claim 触发)
       // CURSOR-1 后:替换路径 = getScrollbackForReplay(state-replay 架构,
       // 返回完整终端状态 ANSI 流),需 async + await。
+      // ADR-051:不传 forOwner。真换 owner 时 claimOwner 已清零流控;本窗口本来就是 owner
+      // 时 claimOwner 直接返回,已挂着的 TerminalView 不会用这份快照重放,此时丢掉扣着的
+      // 输出就真丢了。TerminalView 自己的 get-scrollback 才清零。
       const sb = await sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
       return { scrollback: sb.data, lastSeq: sb.lastSeq };
     },
@@ -1016,7 +1069,45 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     async (_e, envelope: CommandEnvelope<GetScrollbackPayload>): Promise<GetScrollbackResponse> => {
       // CURSOR-1:走 state-replay 路径(SerializeAddon),不再返回裸字节。
       // 详见 SessionManager.getScrollbackForReplay 与 docs/issues/cursor-1-...
-      return sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
+      // ADR-051:owner 自己重放时才清零流控、丢掉扣着的输出 (快照已含)
+      const sessionId = envelope.payload.sessionId;
+      const forOwner = sessionManager.get(sessionId)?.ownerWindowId === envelope.windowId;
+      return sessionManager.getScrollbackForReplay(sessionId, { forOwner });
+    },
+  );
+
+  // ADR-051:owner 的 renderer 报告已解析的输出字节,SessionManager 据此 resume PTY。
+  // 高频 (流量大时每秒上百条),不打 debug 日志;只在 payload 非法时报错。
+  // 非 owner 的 ack 由 SessionManager.ackOutput 静默忽略 (换 owner 时的正常竞态)。
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_ACK_OUTPUT,
+    (_e, envelope: CommandEnvelope<AckOutputPayload>): void => {
+      const problem = checkAckPayload(envelope.payload);
+      if (problem) {
+        throw makeIpcError(
+          'InvalidPayload',
+          `ack-output from windowId=${envelope.windowId}: ${problem}. ` +
+            'Likely a renderer built against another protocol version (reload the window) ' +
+            'or a Link client of a different Ceteris version (update both ends).',
+        );
+      }
+      const p = envelope.payload;
+      sessionManager.ackOutput(p.sessionId, envelope.windowId, p.bytes, p.detach === true);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SESSION_OUTPUT_SINCE,
+    (_e, envelope: CommandEnvelope<OutputSincePayload>): OutputSinceResponse => {
+      // ADR-050:Link 重连补发用。只读最近输出环,不碰 headless 终端,所以很便宜。
+      const { sessionId, afterSeq } = envelope.payload;
+      if (typeof afterSeq !== 'number' || !Number.isInteger(afterSeq)) {
+        throw new Error(
+          `[ipc] output-since:afterSeq 必须是整数,收到 ${String(afterSeq)}(session=${sessionId})。` +
+            `可能原因:(1) 调用方传了 lastSeq 之外的值;(2) 两端版本不一致。建议:传 -1 取全部。`,
+        );
+      }
+      return sessionManager.getOutputSince(sessionId, afterSeq);
     },
   );
 
@@ -3038,6 +3129,17 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
     sendEventToWindowId<SessionOutputPayload>(
       session.ownerWindowId,
       EVENT_CHANNELS.SESSION_OUTPUT,
+      payload,
+    );
+  });
+
+  // ADR-051:owner 落后太多,main 丢掉了扣着的输出 → 让 owner 重放快照。只发 owner。
+  sessionManager.on('sessionOutputResync', (payload: OutputResyncPayload) => {
+    const session = sessionManager.get(payload.sessionId);
+    if (!session?.ownerWindowId) return;
+    sendEventToWindowId<OutputResyncPayload>(
+      session.ownerWindowId,
+      EVENT_CHANNELS.SESSION_OUTPUT_RESYNC,
       payload,
     );
   });

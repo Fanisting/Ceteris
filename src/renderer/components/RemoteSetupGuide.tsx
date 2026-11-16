@@ -39,6 +39,7 @@ import {
   pickGuideTemplateId,
   type RemoteSetupRole,
 } from '@shared/remote-setup-guide';
+import { useMainAgent } from './main-agent-ui';
 import { findPathNode, useAppDispatch, useAppState, useAppStateRef } from '../store';
 import { useTranslation } from './LanguageProvider';
 import { getWslDistroName } from './launch-options';
@@ -70,6 +71,8 @@ export interface RemoteSetupGuideStarter {
 export function useRemoteSetupGuide(): RemoteSetupGuideStarter {
   const { tx, locale } = useTranslation();
   const state = useAppState();
+  // ADR-042:引导在用户的主 agent 里开
+  const mainAgent = useMainAgent();
   const stateRef = useAppStateRef();
   const dispatch = useAppDispatch();
   const toast = useToast();
@@ -91,6 +94,7 @@ export function useRemoteSetupGuide(): RemoteSetupGuideStarter {
         locale,
       });
       const templateId = pickGuideTemplateId(
+        mainAgent,
         state.settings.behavior?.quickLaunch ?? DEFAULT_QUICK_LAUNCH_ITEMS,
         state.templates,
       );

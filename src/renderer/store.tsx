@@ -32,6 +32,7 @@ import {
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
+  type AppResyncPayload,
   type BookmarksUpdatedPayload,
   type FileViewOpenRequestedPayload,
   type GetSnapshotResponse,
@@ -59,6 +60,7 @@ import type {
   WindowInfo,
 } from '@shared/types';
 import type { ShelfEntry } from '@shared/shelf';
+import { forgetSession, rememberSession } from '@shared/recent-sessions';
 import { openPdf } from './pdf-view-store';
 
 /**
@@ -134,11 +136,24 @@ export interface AppState {
    * 组件里:Tab 只为当前 path 挂载,别的文件夹里跑完的 agent 也要记住。
    */
   unseenDoneSessionIds: Set<string>;
+  /**
+   * ADR-050:sessionId → 终端的重建次数。MainPane 把它放进 TerminalView 的 key,
+   * 加一就会重建那个终端并重新拉 scrollback。只在 Link 重连后漏掉的输出补不回来
+   * 时用。
+   */
+  terminalEpochs: Map<string, number>;
 
   /** ADR-036:the shelf, newest first. Mirrors main through evt:shelf:changed. */
   shelf: ShelfEntry[];
   /** ADR-036:tabs animating into the box right now, see ShelfGhost. */
   shelfGhosts: ShelfGhost[];
+
+  /**
+   * ADR-049:sessions this window showed, newest first, for the sidebar's back chip.
+   * In memory only, like the selection. Filled by AppStateProvider after each commit,
+   * see recent-sessions.ts.
+   */
+  recentSessionIds: readonly string[];
 }
 
 /**
@@ -164,6 +179,7 @@ const EMPTY_TREE: PathTree = {
 
 export type AppAction =
   | { type: 'snapshot/load'; snapshot: GetSnapshotResponse }
+  | { type: 'snapshot/resync'; snapshot: GetSnapshotResponse; replaySessionIds: string[] }
   | { type: 'pathTree/update'; tree: PathTree }
   | { type: 'bookmarks/update'; bookmarks: Bookmark[] }
   | { type: 'sshProfiles/update'; profiles: SshProfile[] }
@@ -179,6 +195,7 @@ export type AppAction =
   | { type: 'templates/update'; templates: Template[]; defaultTemplateId: string }
   | { type: 'view/select-path'; pathId: string | null }
   | { type: 'view/select-session'; sessionId: string | null }
+  | { type: 'view/remember-session'; sessionId: string }
   | { type: 'view/set-pane-layout'; layout: PaneLayoutId }
   | { type: 'view/set-sidebar-segment'; segment: SidebarSegment }
   | { type: 'view/toggle-path-expand'; pathId: string }
@@ -205,8 +222,8 @@ function reducer(state: AppState, action: AppAction): AppState {
       const sessionsMap = new Map(s.sessions.map((sess) => [sess.id, sess]));
       // 默认选中第一个收藏路径 (若有);否则不选
       const firstBookmark = s.pathTree.bookmarks[0];
-      // 本窗口已持有 session 时直接回到它。Ceteris Link 重连会整页 reload,没有这一步
-      // 窗口会停在空白页,用户要重新找到刚才的会话。
+      // 本窗口已持有 session 时直接回到它。Ceteris Link 无法原地恢复时会整页 reload
+      // (ADR-050),没有这一步窗口会停在空白页,用户要重新找到刚才的会话。
       const owned = s.sessions.find((sess) => sess.ownerWindowId === state.myWindowId);
       return {
         ...state,
@@ -226,6 +243,42 @@ function reducer(state: AppState, action: AppAction): AppState {
         expandedPathIds: owned
           ? new Set([...state.expandedPathIds, owned.pathId])
           : state.expandedPathIds,
+      };
+    }
+    case 'snapshot/resync': {
+      // ADR-050:Link 重连后的原地同步。数据全部换成新的,视图状态(选中、展开、
+      // 分屏、设置页)保留;选中的文件夹或标签已经不在时才清掉,与 pathTree/update
+      // 一样。bookmarks 列表不在 snapshot 里,保留原值。
+      const s = action.snapshot;
+      const sessions = new Map(s.sessions.map((sess) => [sess.id, sess]));
+      const validPathIds = new Set([
+        ...s.pathTree.bookmarks.map((p) => p.id),
+        ...s.pathTree.temporary.map((p) => p.id),
+      ]);
+      const pathKept = state.selectedPathId !== null && validPathIds.has(state.selectedPathId);
+      const sessionKept =
+        pathKept && state.selectedSessionId !== null && sessions.has(state.selectedSessionId);
+      let terminalEpochs = state.terminalEpochs;
+      if (action.replaySessionIds.length > 0) {
+        terminalEpochs = new Map(terminalEpochs);
+        for (const id of action.replaySessionIds) {
+          terminalEpochs.set(id, (terminalEpochs.get(id) ?? 0) + 1);
+        }
+      }
+      return {
+        ...state,
+        pathTree: s.pathTree,
+        sessions,
+        windows: s.windows,
+        sshProfiles: s.sshProfiles,
+        templates: s.templates,
+        defaultTemplateId: s.defaultTemplateId,
+        settings: s.settings,
+        shelf: s.shelf ?? [],
+        selectedPathId: pathKept ? state.selectedPathId : null,
+        selectedSessionId: sessionKept ? state.selectedSessionId : null,
+        expandedPathIds: new Set([...state.expandedPathIds].filter((id) => validPathIds.has(id))),
+        terminalEpochs,
       };
     }
     case 'pathTree/update': {
@@ -359,6 +412,7 @@ function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         sessions,
         unseenDoneSessionIds: withoutId(state.unseenDoneSessionIds, action.sessionId),
+        recentSessionIds: forgetSession(state.recentSessionIds, action.sessionId),
       };
       // 当前选中的 session 被销毁 → 取消选中
       // With split panes the selection moves to a pane still on screen instead: with
@@ -448,6 +502,11 @@ function reducer(state: AppState, action: AppAction): AppState {
         selectedSessionId: action.sessionId,
         unseenDoneSessionIds: withoutId(state.unseenDoneSessionIds, action.sessionId),
       };
+
+    case 'view/remember-session': {
+      const recentSessionIds = rememberSession(state.recentSessionIds, action.sessionId);
+      return recentSessionIds === state.recentSessionIds ? state : { ...state, recentSessionIds };
+    }
 
     case 'view/set-pane-layout':
       return { ...state, paneLayout: action.layout };
@@ -573,8 +632,10 @@ export function makeDefaultState(myWindowId: string, myWindowNumber: number): Ap
     // BETA-027:默认普通页面;Explorer 简易模式打开时在 startup 显式 dispatch set
     simpleMode: false,
     unseenDoneSessionIds: new Set(),
+    terminalEpochs: new Map(),
     shelf: [],
     shelfGhosts: [],
+    recentSessionIds: [],
   };
 }
 
@@ -612,6 +673,14 @@ export function AppStateProvider({
   // (我们用 React 18 严格模式 mount 时会赋两次,值仍正确)。
   const stateRef = useRef(state);
   stateRef.current = state;
+  // ADR-049:record the selection once it is committed, not inside the reducer. One click
+  // often dispatches select-path (which picks some owned session of that folder) and then
+  // select-session; React batches both, so only the session the user landed on is kept.
+  const selectedSessionId = state.selectedSessionId;
+  useEffect(() => {
+    if (selectedSessionId)
+      dispatch({ type: 'view/remember-session', sessionId: selectedSessionId });
+  }, [selectedSessionId]);
   return (
     <AppStateRefContext.Provider value={stateRef}>
       <AppContext.Provider value={value}>{children}</AppContext.Provider>
@@ -698,6 +767,14 @@ export function useIpcSync(): { ready: boolean; error: string | null } {
           ),
           window.api.on<SshProfilesUpdatedPayload>(EVENT_CHANNELS.SSH_PROFILES_UPDATED, (p) =>
             dispatch({ type: 'sshProfiles/update', profiles: p.profiles }),
+          ),
+          // ADR-050:Link 重连后 main 推来新 snapshot,代替整页 reload
+          window.api.on<AppResyncPayload>(EVENT_CHANNELS.APP_RESYNC, (p) =>
+            dispatch({
+              type: 'snapshot/resync',
+              snapshot: p.snapshot,
+              replaySessionIds: p.replaySessionIds,
+            }),
           ),
           window.api.on<SessionCreatedPayload>(EVENT_CHANNELS.SESSION_CREATED, (p) =>
             dispatch({ type: 'sessions/created', session: p.session }),

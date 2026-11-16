@@ -18,6 +18,7 @@ import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
 import { CoordinatorTour } from './components/CoordinatorTour';
 import { ExtensionSetupCard } from './components/ExtensionSetupCard';
+import { MainAgentCard } from './components/MainAgentCard';
 import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
 import { ToastProvider } from './components/Toast';
@@ -26,6 +27,7 @@ import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
 import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
 import { AgentChoiceNoticeBridge } from './components/AgentChoiceNoticeBridge';
+import { NotificationClickBridge } from './components/NotificationClickBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
 import { resolveThemeId, useCustomThemes } from './custom-themes';
 import { setLegadoDynamicInputs } from './legado-dynamic';
@@ -277,6 +279,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
           <AgentUpdateNoticeBridge />
           {/* ADR-035:别的标签里的 agent 停下来等用户决定时弹 toast,点了跳过去 */}
           <AgentChoiceNoticeBridge />
+          {/* ADR-048:点了"回答完"的系统通知,本窗口接管并显示那个标签 */}
+          <NotificationClickBridge />
           <ContextMenuProvider>
             <div
               className="app-root with-shell"
@@ -290,6 +294,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               {/* ADR-024:协调者引导动画,没看过时启动或勾协调者时出现;专注模式不显示 */}
               {!state.simpleMode && <CoordinatorTour />}
               {/* ADR-041:第一次启动的扩展一次装好卡片;排在其他引导之前 */}
+              {/* ADR-042:先问主 agent,扩展卡片等它答完 */}
+              {!state.simpleMode && <MainAgentCard />}
               {!state.simpleMode && <ExtensionSetupCard />}
               {state.inSettingsView ? (
                 <SettingsView />

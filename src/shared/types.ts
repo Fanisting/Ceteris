@@ -368,6 +368,11 @@ export interface SessionInfo {
   agentEffort?: string;
   /** ADR-038: the `--session-id` given to Claude Code at launch, so its transcript is found */
   agentLaunchId?: string;
+  /**
+   * ADR-048: the user turned on this tab's bell, so a finished agent turn shows a system
+   * notification (when settings.notifications.enabled). Absent or false = off, the default.
+   */
+  notifyOnDone?: boolean;
 }
 
 /**
@@ -577,6 +582,17 @@ export interface Settings {
      * 设置 → 远程 里留一个入口。老设置文件 deep merge 补 false。
      */
     remoteSetupGuideSeen: boolean;
+    /**
+     * ADR-042:the user's main agent, a template id. '' = not chosen; then the first installed
+     * agent stands in (resolveMainAgent in shared/main-agent.ts). Asked once at first start,
+     * changed with the wide card's Change in the Agents section of the new tab page.
+     */
+    mainAgent: string;
+    /**
+     * ADR-042:whether the first start main agent card was answered (Continue or Later).
+     * Default false, and older settings files get false too, so existing users are asked once.
+     */
+    mainAgentAsked: boolean;
     /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell
@@ -805,6 +821,15 @@ export interface Settings {
    */
   agents: {
     folderDefaults: FolderAgentDefault[];
+  };
+
+  /**
+   * ADR-048: native system notifications when an agent tab finishes a turn. `enabled` is the
+   * master switch; each tab still opts in with its bell (SessionInfo.notifyOnDone, off by
+   * default), so turning this on alone shows nothing.
+   */
+  notifications: {
+    enabled: boolean;
   };
 }
 

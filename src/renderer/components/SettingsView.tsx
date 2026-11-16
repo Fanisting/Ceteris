@@ -38,6 +38,7 @@ import {
   type ImportSettingsResponse,
   type KnownHostsRefreshResponse,
   type ListShellsResponse,
+  type NotifyTestResponse,
   type ExportSettingsResponse,
   type PickSshKeyFileResponse,
   type SetExplorerIntegrationResponse,
@@ -126,6 +127,7 @@ type CategoryId =
   | 'appearance'
   | 'shell'
   | 'behavior'
+  | 'notifications'
   | 'data'
   | 'remote'
   | 'system-integration'
@@ -147,6 +149,12 @@ const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'appearance', iconName: 'appearance', titleKey: 'settings.category.appearance' },
   { id: 'shell', iconName: 'shell', titleKey: 'settings.category.shell' },
   { id: 'behavior', iconName: 'behavior', titleKey: 'settings.category.behavior' },
+  // ADR-048:agent 回答完的系统通知
+  {
+    id: 'notifications',
+    iconName: 'notifications',
+    titleKey: 'settings.category.notifications',
+  },
   { id: 'data', iconName: 'data', titleKey: 'settings.category.data' },
   {
     id: 'system-integration',
@@ -259,6 +267,8 @@ function CategoryPanel({ categoryId, setError }: CategoryPanelProps): JSX.Elemen
       return <ShellPanel setError={setError} />;
     case 'behavior':
       return <BehaviorPanel setError={setError} />;
+    case 'notifications':
+      return <NotificationsPanel setError={setError} />;
     case 'data':
       return <DataPanel setError={setError} />;
     case 'remote':
@@ -1208,6 +1218,78 @@ function TemplateEditor({
 // ──────────────────────────────────────────────────────────────────
 // 行为分类
 // ──────────────────────────────────────────────────────────────────
+
+/**
+ * ADR-048: system notifications when an agent finishes. The master switch lives here; each
+ * tab opts in with the bell beside its model and effort buttons, off by default.
+ */
+function NotificationsPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
+  const state = useAppState();
+  const { tx } = useTranslation();
+  const enabled = state.settings.notifications?.enabled ?? true;
+  const [testResult, setTestResult] = useState<'shown' | 'unsupported' | null>(null);
+
+  const sendTest = (): void => {
+    setTestResult(null);
+    window.api
+      .invoke<undefined, NotifyTestResponse>(COMMAND_CHANNELS.NOTIFY_TEST, undefined)
+      .then((r) => setTestResult(r.shown ? 'shown' : 'unsupported'))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  };
+
+  return (
+    <section className="settings-panel">
+      <h2 className="settings-panel-title">{tx('通知', 'Notifications')}</h2>
+
+      <SettingRow
+        label={tx('agent 回答完时通知我', 'Notify me when an agent finishes')}
+        hint={tx(
+          '用系统通知提醒你 (Windows 通知中心、macOS 通知中心、Linux 桌面通知),点通知回到那个标签。每个标签默认不通知:在标签下方模型和 effort 旁边点铃铛打开。你正在用那个标签所在的 Ceteris 窗口时不弹。',
+          'Uses the system notifications (Windows notification center, macOS Notification Center, Linux desktop notifications). Click one to go back to its tab. Tabs do not notify by default: turn one on with the bell beside its model and effort buttons. Nothing shows while you are in the Ceteris window that has that tab.',
+        )}
+      >
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) =>
+              void updateSettings({ notifications: { enabled: e.target.checked } }, setError)
+            }
+          />
+          <span>{tx('启用', 'Enable')}</span>
+        </label>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('测试', 'Test')}
+        hint={tx(
+          '在这台电脑上弹一条通知,看系统是否允许 Ceteris 通知。远程 (Link) 标签的通知也弹在你面前这台电脑上,按本机窗口里的这个开关。',
+          'Shows one notification on this computer, to check that the system lets Ceteris notify. Notifications for remote (Link) tabs also show on the computer in front of you, following this switch in a local window.',
+        )}
+      >
+        <button type="button" className="settings-button" onClick={sendTest}>
+          {tx('发一条测试通知', 'Send a test notification')}
+        </button>
+        {testResult === 'shown' && (
+          <span className="settings-row-hint">
+            {tx(
+              '已发送。没看到的话,检查系统的通知设置 (Windows:设置 → 系统 → 通知;macOS:系统设置 → 通知) 和勿扰模式。',
+              'Sent. If nothing appeared, check the system notification settings (Windows: Settings → System → Notifications; macOS: System Settings → Notifications) and Do Not Disturb.',
+            )}
+          </span>
+        )}
+        {testResult === 'unsupported' && (
+          <span className="settings-row-hint">
+            {tx(
+              '这台电脑没有可用的通知服务。',
+              'This computer has no notification service Ceteris can use.',
+            )}
+          </span>
+        )}
+      </SettingRow>
+    </section>
+  );
+}
 
 function BehaviorPanel({ setError }: { setError: (msg: string | null) => void }): JSX.Element {
   const { tx } = useTranslation();

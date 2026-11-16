@@ -76,6 +76,8 @@ import { AgentWave } from './AgentWave';
 import { CelebrationBurst } from './CelebrationBurst';
 import { TemplateIcon } from './TemplateIcon';
 import { useContextMenuApi } from './ContextMenu';
+import { saveMainAgent } from './main-agent-ui';
+import { mainAgentFirst, resolveMainAgent, SHELL_TEMPLATE_IDS } from '@shared/main-agent';
 import { useToast } from './Toast';
 import {
   filterShellsForWslPath,
@@ -332,7 +334,9 @@ export function MainPane(): JSX.Element {
                   className={`session-stage${layout === 'single' ? ' session-stage-beside' : ''}`}
                 >
                   <div className="session-terminal">
-                    <TerminalView session={s} />
+                    {/* ADR-050: a new epoch rebuilds this terminal so it fetches its
+                        scrollback again, after a Link resume could not fill the gap. */}
+                    <TerminalView key={state.terminalEpochs.get(s.id) ?? 0} session={s} />
                   </div>
                   {!(s.id === displayableId && spareSlot >= 0) && <PdfOverlay viewKey={s.id} />}
                 </div>
@@ -693,8 +697,40 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   const templates = state.templates.filter((t) => !t.hidden);
   const shellTemplates = templates.filter((t) => SHELL_TEMPLATE_IDS.has(t.id));
   const allAgentTemplates = templates.filter((t) => !SHELL_TEMPLATE_IDS.has(t.id));
-  const agentTemplates = allAgentTemplates.filter((t) => !missingAgents?.has(t.id));
+  // ADR-042:主 agent 排第一,画成一整行的宽卡片,右边"更换"
+  const installedAgents = allAgentTemplates.filter((t) => !missingAgents?.has(t.id));
+  const mainAgentId = resolveMainAgent(
+    state.settings.behavior?.mainAgent ?? '',
+    installedAgents,
+    null,
+  );
+  const agentTemplates = mainAgentFirst(installedAgents, mainAgentId);
   const agentsKnown = missingAgents !== null;
+  const ctxMenu = useContextMenuApi();
+  const changeMainAgent = (e: MouseEvent<HTMLButtonElement>): void => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    ctxMenu.open({
+      x: r.left,
+      y: r.bottom + 4,
+      title: tx('主 agent', 'Main agent'),
+      items: installedAgents.map((t) => ({
+        label: t.name,
+        checked: t.id === mainAgentId,
+        onSelect: () =>
+          saveMainAgent(t.id, state.settings.behavior?.quickLaunch).catch((err: unknown) => {
+            console.error('[MainPane] save main agent failed', err);
+            toast.push({
+              kind: 'error',
+              message: tx(
+                `保存主 agent 失败:${err instanceof Error ? err.message : String(err)}`,
+                `Failed to save the main agent: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            });
+          }),
+      })),
+    });
+  };
   const visibleShells = shells ? filterShellsForWslPath(shells, wslDistroName) : null;
   const wslShellId = isWslPath ? visibleShells?.[0]?.id : undefined;
   // WSL 路径要等 WSL shell 检测出来,模板才有地方跑
@@ -737,6 +773,9 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
       onLaunch={() => void handleCreate(t.id, isSshPath ? undefined : wslShellId, 'disabled')}
       version={showAgentDots ? agentVersions.get(t.id) : undefined}
       onUpgrade={() => void handleUpgrade(t.id, t.name)}
+      {...(t.id === mainAgentId && !SHELL_TEMPLATE_IDS.has(t.id)
+        ? { main: { onChange: installedAgents.length > 1 ? changeMainAgent : undefined } }
+        : {})}
       {...tierProps(t.id)}
     />
   );
@@ -838,8 +877,8 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
   );
 }
 
-/** 内置的纯 shell 模板归到 Shell 区;其余模板 (含自定义) 归到 Agents 区。 */
-const SHELL_TEMPLATE_IDS = new Set(['shell', 'admin-shell']);
+// 内置的纯 shell 模板归到 Shell 区;其余模板 (含自定义) 归到 Agents 区。SHELL_TEMPLATE_IDS
+// 在 @shared/main-agent,主 agent 的判断用同一份。
 
 /**
  * ADR-034:常用选项的样式钩子。favorite 是点得最多的那个,frequent 是其余几个;
@@ -867,6 +906,7 @@ function TemplateLaunchButton({
   onUpgrade,
   tier,
   hopIndex,
+  main,
 }: {
   template: Template;
   creating: boolean;
@@ -874,11 +914,25 @@ function TemplateLaunchButton({
   /** 有值时在卡片右侧显示状态点 */
   version?: AgentVersionInfo | undefined;
   onUpgrade?: () => void;
+  /**
+   * ADR-042:这是用户的主 agent。卡片占满一行,名字后写"你的主 agent";onChange 有值时
+   * 右边多一个"更换"按钮 (只装了一个 agent 时没得换,不给)。
+   */
+  main?: { onChange?: ((e: MouseEvent<HTMLButtonElement>) => void) | undefined };
 } & FrequentProps): JSX.Element {
+  const { tx } = useTranslation();
+  const classes = [
+    'template-button',
+    version ? 'has-dot' : '',
+    main ? 'main-agent' : '',
+    main?.onChange ? 'has-change' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const button = (
     <button
       type="button"
-      className={frequentClass(`template-button${version ? ' has-dot' : ''}`, { tier, hopIndex })}
+      className={frequentClass(classes, { tier, hopIndex })}
       style={frequentStyle({ tier, hopIndex })}
       onClick={onLaunch}
       disabled={creating}
@@ -887,14 +941,32 @@ function TemplateLaunchButton({
       <span className="template-icon">
         <TemplateIcon template={template} size={18} />
       </span>
-      <span className="template-label">{template.name}</span>
+      <span className="template-label">
+        {main ? <strong>{template.name}</strong> : template.name}
+        {main && (
+          <span className="template-main-note"> · {tx('你的主 agent', 'your main agent')}</span>
+        )}
+      </span>
     </button>
   );
-  if (!version) return button;
+  if (!version && !main) return button;
   return (
-    <div className="template-button-wrap">
+    <div
+      className={`template-button-wrap${main ? ' main-agent-wrap' : ''}${version ? ' has-dot' : ''}`}
+    >
       {button}
-      <AgentVersionDot info={version} disabled={creating} onUpgrade={onUpgrade} />
+      {main?.onChange && (
+        <button
+          type="button"
+          className="template-main-change"
+          onClick={main.onChange}
+          disabled={creating}
+          title={tx('换一个主 agent', 'Pick another main agent')}
+        >
+          {tx('更换', 'Change')}
+        </button>
+      )}
+      {version && <AgentVersionDot info={version} disabled={creating} onUpgrade={onUpgrade} />}
     </div>
   );
 }

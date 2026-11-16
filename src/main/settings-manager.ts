@@ -96,6 +96,9 @@ export const DEFAULT_SETTINGS: Settings = {
     quickLaunchTipSeen: false,
     // 远程设置引导 (ADR-032):没配置远端时点 Local 问一次要不要 AI 带着配
     remoteSetupGuideSeen: false,
+    // ADR-042:主 agent 没选时用第一个装了的;老设置文件补 false,升级后也问一次
+    mainAgent: '',
+    mainAgentAsked: false,
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
@@ -172,6 +175,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   // ADR-038:没有文件夹默认值 = 每个 agent 用自己的配置
   agents: { folderDefaults: [] },
+  // ADR-048:总开关默认开,但每个标签的铃铛默认关,所以不点铃铛什么都不弹
+  notifications: { enabled: true },
 };
 
 const VALID_THEMES: BuiltinThemeId[] = [
@@ -675,6 +680,18 @@ export function validateSettings(s: Settings): void {
       `behavior.remoteSetupGuideSeen=${String(s.behavior.remoteSetupGuideSeen)} 必须是 true 或 false`,
     );
   }
+  if (typeof s.behavior.mainAgent !== 'string' || s.behavior.mainAgent.length > 200) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.mainAgent=${String(s.behavior.mainAgent)} 必须是模板 id 字符串(未选时为空串)`,
+    );
+  }
+  if (typeof s.behavior.mainAgentAsked !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.mainAgentAsked=${String(s.behavior.mainAgentAsked)} 必须是 true 或 false`,
+    );
+  }
   if (typeof s.extensions.setupSeen !== 'boolean') {
     throw new SettingsError(
       'InvalidSettings',
@@ -711,6 +728,12 @@ export function validateSettings(s: Settings): void {
       'InvalidSettings',
       `extensions.colonCommands.commands 无效:${colonProblem}`,
       { field: 'extensions.colonCommands.commands', got: s.extensions.colonCommands.commands },
+    );
+  }
+  if (typeof s.notifications?.enabled !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `notifications.enabled=${String(s.notifications?.enabled)} 必须是 true 或 false`,
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {

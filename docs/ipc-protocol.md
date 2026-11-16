@@ -893,7 +893,7 @@ interface GetScrollbackResponse {
 **Errors**:
 - `SessionNotFound`
 
-> ADR-051:`lastSeq` 是快照的精确边界。main 先同步发出 8ms 冷却和未闭合 2026 帧里的字节,取最后一个已写进 headless 的 seq 作边界,写一个空 fence,在 fence 回调里 serialize。seq <= lastSeq 的输出都在快照里,> lastSeq 的都不在,renderer 按 seq > lastSeq 写入即可,不丢、不双写。调用方是 owner 时,main 同时清零未确认计数并丢掉扣着的输出(快照已含)。
+> ADR-051:`lastSeq` 是快照的精确边界。main 先同步发出 8ms 冷却和未闭合 2026 帧里的字节,取最后一个已写进 headless 的 seq 作边界,写一个空 fence,在 fence 回调里 serialize。seq <= lastSeq 的输出都在快照里,> lastSeq 的都不在,renderer 按 seq > lastSeq 写入即可,不丢、不双写。调用方是 owner 时,main 同时清零未确认计数、丢掉扣着的输出(快照已含),并在下一条 ack 之前不再扣(重放期间 renderer 不发 ack)。`cmd:session:claim` 带回的快照不动流控:本窗口已持有时 claim 不会重放。
 
 ---
 
@@ -1815,7 +1815,7 @@ interface SessionOutputPayload {
 ---
 
 #### `evt:session:output-resync` (ADR-051)
-owner 落后太多(扣着的输出将超过 1 MiB),main 丢掉了扣着的输出。**仅推送给 owner**,每段积压只发一次。owner 的 TerminalView 收到后就地重跑挂载时的快照重放(`term.reset()` 后 `cmd:session:get-scrollback`);重放进行中收到时,这一轮结束后再跑一轮。
+owner 落后太多(扣着的输出将超过 1 MiB),main 丢掉了扣着的输出。**仅推送给 owner**,每段积压只发一次。owner 的 TerminalView 收到后就地重跑挂载时的快照重放:把 RIS(`ESC c`)写进 xterm 的写队列,排在已排队的输出之后,解析到它时整个终端(含 scrollback)重置,在它的回调里再 `cmd:session:get-scrollback`。不直接调 `term.reset()`,它不清写队列。重放进行中收到时,这一轮结束后再跑一轮,只有最后一轮 reveal。
 
 ```typescript
 interface OutputResyncPayload {
@@ -2109,7 +2109,7 @@ main 记下每个 session 发给 owner、还没被确认的输出字节(UTF-8 �
 
 扣着的将超过 1 MiB 时,main 丢掉积压,发一次 `evt:session:output-resync`,owner 重放快照。快照的 lastSeq 盖住所有被丢的 seq。
 
-不会扣的情况:session 没有 owner;当前 owner 还没确认过一次(旧版 Link 客户端从不确认)。清零并丢掉扣着的:换 owner、释放、窗口关闭、owner 取快照。清零并发出扣着的:TerminalView 卸载(`detach: true`)、session 退出或销毁(排在 `evt:session:exited` 之前)。扣 2 秒没有任何确认时看门狗全部发出,并在 owner 再次确认之前不再扣。
+不会扣的情况:session 没有 owner;当前 owner 还没确认过一次(旧版 Link 客户端从不确认)。清零并丢掉扣着的:换 owner、释放、窗口关闭、owner 的 TerminalView 取快照(之后到下一条 ack 前不再扣)。清零并发出扣着的:TerminalView 卸载(`detach: true`)、session 退出或销毁(排在 `evt:session:exited` 之前)。扣 2 秒没有任何确认时看门狗全部发出,并在 owner 再次确认之前不再扣。
 
 ---
 

@@ -199,6 +199,24 @@ button.tag-chip {
   padding-left: 12px;
 }
 
+/* ADR-049: back to the previous session, left of the status filters. The name is cut
+   short so a long tab title does not take the whole row. */
+button.back-chip {
+  gap: 4px;
+  max-width: 180px;
+  padding: 0 10px 0 6px;
+}
+
+.back-chip > svg {
+  flex: 0 0 auto;
+}
+
+.back-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ADR-023: the built-in Running and Needs you filters, first in the bar. */
 button.status-filter-chip {
   padding: 0 10px 0 8px;

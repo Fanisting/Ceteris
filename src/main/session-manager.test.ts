@@ -225,6 +225,8 @@ function makeStubSettingsManager(
       quickLaunch: [],
       quickLaunchTipSeen: true,
       remoteSetupGuideSeen: true,
+      mainAgent: '',
+      mainAgentAsked: true,
       bracketedPaste: true,
       autoCheckUpdates: true,
       autoCheckAgents: true,

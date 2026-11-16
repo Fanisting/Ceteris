@@ -358,6 +358,11 @@ export const EVENT_CHANNELS = {
   SESSION_CREATED: 'evt:session:created',
   SESSION_STATE_CHANGED: 'evt:session:state-changed',
   SESSION_OUTPUT: 'evt:session:output',
+  /**
+   * ADR-051:owner 落后太多,main 丢掉了扣着的输出;owner 应重放快照
+   * (cmd:session:get-scrollback)。只发给 owner。payload 见 OutputResyncPayload。
+   */
+  SESSION_OUTPUT_RESYNC: 'evt:session:output-resync',
   SESSION_EXITED: 'evt:session:exited',
   SESSION_OWNER_CHANGED: 'evt:session:owner-changed',
   SESSION_DESTROYED: 'evt:session:destroyed',
@@ -689,8 +694,8 @@ export interface GetScrollbackResponse {
   lastSeq: number;
 }
 
-/** ADR-051:cmd:session:ack-output 的 payload,定义与校验在 output-flow.ts。无返回值。 */
-export type { AckOutputPayload } from './output-flow';
+/** ADR-051:cmd:session:ack-output 与 evt:session:output-resync 的 payload,定义与校验在 output-flow.ts。 */
+export type { AckOutputPayload, OutputResyncPayload } from './output-flow';
 
 export interface ReleaseSessionPayload {
   sessionId: string;

@@ -29,7 +29,11 @@ import {
 import type { NextPromptUsageTracker } from './next-prompt-usage';
 import type { TemplateUsageTracker } from './template-usage';
 import { templateUsageKey } from '@shared/template-usage';
-import { checkAckPayload, type AckOutputPayload } from '@shared/output-flow';
+import {
+  checkAckPayload,
+  type AckOutputPayload,
+  type OutputResyncPayload,
+} from '@shared/output-flow';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, clipboard, ipcMain, dialog, safeStorage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -1045,7 +1049,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // 动作和 history-replay 时序耦合 (TerminalView 重新挂载场景非 claim 触发)
       // CURSOR-1 后:替换路径 = getScrollbackForReplay(state-replay 架构,
       // 返回完整终端状态 ANSI 流),需 async + await。
-      const sb = await sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
+      // 调用方刚成为 owner:快照清零流控 (ADR-051)
+      const sb = await sessionManager.getScrollbackForReplay(envelope.payload.sessionId, {
+        forOwner: true,
+      });
       return { scrollback: sb.data, lastSeq: sb.lastSeq };
     },
   );
@@ -1062,7 +1069,10 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     async (_e, envelope: CommandEnvelope<GetScrollbackPayload>): Promise<GetScrollbackResponse> => {
       // CURSOR-1:走 state-replay 路径(SerializeAddon),不再返回裸字节。
       // 详见 SessionManager.getScrollbackForReplay 与 docs/issues/cursor-1-...
-      return sessionManager.getScrollbackForReplay(envelope.payload.sessionId);
+      // ADR-051:owner 自己重放时才清零流控、丢掉扣着的输出 (快照已含)
+      const sessionId = envelope.payload.sessionId;
+      const forOwner = sessionManager.get(sessionId)?.ownerWindowId === envelope.windowId;
+      return sessionManager.getScrollbackForReplay(sessionId, { forOwner });
     },
   );
 
@@ -3119,6 +3129,17 @@ function wireEventBroadcasts(deps: IpcLayerDeps): void {
     sendEventToWindowId<SessionOutputPayload>(
       session.ownerWindowId,
       EVENT_CHANNELS.SESSION_OUTPUT,
+      payload,
+    );
+  });
+
+  // ADR-051:owner 落后太多,main 丢掉了扣着的输出 → 让 owner 重放快照。只发 owner。
+  sessionManager.on('sessionOutputResync', (payload: OutputResyncPayload) => {
+    const session = sessionManager.get(payload.sessionId);
+    if (!session?.ownerWindowId) return;
+    sendEventToWindowId<OutputResyncPayload>(
+      session.ownerWindowId,
+      EVENT_CHANNELS.SESSION_OUTPUT_RESYNC,
       payload,
     );
   });

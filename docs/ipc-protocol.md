@@ -9,8 +9,10 @@
 文档版本:1.7 · 最后更新:2026-11-16
 
 > **v1.7 变更**(输出流控,软件定义书 ADR-051):
-> - 新增 `cmd:session:ack-output`(owner 报告已解析的输出字节,main 据此 pause / resume PTY)
-> - 第 8.1 节按代码更新:聚合窗口是 8ms 且为 leading edge,DEC 2026 同步输出帧不拆开;新增第 8.5 节流控
+> - 新增 `cmd:session:ack-output`(owner 报告已解析的输出字节,main 据此扣住或放出输出;PTY 从不暂停)
+> - 新增事件 `evt:session:output-resync`(main 丢掉了扣着的输出,owner 重放快照)
+> - `cmd:session:get-scrollback` 的 lastSeq 改在 fence 处取,快照与 live 输出不再丢字或重复
+> - 第 8.1 节按代码更新:聚合窗口是 8ms 且为 leading edge(含 DEC 2026 序列的块除外),2026 同步输出帧不拆开;新增第 8.5 节流控
 >
 > **v1.6 变更**(收纳盒,软件定义书 ADR-036):
 > - 新增 `cmd:shelf:put`、`cmd:shelf:restore`、`cmd:shelf:remove`、`cmd:shelf:clear` 与事件 `evt:shelf:changed`;snapshot 加 `shelf`
@@ -288,6 +290,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:session:created` | 全部 |
 | `evt:session:state-changed` | 全部(单事件涵盖 state / currentCwd / displayName / exitCode 等子集变化) |
 | `evt:session:output` | 仅 owner |
+| `evt:session:output-resync` | **(ADR-051)** 仅 owner;丢掉了扣着的输出,owner 应重放快照 |
 | `evt:session:exited` | 全部 |
 | `evt:session:owner-changed` | 全部 |
 | `evt:session:destroyed` | 全部 |
@@ -914,19 +917,19 @@ interface GetScrollbackResponse {
 **Errors**:
 - `SessionNotFound`
 
-> ADR-051:调用时 main 把该 session 的未确认输出计数清零并 resume PTY(快照之前发出的输出 renderer 会按 lastSeq 丢掉,永远不会确认)。
+> ADR-051:`lastSeq` 是快照的精确边界。main 先同步发出 8ms 冷却和未闭合 2026 帧里的字节,取最后一个已写进 headless 的 seq 作边界,写一个空 fence,在 fence 回调里 serialize。seq <= lastSeq 的输出都在快照里,> lastSeq 的都不在,renderer 按 seq > lastSeq 写入即可,不丢、不双写。调用方是 owner 时,main 同时清零未确认计数并丢掉扣着的输出(快照已含)。
 
 ---
 
 #### `cmd:session:ack-output` (ADR-051)
-owner 窗口报告它的 xterm 已解析完多少字节 `evt:session:output`,main 据此 pause / resume PTY(规则见 [8.5](#85-输出流控adr-051))。高频、fire and forget。
+owner 窗口报告它的 xterm 已解析完多少字节 `evt:session:output`,main 据此扣住或放出输出(规则见 [8.5](#85-输出流控adr-051))。高频、fire and forget。
 
 ```typescript
 // Payload
 interface AckOutputPayload {
   sessionId: string;
   bytes: number;      // 自上次 ack 以来解析完的字节数(data 解码后的长度),非负整数
-  detach?: boolean;   // true = 这个 TerminalView 卸载了:清零并在下次 ack 前不再暂停
+  detach?: boolean;   // true = 这个 TerminalView 卸载了:发出扣着的,下次 ack 前不再扣
 }
 // Response: void
 ```
@@ -935,6 +938,7 @@ interface AckOutputPayload {
 - 只有当前 owner 的 ack 生效;其他窗口的 ack、未知或已退出 session 的 ack 静默忽略(换 owner 时的正常竞态,不报错)
 - 计数在 0 处截住
 - Link 远程窗口:默认转发给 Host,`windowId` 是虚拟窗口 id
+- renderer 侧:错误信息表明 Host 不认识这条命令(`未知 channel`、`No handler registered`)或 `InvalidPayload` 时,这个视图不再发 ack;其他失败把字节记回去,随下一条 ack 再发
 
 **Errors**:
 - `InvalidPayload`:sessionId 不是非空字符串、bytes 不是非负整数、detach 不是布尔值
@@ -1867,6 +1871,17 @@ interface SessionOutputPayload {
 
 ---
 
+#### `evt:session:output-resync` (ADR-051)
+owner 落后太多(扣着的输出将超过 1 MiB),main 丢掉了扣着的输出。**仅推送给 owner**,每段积压只发一次。owner 的 TerminalView 收到后就地重跑挂载时的快照重放(`term.reset()` 后 `cmd:session:get-scrollback`);重放进行中收到时,这一轮结束后再跑一轮。
+
+```typescript
+interface OutputResyncPayload {
+  sessionId: string;
+}
+```
+
+---
+
 #### `evt:session:exited`
 PTY 进程退出。session 进入 'exited' 状态,**不立即销毁**(ADR-008:无时限保留直到用户右键关闭)。
 
@@ -2106,6 +2121,7 @@ PTY 会产生大量小包(每次 PTY 写都触发 onData)。直接每次都通�
 
 **Main 端实现**(`SessionManager.queueEmit`,ADR-051 起):
 - 每个 session 有一个 8ms 的聚合窗口,leading edge:最近 8ms 内没发过时,新到的第一块立即发出,并开始 8ms 冷却;冷却期间的 onData 字节合并成一个 buffer,冷却到点时一起发出并续上冷却。连续输出因此每 8ms 一条,按键回显不用等
+- 含 DEC 2026 序列(开或关)的块不走 leading edge,等普通的 8ms:Codex 常在一帧之后几 ms 单独写一次光标归位,两者要在同一条里到达 xterm(CURSOR-2)
 - 批次结束在 DEC 2026 同步输出帧里(`ESC[?2026h` 之后、`ESC[?2026l` 之前)时扣住,等帧闭合再发;最多扣 50ms 或 256 KiB,超过就照常发出。跨 chunk 的序列也能识别
 - `evt:session:output` 只发给 owner
 - 若 owner 是 null,**不发送但仍写 scrollback**(headless 镜像)
@@ -2144,9 +2160,13 @@ V1 不暴露 scrollback 大小给用户配置,V1.1 可加。
 
 ### 8.5 输出流控(ADR-051)
 
-main 记下每个 session 发给 owner、还没被确认的输出字节(UTF-8 字节,即 `data` 解码后的长度)。超过 100 000 时 `pty.pause()`,owner 用 `cmd:session:ack-output` 确认到 5 000 以下时 `pty.resume()`。renderer 在 xterm 解析完一段后确认,每满 5 000 字节发一条;窗口隐藏时收到就确认。
+main 记下每个 session 发给 owner、还没被确认的输出字节(UTF-8 字节,即 `data` 解码后的长度)。超过 100 000 后,之后的批次不发,扣在 main 里;owner 用 `cmd:session:ack-output` 确认到 5 000 以下时,扣着的合成一条 `evt:session:output` 发出(seq 是其中最后一块的)。renderer 在 xterm 解析完一段后确认,每满 5 000 字节发一条;窗口隐藏时收到就确认。
 
-不会暂停的情况:session 没有 owner;当前 owner 还没确认过一次(旧版 Link 客户端从不确认)。会清零并继续的情况:换 owner、释放、窗口关闭、快照(`cmd:session:get-scrollback`)、TerminalView 卸载(`detach: true`)、session 退出或销毁。暂停 2 秒没有任何确认时看门狗强制继续,并在 owner 再次确认之前不再暂停。
+**PTY 从不暂停**:main 照常全速读,headless 镜像和快照始终完整。暂停 PTY 会在程序退出时丢掉最后的输出(unix 上 node-pty 在退出 200 ms 后销毁暂停的 socket;Windows 自带 ConPTY 的冲刷计时器只被 data 事件续期)。
+
+扣着的将超过 1 MiB 时,main 丢掉积压,发一次 `evt:session:output-resync`,owner 重放快照。快照的 lastSeq 盖住所有被丢的 seq。
+
+不会扣的情况:session 没有 owner;当前 owner 还没确认过一次(旧版 Link 客户端从不确认)。清零并丢掉扣着的:换 owner、释放、窗口关闭、owner 取快照。清零并发出扣着的:TerminalView 卸载(`detach: true`)、session 退出或销毁(排在 `evt:session:exited` 之前)。扣 2 秒没有任何确认时看门狗全部发出,并在 owner 再次确认之前不再扣。
 
 ---
 

@@ -4,7 +4,15 @@
  *   One test per rule; no xterm, the parse callback is called by hand.
  */
 import { describe, expect, it } from 'vitest';
-import { checkAckPayload, FLOW_ACK_CHUNK, FLOW_LOW_WATERMARK, OutputAcker } from './output-flow';
+import {
+  checkAckPayload,
+  FLOW_ACK_CHUNK,
+  FLOW_HIGH_WATERMARK,
+  FLOW_HOLD_CAP,
+  FLOW_LOW_WATERMARK,
+  isPermanentAckError,
+  OutputAcker,
+} from './output-flow';
 
 function makeAcker(chunk = 100): { acker: OutputAcker; sent: Array<[number, boolean]> } {
   const sent: Array<[number, boolean]> = [];
@@ -15,6 +23,10 @@ function makeAcker(chunk = 100): { acker: OutputAcker; sent: Array<[number, bool
 describe('output flow constants', () => {
   it('an ack chunk never exceeds the low watermark, so a fully parsed stream always resumes', () => {
     expect(FLOW_ACK_CHUNK).toBeLessThanOrEqual(FLOW_LOW_WATERMARK);
+  });
+
+  it('the hold cap is well above the window, so only a far behind owner is resynced', () => {
+    expect(FLOW_HOLD_CAP).toBeGreaterThanOrEqual(FLOW_HIGH_WATERMARK * 10);
   });
 });
 
@@ -33,7 +45,36 @@ describe('checkAckPayload', () => {
   });
 });
 
+describe('isPermanentAckError', () => {
+  it('is permanent when the Host or main does not know the command, or rejects the payload', () => {
+    const electron = "Error invoking remote method 'cmd:session:ack-output': Error: ";
+    expect(isPermanentAckError(new Error(electron + "No handler registered for 'x'"))).toBe(true);
+    expect(
+      isPermanentAckError(new Error(electron + '[ipc] dispatchLocalCommand: 未知 channel')),
+    ).toBe(true);
+    expect(isPermanentAckError(new Error(electron + '[ipc] InvalidPayload: ack-output'))).toBe(
+      true,
+    );
+  });
+
+  it('is transient for a Link that is reconnecting or a timeout', () => {
+    expect(isPermanentAckError(new Error('[LinkClient] 连接中断,命令结果未知:socket closed'))).toBe(
+      false,
+    );
+    expect(isPermanentAckError(new Error('timeout after 30000 ms'))).toBe(false);
+    expect(isPermanentAckError('weird')).toBe(false);
+  });
+});
+
 describe('OutputAcker', () => {
+  it('giveBack keeps the bytes of a failed ack for the next one without sending by itself', () => {
+    const { acker, sent } = makeAcker();
+    acker.giveBack(40);
+    expect(sent).toEqual([]);
+    acker.received(60)?.();
+    expect(sent).toEqual([[100, false]]);
+  });
+
   it('acks only after the parse callback runs', () => {
     const { acker, sent } = makeAcker();
     const parsed = acker.received(150);

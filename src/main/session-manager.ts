@@ -15,8 +15,10 @@
  *   历史,渲染端用 lastSeq 去重 evt:session:output
  * - **输出流控** (ADR-051):每次 emit 给 owner 的字节记进 OutputFlowControl,
  *   owner 的 renderer 解析完后经 cmd:session:ack-output 回 ack;未 ack 超过
- *   100 KB 就 pty.pause(),回落到 5 KB 以下 resume。无主 session 永不暂停;
- *   换 owner、replay 快照、退出都清零并 resume;2 秒无 ack 的看门狗兜底
+ *   100 KB 就把之后的批次扣在 main,回落到 5 KB 以下一次发出。PTY 从不暂停,
+ *   headless 镜像始终完整。无主 session 不扣;换 owner、owner 的 replay 快照丢掉
+ *   扣着的 (快照已含);退出前全部发出;2 秒无 ack 的看门狗兜底;扣满 1 MiB 丢掉
+ *   并发 evt:session:output-resync 让 owner 重放快照
  * - **emit 时机** (ADR-051):空闲后的第一块输出立即 emit (leading edge),之后
  *   8ms 内的输出合并;DEC 2026 同步输出帧未闭合时扣住整批,最多 50ms / 256 KiB
  * - **OSC 1337 解析器**每个 session 一份,从字节流剥离序列后再转发
@@ -511,7 +513,7 @@ interface ManagedSession {
    * 新输出进 pendingEmit 等它到点;null = 空闲,新输出 leading edge 立即 emit。
    */
   pendingEmitTimer: NodeJS.Timeout | null;
-  /** ADR-051:未 ack 字节计数与 pty.pause / resume,见 output-flow-control.ts */
+  /** ADR-051:未 ack 字节计数与 owner 落后时扣住的输出,见 output-flow-control.ts */
   flow: OutputFlowControl;
   /** ADR-051:是否在 DEC 2026 同步输出帧内 (跨 chunk 记状态) */
   syncOutput: SyncOutputTracker;
@@ -1060,11 +1062,19 @@ export class SessionManager extends EventEmitter {
       aiTitled: false,
       pendingEmit: null,
       pendingEmitTimer: null,
-      // getPty 走 sessions Map:退出后 managed.pty 置 null、destroy 后不在 Map 里,
-      // 两种情况都拿到 null,不会对死掉的 PTY 调 pause / resume。
+      // hooks 走 sessions Map:destroy 之后不在 Map 里,迟到的 release 不会 emit。
       flow: new OutputFlowControl(
         sessionId,
-        () => this.sessions.get(sessionId)?.pty ?? null,
+        {
+          release: (held) => {
+            const m = this.sessions.get(sessionId);
+            if (m) this.emitOutput(m, held.bytes, held.lastSeq);
+          },
+          resync: () => {
+            const m = this.sessions.get(sessionId);
+            if (m) this.emit('sessionOutputResync', { sessionId });
+          },
+        },
         this.flowOptions,
       ),
       syncOutput: new SyncOutputTracker(),
@@ -1384,7 +1394,7 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.info.ownerWindowId = windowId;
-    // ADR-051:旧计数属于旧 owner;新 owner 要先 ack 一次才会暂停
+    // ADR-051:旧计数和扣着的输出属于旧 owner;新 owner 会重放快照,要先 ack 一次才会扣
     managed.flow.reset('owner changed', true);
     this.emit('sessionOwnerChanged', {
       sessionId,
@@ -1443,7 +1453,7 @@ export class SessionManager extends EventEmitter {
         !panes?.has(managed.info.id)
       ) {
         managed.info.ownerWindowId = null;
-        managed.flow.reset('owner released', true); // ADR-051:无主 session 永不暂停
+        managed.flow.reset('owner released', true); // ADR-051:无主 session 不扣,扣着的丢掉
         this.emit('sessionOwnerChanged', {
           sessionId: managed.info.id,
           oldOwnerWindowId: windowId,
@@ -1470,7 +1480,7 @@ export class SessionManager extends EventEmitter {
       );
     }
     managed.info.ownerWindowId = null;
-    managed.flow.reset('owner released', true); // ADR-051:无主 session 永不暂停
+    managed.flow.reset('owner released', true); // ADR-051:无主 session 不扣,扣着的丢掉
     this.emit('sessionOwnerChanged', {
       sessionId,
       oldOwnerWindowId: windowId,
@@ -1690,19 +1700,30 @@ export class SessionManager extends EventEmitter {
    * 序列化"当前完整终端状态"为可重放的 ANSI 流 — 是状态机重建,不是字节流
    * 回灌,从根上不可能丢模式。
    *
-   * 时序保证(避免 PER-2 invariant 在新架构下的等价问题):
+   * 时序保证 (ADR-051 修订;旧版在 await 之后才读 lastSeq,两个方向都会错):
    *
-   *   1. flushPendingEmit:把 pendingEmit 里的字节立刻 emit 出去,
-   *      scrollbackLastSeq 推进到该批次末尾
-   *   2. await drainHeadless:写一个空 chunk 等回调,xterm parser 把所有已
-   *      排队的 write 处理完,headless buffer 反映已收字节
-   *   3. 同步块 serialize + 读 scrollbackLastSeq + return — 不再 flush
-   *      (期间到达的新字节会走 8ms 自然 batch + live emit,renderer 用
-   *      seq > lastSeq 过滤,不双写不丢)
+   *   1. 同步:flushPendingEmit,把 8ms 冷却或未闭合 2026 帧里扣着的字节发出去
+   *      (forOwner 时 owner 正在重放,flow.reset 丢掉 owner 落后时扣着的字节,
+   *      快照已含),然后取边界 boundary = 最后一个已写进 headless 的 seq,
+   *      并写一个空 fence。此刻 pending 为空,不存在横跨边界的批次。
+   *   2. fence 回调里 serialize:xterm 按写入顺序 parse,回调时恰好解析到
+   *      boundary 为止;之后到达的字节排在 fence 后面,不在快照里。
+   *   3. 返回 lastSeq = boundary。seq <= boundary 的 live 批次 renderer 丢掉
+   *      (快照已含),> boundary 的写入 (快照不含):不丢、不双写。
+   *
+   *   旧版的两个错:await 期间到的 chunk 被 leading edge 立即发出,推进了
+   *   scrollbackLastSeq 却可能不在快照里 → renderer 丢掉它;反过来,冷却或
+   *   2026 帧里扣着的 chunk 已解析进快照,seq 却大于返回的 lastSeq → 写两次。
+   *
+   * @param opts.forOwner 调用方是当前 owner (TerminalView 挂载、claim 之后):
+   *   清零流控计数并丢掉扣着的输出。非 owner 调用不动流控,扣着的仍归 owner。
    *
    * session 不存在返回 { data: '', lastSeq: -1 }。
    */
-  async getScrollbackForReplay(sessionId: string): Promise<{ data: string; lastSeq: number }> {
+  async getScrollbackForReplay(
+    sessionId: string,
+    opts: { forOwner?: boolean } = {},
+  ): Promise<{ data: string; lastSeq: number }> {
     const managed = this.sessions.get(sessionId);
     if (!managed || !managed.headlessTerm || !managed.serializeAddon) {
       return { data: '', lastSeq: -1 };
@@ -1710,26 +1731,24 @@ export class SessionManager extends EventEmitter {
     const term = managed.headlessTerm;
     const addon = managed.serializeAddon;
 
-    // 1) flush 任何 pendingEmit:emit 出去 + 推 scrollbackLastSeq。这一步
-    //    保证"已经 emit 给 renderer 的字节"和"headless 状态机即将反映的
-    //    字节"在调用本方法的瞬间是一致的边界。
+    // 1) 同步块:flush、清流控、取边界、写 fence,中间不让出事件循环。
     this.flushPendingEmit(managed);
+    if (opts.forOwner) managed.flow.reset('replay snapshot', false);
+    const boundary = managed.outputSeq - 1;
 
-    // 2) 等 parser drain。write('', cb) 在 cb 内说"我之前的 write 全部 parse 完
-    //    了" — 这是 xterm 官方 API,等价于一个轻量 fence。
-    await new Promise<void>((resolve) => {
-      term.write('', () => resolve());
+    // 2) fence 回调里 serialize:此时 headless 恰好解析到 boundary。
+    const ansi = await new Promise<string>((resolve) => {
+      term.write('', () => resolve(this.serializeHeadless(term, addon)));
     });
+    return {
+      data: Buffer.from(ansi, 'utf8').toString('base64'),
+      lastSeq: boundary,
+    };
+  }
 
-    // 3) 同步块:此后任何 PTY 新字节只能在我们 return 之后才被事件循环处理,
-    //    所以 serialize() 看到的 headless 状态 + scrollbackLastSeq 都对应
-    //    drain 解析到的边界,不会有竞态。drain 后到达的字节会通过 8ms 自然
-    //    batch 走 live emit,renderer seq > lastSeq 过滤兜底。
+  /** getScrollbackForReplay 的 serialize 部分;必须在 fence 回调里同步调用。 */
+  private serializeHeadless(term: HeadlessTerminal, addon: SerializeAddon): string {
     let ansi = addon.serialize({ scrollback: 5000 });
-    // ADR-051:seq <= 这里返回的 lastSeq 的输出,renderer 会丢掉 (快照已含),永远
-    // 不会 ack。与读 lastSeq 在同一同步块内清零,之后的计数只含 seq > lastSeq
-    // 的字节,正好是 renderer 会写入并 ack 的那些。不 disengage:读者没换。
-    managed.flow.reset('replay snapshot', false);
 
     // XTERM-SERIALIZE-POLYFILL:0.14.0 stable 的 _serializeModes 不覆盖光标
     // 可见性(?25l)与滚动区(DECSTBM),master / 0.15.0-beta 已修。直读
@@ -1756,11 +1775,7 @@ export class SessionManager extends EventEmitter {
     ) {
       ansi += `\x1b[${top + 1};${bot + 1}r`;
     }
-
-    return {
-      data: Buffer.from(ansi, 'utf8').toString('base64'),
-      lastSeq: managed.scrollbackLastSeq,
-    };
+    return ansi;
   }
 
   /**
@@ -1894,11 +1909,11 @@ export class SessionManager extends EventEmitter {
 
   /**
    * PER-2:把一次 PTY chunk 入 pendingEmit 缓冲,到点(或 destroy 前)通过
-   * flushPendingEmit 一起推 scrollbackLastSeq、发 sessionOutput event。
+   * flushPendingEmit 一起发出。
    *
-   * 关键不变量:在 pendingEmit 窗口内,scrollbackLastSeq 不变;getScrollback
-   * 看到的快照永远等于"已 emit 的全部历史",pending 字节对 renderer 不可见。
-   * flush 时两者一起原子前进。ADR-051 的改动只决定"什么时候 flush",不碰这条。
+   * 关键不变量:pendingEmit 里的字节对 renderer 不可见,flush 时整批带最后一个
+   * chunk 的 seq 发出。快照 (getScrollbackForReplay) 先 flush 再取边界,所以没有
+   * 批次横跨快照边界。ADR-051 的改动只决定"什么时候 flush",不碰这条。
    *
    * 何时 flush (ADR-051),每个 chunk 按顺序判断:
    *
@@ -1906,8 +1921,14 @@ export class SessionManager extends EventEmitter {
    *                     就放弃这一帧,照常 flush)
    *   帧已闭合 / 无帧:
    *     emitBatchMs <= 0 (测试) ──> 立即 flush
-   *     冷却计时器为 null (最近 8ms 没 emit) ──> 立即 flush (leading edge),起冷却
    *     冷却中 ──> 留在 pending,冷却到点时 flush 并再起一轮冷却
+   *     空闲 (最近 8ms 没 emit),chunk 不含 2026 序列 ──> 立即 flush (leading edge)
+   *     空闲,chunk 含 2026 序列 ──> 不走 leading edge,等普通的 8ms
+   *
+   * 为什么含 2026 序列的 chunk 要等:Codex 常把一帧 (`?2026h ... ?2026l`) 和帧外的
+   * 光标归位分成两次写,相隔几 ms。8ms 批次原本把两者合进一条 IPC;立即发出帧会
+   * 把它们拆开,光标在两个位置之间跳 (docs/issues/cursor-2-codex-tui-jitter-vs-vscode.md
+   * 实验 3:批次改 0 后每次退格都闪)。普通 shell 回显不含 2026,照样立即上屏。
    *
    * 为什么扣整批而不是在 `ESC[?2026h` 处切开:seq 是按 chunk 编的,切开要给
    * 半个 chunk 编号,会动 lastSeq 去重的不变量;帧通常几 ms 内闭合,扣整批
@@ -1944,20 +1965,27 @@ export class SessionManager extends EventEmitter {
       this.flushPendingEmit(managed);
       return;
     }
-    if (managed.pendingEmitTimer === null) {
+    if (managed.pendingEmitTimer !== null) return; // 冷却中:由冷却计时器 flush
+    if (managed.syncOutput.sawSequence) {
+      this.armCooldown(managed); // 含 2026 序列:等 8ms,让帧外的光标归位赶上同一批
+    } else {
       this.emitNowAndCoolDown(managed); // leading edge
     }
-    // 否则冷却中:留在 pending,由冷却计时器 flush
+  }
+
+  /** flush pendingEmit 并起一轮 emitBatchMs 冷却。 */
+  private emitNowAndCoolDown(managed: ManagedSession): void {
+    this.flushPendingEmit(managed);
+    if (this.emitBatchMs > 0) this.armCooldown(managed);
   }
 
   /**
-   * flush pendingEmit 并起一轮 emitBatchMs 冷却。冷却到点时若 pending 有字节且
-   * 不在 2026 帧内就再 flush 一次并续上冷却,否则回到空闲 (计时器 null)。
-   * 持续输出时因此每 8ms emit 一次;安静 8ms 后下一块又能 leading edge。
+   * 起一轮 emitBatchMs 冷却 (已在冷却中则不动)。冷却到点时若 pending 有字节且不在
+   * 2026 帧内就 flush 并续上冷却,否则回到空闲 (计时器 null)。持续输出时因此每
+   * 8ms emit 一次;安静 8ms 后下一块又能 leading edge。
    */
-  private emitNowAndCoolDown(managed: ManagedSession): void {
-    this.flushPendingEmit(managed);
-    if (this.emitBatchMs <= 0 || managed.pendingEmitTimer !== null) return;
+  private armCooldown(managed: ManagedSession): void {
+    if (managed.pendingEmitTimer !== null) return;
     managed.pendingEmitTimer = setTimeout(() => {
       managed.pendingEmitTimer = null;
       if (managed.pendingEmit && !managed.syncOutput.isOpen) {
@@ -1985,14 +2013,29 @@ export class SessionManager extends EventEmitter {
     else this.emitNowAndCoolDown(managed);
   }
 
+  /**
+   * 把 pendingEmit 整批交出去。owner 落后太多 (flow.isHolding) 时交给流控扣在
+   * main,否则立即 emit。CURSOR-1 后 headless 状态机是 state-replay 的唯一源,
+   * write 已在 handlePtyData 内同步进入,这里不再追加裸字节。
+   */
   private flushPendingEmit(managed: ManagedSession): void {
     if (!managed.pendingEmit) return;
     const { bytes, lastSeq } = managed.pendingEmit;
     managed.pendingEmit = null;
-    // 原子前进:推 lastSeq + emit 同步完成。CURSOR-1 后:headless 状态机
-    // 是 state-replay 的唯一源,write 已在 handlePtyData 内同步进入(line
-    // headlessTerm?.write 调用),此处不再追加裸字节。getScrollbackForReplay
-    // 通过 await drain + serialize 保证读到的状态与 lastSeq 一致。
+    // ADR-051:无主 session 从不扣 (isHolding 在换 owner 时已清掉)。
+    // 扣满 1 MiB 时 hold 丢掉积压并经 hooks.resync 发 sessionOutputResync。
+    if (managed.flow.isHolding && managed.info.ownerWindowId !== null) {
+      managed.flow.hold(bytes, lastSeq);
+      return;
+    }
+    this.emitOutput(managed, bytes, lastSeq);
+  }
+
+  /**
+   * 发一条 sessionOutput 并记进流控。flushPendingEmit 和流控放出扣着的输出
+   * (hooks.release) 都走这里。
+   */
+  private emitOutput(managed: ManagedSession, bytes: Buffer, lastSeq: number): void {
     managed.scrollbackLastSeq = lastSeq;
     const payload: SessionOutputPayload = {
       sessionId: managed.info.id,
@@ -2011,12 +2054,12 @@ export class SessionManager extends EventEmitter {
    * @param sessionId 目标 session
    * @param windowId 发 ack 的窗口 (IPC 信封里的 windowId;Link 客户端是虚拟窗口 id)
    * @param bytes 自上次 ack 以来解析完的字节数,调用方已校验为非负整数
-   * @param detach true = 那个 TerminalView 卸载了,清零并在下次 ack 前不再暂停
+   * @param detach true = 那个 TerminalView 卸载了:发出扣着的,下次 ack 前不再扣
    *
    * 静默忽略 (都是正常竞态,不是错误):session 不存在或已退出 (没有流控可记);
    * 发送方不是当前 owner (换 owner 之前发出、之后才到的 ack 属于旧计数)。
    *
-   * @副作用 可能调 pty.resume()
+   * @副作用 可能把扣着的输出作为一条 sessionOutput 发出
    */
   ackOutput(sessionId: string, windowId: string, bytes: number, detach = false): void {
     const managed = this.sessions.get(sessionId);
@@ -2026,13 +2069,14 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * 在 session 退出或销毁前同步发出仍在 8ms 聚合窗口内的输出。
+   * 在 session 退出或销毁前同步发出所有还没发的输出:8ms 冷却里的、未闭合 2026
+   * 帧里的、以及 owner 落后时流控扣着的 (ADR-051)。
    *
    * @param managed 待处理的 session
    *
    * @副作用:
-   * - 取消 pendingEmitTimer
-   * - 若存在 pendingEmit,立即 emit sessionOutput 并推进 scrollbackLastSeq
+   * - 取消 pendingEmitTimer 与 syncHoldTimer
+   * - 发出 pendingEmit 与流控扣着的字节 (各一条 sessionOutput)
    *
    * @常见问题排查:
    * - 如果 renderer 在 exited/destroyed 之后才收到最后输出,检查调用方是否
@@ -2049,8 +2093,9 @@ export class SessionManager extends EventEmitter {
       managed.syncHoldTimer = null;
     }
     if (managed.pendingEmit) {
-      this.flushPendingEmit(managed);
+      this.flushPendingEmit(managed); // 流控在扣时进 held,下一行一起放出
     }
+    managed.flow.releaseAll();
   }
 
   private handlePtyExit(
@@ -2611,8 +2656,7 @@ export class SessionManager extends EventEmitter {
       clearTimeout(managed.syncHoldTimer);
       managed.syncHoldTimer = null;
     }
-    // ADR-051:清看门狗,并在 PTY 还在时 resume。两个调用方 (退出、销毁) 都在
-    // managed.pty 置 null / kill 之前调本函数,所以这里的 resume 还能落到 PTY 上。
+    // ADR-051:清看门狗。扣着的输出已由 flushPendingEmitBeforeLifecycleChange 发出。
     managed.flow.dispose();
   }
 

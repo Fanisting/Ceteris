@@ -120,12 +120,36 @@ export class LinkLiveness {
  *
  * @param attempt 已经失败的次数,0 表示第一次重试
  * @param random [0, 1) 的随机数,测试时传固定值
- * @returns 毫秒数,落在 base·2^attempt(封顶 30 秒)的 ±20% 之内
+ * @returns 毫秒数,落在 base·2^attempt 的 ±20% 之内,且不超过 30 秒。封顶在抖动之后:
+ *   先封顶再抖动会让到顶后的重试落在 24 到 36 秒,超过文档承诺的 30 秒
  */
 export function computeReconnectDelay(attempt: number, random: number = Math.random()): number {
   const exp = Math.min(LINK_RECONNECT_BASE_MS * 2 ** Math.max(0, attempt), LINK_RECONNECT_MAX_MS);
   const factor = 1 + (random * 2 - 1) * LINK_RECONNECT_JITTER;
-  return Math.round(exp * factor);
+  return Math.min(Math.round(exp * factor), LINK_RECONNECT_MAX_MS);
+}
+
+/** evaluateLiveness 的结果:同一个时刻的判定和下一次该看的时刻。 */
+export interface LinkLivenessStep {
+  now: number;
+  verdict: LinkLivenessVerdict;
+  /** 绝对时间,与 now 同一时钟 */
+  nextCheckAt: number;
+}
+
+/**
+ * 只读一次时钟,算出判定和下一次检查时刻。
+ *
+ * 为什么不分别调 verdict(Date.now()) 和 nextCheckAt(Date.now()):两次读数之间跨过
+ * 一毫秒,而恰好有阈值落在第二次读数上时,verdict 说"还没到",nextCheckAt 又因为
+ * "已经不在未来"把它滤掉,这个阈值就被跳过了(变慢要再等十几秒才显示)。
+ *
+ * @param liveness 活性状态
+ * @param clock 时钟,只调用一次
+ */
+export function evaluateLiveness(liveness: LinkLiveness, clock: () => number): LinkLivenessStep {
+  const now = clock();
+  return { now, verdict: liveness.verdict(now), nextCheckAt: liveness.nextCheckAt(now) };
 }
 
 /** 人工延迟的上限:再大就不是在模拟网络,而是在制造断线了。 */

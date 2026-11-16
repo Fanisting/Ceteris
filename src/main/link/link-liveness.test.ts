@@ -10,7 +10,12 @@ import {
   LINK_LAGGY_AFTER_PING_MS,
   LINK_RECONNECT_MAX_MS,
 } from '@shared/link-protocol';
-import { computeReconnectDelay, LinkLiveness, readLinkDelayMs } from './link-liveness';
+import {
+  computeReconnectDelay,
+  evaluateLiveness,
+  LinkLiveness,
+  readLinkDelayMs,
+} from './link-liveness';
 
 describe('LinkLiveness:变慢', () => {
   it('ping 后 3 秒内没有入站时不算变慢,到 3 秒算', () => {
@@ -83,6 +88,26 @@ describe('LinkLiveness.nextCheckAt', () => {
   });
 });
 
+describe('evaluateLiveness', () => {
+  it('只读一次时钟:时钟在两次调用之间前进也不会跳过刚好到点的阈值', () => {
+    const l = new LinkLiveness(0);
+    l.noteInputSent(0); // 变慢阈值在 1000
+    // 每读一次前进 1 ms。分两次读(先判定后排期)时,判定在 999 说"还没变慢",
+    // 排期在 1000 把 1000 当成过去滤掉,下一次检查就跳到 15000。
+    let t = LINK_LAGGY_AFTER_INPUT_MS - 1;
+    const clock = (): number => t++;
+    const step = evaluateLiveness(l, clock);
+    expect(t).toBe(LINK_LAGGY_AFTER_INPUT_MS); // 只读了一次
+    expect(step.verdict.laggy).toBe(false);
+    expect(step.nextCheckAt).toBe(LINK_LAGGY_AFTER_INPUT_MS);
+
+    // 对照:分两次读时阈值被跳过
+    t = LINK_LAGGY_AFTER_INPUT_MS - 1;
+    expect(l.verdict(clock()).laggy).toBe(false);
+    expect(l.nextCheckAt(clock())).toBe(LINK_HEARTBEAT_TIMEOUT_MS);
+  });
+});
+
 describe('computeReconnectDelay', () => {
   it('从 0.5 秒起翻倍,30 秒封顶(无抖动时)', () => {
     const mid = 0.5; // 抖动系数恰好为 1
@@ -92,7 +117,7 @@ describe('computeReconnectDelay', () => {
   });
 
   it('抖动在 ±20% 之内', () => {
-    for (const attempt of [0, 3, 10]) {
+    for (const attempt of [0, 3, 5]) {
       const base = computeReconnectDelay(attempt, 0.5);
       const low = computeReconnectDelay(attempt, 0);
       const high = computeReconnectDelay(attempt, 0.999999);
@@ -100,7 +125,17 @@ describe('computeReconnectDelay', () => {
       expect(high).toBeLessThanOrEqual(Math.round(base * 1.2));
       expect(high).toBeGreaterThan(base);
     }
-    expect(computeReconnectDelay(99, 0.999999)).toBeLessThanOrEqual(LINK_RECONNECT_MAX_MS * 1.2);
+  });
+
+  it('抖动之后再封顶:到顶后的重试不超过 30 秒,最短 24 秒', () => {
+    for (const attempt of [6, 7, 10, 99]) {
+      expect(computeReconnectDelay(attempt, 0.999999)).toBe(LINK_RECONNECT_MAX_MS);
+      expect(computeReconnectDelay(attempt, 0.5)).toBe(LINK_RECONNECT_MAX_MS);
+      expect(computeReconnectDelay(attempt, 0)).toBe(LINK_RECONNECT_MAX_MS * 0.8);
+    }
+    for (let i = 0; i < 500; i++) {
+      expect(computeReconnectDelay(i % 20)).toBeLessThanOrEqual(LINK_RECONNECT_MAX_MS);
+    }
   });
 
   it('随机输入下始终落在范围内', () => {
@@ -108,7 +143,7 @@ describe('computeReconnectDelay', () => {
       const d = computeReconnectDelay(i % 8);
       const base = Math.min(500 * 2 ** (i % 8), LINK_RECONNECT_MAX_MS);
       expect(d).toBeGreaterThanOrEqual(Math.floor(base * 0.8));
-      expect(d).toBeLessThanOrEqual(Math.ceil(base * 1.2));
+      expect(d).toBeLessThanOrEqual(Math.min(Math.ceil(base * 1.2), LINK_RECONNECT_MAX_MS));
     }
   });
 });

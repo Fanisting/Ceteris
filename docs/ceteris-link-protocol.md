@@ -152,7 +152,9 @@ frame  = AES-256-GCM(key, nonce, plaintext) ‖ tag
 
 两个"变慢"计时都从上一次入站之后第一次发出算起,连续打字不会把计时往后推。
 
-重连退避:0.5 秒起翻倍,30 秒封顶,每次乘以 [0.8, 1.2] 之间的随机系数(`computeReconnectDelay`)。
+重连退避:0.5 秒起翻倍,每次乘以 [0.8, 1.2] 之间的随机系数,再封顶 30 秒(`computeReconnectDelay`)。封顶放在抖动之后,到顶后的重试落在 24 到 30 秒,不会超过 30 秒。
+
+客户端判断变慢和断线时,判定与下一次检查时刻用同一次时钟读数(`evaluateLiveness`),跨毫秒不会漏掉阈值。
 
 开发用:dev / beta 构建读 `CETERIS_LINK_DELAY_MS`,两端每个出站帧推迟这么多毫秒(上限 5 秒),在一台机器上模拟 DERP 中继。stable 忽略它。
 
@@ -203,6 +205,8 @@ socket 断开(任何原因)
 
 意外断开(不是 `bye`,也不是被 Host 踢掉)时,Host 先记下这个窗口持有的 session 和分屏列表(`LINK_RESUME_TTL_MS` = 24 小时内有效)。同一 windowId 重连后,Host 先恢复分屏列表,再逐个 claim 仍然无主的 session。分屏列表必须先恢复:claim 会释放本窗口持有的其他 session,只有分屏里的除外。
 
+恢复途中连接又断了(socket 关闭、握手超时)时,Host 立即停下,不再 claim 也不再写分屏列表:虚拟窗口此时已注销,再 claim 会让 session 归一个不存在的窗口,Host 本机窗口只会拿到 `SessionAlreadyOwned`。这次要恢复的全部 session(而不只是已经接管的那几个)和分屏列表重新记下,下次重连接着恢复。
+
 **没有宽限期**(ADR-050 评估过):断线立即释放归属,虚拟窗口不保留。宽限期内 Host 本机要用这些 session 就得走跨机交接,违背上面的核心约束。
 
 ### 6.1 重连保持身份
@@ -241,6 +245,7 @@ auth-ok → resume { snapshot, sessions[] } → 补发的输出 → outbox → �
 - 把 snapshot 作为 `evt:app:resync` 注入窗口,`replaySessionIds` 列出 `gap` 的 session。renderer 替换 store 数据、保留视图状态,并只重建这些 session 的终端,让它们照首次显示的路径重拉 scrollback。
 - 补发与 outbox 里的输出可能重叠,按 seq 丢掉不大于已交出 seq 的那些。
 - `snapshot: null` 表示 Host 无法原地恢复,Client 退回整页 reload。
+- Host 把一些"窗口报到"登记挂在窗口 id 上,注销虚拟窗口时一并清掉,以前靠 reload 让 renderer 重新报到。现在由 Client 在 resume 之后替窗口重发它报到过的命令(`RESUME_REANNOUNCE_CHANNELS`,目前只有 `cmd:agent:notices-ready`),否则恢复后的窗口收不到 agent 更新通知,自动升级也会以为没有窗口开着。
 
 **最近输出环**:Host 的 SessionManager 给每个 session 记下最近约 1 MiB(按解码后字节)已 emit 的输出,从最旧的开始丢。emit 的 seq 并不连续(8 ms 聚合只带最后一个),所以连续性用"被丢掉的最后一个 seq"判断:`afterSeq` 不小于它,seq 大于 `afterSeq` 的输出就全在环里。实现:`src/main/output-ring.ts`。
 

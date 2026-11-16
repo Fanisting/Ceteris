@@ -46,6 +46,10 @@ class FakeHost {
   outputOnClaim: string | null = null;
   /** 最近输出环的容量,测试缺口时调小 */
   ringCapBytes = 1024 * 1024;
+  /** claim 已改归属、尚未返回时调用,模拟 claim 序列化终端状态的那段等待 */
+  onClaim: ((sessionId: string) => Promise<void>) | null = null;
+  /** 每次 AGENT_NOTICES_READY 的 windowId */
+  readonly noticesReady: string[] = [];
   private nextNumber = 1;
 
   /**
@@ -115,7 +119,12 @@ class FakeHost {
         }
       }
       if (this.outputOnClaim) this.emitOutput(sessionId, this.outputOnClaim);
+      if (this.onClaim) await this.onClaim(sessionId);
       return {};
+    }
+    if (channel === COMMAND_CHANNELS.AGENT_NOTICES_READY) {
+      this.noticesReady.push(envelope.windowId);
+      return undefined;
     }
     if (channel === COMMAND_CHANNELS.SESSION_SET_PANE_SESSIONS) {
       const { sessionIds } = envelope.payload as { sessionIds: string[] };
@@ -824,5 +833,74 @@ describe('parseResumeRequest', () => {
     const { parseResumeRequest } = await import('./link-server');
     const many = Array.from({ length: 2000 }, (_, i) => ({ sessionId: `s${i}`, afterSeq: 0 }));
     expect(parseResumeRequest({ sessions: many })!.sessions).toHaveLength(512);
+  });
+});
+
+describe('恢复归属途中断开(ADR-050)', () => {
+  it('不再接管剩下的 session,也不复活分屏记录;下次重连恢复全部', async () => {
+    const { host, port, token } = await startHost();
+    const first = startClient(port, token);
+    await waitFor(connected(first.client), '首次连接');
+    const windowId = first.client.boundWindowId!;
+    for (const id of ['s1', 's2', 's3']) host.owners.set(id, windowId);
+    host.paneSessions.set(windowId, ['s1', 's2', 's3']);
+
+    dropConnection(first.client);
+    await waitFor(() => host.owners.get('s1') === null, '归属释放');
+
+    // 自动重连恢复到第一个 session 时,客户端又断了(socket 关闭)
+    let claims = 0;
+    host.onClaim = async () => {
+      claims++;
+      if (claims !== 1) return;
+      first.client.disconnect('test-drop-mid-claim');
+      await waitFor(() => host.virtualWindows.size === 0, 'Host 注销虚拟窗口');
+    };
+    await waitFor(() => claims === 1 && host.virtualWindows.size === 0, '途中断开');
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(claims).toBe(1);
+    expect(host.owners.get('s1')).toBeNull();
+    expect(host.owners.get('s2')).toBeNull();
+    expect(host.owners.get('s3')).toBeNull();
+    expect(host.paneSessions.has(windowId)).toBe(false);
+
+    host.onClaim = null;
+    const { client, local } = makeClient(port, token, { windowId, windowCreated: true });
+    await waitFor(connected(client), '再次连接');
+    await waitFor(restored(local), '原地恢复');
+    expect(['s1', 's2', 's3'].map((id) => host.owners.get(id))).toEqual([
+      windowId,
+      windowId,
+      windowId,
+    ]);
+    expect(host.paneSessions.get(windowId)).toEqual(['s1', 's2', 's3']);
+  });
+});
+
+describe('恢复后重新报到(ADR-050)', () => {
+  it('窗口报到过 agent 通知,原地恢复后 Client 替它再报一次', async () => {
+    const { host, port, token } = await startHost();
+    const { client, local } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+    const windowId = client.boundWindowId!;
+    await client.forwardCommand(COMMAND_CHANNELS.AGENT_NOTICES_READY, undefined);
+    expect(host.noticesReady).toEqual([windowId]);
+
+    dropConnection(client);
+    await waitFor(restored(local), '原地恢复');
+    await waitFor(() => host.noticesReady.length === 2, '重新报到');
+    expect(host.noticesReady).toEqual([windowId, windowId]);
+  });
+
+  it('窗口没报到过时不替它报到', async () => {
+    const { host, port, token } = await startHost();
+    const { client, local } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+
+    dropConnection(client);
+    await waitFor(restored(local), '原地恢复');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(host.noticesReady).toEqual([]);
   });
 });

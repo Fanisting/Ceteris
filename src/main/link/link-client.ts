@@ -82,7 +82,7 @@ import {
   generateHandshakeNonce,
   type LinkCipherStream,
 } from './link-crypto';
-import { computeReconnectDelay, LinkLiveness } from './link-liveness';
+import { computeReconnectDelay, evaluateLiveness, LinkLiveness } from './link-liveness';
 import type { CreateWindowOptions, WindowManager } from '../window-manager';
 import { logger } from '../logger';
 import { applyLocalThemeToLinkEvent } from '../ipc';
@@ -118,6 +118,18 @@ export interface LinkClientDeps {
 
 /** 一次转发命令的等待上限。超时后向 renderer reject,避免 UI 永远转圈。 */
 const COMMAND_TIMEOUT_MS = 30_000;
+
+/**
+ * ADR-050:窗口向 Host "报到"的命令。Host 把这类登记挂在窗口 id 上,断线注销虚拟
+ * 窗口时一并清掉;以前靠 reload 让 renderer 重新报到,原地恢复不 reload,所以由这里
+ * 在 resume 之后替窗口再发一次。只收无 payload、重复发送无害的命令。
+ *
+ * - AGENT_NOTICES_READY:agent 更新通知的监听已挂好(ipc.ts 的 noticeReadyWindows)。
+ *   不重发的话,恢复后的窗口收不到更新通知,自动升级也会以为没有窗口开着。
+ */
+const RESUME_REANNOUNCE_CHANNELS: ReadonlySet<string> = new Set([
+  COMMAND_CHANNELS.AGENT_NOTICES_READY,
+]);
 
 /**
  * 一条到远端 Host 的连接,以及它在本地对应的那个窗口。
@@ -170,6 +182,8 @@ export class LinkClient {
   /** 活性判断(ADR-050)。认证通过时新建,断开时丢弃 */
   private liveness: LinkLiveness | null = null;
   private livenessTimer: NodeJS.Timeout | null = null;
+  /** livenessTimer 到点的绝对时刻 */
+  private livenessTimerAt = 0;
   private laggy = false;
   /** 用户主动断开时置位,阻止自动重连 */
   private disposed = false;
@@ -182,6 +196,8 @@ export class LinkClient {
   private readonly lastSeqBySession = new Map<string, number>();
   /** 这次认证带了 resume,auth-ok 之后等 Host 的 resume 消息 */
   private resumeRequested = false;
+  /** 窗口已经成功报到过的命令(RESUME_REANNOUNCE_CHANNELS 的子集),resume 后重发 */
+  private readonly announced = new Set<string>();
 
   constructor(
     readonly id: string,
@@ -590,6 +606,15 @@ export class LinkClient {
       payload: { snapshot: msg.snapshot as AppSnapshot, replaySessionIds },
     };
     this.sendToWindow(EVENT_CHANNELS.APP_RESYNC, envelope);
+    for (const channel of this.announced) {
+      this.forwardCommand(channel, undefined).catch((err: unknown) => {
+        logger.warn(
+          'LinkClient',
+          `resume 后重新报到 ${channel} 失败,窗口可能收不到这类通知:` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
   }
 
   /** 整页 reload 远程窗口:renderer 重新握手、拉 snapshot。只在无法原地恢复时用。 */
@@ -667,6 +692,7 @@ export class LinkClient {
       ) {
         this.advanceSeq(entry.sessionId, lastSeq);
       }
+      if (RESUME_REANNOUNCE_CHANNELS.has(entry.channel)) this.announced.add(entry.channel);
       entry.resolve(msg.result);
       return;
     }
@@ -713,24 +739,41 @@ export class LinkClient {
    */
   private scheduleLivenessCheck(): void {
     if (!this.liveness) return;
-    if (this.livenessTimer) clearTimeout(this.livenessTimer);
     const now = Date.now();
-    const delay = Math.max(0, this.liveness.nextCheckAt(now) - now);
-    this.livenessTimer = setTimeout(() => {
-      this.livenessTimer = null;
-      this.checkLiveness();
-    }, delay);
+    this.armLivenessTimer(now, this.liveness.nextCheckAt(now));
+  }
+
+  /**
+   * 排活性定时器。已有一个更早到点的定时器时保留它:它到点后会重新判断全部条件,
+   * 换成更晚的反而可能跳过一个阈值。
+   *
+   * @param now 与 at 同一次时钟读数,见 evaluateLiveness
+   */
+  private armLivenessTimer(now: number, at: number): void {
+    if (this.livenessTimer) {
+      if (this.livenessTimerAt <= at) return;
+      clearTimeout(this.livenessTimer);
+    }
+    this.livenessTimerAt = at;
+    this.livenessTimer = setTimeout(
+      () => {
+        this.livenessTimer = null;
+        this.checkLiveness();
+      },
+      Math.max(0, at - now),
+    );
   }
 
   private checkLiveness(): void {
     if (!this.liveness || this.isClosed()) return;
-    const verdict = this.liveness.verdict(Date.now());
-    if (verdict.dead) {
+    // 判定和下一次检查用同一个 now,否则跨毫秒时会漏掉一个阈值
+    const step = evaluateLiveness(this.liveness, Date.now);
+    if (step.verdict.dead) {
       this.fail('心跳超时,连接已失效(Host 可能休眠或网络中断)。正在重连…');
       return;
     }
-    this.setLaggy(verdict.laggy);
-    this.scheduleLivenessCheck();
+    this.setLaggy(step.verdict.laggy);
+    this.armLivenessTimer(step.now, step.nextCheckAt);
   }
 
   /** 切换"变慢"标记,有变化才推给窗口和设置页。 */

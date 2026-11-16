@@ -228,6 +228,12 @@ class LinkConnection {
   private outbox: Array<{ channel: string; envelope: unknown }> | null = null;
   private outboxOverflowed = false;
 
+  /**
+   * 正在恢复中的归属记录(已从 LinkServer 取出,尚未恢复完)。恢复中途断开时,
+   * destroy 把它与已接管的合并后重新记下,下次重连仍能恢复全部 session。
+   */
+  private restoring: ResumableOwnership | null = null;
+
   constructor(
     private readonly socket: Socket,
     private readonly deps: LinkServerDeps,
@@ -474,6 +480,7 @@ class LinkConnection {
     if (this.isClosed()) return;
     const resume = resumeRequest ? await this.buildResume(info.id, resumeRequest) : null;
     if (this.isClosed()) return;
+    this.restoring = null;
 
     // 从这里到 flush outbox 必须是同步的:中间不能插进任何实时事件。
     this.state = 'ready';
@@ -524,10 +531,14 @@ class LinkConnection {
    * 接管失败是正常情况:session 可能已被 Host 本机接管或已经关闭,此时尊重现状。
    */
   private async restoreOwnership(windowId: string): Promise<void> {
-    const { sessionIds, paneSessionIds } = this.hooks.takeResumable(windowId);
-    // 分屏列表必须先恢复:claim 会释放本窗口持有的其他 session,只有分屏里的除外。
-    // 不先恢复,逐个接管下来只剩最后一个,其余分屏变成空白。
-    if (paneSessionIds.length > 0) {
+    const pending = this.hooks.takeResumable(windowId);
+    const { sessionIds, paneSessionIds } = pending;
+    this.restoring = pending;
+    // 每次 dispatch 之前都要确认连接还在:等待期间连接可能已断开(socket 关闭、握手
+    // 超时),虚拟窗口已注销。此时再 claim 会让 session 归一个已经不存在的窗口,
+    // Host 本机窗口接管时只会拿到 SessionAlreadyOwned;再写分屏列表也会让已删除的
+    // 记录复活。没恢复完的部分由 destroy 记回去,下次重连接着恢复。
+    if (paneSessionIds.length > 0 && !this.isClosed()) {
       try {
         await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_SET_PANE_SESSIONS, {
           windowId,
@@ -543,6 +554,7 @@ class LinkConnection {
       }
     }
     for (const sessionId of sessionIds) {
+      if (this.isClosed()) return;
       try {
         await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_CLAIM, {
           windowId,
@@ -590,6 +602,7 @@ class LinkConnection {
       return fallback;
     }
 
+    if (this.isClosed()) return fallback;
     const owners = new Map(snapshot.sessions.map((s) => [s.id, s.ownerWindowId]));
     const sessions: LinkResume['sessions'] = [];
     const outputs: SessionOutputPayload[] = [];
@@ -603,6 +616,7 @@ class LinkConnection {
         sessions.push({ sessionId, status: 'not-owner' });
         continue;
       }
+      if (this.isClosed()) return fallback;
       let res: OutputSinceResponse;
       try {
         res = (await dispatchLocalCommand(COMMAND_CHANNELS.SESSION_OUTPUT_SINCE, {
@@ -784,11 +798,16 @@ class LinkConnection {
       );
       // 必须在注销之前读:注销会触发 handleWindowClosed 清空归属
       if (!NON_RESUMABLE_REASONS.has(reason)) {
+        const owned = this.deps.getOwnedSessionIds(this.virtualWindowId);
+        const panes = this.deps.getPaneSessionIds(this.virtualWindowId);
+        // 恢复归属做到一半就断开时,只算"现在持有的"会丢掉还没来得及接管的那些
+        const pending = this.restoring;
         this.hooks.rememberOwned(this.virtualWindowId, {
-          sessionIds: this.deps.getOwnedSessionIds(this.virtualWindowId),
-          paneSessionIds: this.deps.getPaneSessionIds(this.virtualWindowId),
+          sessionIds: pending ? [...new Set([...pending.sessionIds, ...owned])] : owned,
+          paneSessionIds: panes.length > 0 || !pending ? panes : pending.paneSessionIds,
         });
       }
+      this.restoring = null;
       this.deps.windowManager.unregisterVirtualWindow(this.virtualWindowId);
       this.virtualWindowId = null;
     }

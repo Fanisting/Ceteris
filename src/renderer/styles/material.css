@@ -1615,24 +1615,121 @@ select.settings-input option {
   padding: 0;
 }
 
+/* Track sizes come from the divider fractions MainPane writes as --pane-{col,row}-{a,b}
+   (PaneDividers.tsx). Without them every track is 1fr, an even split. */
 .pane-grid-rows {
-  grid-template: 'p0' minmax(0, 1fr) 'p1' minmax(0, 1fr) / minmax(0, 1fr);
+  grid-template:
+    'p0' minmax(0, var(--pane-row-a, 1fr))
+    'p1' minmax(0, var(--pane-row-b, 1fr))
+    / minmax(0, 1fr);
 }
 
 .pane-grid-cols {
-  grid-template: 'p0 p1' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+  grid-template:
+    'p0 p1' minmax(0, 1fr)
+    / minmax(0, var(--pane-col-a, 1fr)) minmax(0, var(--pane-col-b, 1fr));
 }
 
 .pane-grid-main-left {
-  grid-template: 'p0 p1' minmax(0, 1fr) 'p0 p2' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+  grid-template:
+    'p0 p1' minmax(0, var(--pane-row-a, 1fr))
+    'p0 p2' minmax(0, var(--pane-row-b, 1fr))
+    / minmax(0, var(--pane-col-a, 1fr)) minmax(0, var(--pane-col-b, 1fr));
 }
 
 .pane-grid-main-right {
-  grid-template: 'p0 p2' minmax(0, 1fr) 'p1 p2' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+  grid-template:
+    'p0 p2' minmax(0, var(--pane-row-a, 1fr))
+    'p1 p2' minmax(0, var(--pane-row-b, 1fr))
+    / minmax(0, var(--pane-col-a, 1fr)) minmax(0, var(--pane-col-b, 1fr));
 }
 
 .pane-grid-grid {
-  grid-template: 'p0 p1' minmax(0, 1fr) 'p2 p3' minmax(0, 1fr) / minmax(0, 1fr) minmax(0, 1fr);
+  grid-template:
+    'p0 p1' minmax(0, var(--pane-row-a, 1fr))
+    'p2 p3' minmax(0, var(--pane-row-b, 1fr))
+    / minmax(0, var(--pane-col-a, 1fr)) minmax(0, var(--pane-col-b, 1fr));
+}
+
+/* Containing block for the dividers. Not on single: the one pane keeps its old layout. */
+.pane-grid:not(.pane-grid-single) {
+  position: relative;
+}
+
+/* Drag handles over the gap between panes (PaneDividers.tsx). 8px wide, centred on the 4px
+   gap. The track space is the grid minus 2 × 4px padding and one 4px gap, hence 100% - 12px.
+   Invisible at rest; a 2px primary line shows on hover and while dragging. */
+.pane-divider {
+  position: absolute;
+  z-index: 102;
+  touch-action: none;
+}
+
+.pane-divider-col {
+  top: 4px;
+  bottom: 4px;
+  left: calc((100% - 12px) * var(--pane-col, 0.5) + 2px);
+  width: 8px;
+  cursor: col-resize;
+}
+
+.pane-divider-row {
+  top: calc((100% - 12px) * var(--pane-row, 0.5) + 2px);
+  left: 4px;
+  right: 4px;
+  height: 8px;
+  cursor: row-resize;
+}
+
+/* main-left splits only the right column, main-right only the left one */
+.pane-divider-row-main-left {
+  left: calc((100% - 12px) * var(--pane-col, 0.5) + 8px);
+}
+
+.pane-divider-row-main-right {
+  right: calc((100% - 12px) * (1 - var(--pane-col, 0.5)) + 8px);
+}
+
+.pane-divider::after {
+  content: '';
+  position: absolute;
+  border-radius: 1px;
+  background-color: var(--md-primary, #f0f);
+  opacity: 0;
+  transition: opacity 120ms ease 80ms;
+}
+
+.pane-divider-col::after {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+}
+
+.pane-divider-row::after {
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 2px;
+}
+
+.pane-divider:hover::after,
+.pane-grid-resizing-col > .pane-divider-col::after,
+.pane-grid-resizing-row > .pane-divider-row::after {
+  opacity: 1;
+}
+
+/* While dragging, terminals and file iframes must not take the pointer or show their cursor. */
+.pane-grid-resizing .pane-slot {
+  pointer-events: none;
+}
+
+.pane-grid-resizing-col {
+  cursor: col-resize;
+}
+
+.pane-grid-resizing-row {
+  cursor: row-resize;
 }
 
 .pane-slot {

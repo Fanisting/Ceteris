@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePaneSlots, PANE_COUNTS } from './pane-layout';
+import { computePaneSlots, PANE_COUNTS, PANE_DIVIDERS, splitFraction } from './pane-layout';
 
 const ME = 'me';
 const mine = (id: string) => ({ id, ownerWindowId: ME });
@@ -50,5 +50,38 @@ describe('computePaneSlots', () => {
 
   it('copes with no sessions at all', () => {
     expect(ids(computePaneSlots('rows', [], null, ME))).toEqual([null, null]);
+  });
+});
+
+describe('splitFraction', () => {
+  it('maps the pointer offset to a fraction of the track space', () => {
+    expect(splitFraction(300, 1000, 120)).toBeCloseTo(0.3);
+  });
+
+  it('keeps each side at least minPx wide', () => {
+    expect(splitFraction(10, 1000, 120)).toBeCloseTo(0.12);
+    expect(splitFraction(995, 1000, 120)).toBeCloseTo(0.88);
+    expect(splitFraction(-50, 1000, 120)).toBeCloseTo(0.12);
+  });
+
+  it('keeps the divider in the middle when the grid is smaller than two minimum panes', () => {
+    expect(splitFraction(30, 200, 120)).toBe(0.5);
+  });
+
+  it('falls back to the middle for an empty grid or bad numbers', () => {
+    expect(splitFraction(100, 0)).toBe(0.5);
+    expect(splitFraction(Number.NaN, 1000)).toBe(0.5);
+    expect(splitFraction(100, Number.POSITIVE_INFINITY)).toBe(0.5);
+  });
+});
+
+describe('PANE_DIVIDERS', () => {
+  it('gives a divider exactly where a layout has two tracks', () => {
+    expect(PANE_DIVIDERS.single).toEqual({ col: false, row: false });
+    expect(PANE_DIVIDERS.rows).toEqual({ col: false, row: true });
+    expect(PANE_DIVIDERS.cols).toEqual({ col: true, row: false });
+    for (const l of ['main-left', 'main-right', 'grid'] as const) {
+      expect(PANE_DIVIDERS[l]).toEqual({ col: true, row: true });
+    }
   });
 });

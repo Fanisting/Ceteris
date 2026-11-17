@@ -96,6 +96,9 @@ export const DEFAULT_SETTINGS: Settings = {
     quickLaunchTipSeen: false,
     // 远程设置引导 (ADR-032):没配置远端时点 Local 问一次要不要 AI 带着配
     remoteSetupGuideSeen: false,
+    // ADR-042:主 agent 没选时用第一个装了的;老设置文件补 false,升级后也问一次
+    mainAgent: '',
+    mainAgentAsked: false,
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
@@ -675,6 +678,18 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `behavior.remoteSetupGuideSeen=${String(s.behavior.remoteSetupGuideSeen)} 必须是 true 或 false`,
+    );
+  }
+  if (typeof s.behavior.mainAgent !== 'string' || s.behavior.mainAgent.length > 200) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.mainAgent=${String(s.behavior.mainAgent)} 必须是模板 id 字符串(未选时为空串)`,
+    );
+  }
+  if (typeof s.behavior.mainAgentAsked !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.mainAgentAsked=${String(s.behavior.mainAgentAsked)} 必须是 true 或 false`,
     );
   }
   if (typeof s.extensions.setupSeen !== 'boolean') {

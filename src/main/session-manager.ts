@@ -128,7 +128,7 @@ import {
   isAgentNameTitle,
   isAgentTemplate,
   shortenAgentTitle,
-  UNNAMED_AGENT_TAB,
+  NEW_AGENT_TAB_NAME,
 } from '@shared/agent-title';
 import { resolveLocale, type Locale } from '@shared/i18n';
 import type { ResumableAgent } from '@shared/shelf';
@@ -1184,7 +1184,7 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * 界面语言,给新 agent 标签起 "未命名" / "Unnamed" 用。'system' 读 Intl 的系统
+   * 界面语言,给新 agent 标签起 "新标签" / "New Tab" 用。'system' 读 Intl 的系统
    * locale:SessionManager 不依赖 electron 的 app,单测里也能跑。
    */
   private uiLocale(): Locale {
@@ -2602,7 +2602,7 @@ export class SessionManager extends EventEmitter {
       if (titles?.enabled && managed.aiTitled) return;
       cleaned = shortenAgentTitle(cleaned, clampTitleLength(titles?.maxChars));
       // "✳ Claude Code" at launch (or after /clear) names the agent, not the task:
-      // a new tab stays "Unnamed" and a task title already shown stays.
+      // a new tab stays "New Tab" and a task title already shown stays.
       if (!cleaned || isAgentNameTitle(cleaned)) return;
     }
     if (cleaned === managed.info.displayName) return;
@@ -2745,13 +2745,13 @@ function pickShell(shells: ShellInfo[], settings: Settings, override?: string): 
 
 /**
  * 推断 session 显示名:
- * - 内置 agent 模板 (claude-code / codex 等) → "未命名" / "Unnamed",等 agent 或模型
+ * - 内置 agent 模板 (claude-code / codex 等) → "新标签" / "New Tab",等 agent 或模型
  *   给出任务标题 (ADR-029);用 agent 名的话一个文件夹里每个标签都叫 "Claude Code"
  * - 其他有命令的模板 → 模板名
  * - 纯 shell → shell 显示名 (PowerShell / Bash 等)
  */
 function pickDisplayName(template: Template, shell: ShellInfo, locale: Locale): string {
-  if (isAgentTemplate(template.id)) return UNNAMED_AGENT_TAB[locale];
+  if (isAgentTemplate(template.id)) return NEW_AGENT_TAB_NAME[locale];
   if (template.command) return template.name;
   return inferDisplayName(shell.executablePath);
 }

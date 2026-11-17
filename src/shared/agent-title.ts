@@ -42,7 +42,7 @@ export function isAgentTemplate(templateId: string): boolean {
  * The name of a new agent tab until it gets a real title. The agent's name is not used:
  * every tab of a folder would read "Claude Code", which says nothing about the task.
  */
-export const UNNAMED_AGENT_TAB = { 'zh-CN': '未命名', 'en-US': 'Unnamed' } as const;
+export const NEW_AGENT_TAB_NAME = { 'zh-CN': '新标签', 'en-US': 'New Tab' } as const;
 
 /**
  * The names agents put in the terminal title before any task, such as "✳ Claude Code" at
@@ -64,7 +64,7 @@ const AGENT_PRODUCT_TITLES: readonly string[] = [
 
 /**
  * True when a shortened agent title is only the agent's own name, which says nothing about
- * the task. Such a title must not replace "Unnamed" or a task title already shown.
+ * the task. Such a title must not replace "New Tab" or a task title already shown.
  */
 export function isAgentNameTitle(shortTitle: string): boolean {
   return AGENT_PRODUCT_TITLES.includes(shortTitle.trim().toLowerCase());

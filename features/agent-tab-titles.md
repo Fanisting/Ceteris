@@ -1,6 +1,6 @@
 # Agent tab titles
 
-A new agent tab is called Unnamed until it has a task. A title that only names the agent, such as "Claude Code" at launch, does not replace it.
+A new agent tab is called New Tab until it has a task. A title that only names the agent, such as "Claude Code" at launch, does not replace it.
 
 Agent tabs get short, readable titles. Spinners and symbols that an agent puts in its own title are removed, and long titles are cut to a length you choose. The default is 24 characters.
 

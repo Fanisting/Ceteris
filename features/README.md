@@ -9,7 +9,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | Feature                                                               | Summary                                                                                                    | Version |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
 | [Terminal tabs and windows](terminal-tabs-and-windows.md)             | Tabs grouped by folder, equal windows, terminals that outlive their windows                                | 0.1.0   |
-| [Resize split panes](split-pane-resize.md)                            | Drag the line between split terminals; double-click resets it                                              | Next    |
+| [Resize split panes](split-pane-resize.md)                            | Drag the line between split terminals; double-click resets it                                              | 0.4.5   |
 | [Reopen tabs at launch](reopen-tabs-at-launch.md)                     | Tabs and agent conversations come back after a quit, update or crash                                       | 0.4.3   |
 | [Tab shelf](tab-shelf.md)                                             | Idle tabs move to a shelf and come back with their conversation                                            | 0.4.3   |
 | [Launch templates](launch-templates.md)                               | Start Shell, Claude Code, Codex and more, or your own command                                              | 0.1.0   |
@@ -61,7 +61,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Choice notice](agent-choice-notice.md)                                   | A notice points to the tab waiting for your decision, and answers it           | 0.4.3   |
 | [Done notifications](done-notifications.md)                               | A system notification when a belled agent tab finishes; click to go back       | 0.4.4   |
 | [Main agent](main-agent.md)                                               | Pick the agent you use most once; quick launch, guides and setup start from it | 0.4.4   |
-| [Your name](user-name.md)                                                 | Asked once; notices end with your name and the new tab page greets you         | Next    |
+| [Your name](user-name.md)                                                 | Asked once; notices end with your name and the new tab page greets you         | 0.4.5   |
 | [name: commands](name-commands.md)                                        | Type compact: and get /compact in Claude Code or Codex                         | 0.4.3   |
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar                                   | 0.4.1   |
 | [Coordinator tour](coordinator-tour.md)                                   | An animated guide to roles and tab control                                     | 0.4.1   |

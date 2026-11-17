@@ -38,6 +38,38 @@ export function isAgentTemplate(templateId: string): boolean {
   return AGENT_TEMPLATE_IDS.includes(templateId);
 }
 
+/**
+ * The name of a new agent tab until it gets a real title. The agent's name is not used:
+ * every tab of a folder would read "Claude Code", which says nothing about the task.
+ */
+export const NEW_AGENT_TAB_NAME = { 'zh-CN': '新标签', 'en-US': 'New Tab' } as const;
+
+/**
+ * The names agents put in the terminal title before any task, such as "✳ Claude Code" at
+ * launch. Lowercase, compared with the title after shortenAgentTitle.
+ */
+const AGENT_PRODUCT_TITLES: readonly string[] = [
+  'claude code',
+  'claude',
+  'codex',
+  'opencode',
+  'gemini',
+  'gemini cli',
+  'github copilot',
+  'copilot',
+  'cursor',
+  'cursor agent',
+  'aider',
+];
+
+/**
+ * True when a shortened agent title is only the agent's own name, which says nothing about
+ * the task. Such a title must not replace "New Tab" or a task title already shown.
+ */
+export function isAgentNameTitle(shortTitle: string): boolean {
+  return AGENT_PRODUCT_TITLES.includes(shortTitle.trim().toLowerCase());
+}
+
 /** Used when the guide in Settings is empty. Written in English because the model reads it. */
 export const AGENT_TITLE_DEFAULT_GUIDE =
   'Two to four words naming the task, like a short commit subject. ' +

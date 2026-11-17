@@ -9,6 +9,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | Feature                                                               | Summary                                                                                                    | Version |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
 | [Terminal tabs and windows](terminal-tabs-and-windows.md)             | Tabs grouped by folder, equal windows, terminals that outlive their windows                                | 0.1.0   |
+| [Resize split panes](split-pane-resize.md)                            | Drag the line between split terminals; double-click resets it                                              | Next    |
 | [Reopen tabs at launch](reopen-tabs-at-launch.md)                     | Tabs and agent conversations come back after a quit, update or crash                                       | 0.4.3   |
 | [Tab shelf](tab-shelf.md)                                             | Idle tabs move to a shelf and come back with their conversation                                            | 0.4.3   |
 | [Launch templates](launch-templates.md)                               | Start Shell, Claude Code, Codex and more, or your own command                                              | 0.1.0   |

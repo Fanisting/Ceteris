@@ -2,7 +2,7 @@
 
 Right-click a tab, or a terminal in the sidebar, and open the Role menu. You can choose Worker, Coordinator or Fintuner.
 
-A Coordinator is an agent that supervises the others. Its tab moves to its own row above the tab bar and stays visible in every folder, labelled with its folder. Click it to jump back. A Fintuner reads your chat history and looks for ways to save time. It sits in the same row. A Worker is an ordinary tab.
+A Coordinator is an agent that supervises the others. Its tab moves to its own row above the tab bar of its folder. Other folders do not show it. A Fintuner reads your chat history and looks for ways to save time. It sits in the same row. A Worker is an ordinary tab.
 
 The tab is renamed after its role. Clearing the role brings back the old name. Roles are the same in every window and disappear when the terminal closes.
 

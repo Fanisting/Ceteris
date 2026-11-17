@@ -123,7 +123,14 @@ import {
   type TokenRate,
 } from '@shared/agent-phase';
 import { CHANNELS } from '@shared/channel';
-import { clampTitleLength, isAgentTemplate, shortenAgentTitle } from '@shared/agent-title';
+import {
+  clampTitleLength,
+  isAgentNameTitle,
+  isAgentTemplate,
+  shortenAgentTitle,
+  NEW_AGENT_TAB_NAME,
+} from '@shared/agent-title';
+import { resolveLocale, type Locale } from '@shared/i18n';
 import type { ResumableAgent } from '@shared/shelf';
 import {
   folderDefaultFor,
@@ -1020,7 +1027,7 @@ export class SessionManager extends EventEmitter {
       pid: pty.pid,
       displayName: isSsh
         ? `${input.sshProfile!.name}:${pathRef.path}`
-        : pickDisplayName(template, displayShell),
+        : pickDisplayName(template, displayShell, this.uiLocale()),
       ownerWindowId: input.ownerWindowId || null,
       state: 'idle',
       createdAt: Date.now(),
@@ -1174,6 +1181,15 @@ export class SessionManager extends EventEmitter {
    */
   getLastEnterAt(sessionId: string): number {
     return this.sessions.get(sessionId)?.lastEnterAt ?? 0;
+  }
+
+  /**
+   * 界面语言,给新 agent 标签起 "新标签" / "New Tab" 用。'system' 读 Intl 的系统
+   * locale:SessionManager 不依赖 electron 的 app,单测里也能跑。
+   */
+  private uiLocale(): Locale {
+    const pref = this.settingsManager.get().appearance?.language ?? 'system';
+    return resolveLocale(pref, Intl.DateTimeFormat().resolvedOptions().locale);
   }
 
   /** ADR-029:agent 自己最近设的标题,没有时 null。 */
@@ -2585,7 +2601,9 @@ export class SessionManager extends EventEmitter {
       const titles = this.settingsManager.get().ai?.tabTitles;
       if (titles?.enabled && managed.aiTitled) return;
       cleaned = shortenAgentTitle(cleaned, clampTitleLength(titles?.maxChars));
-      if (!cleaned) return;
+      // "✳ Claude Code" at launch (or after /clear) names the agent, not the task:
+      // a new tab stays "New Tab" and a task title already shown stays.
+      if (!cleaned || isAgentNameTitle(cleaned)) return;
     }
     if (cleaned === managed.info.displayName) return;
     managed.info.displayName = cleaned;
@@ -2727,10 +2745,13 @@ function pickShell(shells: ShellInfo[], settings: Settings, override?: string): 
 
 /**
  * 推断 session 显示名:
- * - 有命令模板 (claude-code 等) → 模板名
+ * - 内置 agent 模板 (claude-code / codex 等) → "新标签" / "New Tab",等 agent 或模型
+ *   给出任务标题 (ADR-029);用 agent 名的话一个文件夹里每个标签都叫 "Claude Code"
+ * - 其他有命令的模板 → 模板名
  * - 纯 shell → shell 显示名 (PowerShell / Bash 等)
  */
-function pickDisplayName(template: Template, shell: ShellInfo): string {
+function pickDisplayName(template: Template, shell: ShellInfo, locale: Locale): string {
+  if (isAgentTemplate(template.id)) return NEW_AGENT_TAB_NAME[locale];
   if (template.command) return template.name;
   return inferDisplayName(shell.executablePath);
 }

@@ -171,7 +171,7 @@ describe('validateSettings', () => {
       (bad.behavior as { userName: unknown }).userName = v;
       expect(() => validateSettings(bad)).toThrowError(/behavior\.userName=/);
     }
-    bad.behavior.userName = 'Xuhang';
+    bad.behavior.userName = 'Alex';
     expect(() => validateSettings(bad)).not.toThrow();
   });
 

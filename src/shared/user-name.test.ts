@@ -15,7 +15,7 @@ import {
 
 describe('sanitizeUserName', () => {
   it('trims the ends', () => {
-    expect(sanitizeUserName('  Xuhang  ')).toBe('Xuhang');
+    expect(sanitizeUserName('  Alex  ')).toBe('Alex');
   });
   it('turns control characters into spaces and collapses runs of spaces', () => {
     expect(sanitizeUserName('Xu\u0000\u001b\nhang   Li')).toBe('Xu hang Li');
@@ -35,11 +35,11 @@ describe('sanitizeUserName', () => {
 
 describe('isValidUserName', () => {
   it('accepts a clean name and the empty string', () => {
-    expect(isValidUserName('Xuhang')).toBe(true);
+    expect(isValidUserName('Alex')).toBe(true);
     expect(isValidUserName('')).toBe(true);
   });
   it('rejects untrimmed, too long, control characters and non strings', () => {
-    expect(isValidUserName(' Xuhang')).toBe(false);
+    expect(isValidUserName(' Alex')).toBe(false);
     expect(isValidUserName('a'.repeat(USER_NAME_MAX_LENGTH + 1))).toBe(false);
     expect(isValidUserName('a\tb')).toBe(false);
     expect(isValidUserName(null)).toBe(false);
@@ -48,7 +48,7 @@ describe('isValidUserName', () => {
 
 describe('suggestUserName', () => {
   it('capitalises the first letter of the OS account name', () => {
-    expect(suggestUserName('xuhang')).toBe('Xuhang');
+    expect(suggestUserName('alex')).toBe('Alex');
   });
   it('gives an empty string when the OS name is empty', () => {
     expect(suggestUserName('')).toBe('');
@@ -69,11 +69,11 @@ describe('dayPart', () => {
 
 describe('greetingLine', () => {
   it('greets by name in English', () => {
-    expect(greetingLine('Xuhang', 9, false)).toBe('Hi Xuhang · good morning');
+    expect(greetingLine('Alex', 9, false)).toBe('Hi Alex · good morning');
   });
   it('greets by name in Chinese', () => {
-    expect(greetingLine('Xuhang', 14, true)).toBe('Xuhang,下午好');
-    expect(greetingLine('Xuhang', 20, true)).toBe('Xuhang,晚上好');
+    expect(greetingLine('Alex', 14, true)).toBe('Alex,下午好');
+    expect(greetingLine('Alex', 20, true)).toBe('Alex,晚上好');
   });
   it('gives null without a name', () => {
     expect(greetingLine('', 9, false)).toBeNull();
@@ -83,16 +83,16 @@ describe('greetingLine', () => {
 
 describe('withUserName', () => {
   it('adds the name at the end in English', () => {
-    expect(withUserName('Claude is waiting for your decision', 'Xuhang', false)).toBe(
-      'Claude is waiting for your decision, Xuhang',
+    expect(withUserName('Claude is waiting for your decision', 'Alex', false)).toBe(
+      'Claude is waiting for your decision, Alex',
     );
   });
   it('uses a full width comma in Chinese', () => {
-    expect(withUserName('Claude 在等你决定', 'Xuhang', true)).toBe('Claude 在等你决定,Xuhang');
+    expect(withUserName('Claude 在等你决定', 'Alex', true)).toBe('Claude 在等你决定,Alex');
   });
   it('keeps a trailing full stop last', () => {
-    expect(withUserName('Codex finished.', 'Xuhang', false)).toBe('Codex finished, Xuhang.');
-    expect(withUserName('Codex 回答完了。', 'Xuhang', true)).toBe('Codex 回答完了,Xuhang。');
+    expect(withUserName('Codex finished.', 'Alex', false)).toBe('Codex finished, Alex.');
+    expect(withUserName('Codex 回答完了。', 'Alex', true)).toBe('Codex 回答完了,Alex。');
   });
   it('leaves the text unchanged without a name', () => {
     expect(withUserName('Claude is waiting for your decision', '', false)).toBe(

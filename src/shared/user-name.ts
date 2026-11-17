@@ -7,7 +7,7 @@
  * - Stored in settings.behavior.userName; '' means no name, and then every notice keeps its
  *   old text and the new tab page shows no greeting. settings.behavior.userNameAsked records
  *   that the first start card was answered (Save or Skip), so it is asked only once.
- * - The name goes at the END of a notice ("Claude is waiting for your decision, Xuhang"), so
+ * - The name goes at the END of a notice ("Claude is waiting for your decision, Alex"), so
  *   the important words still come first in a narrow toast. A trailing full stop stays last.
  * - Only app to user notices use the name. Labels, buttons and errors stay neutral, and the
  *   name is never sent to an agent or a terminal.
@@ -76,7 +76,7 @@ export function dayPart(hour: number): DayPart {
  * @param name settings.behavior.userName
  * @param hour local hour, 0 to 23
  * @param zh true for Chinese text
- * @returns e.g. "Hi Xuhang · good morning" or "Xuhang,上午好"; null when there is no name
+ * @returns e.g. "Hi Alex · good morning" or "Alex,上午好"; null when there is no name
  */
 export function greetingLine(name: string, hour: number, zh: boolean): string | null {
   const who = sanitizeUserName(name);

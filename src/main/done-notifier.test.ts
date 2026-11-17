@@ -106,9 +106,9 @@ describe('DoneNotifier (ADR-048)', () => {
   });
 
   it('ends the first sentence with the user name when one is set (ADR-052)', () => {
-    const n = makeNotifier({ userName: 'Xuhang' });
+    const n = makeNotifier({ userName: 'Alex' });
     turn(n, makeTarget().target);
-    expect(n.shown[0]!.body).toBe('Claude Code finished in app, Xuhang. Click to open the tab.');
+    expect(n.shown[0]!.body).toBe('Claude Code finished in app, Alex. Click to open the tab.');
   });
 
   it('stays quiet when the tab bell is off (the default)', () => {

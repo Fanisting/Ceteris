@@ -4,8 +4,8 @@ Ceteris asks once what it should call you. After the first start cards (main age
 
 With a name, Ceteris uses it in a few places:
 
-- The new tab page shows one quiet line at the top: "Hi Xuhang · good morning" (afternoon from 12, evening from 18).
-- Notices that tell you something end with your name, for example "Claude is waiting for your decision, Xuhang". This covers the choice notice, the system notification when a belled tab finishes, and the agent update notices for a new version, a finished update and tabs that came back after a full reload.
+- The new tab page shows one quiet line at the top: "Hi Alex · good morning" (afternoon from 12, evening from 18).
+- Notices that tell you something end with your name, for example "Claude is waiting for your decision, Alex". This covers the choice notice, the system notification when a belled tab finishes, and the agent update notices for a new version, a finished update and tabs that came back after a full reload.
 
 Labels, buttons and error messages stay neutral, and the name is never sent to an agent or a terminal. Without a name every notice reads as before and there is no greeting.
 

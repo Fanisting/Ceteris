@@ -345,7 +345,8 @@ export interface SessionInfo {
   shellBusy?: boolean | null;
   /**
    * The user marked this session as a coordinator: its tab sits in a row of its own above
-   * the folder's tabs, whichever folder is open (ADR-023). Lives as long as the session.
+   * the other tabs of its folder, shown only while that folder is open (ADR-023, revised
+   * 2026-11-17). Lives as long as the session.
    */
   coordinator?: boolean;
   /**

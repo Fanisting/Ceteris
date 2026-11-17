@@ -1112,9 +1112,10 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
-  // ADR-023:coordinator 来自所有文件夹,按创建顺序排在上面一行,不会因为新开
-  // 终端而挪位置;下面一行只剩本文件夹的其余标签,同一个 session 不出现两次。
-  const coordinators = [...state.sessions.values()]
+  // ADR-023 修订 (2026-11-17):coordinator 行只列本文件夹的 coordinator,按创建
+  // 顺序排,不会因为新开终端而挪位置;别的文件夹里看不到它。下面一行只剩本文件夹
+  // 的其余标签,同一个 session 不出现两次。
+  const coordinators = sessions
     .filter((s) => s.coordinator)
     .sort((a, b) => a.createdAt - b.createdAt);
   const folderTabs = sessions.filter((s) => !s.coordinator);
@@ -1183,18 +1184,14 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
         aria-label={tx('协调者', 'Coordinators')}
       >
         <div className="tab-list">
-          {coordinators.map((s) => {
-            const node = findPathNode(state.pathTree, s.pathId);
-            return (
-              <Tab
-                key={s.id}
-                session={s}
-                myWindowId={state.myWindowId}
-                selected={s.id === selectedSessionId}
-                folderLabel={node ? (node.displayName ?? lastPathSegment(node.path)) : undefined}
-              />
-            );
-          })}
+          {coordinators.map((s) => (
+            <Tab
+              key={s.id}
+              session={s}
+              myWindowId={state.myWindowId}
+              selected={s.id === selectedSessionId}
+            />
+          ))}
         </div>
       </div>
       {tabBar}
@@ -1202,20 +1199,13 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   );
 }
 
-/** The last segment of a path, or the path itself when it has none, such as a root. */
-function lastPathSegment(path: string): string {
-  return path.match(/[^/\\]+$/)?.[0] ?? path;
-}
-
 interface TabProps {
   session: SessionInfo;
   myWindowId: string;
   selected: boolean;
-  /** ADR-023:coordinator 行里的标签显示所属文件夹,同名的 agent 才分得清 */
-  folderLabel?: string | undefined;
 }
 
-function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Element {
+function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -1278,9 +1268,9 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
     });
   };
 
-  // ADR-023:coordinator 标签可能属于别的文件夹,选中它时侧栏和下面一行跟着切到
-  // 那个文件夹。select-path 会先自动选一个本窗口的 session,紧接着的
-  // select-session 再改成被点的这个。
+  // 标签都属于当前文件夹;只有 focus-owner 异步返回前用户已切走文件夹时才用得上:
+  // 切回这个标签的文件夹,下面的 select-session 才选得中它。select-path 会先自动
+  // 选一个本窗口的 session,紧接着的 select-session 再改成被点的这个。
   const selectOwnFolder = (): void => {
     if (session.pathId !== state.selectedPathId) {
       dispatch({ type: 'view/select-path', pathId: session.pathId });
@@ -1382,7 +1372,6 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
   } else {
     tooltipParts.push(session.displayName);
   }
-  if (folderLabel) tooltipParts.push(session.originalCwd);
   if (cwdDrifted) {
     tooltipParts.push(
       tx(`当前目录 → ${session.currentCwd}`, `Current dir → ${session.currentCwd}`),
@@ -1442,7 +1431,6 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
         enabled={state.settings.appearance?.celebrations ?? true}
         themeId={state.settings.appearance?.theme}
       />
-      {folderLabel && <span className="tab-folder">{folderLabel}</span>}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (
         <span

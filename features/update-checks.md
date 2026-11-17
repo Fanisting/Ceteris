@@ -1,6 +1,6 @@
 # Update checks
 
-The stable build checks GitHub Releases shortly after start and every 6 hours. When a newer version exists, a small dot appears on the sidebar settings button.
+The stable build checks GitHub Releases shortly after start and every 6 hours. When a newer version exists, a small dot appears on the sidebar settings button. A message also pops up inside the window, "Ceteris X.Y.Z is available", with **Download** (the installer for your system) and **Details** (Settings, About). It shows once per version, and not while you are in Settings.
 
 Open Settings and go to About to see a Download button. It links to the installer that fits your system, such as Windows Setup, a macOS build for your chip, or a Linux AppImage, deb or rpm.
 

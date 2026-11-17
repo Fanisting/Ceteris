@@ -594,6 +594,17 @@ export interface Settings {
      */
     mainAgentAsked: boolean;
     /**
+     * ADR-052:what Ceteris calls the user in notices and the new tab greeting. '' = no name,
+     * notices keep their plain text. Clean form only (shared/user-name.ts isValidUserName):
+     * trimmed, at most 40 characters, no control characters. Edited in Settings, Appearance.
+     */
+    userName: string;
+    /**
+     * ADR-052:whether the first start name card was answered (Save or Skip). Default false,
+     * and older settings files get false too, so existing users are asked once.
+     */
+    userNameAsked: boolean;
+    /**
      * bracketed paste 协议 (fix/robustness-pass-20260513, CPB-P8)。
      * 启用时 handlePaste 包裹 \x1b[200~ ... \x1b[201~,支持的 shell
      * (PowerShell 7+, bash 5+, zsh, fish, Claude Code REPL)把粘贴

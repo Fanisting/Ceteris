@@ -20,6 +20,7 @@
  *
  * @对应文档章节: 软件定义书.md 6.6 节 (设置页面)
  */
+import { USER_NAME_MAX_LENGTH, sanitizeUserName } from '@shared/user-name';
 import {
   useCallback,
   useEffect,
@@ -305,6 +306,17 @@ function AppearancePanel({ setError }: { setError: (msg: string | null) => void 
   const uiZoom = a?.uiZoom ?? 1;
 
   const language = a?.language ?? 'system';
+  // ADR-052:what Ceteris calls the user. Edited as a draft, saved cleaned on blur or Enter;
+  // empty means no name. Saving also counts as answering the first start card.
+  const savedName = state.settings.behavior?.userName ?? '';
+  const [nameDraft, setNameDraft] = useState(savedName);
+  useEffect(() => setNameDraft(savedName), [savedName]);
+  const saveName = (): void => {
+    const clean = sanitizeUserName(nameDraft);
+    setNameDraft(clean);
+    if (clean === savedName) return;
+    void updateSettings({ behavior: { userName: clean, userNameAsked: true } }, setError);
+  };
 
   // CP-4 勘误 #3:用 queryLocalFonts 真实枚举系统字体,推荐字体置顶。
   // 异步加载,装载前用 probeFonts(推荐) 快速兜底,UX 上看是"先出推荐再补全"。
@@ -496,6 +508,27 @@ function AppearancePanel({ setError }: { setError: (msg: string | null) => void 
           <option value="zh-CN">中文</option>
           <option value="en-US">English</option>
         </select>
+      </SettingRow>
+
+      <SettingRow
+        label={tx('你的称呼', 'Your name')}
+        hint={tx(
+          '通知末尾和新建页的问候里用这个称呼;留空就不加称呼',
+          'Used at the end of notices and in the new tab greeting; leave empty for none',
+        )}
+      >
+        <input
+          type="text"
+          className="settings-input"
+          value={nameDraft}
+          maxLength={USER_NAME_MAX_LENGTH}
+          spellCheck={false}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') saveName();
+          }}
+        />
       </SettingRow>
 
       {/* BETA-023:macOS 风格红绿灯悬浮符号 */}

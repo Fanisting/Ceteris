@@ -38,6 +38,7 @@ import {
 } from '@shared/legado-dynamic-ids';
 import { LINK_DEFAULT_PORT } from '@shared/link-protocol';
 import { SHELVE_AFTER_HOURS_MAX } from '@shared/shelf';
+import { USER_NAME_MAX_LENGTH, isValidUserName } from '@shared/user-name';
 import { DEFAULT_COLON_COMMANDS, colonCommandsProblem } from '@shared/colon-commands';
 import {
   DEFAULT_QUICK_LAUNCH_ITEMS,
@@ -99,6 +100,9 @@ export const DEFAULT_SETTINGS: Settings = {
     // ADR-042:主 agent 没选时用第一个装了的;老设置文件补 false,升级后也问一次
     mainAgent: '',
     mainAgentAsked: false,
+    // ADR-052:称呼默认空 (不加名字);老设置文件补 false,升级后也问一次
+    userName: '',
+    userNameAsked: false,
     // fix/robustness-pass-20260513 / CPB-P8:默认开 bracketed paste
     // (Ceteris 默认 shell 是 PowerShell,7+ ReadLine 默认识别 ?2004)。
     bracketedPaste: true,
@@ -690,6 +694,19 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `behavior.mainAgentAsked=${String(s.behavior.mainAgentAsked)} 必须是 true 或 false`,
+    );
+  }
+  if (!isValidUserName(s.behavior.userName)) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.userName=${JSON.stringify(s.behavior.userName)} 不合法:可能不是字符串、首尾有空格、` +
+        `超过 ${USER_NAME_MAX_LENGTH} 字或含控制字符。先用 sanitizeUserName 清理再保存`,
+    );
+  }
+  if (typeof s.behavior.userNameAsked !== 'boolean') {
+    throw new SettingsError(
+      'InvalidSettings',
+      `behavior.userNameAsked=${String(s.behavior.userNameAsked)} 必须是 true 或 false`,
     );
   }
   if (typeof s.extensions.setupSeen !== 'boolean') {

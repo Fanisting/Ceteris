@@ -6,7 +6,11 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.7 · 最后更新:2026-11-16
+文档版本:1.8 · 最后更新:2026-11-17
+
+> **v1.8 变更**(称呼,软件定义书 ADR-052):
+> - 新增 `cmd:system:get-os-user-name`(称呼卡片的建议值;Link 下只在本机执行)
+> - settings 加 `behavior.userName`(默认空串)和 `behavior.userNameAsked`(默认 false)
 
 > **v1.7 变更**(输出流控,软件定义书 ADR-051):
 > - 新增 `cmd:session:ack-output`(owner 报告已解析的输出字节,main 据此扣住或放出输出;PTY 从不暂停)
@@ -1402,6 +1406,22 @@ interface GetBuildTypeResponse {
 
 **Side Effects**:无
 
+
+---
+
+#### `cmd:system:get-os-user-name` (v1.8)
+
+返回本机系统账户名,只给第一次启动的称呼卡片当输入框的建议值(ADR-052)。
+
+```typescript
+// Payload: void
+// Response
+interface GetOsUserNameResponse {
+  userName: string; // os.userInfo().username;读不到时为 '',不报错
+}
+```
+
+Link 远程窗口里这条命令不转发给 Host(`LINK_LOCAL_ONLY_CHANNELS`):建议的是用户面前这台机器的账户名。
 ---
 
 #### `cmd:system:clipboard-read-text` (v1.3,勘误第二轮)

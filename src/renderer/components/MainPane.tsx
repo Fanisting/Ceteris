@@ -92,6 +92,7 @@ import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
 import { useTranslation } from './LanguageProvider';
+import { greetingLine } from '@shared/user-name';
 
 // ── 终端尺寸估算用常量(P2-25) ──
 // 这是"PTY spawn 前的兜底估算":xterm 实际 mount 后由 fitAddon 写回真实
@@ -456,8 +457,14 @@ function reloadQuestion(
 }
 
 function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
-  const { tx } = useTranslation();
+  const { tx, locale } = useTranslation();
   const state = useAppState();
+  // ADR-052:one quiet line greeting the user by name, by the local hour; none without a name
+  const greeting = greetingLine(
+    state.settings.behavior?.userName ?? '',
+    new Date().getHours(),
+    locale === 'zh-CN',
+  );
   const dispatch = useAppDispatch();
   const toast = useToast();
   const modal = useModal();
@@ -790,6 +797,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
         </span>
       </div>
       <div className="empty-path-state">
+        {greeting && <div className="empty-greeting">{greeting}</div>}
         {isSshPath && (
           <div className="empty-section">
             <div className="empty-section-title">SSH</div>

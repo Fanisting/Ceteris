@@ -66,6 +66,8 @@ import {
   useAppState,
 } from '../store';
 import { PaneLayoutBar } from './PaneLayoutBar';
+import { PaneDividers } from './PaneDividers';
+import { DEFAULT_PANE_SPLIT, type PaneSplit } from '@shared/pane-layout';
 import { PATH_DRAG_TYPE } from './path-drag';
 import { PdfOverlay } from './PdfOverlay';
 import { TerminalView } from './TerminalView';
@@ -122,6 +124,8 @@ export function MainPane(): JSX.Element {
   const displayable = getDisplayableSession(state);
   const layout = getEffectivePaneLayout(state);
   const slots = getPaneSlots(state);
+  // Divider places of the split view, in memory for this window like the layout itself.
+  const [split, setSplit] = useState<PaneSplit>(DEFAULT_PANE_SPLIT);
 
   // A file open in a folder stays on screen when a terminal opens there, if the two fit side
   // by side. With no room it closes: the terminal just opened must be what the user sees.
@@ -302,8 +306,22 @@ export function MainPane(): JSX.Element {
         />
       )}
       {/* One tree for every layout, one terminal included, keyed by session: a session
-          changes pane through grid-area, so no layout change rebuilds its terminal. */}
-      <div className={`pane-grid pane-grid-${layout}`}>
+          changes pane through grid-area, so no layout change rebuilds its terminal.
+          Track sizes go in as fr out of 100 (material.css builds the tracks): flex factors
+          summing below 1 leave part of the grid empty, and 0.3 + 0.7 can fall just short. */}
+      <div
+        className={`pane-grid pane-grid-${layout}`}
+        style={
+          {
+            '--pane-col': split.col,
+            '--pane-row': split.row,
+            '--pane-col-a': `${split.col * 100}fr`,
+            '--pane-col-b': `${(1 - split.col) * 100}fr`,
+            '--pane-row-a': `${split.row * 100}fr`,
+            '--pane-row-b': `${(1 - split.row) * 100}fr`,
+          } as CSSProperties
+        }
+      >
         {(layout === 'single' ? [displayable] : slots).map((s, i) => (
           <div
             key={s?.id ?? `empty-${i}`}
@@ -345,6 +363,7 @@ export function MainPane(): JSX.Element {
             ) : null}
           </div>
         ))}
+        <PaneDividers layout={layout} split={split} onChange={setSplit} />
       </div>
       {!state.simpleMode && <PaneLayoutBar />}
     </main>

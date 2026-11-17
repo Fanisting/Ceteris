@@ -2391,3 +2391,12 @@ select.settings-input option {
   stroke: var(--md-outline-variant, #f0f);
   stroke-width: 1;
 }
+
+/* ADR-052:称呼卡片的输入框和新建页问候跟随主题 */
+.user-name-card-input:focus {
+  outline-color: var(--md-primary, #f0f);
+}
+
+.empty-greeting {
+  color: var(--md-on-surface-variant, #f0f);
+}

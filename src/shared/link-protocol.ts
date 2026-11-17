@@ -471,6 +471,8 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:system:open-external',
   'cmd:system:get-build-type',
   'cmd:system:open-logs-dir',
+  // ADR-052:称呼卡片的建议名取用户面前这台机器的账户名,不是 Host 的。
+  'cmd:system:get-os-user-name',
   'cmd:logger:ime-dump',
   // 更新检查看的是本机装的版本和本机的系统,远程窗口里点也查本机。
   'cmd:update:get-status',

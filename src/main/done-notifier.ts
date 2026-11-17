@@ -31,6 +31,7 @@
  */
 import type { AgentPhase, SessionInfo } from '@shared/types';
 import type { SessionStateChangedPayload } from '@shared/protocol';
+import { withUserName } from '@shared/user-name';
 import { logger } from './logger';
 
 /** How long a tab must stay done before the notification shows. */
@@ -58,6 +59,8 @@ export interface DoneNotifierDeps {
   chinese(): boolean;
   /** Display name of a template, null when this machine does not know it */
   templateName(templateId: string): string | null;
+  /** ADR-052:settings.behavior.userName, added to the end of the first sentence. '' = none */
+  userName?: () => string;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
@@ -170,9 +173,14 @@ export class DoneNotifier {
     const shown = this.deps.show({
       key: info.id,
       title: info.displayName || agent,
-      body: zh
-        ? `${agent} 回答完了${folder ? ` · ${folder}` : ''}。点这里打开这个标签。`
-        : `${agent} finished${folder ? ` in ${folder}` : ''}. Click to open the tab.`,
+      body:
+        withUserName(
+          zh
+            ? `${agent} 回答完了${folder ? ` · ${folder}` : ''}。`
+            : `${agent} finished${folder ? ` in ${folder}` : ''}.`,
+          this.deps.userName?.() ?? '',
+          zh,
+        ) + (zh ? '点这里打开这个标签。' : ' Click to open the tab.'),
       onClick: () => target.focus(),
     });
     logger.info('DoneNotifier', `turn done sid=${info.id} shown=${shown}`);

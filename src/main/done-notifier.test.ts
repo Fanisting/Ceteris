@@ -14,7 +14,7 @@ import {
   TabHolders,
 } from './done-notifier';
 
-function makeNotifier(opts: { enabled?: boolean; zh?: boolean } = {}) {
+function makeNotifier(opts: { enabled?: boolean; zh?: boolean; userName?: string } = {}) {
   let now = 1_000;
   let enabled = opts.enabled ?? true;
   const timers: Array<{ fn: () => void; at: number } | null> = [];
@@ -27,6 +27,7 @@ function makeNotifier(opts: { enabled?: boolean; zh?: boolean } = {}) {
     },
     chinese: () => opts.zh ?? false,
     templateName: (id) => (id === 'claude-code' ? 'Claude Code' : null),
+    userName: () => opts.userName ?? '',
     now: () => now,
     setTimer: (fn, ms) => timers.push({ fn, at: now + ms }) - 1,
     clearTimer: (t) => {
@@ -102,6 +103,12 @@ describe('DoneNotifier (ADR-048)', () => {
     const n = makeNotifier({ zh: true });
     turn(n, makeTarget().target);
     expect(n.shown[0]!.body).toContain('Claude Code 回答完了 · app');
+  });
+
+  it('ends the first sentence with the user name when one is set (ADR-052)', () => {
+    const n = makeNotifier({ userName: 'Xuhang' });
+    turn(n, makeTarget().target);
+    expect(n.shown[0]!.body).toBe('Claude Code finished in app, Xuhang. Click to open the tab.');
   });
 
   it('stays quiet when the tab bell is off (the default)', () => {

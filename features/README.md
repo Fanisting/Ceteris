@@ -61,6 +61,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Choice notice](agent-choice-notice.md)                                   | A notice points to the tab waiting for your decision, and answers it           | 0.4.3   |
 | [Done notifications](done-notifications.md)                               | A system notification when a belled agent tab finishes; click to go back       | 0.4.4   |
 | [Main agent](main-agent.md)                                               | Pick the agent you use most once; quick launch, guides and setup start from it | 0.4.4   |
+| [Your name](user-name.md)                                                 | Asked once; notices end with your name and the new tab page greets you         | Next    |
 | [name: commands](name-commands.md)                                        | Type compact: and get /compact in Claude Code or Codex                         | 0.4.3   |
 | [Coordinator, worker and fintuner roles](coordinator-and-worker-roles.md) | Give tabs a role and a row above the tab bar                                   | 0.4.1   |
 | [Coordinator tour](coordinator-tour.md)                                   | An animated guide to roles and tab control                                     | 0.4.1   |

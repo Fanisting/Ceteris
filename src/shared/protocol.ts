@@ -230,6 +230,8 @@ export const COMMAND_CHANNELS = {
   SYSTEM_GET_BUILD_TYPE: 'cmd:system:get-build-type',
   /** BETA-039:返回 app.getPath('userData'),让设置页显示真实数据目录而非硬编码 */
   SYSTEM_GET_DATA_DIR: 'cmd:system:get-data-dir',
+  /** ADR-052:本机系统账户名 (os.userInfo().username),只给称呼卡片当建议值;读不到时为空串 */
+  SYSTEM_GET_OS_USER_NAME: 'cmd:system:get-os-user-name',
 
   // 文件树域 (类型见 @shared/file-tree)。Link 远程窗口会转发到 Host:路径是 Host 的路径
   FS_LIST_DIR: 'cmd:fs:list-dir',

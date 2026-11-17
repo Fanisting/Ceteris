@@ -18,6 +18,7 @@ import { SettingsView } from './components/SettingsView';
 import { WindowChrome } from './components/WindowChrome';
 import { CoordinatorTour } from './components/CoordinatorTour';
 import { ExtensionSetupCard } from './components/ExtensionSetupCard';
+import { UserNameCard } from './components/UserNameCard';
 import { MainAgentCard } from './components/MainAgentCard';
 import { LinkConnectionBanner } from './components/LinkConnectionBanner';
 import { ContextMenuProvider } from './components/ContextMenu';
@@ -26,6 +27,7 @@ import { ModalProvider } from './components/Modal';
 import { LanguageProvider } from './components/LanguageProvider';
 import { LastSessionConfirmBridge } from './components/LastSessionConfirmBridge';
 import { AgentUpdateNoticeBridge } from './components/AgentUpdateNoticeBridge';
+import { CeterisUpdateNoticeBridge } from './components/CeterisUpdateNoticeBridge';
 import { AgentChoiceNoticeBridge } from './components/AgentChoiceNoticeBridge';
 import { NotificationClickBridge } from './components/NotificationClickBridge';
 import { SshAskpassBridge } from './components/SshAskpassBridge';
@@ -277,6 +279,7 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
           <LastSessionConfirmBridge />
           <SshAskpassBridge />
           <AgentUpdateNoticeBridge />
+          <CeterisUpdateNoticeBridge />
           {/* ADR-035:别的标签里的 agent 停下来等用户决定时弹 toast,点了跳过去 */}
           <AgentChoiceNoticeBridge />
           {/* ADR-048:点了"回答完"的系统通知,本窗口接管并显示那个标签 */}
@@ -297,6 +300,8 @@ function ConnectedShell({ appLabel, isDev }: { appLabel: string; isDev: boolean 
               {/* ADR-042:先问主 agent,扩展卡片等它答完 */}
               {!state.simpleMode && <MainAgentCard />}
               {!state.simpleMode && <ExtensionSetupCard />}
+              {/* ADR-052:扩展卡片答完后问一次怎么称呼用户;右下角小卡片,不是模态框 */}
+              {!state.simpleMode && <UserNameCard />}
               {state.inSettingsView ? (
                 <SettingsView />
               ) : state.simpleMode ? (

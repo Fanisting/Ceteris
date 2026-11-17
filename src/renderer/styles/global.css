@@ -3554,6 +3554,49 @@ select.settings-input option {
   background-color: var(--color-bg-hover, #f0f);
 }
 
+/* ADR-052:称呼卡片。借 .toast 的底色和边框,固定在右下角,不是模态框 */
+.toast.user-name-card {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9998;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 300px;
+}
+
+.user-name-card-title {
+  font-weight: 600;
+}
+
+.user-name-card-input {
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
+  border-radius: var(--block-radius, 8px);
+  background: color-mix(in srgb, currentcolor 6%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+.user-name-card-input:focus {
+  outline: 2px solid var(--color-accent-special, #f0f);
+  outline-offset: -1px;
+}
+
+.user-name-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* ADR-052:新建页顶部一行安静的问候 */
+.empty-greeting {
+  margin-bottom: 4px;
+  color: var(--color-text-secondary, #f0f);
+  font-size: 13px;
+}
+
 .toast-close:hover {
   background-color: var(--color-bg-hover, #f0f);
   color: var(--color-text-primary, #f0f);

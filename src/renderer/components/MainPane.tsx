@@ -66,6 +66,8 @@ import {
   useAppState,
 } from '../store';
 import { PaneLayoutBar } from './PaneLayoutBar';
+import { PaneDividers } from './PaneDividers';
+import { DEFAULT_PANE_SPLIT, type PaneSplit } from '@shared/pane-layout';
 import { PATH_DRAG_TYPE } from './path-drag';
 import { PdfOverlay } from './PdfOverlay';
 import { TerminalView } from './TerminalView';
@@ -92,6 +94,7 @@ import { useModal } from './Modal';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { buildSessionContextMenu } from './sessionContextMenu';
 import { useTranslation } from './LanguageProvider';
+import { greetingLine } from '@shared/user-name';
 
 // ── 终端尺寸估算用常量(P2-25) ──
 // 这是"PTY spawn 前的兜底估算":xterm 实际 mount 后由 fitAddon 写回真实
@@ -122,6 +125,8 @@ export function MainPane(): JSX.Element {
   const displayable = getDisplayableSession(state);
   const layout = getEffectivePaneLayout(state);
   const slots = getPaneSlots(state);
+  // Divider places of the split view, in memory for this window like the layout itself.
+  const [split, setSplit] = useState<PaneSplit>(DEFAULT_PANE_SPLIT);
 
   // A file open in a folder stays on screen when a terminal opens there, if the two fit side
   // by side. With no room it closes: the terminal just opened must be what the user sees.
@@ -302,8 +307,22 @@ export function MainPane(): JSX.Element {
         />
       )}
       {/* One tree for every layout, one terminal included, keyed by session: a session
-          changes pane through grid-area, so no layout change rebuilds its terminal. */}
-      <div className={`pane-grid pane-grid-${layout}`}>
+          changes pane through grid-area, so no layout change rebuilds its terminal.
+          Track sizes go in as fr out of 100 (material.css builds the tracks): flex factors
+          summing below 1 leave part of the grid empty, and 0.3 + 0.7 can fall just short. */}
+      <div
+        className={`pane-grid pane-grid-${layout}`}
+        style={
+          {
+            '--pane-col': split.col,
+            '--pane-row': split.row,
+            '--pane-col-a': `${split.col * 100}fr`,
+            '--pane-col-b': `${(1 - split.col) * 100}fr`,
+            '--pane-row-a': `${split.row * 100}fr`,
+            '--pane-row-b': `${(1 - split.row) * 100}fr`,
+          } as CSSProperties
+        }
+      >
         {(layout === 'single' ? [displayable] : slots).map((s, i) => (
           <div
             key={s?.id ?? `empty-${i}`}
@@ -345,6 +364,7 @@ export function MainPane(): JSX.Element {
             ) : null}
           </div>
         ))}
+        <PaneDividers layout={layout} split={split} onChange={setSplit} />
       </div>
       {!state.simpleMode && <PaneLayoutBar />}
     </main>
@@ -456,8 +476,14 @@ function reloadQuestion(
 }
 
 function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
-  const { tx } = useTranslation();
+  const { tx, locale } = useTranslation();
   const state = useAppState();
+  // ADR-052:one quiet line greeting the user by name, by the local hour; none without a name
+  const greeting = greetingLine(
+    state.settings.behavior?.userName ?? '',
+    new Date().getHours(),
+    locale === 'zh-CN',
+  );
   const dispatch = useAppDispatch();
   const toast = useToast();
   const modal = useModal();
@@ -790,6 +816,7 @@ function EmptyPathState({ pathId }: { pathId: string }): JSX.Element {
         </span>
       </div>
       <div className="empty-path-state">
+        {greeting && <div className="empty-greeting">{greeting}</div>}
         {isSshPath && (
           <div className="empty-section">
             <div className="empty-section-title">SSH</div>
@@ -1093,9 +1120,10 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
-  // ADR-023:coordinator 来自所有文件夹,按创建顺序排在上面一行,不会因为新开
-  // 终端而挪位置;下面一行只剩本文件夹的其余标签,同一个 session 不出现两次。
-  const coordinators = [...state.sessions.values()]
+  // ADR-023 修订 (2026-11-17):coordinator 行只列本文件夹的 coordinator,按创建
+  // 顺序排,不会因为新开终端而挪位置;别的文件夹里看不到它。下面一行只剩本文件夹
+  // 的其余标签,同一个 session 不出现两次。
+  const coordinators = sessions
     .filter((s) => s.coordinator)
     .sort((a, b) => a.createdAt - b.createdAt);
   const folderTabs = sessions.filter((s) => !s.coordinator);
@@ -1164,18 +1192,14 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
         aria-label={tx('协调者', 'Coordinators')}
       >
         <div className="tab-list">
-          {coordinators.map((s) => {
-            const node = findPathNode(state.pathTree, s.pathId);
-            return (
-              <Tab
-                key={s.id}
-                session={s}
-                myWindowId={state.myWindowId}
-                selected={s.id === selectedSessionId}
-                folderLabel={node ? (node.displayName ?? lastPathSegment(node.path)) : undefined}
-              />
-            );
-          })}
+          {coordinators.map((s) => (
+            <Tab
+              key={s.id}
+              session={s}
+              myWindowId={state.myWindowId}
+              selected={s.id === selectedSessionId}
+            />
+          ))}
         </div>
       </div>
       {tabBar}
@@ -1183,20 +1207,13 @@ function TabBar({ sessions, selectedSessionId, showBlankTab }: TabBarProps): JSX
   );
 }
 
-/** The last segment of a path, or the path itself when it has none, such as a root. */
-function lastPathSegment(path: string): string {
-  return path.match(/[^/\\]+$/)?.[0] ?? path;
-}
-
 interface TabProps {
   session: SessionInfo;
   myWindowId: string;
   selected: boolean;
-  /** ADR-023:coordinator 行里的标签显示所属文件夹,同名的 agent 才分得清 */
-  folderLabel?: string | undefined;
 }
 
-function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Element {
+function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
   const { tx } = useTranslation();
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -1259,9 +1276,9 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
     });
   };
 
-  // ADR-023:coordinator 标签可能属于别的文件夹,选中它时侧栏和下面一行跟着切到
-  // 那个文件夹。select-path 会先自动选一个本窗口的 session,紧接着的
-  // select-session 再改成被点的这个。
+  // 标签都属于当前文件夹;只有 focus-owner 异步返回前用户已切走文件夹时才用得上:
+  // 切回这个标签的文件夹,下面的 select-session 才选得中它。select-path 会先自动
+  // 选一个本窗口的 session,紧接着的 select-session 再改成被点的这个。
   const selectOwnFolder = (): void => {
     if (session.pathId !== state.selectedPathId) {
       dispatch({ type: 'view/select-path', pathId: session.pathId });
@@ -1363,7 +1380,6 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
   } else {
     tooltipParts.push(session.displayName);
   }
-  if (folderLabel) tooltipParts.push(session.originalCwd);
   if (cwdDrifted) {
     tooltipParts.push(
       tx(`当前目录 → ${session.currentCwd}`, `Current dir → ${session.currentCwd}`),
@@ -1423,7 +1439,6 @@ function Tab({ session, myWindowId, selected, folderLabel }: TabProps): JSX.Elem
         enabled={state.settings.appearance?.celebrations ?? true}
         themeId={state.settings.appearance?.theme}
       />
-      {folderLabel && <span className="tab-folder">{folderLabel}</span>}
       <span className="tab-name">{session.displayName}</span>
       {cwdDrifted && (
         <span

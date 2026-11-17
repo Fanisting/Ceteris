@@ -227,6 +227,8 @@ function makeStubSettingsManager(
       remoteSetupGuideSeen: true,
       mainAgent: '',
       mainAgentAsked: true,
+      userName: '',
+      userNameAsked: true,
       bracketedPaste: true,
       autoCheckUpdates: true,
       autoCheckAgents: true,
@@ -3326,6 +3328,29 @@ describe('SessionManager — agent tab titles (ADR-029)', () => {
     mgr.renameSession(id, 'mine');
     mgr.setAiTitle(id, 'Idle timer');
     expect(mgr.get(id)!.displayName).toBe('mine');
+  });
+
+  it('names a new agent tab New Tab in the UI language, not after the agent', async () => {
+    const settings = makeStubSettingsManager();
+    settings.get().appearance.language = 'en-US';
+    expect(nameOf(await startClaude(settings))).toBe('New Tab');
+    settings.get().appearance.language = 'zh-CN';
+    expect(nameOf(await startClaude(settings))).toBe('新标签');
+
+    function nameOf(s: Awaited<ReturnType<typeof startClaude>>): string {
+      return s.mgr.get(s.id)!.displayName;
+    }
+  });
+
+  it('ignores an agent title that only names the agent', async () => {
+    const settings = makeStubSettingsManager();
+    settings.get().appearance.language = 'en-US';
+    const { mgr, id, pty } = await startClaude(settings);
+    pty.emitData('\x1b]0;✳ Claude Code\x07');
+    expect(mgr.get(id)!.displayName).toBe('New Tab');
+    pty.emitData('\x1b]0;✳ Fix login\x07');
+    pty.emitData('\x1b]0;✳ Claude Code\x07');
+    expect(mgr.get(id)!.displayName).toBe('Fix login');
   });
 });
 

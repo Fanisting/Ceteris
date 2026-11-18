@@ -10,6 +10,8 @@
 
 - **看当前 agent 有哪些 skill。** 侧栏底部文件树按钮左边多了一个 sparkles 按钮。点开后,在文件树的位置列出当前标签里 Claude Code 或 Codex 能用的 skill,按项目、个人、插件、内置分组,每行是名字和一行说明,鼠标停上去看完整说明。点一行在终端旁边打开它的 SKILL.md。文件树和 skill 列表同一时间只开一个。只看不动:不往 agent 里打字,也不改任何 skill。
 
+- **等待时有动画了。** 打开文件、新标签还没输出、连接远程、文件树读文件夹时,原来只有一行字或一片空白,现在显示一个在七种 Material 形状间变形、慢慢转动的小图形(和 legado-with-MD3 里的一样),颜色跟随主题。等待不到 0.3 秒时什么都不显示,快的操作不会闪一下。系统开了“减少动画”时图形不动。
+
 ## [0.4.5] (2026-11-17)
 
 ### 新增
@@ -423,7 +425,7 @@ UI 视觉一致性收尾:把"无边框 / hairline / lucide 矢量图标"语言�
   2. 子进程 env 块里 `SystemRoot`(canonical casing)是空串,只有 `SYSTEMROOT`
      有值;Win32 内部展开 `%SystemRoot%` 按字面 key 名查,大小写不一致就替
      换成空。
-  修复采用**两层防御**:
+     修复采用**两层防御**:
   - Layer 1(源头):`getRefreshedPath` 读完注册表立即调
     `expandWindowsEnvPlaceholders` 展开,name 查找大小写不敏感、未命中保留原
     样(对齐 Win32 ExpandEnvironmentStringsW)。

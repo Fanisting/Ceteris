@@ -49,6 +49,7 @@ import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
 import { ChevronRight, FitWidth, Sync, ZoomIn, ZoomOut } from './material-symbols';
 import { PdfJsViewer, type PdfJsViewerHandle } from './PdfJsViewer';
+import { ShapeLoader } from './ShapeLoader';
 import { draftKeyOf, TextFileView } from './TextFileView';
 
 /**
@@ -337,12 +338,15 @@ ${view.source.path}`;
             />
           </div>
         ) : null
+      ) : view.status === 'error' ? (
+        <p className="pdf-overlay-status">{t(`fileTree.error.${view.reason}`)}</p>
       ) : (
-        <p className="pdf-overlay-status">
-          {view.status === 'error'
-            ? t(`fileTree.error.${view.reason}`)
-            : tx('正在打开…', 'Opening…')}
-        </p>
+        <ShapeLoader
+          size={48}
+          contained
+          label={tx('正在打开…', 'Opening…')}
+          className="file-view-loading"
+        />
       )}
     </section>
   );

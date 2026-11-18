@@ -81,6 +81,7 @@ import { useContextMenuApi, type ContextMenuItem } from './ContextMenu';
 import { useTranslation } from './LanguageProvider';
 import { Add, ChevronRight, Draft, Folder, FolderOpen } from './material-symbols';
 import { useToast } from './Toast';
+import { ShapeLoader } from './ShapeLoader';
 
 const POLL_INTERVAL_MS = 3000;
 /** 远端每轮都要走网络,慢一些。 */
@@ -744,11 +745,20 @@ function FileTreeBody({
     );
 
   const rootState = dirs.get(root);
-  const rootHint = !rootState && sshProfileId ? t('fileTree.connecting') : hintFor(rootState);
+  const rootHint = hintFor(rootState);
 
   return (
     <div className="file-tree-list" role="tree" onContextMenu={handleBlankContextMenu}>
       {newFileRow(root, 0)}
+      {/* No list yet. ShapeLoader shows nothing for 300 ms, so fast local folders never flash it */}
+      {!rootState && (
+        <p className="file-tree-hint">
+          <ShapeLoader
+            size={16}
+            label={sshProfileId ? t('fileTree.connecting') : t('fileTree.loading')}
+          />
+        </p>
+      )}
       {rootHint && <p className="file-tree-hint">{rootHint}</p>}
       {sshProfileId && rootState && 'failure' in rootState && (
         <button
@@ -763,6 +773,7 @@ function FileTreeBody({
         const { entry, depth } = row;
         const isExpanded = entry.isDirectory && expanded.has(entry.path);
         const hint = isExpanded ? hintFor(dirs.get(entry.path)) : null;
+        const loading = isExpanded && !dirs.has(entry.path);
         const FileIcon = !entry.isDirectory ? Draft : isExpanded ? FolderOpen : Folder;
         return (
           <Fragment key={entry.path}>
@@ -826,6 +837,14 @@ function FileTreeBody({
                 style={{ paddingLeft: `${6 + (depth + 1) * INDENT_PX}px` }}
               >
                 {hint}
+              </p>
+            )}
+            {loading && (
+              <p
+                className="file-tree-hint nested"
+                style={{ paddingLeft: `${6 + (depth + 1) * INDENT_PX}px` }}
+              >
+                <ShapeLoader size={16} label={t('fileTree.loading')} />
               </p>
             )}
           </Fragment>

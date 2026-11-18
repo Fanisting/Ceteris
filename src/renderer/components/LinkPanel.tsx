@@ -38,6 +38,7 @@ import { Icon } from './icons';
 import { SettingRow } from './SettingsView';
 import { useToast } from './Toast';
 import { useTranslation } from './LanguageProvider';
+import { ShapeLoader } from './ShapeLoader';
 
 interface LinkPanelProps {
   setError: (msg: string | null) => void;
@@ -690,6 +691,9 @@ function LinkStateBadge({
           : undefined
       }
     >
+      {(state === 'connecting' || state === 'reconnecting') && (
+        <ShapeLoader size={14} delayMs={0} />
+      )}
       {slow ? tx('变慢', 'Slow') : label[state]}
       {state === 'connected' && !slow && rttMs !== null && ` (${rttMs}ms)`}
     </span>

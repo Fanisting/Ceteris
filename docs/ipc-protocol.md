@@ -6,7 +6,10 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.8 · 最后更新:2026-11-17
+文档版本:1.9 · 最后更新:2026-11-18
+
+> **v1.9 变更**(Link 连接测试,软件定义书 ADR-055):
+> - 新增 `cmd:link:test`(设置页测试一台已保存的 Host;Link 下只在本机执行),见 5.12
 
 > **v1.8 变更**(称呼,软件定义书 ADR-052):
 > - 新增 `cmd:system:get-os-user-name`(称呼卡片的建议值;Link 下只在本机执行)
@@ -1523,6 +1526,23 @@ interface RemoteSetupGuidePathsResponse {
 ```
 
 不在 `LINK_LOCAL_ONLY_CHANNELS` 里:远端视图不提供这个引导(view-menu.ts 在远端视图只列视图),所以不会从远程窗口调用。
+
+### 5.12 Ceteris Link 连接测试 (ADR-055)
+
+#### `cmd:link:test`
+设置 → 远程访问 里一台已保存 Host 的“测试”按钮。列在 `LINK_LOCAL_ONLY_CHANNELS`:测的是本机发起的连接。
+
+```typescript
+interface LinkTestPayload {
+  host: string;   // 设置里保存的地址
+  port: number;
+}
+// 返回 LinkTestResult(src/shared/link-test.ts)
+```
+
+这个地址已经连上时:20 个 ping 的往返统计、上下行速度(Host 不支持时 `speedSkipped: 'host-too-old'`)、是否在压缩、最近 5 分钟输出最多的远程标签。没连上时:一次裸 TCP 建连的用时或错误。两种情况都读本机 `tailscale status --json` 判断路径。约 5 秒,测速期间终端输出会慢几秒。线路上的消息见 `docs/ceteris-link-protocol.md` 4.3。
+
+**Errors**:host 为空或 port 不是整数时抛错;Link 未初始化时抛 `requireLinkManager` 的错误;测试途中连接断开时抛错。网络测不出来(超时、Tailscale 读不到)不抛错,写进结果。
 
 ### 5.7 Explorer Integration (v1.3)
 

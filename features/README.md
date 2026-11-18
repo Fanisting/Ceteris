@@ -28,6 +28,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------ | ------- |
 | [File viewer](file-viewer.md)                                     | PDFs, images and Markdown beside the terminal                            | 0.3.0   |
 | [Live PDF preview](live-pdf-preview.md)                           | PDFs refresh when rebuilt, keeping page and zoom                         | 0.4.1   |
+| [PDF slides view](pdf-slides-view.md)                             | One page at a time with a thumbnail strip, for Beamer and other decks    | Next    |
 | [Text file editing](text-file-editing.md)                         | Edit txt, json, md and tex in place                                      | 0.3.0   |
 | [Code and data files](code-files.md)                              | R, Python, Julia, Stata, SQL and more, highlighted, with lint after save | 0.4.3   |
 | [Large text files](large-text-files.md)                           | Multi-gigabyte files open at once as read-only pages                     | 0.3.0   |

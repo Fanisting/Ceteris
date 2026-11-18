@@ -49,6 +49,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [SSH login prompts](ssh-login-prompts.md)                | Answer password, Duo and host key prompts in a dialog            | 0.4.1   |
 | [Ceteris Link](ceteris-link.md)                          | Open the live terminal tabs of another computer                  | 0.3.0   |
 | [Type ahead on remote agent tabs](remote-type-ahead.md)  | Type a prompt locally, Enter sends it to the host in one message | 0.4.4   |
+| [Link connection test](link-connection-test.md)          | Test a host: path, speed, heavy tabs; Link traffic compressed    | Next    |
 
 ## Agents
 

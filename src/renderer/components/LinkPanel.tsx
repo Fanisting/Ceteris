@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useModal } from './Modal';
+import { LinkTestButton, LinkTestCard, useLinkTest } from './LinkTestResult';
 import {
   COMMAND_CHANNELS,
   EVENT_CHANNELS,
@@ -519,66 +520,17 @@ function SavedHostList({
       )}
 
       <ul className="link-client-list">
-        {hosts.map((entry) => {
-          const active = findActiveLink(entry);
-          return (
-            <li key={entry.id} className="link-client-item">
-              <div>
-                <strong>{entry.label}</strong>
-                <span className="settings-row-hint">
-                  {entry.host}:{entry.port}
-                  {active && (
-                    <>
-                      {' · '}
-                      <LinkStateBadge
-                        state={active.state}
-                        rttMs={active.rttMs}
-                        laggy={active.laggy}
-                      />
-                    </>
-                  )}
-                </span>
-                {active?.lastError && (
-                  <span className="settings-row-hint link-warn">{active.lastError}</span>
-                )}
-                <label className="settings-checkbox link-inline-check">
-                  <input
-                    type="checkbox"
-                    checked={entry.autoConnect}
-                    onChange={(e) => void handleToggleAutoConnect(entry.id, e.target.checked)}
-                  />
-                  {tx('启动时自动连接', 'Connect on startup')}
-                </label>
-              </div>
-              <div className="link-inline-group">
-                {active && active.state !== 'closed' ? (
-                  <button
-                    type="button"
-                    className="settings-button"
-                    onClick={() => void handleDisconnect(active.linkId)}
-                  >
-                    {tx('断开', 'Disconnect')}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="settings-button"
-                    onClick={() => void handleConnect(entry)}
-                  >
-                    {tx('连接', 'Connect')}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="settings-button danger"
-                  onClick={() => void handleRemove(entry.id)}
-                >
-                  {tx('删除', 'Remove')}
-                </button>
-              </div>
-            </li>
-          );
-        })}
+        {hosts.map((entry) => (
+          <SavedHostRow
+            key={entry.id}
+            entry={entry}
+            active={findActiveLink(entry)}
+            onConnect={() => void handleConnect(entry)}
+            onDisconnect={(linkId) => void handleDisconnect(linkId)}
+            onRemove={() => void handleRemove(entry.id)}
+            onToggleAutoConnect={(value) => void handleToggleAutoConnect(entry.id, value)}
+          />
+        ))}
       </ul>
 
       {adding ? (
@@ -649,6 +601,76 @@ function SavedHostList({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * 已保存 Host 列表里的一行。单独成组件是因为每行有自己的连接测试状态(ADR-055):
+ * 测试按钮在右侧按钮组里,结果卡片占整行宽度放在下面。
+ */
+function SavedHostRow({
+  entry,
+  active,
+  onConnect,
+  onDisconnect,
+  onRemove,
+  onToggleAutoConnect,
+}: {
+  entry: LinkHostEntry;
+  active: LinkStatusResponse['clients'][number] | undefined;
+  onConnect: () => void;
+  onDisconnect: (linkId: string) => void;
+  onRemove: () => void;
+  onToggleAutoConnect: (value: boolean) => void;
+}): JSX.Element {
+  const { tx } = useTranslation();
+  const test = useLinkTest(entry.host, entry.port);
+  return (
+    <li className="link-client-item link-host-row">
+      <div>
+        <strong>{entry.label}</strong>
+        <span className="settings-row-hint">
+          {entry.host}:{entry.port}
+          {active && (
+            <>
+              {' · '}
+              <LinkStateBadge state={active.state} rttMs={active.rttMs} laggy={active.laggy} />
+            </>
+          )}
+        </span>
+        {active?.lastError && (
+          <span className="settings-row-hint link-warn">{active.lastError}</span>
+        )}
+        <label className="settings-checkbox link-inline-check">
+          <input
+            type="checkbox"
+            checked={entry.autoConnect}
+            onChange={(e) => onToggleAutoConnect(e.target.checked)}
+          />
+          {tx('启动时自动连接', 'Connect on startup')}
+        </label>
+      </div>
+      <div className="link-inline-group">
+        <LinkTestButton test={test} />
+        {active && active.state !== 'closed' ? (
+          <button
+            type="button"
+            className="settings-button"
+            onClick={() => onDisconnect(active.linkId)}
+          >
+            {tx('断开', 'Disconnect')}
+          </button>
+        ) : (
+          <button type="button" className="settings-button" onClick={onConnect}>
+            {tx('连接', 'Connect')}
+          </button>
+        )}
+        <button type="button" className="settings-button danger" onClick={onRemove}>
+          {tx('删除', 'Remove')}
+        </button>
+      </div>
+      <LinkTestCard test={test} />
+    </li>
   );
 }
 

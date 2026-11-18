@@ -1,0 +1,110 @@
+/*
+ * @file src/renderer/styles/link-test.css
+ * @purpose 设置 → 远程访问里连接测试(ADR-055)的结果卡片。
+ *
+ * 一行 Host 原本是左右两栏(名字 / 按钮组)。有结果时卡片换行到下面占满整行,
+ * 所以行改成可换行的 flex,卡片 flex-basis 100%。
+ */
+
+.link-host-row {
+  flex-wrap: wrap;
+}
+
+.link-test-result {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--md-outline-variant, var(--color-bg-elevated, #f0f));
+  border-radius: var(--block-radius, var(--md-shape-sm, 8px));
+  font-size: 12px;
+  color: var(--color-text-primary, #f0f);
+}
+
+.link-test-verdict {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.link-test-ok {
+  color: var(--color-success, #f0f);
+}
+
+.link-test-warn {
+  color: var(--color-warning, #f0f);
+}
+
+.link-test-bad {
+  color: var(--color-danger, #f0f);
+}
+
+.link-test-info {
+  color: var(--color-text-muted, #f0f);
+}
+
+.link-test-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.link-test-metrics dt {
+  font-size: 11px;
+  color: var(--color-text-muted, #f0f);
+}
+
+.link-test-metrics dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.link-test-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+  line-height: 1.5;
+}
+
+.link-test-table-wrap {
+  overflow-x: auto;
+}
+
+.link-test-tabs {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.link-test-tabs caption {
+  padding-bottom: 4px;
+  text-align: left;
+  color: var(--color-text-muted, #f0f);
+}
+
+.link-test-tabs th,
+.link-test-tabs td {
+  padding: 3px 12px 3px 0;
+  border-bottom: 1px solid var(--md-outline-variant, var(--color-bg-elevated, #f0f));
+  text-align: left;
+  white-space: nowrap;
+}
+
+.link-test-tabs th {
+  font-weight: 500;
+  color: var(--color-text-muted, #f0f);
+}
+
+.link-test-tabs td:first-child {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-test-heavy td {
+  color: var(--color-warning, #f0f);
+}

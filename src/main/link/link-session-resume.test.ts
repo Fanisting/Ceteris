@@ -11,9 +11,11 @@
  * ADR-050 之后重连不再 reload 窗口:Host 回 resume(snapshot)并补发漏掉的输出,
  * 客户端注入 evt:app:resync。这里的"重连完成"因此以 resync 到达为准。
  *
- * @对应文档章节: docs/ceteris-link-protocol.md 第 6 章;docs/软件定义书.md ADR-050
+ * 末尾两组测试覆盖 ADR-056 的压缩协商和 ADR-055 的连接测试,同样走真实 socket。
+ *
+ * @对应文档章节: docs/ceteris-link-protocol.md 第 6 章;docs/软件定义书.md ADR-050、ADR-055、ADR-056
  */
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connect } from 'node:net';
 import { COMMAND_CHANNELS, EVENT_CHANNELS, type CommandEnvelope } from '@shared/protocol';
@@ -566,7 +568,8 @@ describe('背压', () => {
       .socket;
     socket.pause();
 
-    const payload = 'x'.repeat(256 * 1024);
+    // 随机数据:ADR-056 之后重复的字符会被压成几百字节,写缓冲永远满不了
+    const payload = randomBytes(192 * 1024).toString('base64');
     const send = host.virtualWindows.get(windowId)!;
     for (let i = 0; i < 2000 && host.virtualWindows.has(windowId); i++) {
       send('evt:session:output', { payload });
@@ -902,5 +905,87 @@ describe('恢复后重新报到(ADR-050)', () => {
     await waitFor(restored(local), '原地恢复');
     await new Promise((r) => setTimeout(r, 100));
     expect(host.noticesReady).toEqual([]);
+  });
+});
+
+describe('压缩(ADR-056)', () => {
+  it('两端都支持时启用,窗口拿到的输出与 Host 发出的逐字节相同', async () => {
+    const { host, port, token } = await startHost();
+    const { client, local } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+    expect((client as unknown as { compressOut: boolean }).compressOut).toBe(true);
+    host.owners.set('s1', client.boundWindowId!);
+
+    const screen = Array.from({ length: 300 }, (_, i) => `line ${i} 文字 │ tool output`).join('\n');
+    host.emitOutput('s1', screen);
+    await waitFor(() => outputs(local, 's1').length === 1, '输出到达');
+    expect(outputs(local, 's1')).toEqual([[0, screen]]);
+  });
+});
+
+describe('连接测试(ADR-055)', () => {
+  it('量出往返和上下行速度', async () => {
+    const { port, token } = await startHost();
+    const { client } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+
+    const result = await client.runNetworkTest();
+    expect(result.rtt?.received).toBe(20);
+    expect(result.speedSkipped).toBeNull();
+    expect(result.downMBps).toBeGreaterThan(0);
+    expect(result.upMBps).toBeGreaterThan(0);
+    expect(result.compressed).toBe(true);
+  }, 20_000);
+
+  it('Host 没声明 probe 时只量往返', async () => {
+    const { port, token } = await startHost();
+    const { client } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+    Object.assign(client, { hostFeatures: undefined });
+
+    const result = await client.runNetworkTest();
+    expect(result.speedSkipped).toBe('host-too-old');
+    expect(result.downMBps).toBeNull();
+    expect(result.rtt?.received).toBe(20);
+  }, 20_000);
+
+  it('测试途中断线时报错,不等测速超时', async () => {
+    const { port, token } = await startHost();
+    const { client } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+
+    const started = Date.now();
+    const pending = client.runNetworkTest();
+    setTimeout(() => dropConnection(client), 300);
+    await expect(pending).rejects.toThrow(/测试途中/);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  }, 20_000);
+
+  it('没连上时拒绝', async () => {
+    const { port, token } = await startHost();
+    const { client } = startClient(port, token);
+    client.disconnect('test');
+    await expect(client.runNetworkTest()).rejects.toThrow(/需要先连上/);
+  });
+
+  it('报出输出最多的标签,取不到名字时用 session id 开头', async () => {
+    const { host, port, token } = await startHost();
+    const { client, local } = startClient(port, token);
+    await waitFor(connected(client), '连接');
+    host.owners.set('session-one', client.boundWindowId!);
+    host.emitOutput('session-one', `${String.fromCharCode(27)}[2J` + 'x'.repeat(5000));
+    await waitFor(() => outputs(local, 'session-one').length === 1, '输出到达');
+
+    const tabs = await client.getTabTraffic();
+    expect(tabs).toEqual([
+      {
+        sessionId: 'session-one',
+        name: 'session-',
+        bytes: 5004,
+        largestBurstBytes: 5004,
+        redraws: 1,
+        resyncs: 0,
+      },
+    ]);
   });
 });

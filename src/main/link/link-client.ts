@@ -21,6 +21,10 @@
  *   标记"变慢"推给窗口;15 秒没有入站就断开重连。规则在 link-liveness.ts。
  * - **本地窗口关闭 = 断开连接**。用户关掉远程窗口就是"我不看了",此时主动
  *   断开;Host 那边虚拟窗口注销,session 转无主继续跑。
+ * - **压缩**(ADR-056)。auth 里声明 deflate;Host 在 auth-ok 里也声明了,就压缩发出的
+ *   大消息。收到的帧两种格式都认,见 link-message-codec.ts。
+ * - **连接测试**(ADR-055)。runNetworkTest 发 20 个 ping 量往返,再用 probe 消息量
+ *   上下行速度;每个标签的输出量一直记在 outputStats 里,测试时一并报出。
  *
  * @对应文档章节: docs/ceteris-link-protocol.md
  *
@@ -39,12 +43,17 @@
  * - 重连后某个终端闪了一下重画 → 日志里搜 "resume":gap 表示漏掉的输出超过了
  *   Host 的 1 MiB 最近输出环,该 session 重新拉了 scrollback
  */
+import { randomBytes } from 'node:crypto';
 import { connect, type Socket } from 'node:net';
 import { hostname } from 'node:os';
 import { app } from 'electron';
 import {
+  LINK_FEATURE_DEFLATE,
+  LINK_FEATURE_PROBE,
+  LINK_FEATURES,
   LINK_HANDSHAKE_TIMEOUT_MS,
   LINK_HEARTBEAT_INTERVAL_MS,
+  LINK_PROBE_CHUNK_BYTES,
   LINK_PROTOCOL_VERSION,
   type LinkAuth,
   type LinkAuthOk,
@@ -59,6 +68,9 @@ import {
   type LinkHelloAck,
   type LinkMessage,
   type LinkPing,
+  type LinkProbe,
+  type LinkProbeData,
+  type LinkProbeEnd,
   type LinkResume,
   type LinkResumeRequest,
 } from '@shared/link-protocol';
@@ -74,6 +86,12 @@ import {
   type SessionOwnerChangedPayload,
 } from '@shared/protocol';
 import type { AppSnapshot } from '@shared/types';
+import {
+  summarizeRtt,
+  type LinkRttSummary,
+  type LinkSpeedSkipReason,
+  type LinkTabTraffic,
+} from '@shared/link-test';
 import { encodeFrame, FrameDecodeError, FrameDecoder } from './frame-codec';
 import {
   createCipherPair,
@@ -83,6 +101,8 @@ import {
   type LinkCipherStream,
 } from './link-crypto';
 import { computeReconnectDelay, evaluateLiveness, LinkLiveness } from './link-liveness';
+import { decodeLinkMessage, encodeLinkMessage, peerHasFeature } from './link-message-codec';
+import { LinkOutputStats } from './link-output-stats';
 import type { CreateWindowOptions, WindowManager } from '../window-manager';
 import { logger } from '../logger';
 import { applyLocalThemeToLinkEvent } from '../ipc';
@@ -118,6 +138,27 @@ export interface LinkClientDeps {
 
 /** 一次转发命令的等待上限。超时后向 renderer reject,避免 UI 永远转圈。 */
 const COMMAND_TIMEOUT_MS = 30_000;
+
+/** ADR-055:连接测试发几个 ping、间隔多久、最后一个发出后最多再等多久 */
+const TEST_PING_COUNT = 20;
+const TEST_PING_INTERVAL_MS = 100;
+const TEST_PING_GRACE_MS = 2_000;
+/**
+ * ADR-055:每个方向测速用的随机字节数。base64 之后约 1 MB:中继上 0.3 MB/s 也只要
+ * 三四秒,直连时又足够长,不会被一次往返的时间主导。
+ */
+const TEST_PROBE_BYTES = 768 * 1024;
+/** ADR-055:单个方向测速的等待上限 */
+const TEST_PROBE_TIMEOUT_MS = 15_000;
+
+/** runNetworkTest 的结果:只含网络部分,路径和标签由 LinkManager 补。 */
+export interface LinkNetworkTest {
+  rtt: LinkRttSummary | null;
+  downMBps: number | null;
+  upMBps: number | null;
+  speedSkipped: LinkSpeedSkipReason | null;
+  compressed: boolean;
+}
 
 /**
  * ADR-050:窗口向 Host "报到"的命令。Host 把这类登记挂在窗口 id 上,断线注销虚拟
@@ -198,6 +239,23 @@ export class LinkClient {
   private resumeRequested = false;
   /** 窗口已经成功报到过的命令(RESUME_REANNOUNCE_CHANNELS 的子集),resume 后重发 */
   private readonly announced = new Set<string>();
+
+  /** ADR-056:Host 在 auth-ok 里声明了 deflate,发出的大消息压缩 */
+  private compressOut = false;
+  /** ADR-055:Host 在 auth-ok 里声明的能力 */
+  private hostFeatures: unknown = undefined;
+  /** ADR-055:每个标签最近 5 分钟的输出量 */
+  private readonly outputStats = new LinkOutputStats();
+  /** ADR-055:测试进行中时接收 pong 的回调(参数是 ping 里的 t 和收到的时刻) */
+  private pongListener: ((t: number, at: number) => void) | null = null;
+  /** ADR-055:测速编号 → 等 probe-end / probe-ack 的回调 */
+  private readonly probeWaiters = new Map<
+    number,
+    { resolve: (bytes: number) => void; reject: (err: Error) => void }
+  >();
+  private nextProbeId = 1;
+  /** ADR-055:同一时刻只跑一个测试,第二次点直接拿同一个结果 */
+  private runningTest: Promise<LinkNetworkTest> | null = null;
 
   constructor(
     readonly id: string,
@@ -473,13 +531,14 @@ export class LinkClient {
       ipcProtocolVersion: PROTOCOL_VERSION,
       ...(this.windowId ? { preferredWindowId: this.windowId } : {}),
       ...(resume ? { resume } : {}),
+      features: [...LINK_FEATURES],
     });
   }
 
   private handleEncryptedFrame(frame: Buffer): void {
     if (!this.recv) return;
     const plaintext = this.recv.decrypt(frame);
-    const msg = JSON.parse(plaintext.toString('utf8')) as LinkMessage;
+    const msg = decodeLinkMessage(plaintext) as LinkMessage;
 
     switch (msg.type) {
       case 'auth-ok':
@@ -498,7 +557,18 @@ export class LinkClient {
         break;
       case 'pong':
         this.rttMs = Date.now() - msg.t;
+        this.pongListener?.(msg.t, Date.now());
         break;
+      case 'probe-data':
+        // 下行测速的数据,收到即可,按 probe-end 的时刻算速度
+        break;
+      case 'probe-end':
+      case 'probe-ack': {
+        const waiter = this.probeWaiters.get(msg.id);
+        this.probeWaiters.delete(msg.id);
+        waiter?.resolve(msg.bytes);
+        break;
+      }
       case 'bye':
         this.fail(`Host 主动断开:${msg.reason}`);
         break;
@@ -532,6 +602,8 @@ export class LinkClient {
     this.hostName = msg.hostName;
     this.lastError = '';
     this.awaitingAuthOk = false;
+    this.hostFeatures = msg.features;
+    this.compressOut = peerHasFeature(msg.features, LINK_FEATURE_DEFLATE);
     this.reconnectAttempt = 0;
     this.windowId = msg.virtualWindowId;
     this.setState('connected');
@@ -554,7 +626,8 @@ export class LinkClient {
       logger.info(
         'LinkClient',
         `已连接 ${msg.hostName}(${this.targetAddress}),创建远程窗口 ` +
-          `${msg.virtualWindowId}(Window ${msg.virtualWindowNumber})`,
+          `${msg.virtualWindowId}(Window ${msg.virtualWindowNumber}),` +
+          `压缩=${this.compressOut ? '开' : '关(Host 不支持)'}`,
       );
     } else if (this.resumeRequested) {
       // 重连路径(ADR-050):窗口里的状态停在断线那一刻。Host 紧接着发 resume,
@@ -716,11 +789,242 @@ export class LinkClient {
    */
   private injectEvent(msg: LinkEventPush): void {
     if (!this.trackEvent(msg)) return;
+    this.noteTraffic(msg);
     if (!this.windowId) return;
     const win = this.deps.windowManager.getById(this.windowId);
     if (!win || win.isDestroyed()) return;
     win.webContents.send(msg.channel, applyLocalThemeToLinkEvent(msg.channel, msg.envelope));
     this.deps.onRemoteEvent?.(this.windowId, msg.channel, msg.envelope);
+  }
+
+  /**
+   * ADR-055:给连接测试的"重标签"记账。只读 payload,不改。
+   */
+  private noteTraffic(msg: LinkEventPush): void {
+    const payload = (msg.envelope as EventEnvelope<unknown> | null)?.payload as
+      | { sessionId?: unknown; data?: unknown }
+      | null
+      | undefined;
+    if (!payload || typeof payload.sessionId !== 'string') return;
+    const now = Date.now();
+    switch (msg.channel) {
+      case EVENT_CHANNELS.SESSION_OUTPUT:
+        if (typeof payload.data === 'string') {
+          this.outputStats.noteOutput(payload.sessionId, payload.data, now);
+        }
+        break;
+      case EVENT_CHANNELS.SESSION_OUTPUT_RESYNC:
+        this.outputStats.noteResync(payload.sessionId, now);
+        break;
+      case EVENT_CHANNELS.SESSION_DESTROYED:
+        this.outputStats.forget(payload.sessionId);
+        break;
+      case EVENT_CHANNELS.SESSION_OWNER_CHANGED:
+        if ((payload as Partial<SessionOwnerChangedPayload>).newOwnerWindowId !== this.windowId) {
+          this.outputStats.forget(payload.sessionId);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * ADR-055:测往返和上下行速度。只能在已连接时调用。
+   *
+   * 顺序是先 ping 再测速:测速时线路被大块数据占着,这时量的往返会偏大。
+   * 测速期间终端输出会慢几秒,这是测试本身的代价,设置页的按钮旁写明了。
+   *
+   * @throws Error 未连接
+   * @副作用 向 Host 发约 2 MB 的测速数据;同时发起的第二次调用拿到同一个结果
+   */
+  runNetworkTest(): Promise<LinkNetworkTest> {
+    if (this.state !== 'connected') {
+      return Promise.reject(
+        new Error(
+          `[LinkClient] 连接测试需要先连上 ${this.config.label}(${this.targetAddress}),` +
+            `当前状态:${this.state}。建议:等它连上后再点测试。`,
+        ),
+      );
+    }
+    if (!this.runningTest) {
+      this.runningTest = this.doNetworkTest().finally(() => {
+        this.runningTest = null;
+      });
+    }
+    return this.runningTest;
+  }
+
+  private async doNetworkTest(): Promise<LinkNetworkTest> {
+    const { samples, sent } = await this.measureRtt();
+    this.assertStillConnected();
+    const rtt = summarizeRtt(samples, sent);
+    const compressed = this.compressOut;
+    if (!peerHasFeature(this.hostFeatures, LINK_FEATURE_PROBE)) {
+      return { rtt, downMBps: null, upMBps: null, speedSkipped: 'host-too-old', compressed };
+    }
+    const floorMs = rtt?.minMs ?? 0;
+    try {
+      const downMBps = await this.measureDown(floorMs);
+      this.assertStillConnected();
+      const upMBps = await this.measureUp(floorMs);
+      logger.info(
+        'LinkClient',
+        `连接测试 ${this.targetAddress}:往返中位 ${rtt?.medianMs ?? '-'} ms,` +
+          `下行 ${downMBps.toFixed(2)} MB/s,上行 ${upMBps.toFixed(2)} MB/s`,
+      );
+      return { rtt, downMBps, upMBps, speedSkipped: null, compressed };
+    } catch (err) {
+      // 连接在测速途中断了:结果没有意义,向上抛,设置页显示错误
+      this.assertStillConnected();
+      const timedOut = err instanceof Error && err.message.includes('超时');
+      logger.warn(
+        'LinkClient',
+        `连接测试测速失败(${this.targetAddress}):${err instanceof Error ? err.message : String(err)}`,
+      );
+      return {
+        rtt,
+        downMBps: null,
+        upMBps: null,
+        speedSkipped: timedOut ? 'timeout' : 'failed',
+        compressed,
+      };
+    }
+  }
+
+  /**
+   * 测试途中连接断开时抛错。断开后 writeEncrypted 什么也不做,继续测只会等到超时,
+   * 再把断线误报成丢包或测速超时。
+   *
+   * @throws Error 当前不是 connected
+   */
+  private assertStillConnected(): void {
+    if (this.state === 'connected') return;
+    throw new Error(
+      `[LinkClient] 连接测试途中与 ${this.config.label}(${this.targetAddress})的连接断开了` +
+        `(状态:${this.state})。可能原因:(1) 网络中断;(2) Host 休眠或退出。建议:等它重连后再测。`,
+    );
+  }
+
+  /**
+   * 发 TEST_PING_COUNT 个 ping。
+   *
+   * @returns 收到回音的往返时间(ms,按发出顺序)和实际发出的个数(中途断开时少于 20)
+   */
+  private measureRtt(): Promise<{ samples: number[]; sent: number }> {
+    return new Promise((resolve) => {
+      const sentAt = new Map<number, number>();
+      const rtts = new Map<number, number>();
+      let sent = 0;
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        clearInterval(timer);
+        clearTimeout(grace);
+        this.pongListener = null;
+        resolve({
+          samples: [...sentAt.keys()].filter((t) => rtts.has(t)).map((t) => rtts.get(t) as number),
+          sent,
+        });
+      };
+      this.pongListener = (t, at) => {
+        if (!sentAt.has(t)) return; // 平时的心跳 ping
+        rtts.set(t, at - t);
+        if (rtts.size === TEST_PING_COUNT) finish();
+      };
+      let grace: NodeJS.Timeout | undefined;
+      const timer = setInterval(() => {
+        if (this.state !== 'connected') return finish();
+        // t 用作 ping 的编号:间隔 100 ms,不会两次取到同一毫秒
+        const t = Date.now();
+        sentAt.set(t, t);
+        this.writeEncrypted<LinkPing>({ type: 'ping', t });
+        sent++;
+        if (sent === TEST_PING_COUNT) {
+          clearInterval(timer);
+          grace = setTimeout(finish, TEST_PING_GRACE_MS);
+        }
+      }, TEST_PING_INTERVAL_MS);
+    });
+  }
+
+  /** 等 Host 对测速编号 id 的 probe-end / probe-ack,超时 reject。 */
+  private waitProbe(id: number): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.probeWaiters.delete(id);
+        reject(new Error(`测速 ${id} 等待 Host 超时(${TEST_PROBE_TIMEOUT_MS} ms)`));
+      }, TEST_PROBE_TIMEOUT_MS);
+      this.probeWaiters.set(id, {
+        resolve: (bytes) => {
+          clearTimeout(timer);
+          resolve(bytes);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+    });
+  }
+
+  /**
+   * 下行:请 Host 发 TEST_PROBE_BYTES,从发出请求到收到 probe-end 计时。
+   *
+   * @param floorMs 最小往返,从用时里扣掉(请求过去、probe-end 回来本身就要这么久)
+   * @returns MB/s(10^6 字节每秒)
+   */
+  private async measureDown(floorMs: number): Promise<number> {
+    this.assertStillConnected();
+    const id = this.nextProbeId++;
+    const start = Date.now();
+    const done = this.waitProbe(id);
+    this.writeEncrypted<LinkProbe>({ type: 'probe', id, bytes: TEST_PROBE_BYTES });
+    const bytes = await done;
+    return toMBps(bytes, Date.now() - start, floorMs);
+  }
+
+  /** 上行:发 TEST_PROBE_BYTES 的随机数据,从开始发到收到 probe-ack 计时。 */
+  private async measureUp(floorMs: number): Promise<number> {
+    this.assertStillConnected();
+    const id = this.nextProbeId++;
+    const start = Date.now();
+    const done = this.waitProbe(id);
+    let sent = 0;
+    for (let remaining = TEST_PROBE_BYTES; remaining > 0; remaining -= LINK_PROBE_CHUNK_BYTES) {
+      const data = randomBytes(Math.min(remaining, LINK_PROBE_CHUNK_BYTES)).toString('base64');
+      this.writeEncrypted<LinkProbeData>({ type: 'probe-data', id, data }, false);
+      sent += data.length;
+    }
+    this.writeEncrypted<LinkProbeEnd>({ type: 'probe-end', id, bytes: sent });
+    const received = await done;
+    return toMBps(received, Date.now() - start, floorMs);
+  }
+
+  /**
+   * ADR-055:最近 5 分钟输出最多的几个标签,带 Host 上的标签名。
+   *
+   * 标签名从 Host 的快照里取(转发 cmd:app:get-snapshot,没有副作用)。取不到时用
+   * sessionId 的前 8 位,不让整个测试因此失败。
+   */
+  async getTabTraffic(): Promise<LinkTabTraffic[]> {
+    const traffic = this.outputStats.summarize(Date.now());
+    if (traffic.length === 0) return [];
+    const names = new Map<string, string>();
+    try {
+      const snapshot = (await this.forwardCommand(
+        COMMAND_CHANNELS.APP_GET_SNAPSHOT,
+        undefined,
+      )) as AppSnapshot;
+      for (const s of snapshot.sessions ?? []) names.set(s.id, s.displayName);
+    } catch (err) {
+      logger.warn(
+        'LinkClient',
+        `连接测试取标签名失败,改用 session id:${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return traffic.map((t) => ({ ...t, name: names.get(t.sessionId) || t.sessionId.slice(0, 8) }));
   }
 
   private startHeartbeat(): void {
@@ -807,10 +1111,14 @@ export class LinkClient {
     this.writeFrame(encodeFrame(Buffer.from(JSON.stringify(msg), 'utf8')));
   }
 
-  private writeEncrypted<T>(msg: T): void {
+  /**
+   * @param compress false 时不压缩(测速数据);默认按 Host 是否声明 deflate
+   */
+  private writeEncrypted<T>(msg: T, compress = true): void {
     if (!this.socket || this.socket.destroyed || !this.send) return;
     try {
-      this.writeFrame(encodeFrame(this.send.encrypt(Buffer.from(JSON.stringify(msg), 'utf8'))));
+      const plaintext = encodeLinkMessage(msg, { deflate: compress && this.compressOut });
+      this.writeFrame(encodeFrame(this.send.encrypt(plaintext)));
     } catch (err) {
       this.fail(`发送失败:${err instanceof Error ? err.message : String(err)}`);
     }
@@ -865,6 +1173,12 @@ export class LinkClient {
     this.liveness = null;
     this.laggy = false;
     this.resumeRequested = false;
+    this.compressOut = false;
+    this.pongListener = null;
+    for (const [, waiter] of this.probeWaiters) {
+      waiter.reject(new Error('连接已断开,测速中止'));
+    }
+    this.probeWaiters.clear();
 
     const socket = this.socket;
     this.socket = null;
@@ -902,6 +1216,18 @@ export class LinkClient {
       payload: this.getConnectionState(),
     });
   }
+}
+
+/**
+ * 字节数换成 MB/s(10^6 字节每秒)。
+ *
+ * @param elapsedMs 从开始到收到确认的总用时
+ * @param floorMs 最小往返。扣掉它,但最多扣到总用时的一半:往返样本偏大时(测往返时
+ *   线路忙)直接相减会得到接近 0 甚至负的用时,速度被夸大成天文数字
+ */
+function toMBps(bytes: number, elapsedMs: number, floorMs: number): number {
+  const ms = Math.max(elapsedMs - floorMs, elapsedMs / 2, 1);
+  return bytes / ms / 1000;
 }
 
 /**

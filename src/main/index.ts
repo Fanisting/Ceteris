@@ -772,6 +772,7 @@ function bootstrap(): void {
         chinese: () =>
           resolveLocale(settingsManager.get().appearance.language, app.getLocale()) === 'zh-CN',
         templateName: (id) => templatesManager.get(id)?.name ?? null,
+        userName: () => settingsManager.get().behavior.userName,
       });
       const localHolders = new TabHolders();
       const isFront = (win: BrowserWindow | null): boolean =>

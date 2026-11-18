@@ -26,11 +26,17 @@ import {
 import { useAppDispatch, useAppState } from '../store';
 import { useTranslation } from './LanguageProvider';
 import { useToast, type ToastAction } from './Toast';
+import { useNamedNotice } from './use-named-notice';
 
 export function AgentUpdateNoticeBridge(): null {
   const toast = useToast();
   const dispatch = useAppDispatch();
   const { tx } = useTranslation();
+  // ADR-052:good news notices end with the user name. Read through a ref so a name change
+  // does not resubscribe (and report AGENT_NOTICES_READY again).
+  const txNamedNow = useNamedNotice();
+  const txNamedRef = useRef(txNamedNow);
+  txNamedRef.current = txNamedNow;
   const state = useAppState();
   // 通知到达时才看 sessions;放 ref 免得每次 sessions 变化都重挂监听
   const sessionsRef = useRef(state.sessions);
@@ -71,13 +77,17 @@ export function AgentUpdateNoticeBridge(): null {
         ? [{ label: tx('关掉再开回来', 'Full reload'), onClick: () => act(templateId, 'reload') }]
         : [];
 
+    const txNamed = (zh: string, en: string): string => txNamedRef.current(zh, en);
     const off = window.api.on<AgentUpdateNotice>(EVENT_CHANNELS.AGENT_UPDATE_NOTICE, (n) => {
       const versions = n.from && n.to ? `${n.from} → ${n.to}` : (n.to ?? '');
       switch (n.kind) {
         case 'available':
           toast.push({
             kind: 'info',
-            message: tx(`${n.name} 有新版本 ${versions}`, `${n.name} ${versions} is available`),
+            message: txNamed(
+              `${n.name} 有新版本 ${versions}`,
+              `${n.name} ${versions} is available`,
+            ),
             durationMs: 15_000,
             actions: [
               { label: tx('升级', 'Update'), onClick: () => act(n.templateId, 'update') },
@@ -128,7 +138,7 @@ export function AgentUpdateNoticeBridge(): null {
         case 'done':
           toast.push({
             kind: 'success',
-            message: tx(
+            message: txNamed(
               `${n.name} 已升级到 ${n.to ?? '最新版'}`,
               `${n.name} updated to ${n.to ?? 'the latest version'}`,
             ),
@@ -198,7 +208,7 @@ export function AgentUpdateNoticeBridge(): null {
             n.updated
               ? {
                   kind: 'success',
-                  message: tx(
+                  message: txNamed(
                     `${n.name} 已更新到 ${n.to ?? '最新版'}。${back}`,
                     `${n.name} updated to ${n.to ?? 'the latest version'}. ${back}`,
                   ),

@@ -72,7 +72,7 @@ import {
 } from './explorer-integration';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { homedir, hostname } from 'node:os';
+import { homedir, hostname, userInfo } from 'node:os';
 import { dirname, resolve, join as joinPath } from 'node:path';
 import {
   codexMcpBlock,
@@ -1863,6 +1863,20 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       // BETA-039:UI 设置页用真实绝对路径替代硬编码 %APPDATA%\Ceteris,
       // 在 portable / dev / 自定义 userData 场景下也保持准确。
       return { dataDir: app.getPath('userData') };
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.SYSTEM_GET_OS_USER_NAME,
+    (_e, _envelope: CommandEnvelope<undefined>): { userName: string } => {
+      // ADR-052:只是称呼卡片的建议值。userInfo() 在没有账户条目的环境 (部分容器) 会 throw,
+      // 这时给空串,卡片输入框留空即可,不算错误。
+      try {
+        return { userName: userInfo().username };
+      } catch (err) {
+        logger.warn('ipc', `os.userInfo() failed, name suggestion left empty: ${String(err)}`);
+        return { userName: '' };
+      }
     },
   );
 

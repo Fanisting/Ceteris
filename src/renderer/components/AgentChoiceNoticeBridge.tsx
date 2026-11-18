@@ -46,6 +46,7 @@ import {
 import { ChoicePanel } from './ChoicePanel';
 import { useTranslation } from './LanguageProvider';
 import { useToast } from './Toast';
+import { useNamedNotice } from './use-named-notice';
 
 /**
  * The toast never times out on its own: the agent is still waiting, and the point is to be
@@ -66,6 +67,8 @@ export function AgentChoiceNoticeBridge(): null {
   const dispatch = useAppDispatch();
   const toast = useToast();
   const { tx } = useTranslation();
+  // ADR-052:the notice ends with the user name when one is set
+  const txNamed = useNamedNotice();
   /** The phase of every session at the previous render; a session missing here is new. */
   const phases = useRef<Map<string, AgentPhase | null> | null>(null);
   /** Open toasts by session id, so the toast leaves when the agent does. */
@@ -136,7 +139,7 @@ export function AgentChoiceNoticeBridge(): null {
         const go = (): void => goToTab(stateRef.current.sessions.get(s.id) ?? s);
         const id = toast.push({
           kind: 'warn',
-          message: tx(
+          message: txNamed(
             `${s.displayName} 在等你决定`,
             `${s.displayName} is waiting for your decision`,
           ),
@@ -158,7 +161,7 @@ export function AgentChoiceNoticeBridge(): null {
         open.current.delete(sid);
       }
     }
-  }, [state, stateRef, dispatch, toast, tx]);
+  }, [state, stateRef, dispatch, toast, tx, txNamed]);
 
   return null;
 }

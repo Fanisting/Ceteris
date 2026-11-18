@@ -160,6 +160,27 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/behavior\.mainAgentAsked/);
   });
 
+  it('behavior.userName 默认空串且未问过 (ADR-052)', () => {
+    expect(DEFAULT_SETTINGS.behavior.userName).toBe('');
+    expect(DEFAULT_SETTINGS.behavior.userNameAsked).toBe(false);
+  });
+
+  it('behavior.userName 首尾空格、超长、控制字符、非字符串 throw (ADR-052)', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    for (const v of [' Xu', 'a'.repeat(41), 'a\u0007b', 3]) {
+      (bad.behavior as { userName: unknown }).userName = v;
+      expect(() => validateSettings(bad)).toThrowError(/behavior\.userName=/);
+    }
+    bad.behavior.userName = 'Alex';
+    expect(() => validateSettings(bad)).not.toThrow();
+  });
+
+  it('behavior.userNameAsked 必须是布尔值 (ADR-052)', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS);
+    (bad.behavior as { userNameAsked: unknown }).userNameAsked = 'yes';
+    expect(() => validateSettings(bad)).toThrowError(/behavior\.userNameAsked/);
+  });
+
   it('非法 `name:` 命令列表 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     bad.extensions.colonCommands.commands = [{ name: 'a b', command: '/x' }];
@@ -246,6 +267,9 @@ describe('SettingsManager — initialize', () => {
     expect(settings.behavior.quickLaunchTipSeen).toBe(false);
     // 远程设置引导 (ADR-032) 同样补 false,升级后没配远端的用户会被问一次
     expect(settings.behavior.remoteSetupGuideSeen).toBe(false);
+    // ADR-052:老用户升级后称呼卡片也出现一次
+    expect(settings.behavior.userName).toBe('');
+    expect(settings.behavior.userNameAsked).toBe(false);
     expect(settings.advanced.logLevel).toBe('INFO');
   });
 

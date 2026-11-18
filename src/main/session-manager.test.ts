@@ -227,6 +227,8 @@ function makeStubSettingsManager(
       remoteSetupGuideSeen: true,
       mainAgent: '',
       mainAgentAsked: true,
+      userName: '',
+      userNameAsked: true,
       bracketedPaste: true,
       autoCheckUpdates: true,
       autoCheckAgents: true,

@@ -314,6 +314,8 @@ export const COMMAND_CHANNELS = {
   LINK_GET_WINDOW_STATE: 'cmd:link:get-window-state',
   /** 用户确认已看过"输入未确认"提示 */
   LINK_ACK_UNCONFIRMED: 'cmd:link:ack-unconfirmed',
+  /** ADR-055:测一台已保存的 Host:路径、往返、速度、重标签 */
+  LINK_TEST: 'cmd:link:test',
   VIEW_GET_STATE: 'cmd:view:get-state',
   VIEW_SWITCH: 'cmd:view:switch',
 
@@ -1613,6 +1615,12 @@ export interface LinkDisconnectPayload {
 
 export interface LinkKickClientPayload {
   virtualWindowId: string;
+}
+
+/** cmd:link:test 的 payload(ADR-055)。返回值是 @shared/link-test 的 LinkTestResult。 */
+export interface LinkTestPayload {
+  host: string;
+  port: number;
 }
 
 export interface LinkBindCandidate {

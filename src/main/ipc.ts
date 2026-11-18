@@ -219,6 +219,7 @@ import {
   type LinkConnectResponse,
   type LinkDisconnectPayload,
   type LinkKickClientPayload,
+  type LinkTestPayload,
   type LinkListBindCandidatesResponse,
   type LinkRegenerateTokenResponse,
   type LinkStatusChangedPayload,
@@ -231,6 +232,7 @@ import {
   type ShelfRestoreResponse,
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
+import type { LinkTestResult } from '@shared/link-test';
 import type { ShelfManager } from './shelf-manager';
 import type { DoneNotifier } from './done-notifier';
 import type { WindowManager } from './window-manager';
@@ -2839,6 +2841,20 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.LINK_KICK_CLIENT,
     (_e, envelope: CommandEnvelope<LinkKickClientPayload>): void => {
       requireLinkManager(deps).disconnectHostClient(envelope.payload.virtualWindowId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_TEST,
+    async (_e, envelope: CommandEnvelope<LinkTestPayload>): Promise<LinkTestResult> => {
+      const { host, port } = envelope.payload ?? ({} as Partial<LinkTestPayload>);
+      if (typeof host !== 'string' || !host.trim() || !Number.isInteger(port)) {
+        throw new Error(
+          `[ipc] cmd:link:test: 需要 host(非空字符串)和 port(整数),收到 host=${String(host)} ` +
+            `port=${String(port)}。可能原因:设置页传错了字段,或保存的主机记录损坏。`,
+        );
+      }
+      return requireLinkManager(deps).testLink(host.trim(), port as number);
     },
   );
 

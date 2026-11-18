@@ -100,6 +100,12 @@ export interface PlatformAdapter {
    */
   prepareSshAskpass?(dataDir: string): AskpassHelper | null;
 
+  /**
+   * Tailscale 命令行可能装在的固定位置(ADR-055 连接测试读 `tailscale status`)。
+   * 调用方先按 PATH 找,找不到再依次试这里的路径。可选:没有就只按 PATH 找。
+   */
+  tailscaleCliCandidates?(): string[];
+
   buildShellLaunchParams(
     shell: ShellInfo,
     hookFilePath: string,

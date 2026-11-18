@@ -21,6 +21,7 @@
   "fileTree.resize": "Drag to resize. Double-click to reset.",
   "fileTree.empty.noSession": "Select a session to see its folder",
   "fileTree.connecting": "Connecting over SFTP…",
+  "fileTree.loading": "Loading…",
   "fileTree.empty.folder": "Empty folder",
   "fileTree.truncated": "Showing the first {count} items",
   "fileTree.error.not-found": "This folder could not be found",

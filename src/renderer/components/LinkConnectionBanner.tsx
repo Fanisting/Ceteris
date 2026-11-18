@@ -32,6 +32,7 @@ import {
 } from '@shared/protocol';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
+import { ShapeLoader } from './ShapeLoader';
 
 export function LinkConnectionBanner(): JSX.Element | null {
   const { tx } = useTranslation();
@@ -128,7 +129,11 @@ export function LinkConnectionBanner(): JSX.Element | null {
 
   return (
     <div className={`link-banner link-banner-${conn.state}`} role="status">
-      <Icon name="server" size={14} />
+      {conn.state === 'connecting' || conn.state === 'reconnecting' ? (
+        <ShapeLoader size={16} delayMs={0} />
+      ) : (
+        <Icon name="server" size={14} />
+      )}
       <span className="link-banner-text">{message}</span>
       {conn.lastError && <span className="link-banner-detail">{conn.lastError}</span>}
     </div>

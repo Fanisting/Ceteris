@@ -331,6 +331,10 @@
   position: absolute;
   inset: 0;
   overflow: auto;
+  /* 滚动条的位置一直留着。否则页面高度刚好接近窗格高度时(最大化窗口常见):
+     出现滚动条 → 内容变窄 → ResizeObserver 按宽度重排 → 页面变矮 → 滚动条消失 →
+     内容变宽 → 页面变高 → 滚动条又出现,每秒几十次,看起来就是闪 */
+  scrollbar-gutter: stable;
   background-color: var(--color-bg-secondary, #f0f);
 }
 
@@ -356,6 +360,8 @@
 
 .pdf-js-slides .pdf-overlay-viewer {
   overflow: hidden;
+  /* 幻灯片不滚动,不用给滚动条留位置,页面左右才对称 */
+  scrollbar-gutter: auto;
   background-color: var(--pdf-stage, #f0f);
   cursor: pointer;
 }

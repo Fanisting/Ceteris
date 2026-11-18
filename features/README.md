@@ -70,13 +70,14 @@ The Version column shows the first release that contains the feature. "Next" mea
 
 ## Appearance
 
-| Feature                                           | Summary                                                         | Version |
-| ------------------------------------------------- | --------------------------------------------------------------- | ------- |
-| [Built-in themes](built-in-themes.md)             | More than 90 themes, including pearl and Beamer                 | 0.4.1   |
-| [Legado MD3 themes](legado-themes.md)             | Material 3 colour sets plus live seed and Windows accent themes | 0.4.1   |
-| [Pili themes](pili-themes.md)                     | 38 Material 3 themes from PiliPlus seed colours                 | 0.4.2   |
-| [Custom themes](custom-themes.md)                 | A theme is one CSS file in the themes folder                    | 0.4.1   |
-| [Material Design 3 look](material-design-look.md) | Material shapes and motion across the app                       | 0.3.0   |
+| Feature                                           | Summary                                                                   | Version |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ------- |
+| [Built-in themes](built-in-themes.md)             | More than 90 themes, including pearl and Beamer                           | 0.4.1   |
+| [Legado MD3 themes](legado-themes.md)             | Material 3 colour sets plus live seed and Windows accent themes           | 0.4.1   |
+| [Pili themes](pili-themes.md)                     | 38 Material 3 themes from PiliPlus seed colours                           | 0.4.2   |
+| [Custom themes](custom-themes.md)                 | A theme is one CSS file in the themes folder                              | 0.4.1   |
+| [Material Design 3 look](material-design-look.md) | Material shapes and motion across the app                                 | 0.3.0   |
+| [Shape loader](shape-loader.md)                   | A morphing Material shape shows while files, tabs and remote folders load | Next    |
 
 ## Setup
 

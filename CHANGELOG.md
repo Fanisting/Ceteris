@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **等待时有动画了。** 打开文件、新标签还没输出、连接远程、文件树读文件夹时,原来只有一行字或一片空白,现在显示一个在七种 Material 形状间变形、慢慢转动的小图形(和 legado-with-MD3 里的一样),颜色跟随主题。等待不到 0.3 秒时什么都不显示,快的操作不会闪一下。系统开了“减少动画”时图形不动。
+
 ## [0.4.5] (2026-11-17)
 
 ### 新增
@@ -417,7 +421,7 @@ UI 视觉一致性收尾:把"无边框 / hairline / lucide 矢量图标"语言�
   2. 子进程 env 块里 `SystemRoot`(canonical casing)是空串,只有 `SYSTEMROOT`
      有值;Win32 内部展开 `%SystemRoot%` 按字面 key 名查,大小写不一致就替
      换成空。
-  修复采用**两层防御**:
+     修复采用**两层防御**:
   - Layer 1(源头):`getRefreshedPath` 读完注册表立即调
     `expandWindowsEnvPlaceholders` 展开,name 查找大小写不敏感、未命中保留原
     样(对齐 Win32 ExpandEnvironmentStringsW)。

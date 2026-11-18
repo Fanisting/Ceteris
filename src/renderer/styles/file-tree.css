@@ -812,3 +812,89 @@
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
 }
+
+/* ── Skills card (ADR-053) ──────────────────────────────────────────────
+ * Shares the file tree's slot, card, header, list and hint styles; only the group headers and
+ * the two-line rows are its own. The toggle sits right before the file tree toggle, so it
+ * pushes itself to the right end and leaves settings alone on the left. */
+.sidebar-footer .skills-toggle {
+  margin-left: auto;
+}
+
+/* The list keeps a 12px scrollbar gutter plus 4px padding, so group counts end 16px from the card's
+   right edge. The header count is moved to the same edge so all counts line up. */
+.skills-panel .file-tree-header {
+  padding-right: 16px;
+}
+
+.skills-count {
+  flex: 0 0 auto;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.skills-group-header,
+.skills-row {
+  display: flex;
+  width: 100%;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.skills-group-header:hover,
+.skills-row:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.skills-group-header:focus-visible,
+.skills-row:focus-visible {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: -2px;
+}
+
+.skills-group-header {
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.skills-group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Name over a one-line description; the indent lines the name up with the group title. */
+.skills-row {
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px 4px 20px;
+  color: var(--md-on-surface, #f0f);
+  font-size: 12px;
+}
+
+.skills-row-name,
+.skills-row-desc {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.skills-row-desc {
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+}

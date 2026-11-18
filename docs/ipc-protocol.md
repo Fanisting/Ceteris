@@ -1775,7 +1775,26 @@ interface NotifyTestResponse { shown: boolean } // false = 系统没有可用的
 
 点通知时 main 给持有标签的窗口发 `evt:window:focus-requested`,`reason: 'notification-click'`,带 `selectSessionId`。
 
+### 5.15 Agent 的 skill 列表 (ADR-053)
+
+规则在 `src/main/agent-skills.ts`,类型在 `src/shared/agent-skills.ts`。
+
+#### `cmd:agent:list-skills`
+```typescript
+interface AgentListSkillsPayload { sessionId: string }
+type AgentListSkillsResponse =
+  | { ok: true; agent: 'claude-code' | 'codex'; groups: SkillGroup[] }
+  | { ok: false; reason: 'no-session' | 'no-agent' | 'remote' };
+interface SkillGroup {
+  kind: 'project' | 'personal' | 'plugin' | 'system';
+  label: string; // plugin 名;其他是读的目录
+  skills: { name: string; description: string; path: string }[]; // path 是 SKILL.md 的绝对路径
+}
+```
+列出这个标签里 Claude Code 或 Codex 能用的 skill。agent 先按模板判断,纯 shell 再看屏幕。未知或已退出的 session 返回 `no-session`,SSH 标签返回 `remote`。组的顺序是 project(近的在前)、personal、plugin(按名字)、system,空组不返回,组内按名字排序。只读,读不了的来源跳过并记 debug 日志,从不抛错。Link 远程窗口里转发给 Host,读的是 Host 上的目录。
+
 ## 6. 事件清单 (Main → Renderer)
+
 
 ### 6.1 应用与窗口
 

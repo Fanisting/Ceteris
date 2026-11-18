@@ -31,6 +31,7 @@ import type {
 import type { DeepPartial } from './types-helpers';
 import type { FrequentPrompt, NextPromptModelOption } from './next-prompt';
 import type { AgentUsage, ModelChoice, ModelEffort } from './agent-model';
+import type { ListSkillsResult } from './agent-skills';
 
 /**
  * 协议版本号。Main 与 Renderer 不匹配时拒绝 handshake。
@@ -220,6 +221,8 @@ export const COMMAND_CHANNELS = {
   AGENT_SWITCH_MODEL: 'cmd:agent:switch-model',
   /** ADR-038:一个 agent 终端的用量 (模型、effort、上下文、5h / 周限额、明细) */
   AGENT_USAGE: 'cmd:agent:usage',
+  /** ADR-053:一个终端里的 agent 能用的 skill (项目、个人、插件、内置),侧栏 skill 面板用 */
+  AGENT_LIST_SKILLS: 'cmd:agent:list-skills',
 
   // System 域
   SYSTEM_SHOW_IN_EXPLORER: 'cmd:system:show-in-explorer',
@@ -1264,6 +1267,13 @@ export interface AgentSwitchModelResponse {
 export interface AgentUsagePayload {
   sessionId: string;
 }
+
+/** ADR-053: the skills panel asks for the skills of the agent in this tab */
+export interface AgentListSkillsPayload {
+  sessionId: string;
+}
+
+export type AgentListSkillsResponse = ListSkillsResult;
 
 export interface AgentUsageResponse {
   /** null until the agent has written its first transcript or rollout line */

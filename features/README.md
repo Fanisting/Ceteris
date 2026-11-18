@@ -59,6 +59,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Next prompt suggestions](next-prompt-suggestions.md)                     | A suggested next message that learns your habits                               | 0.3.0   |
 | [Agent tab titles](agent-tab-titles.md)                                   | Short, readable titles, optionally written by a model                          | 0.4.1   |
 | [Model and effort](agent-model-effort.md)                                 | Folder defaults and per tab switching for Claude Code and Codex                | 0.4.3   |
+| [Skills panel](agent-skills-panel.md)                                     | See the skills of the agent in this tab, open a SKILL.md with one click        | Next    |
 | [Choice notice](agent-choice-notice.md)                                   | A notice points to the tab waiting for your decision, and answers it           | 0.4.3   |
 | [Done notifications](done-notifications.md)                               | A system notification when a belled agent tab finishes; click to go back       | 0.4.4   |
 | [Main agent](main-agent.md)                                               | Pick the agent you use most once; quick launch, guides and setup start from it | 0.4.4   |

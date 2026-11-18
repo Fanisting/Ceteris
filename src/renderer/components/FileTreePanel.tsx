@@ -250,8 +250,11 @@ export function FileTreePanel(): JSX.Element {
   );
 }
 
-/** Where a clicked PDF is shown: over the terminal on screen, else over the new tab page. */
-function pdfViewKey(state: AppState): string | null {
+/**
+ * Where a clicked PDF is shown: over the terminal on screen, else over the new tab page.
+ * Also used by SkillsPanel, which opens SKILL.md files the same way.
+ */
+export function pdfViewKey(state: AppState): string | null {
   const session = getDisplayableSession(state);
   if (session) return session.id;
   return state.selectedPathId ? folderPdfKey(state.selectedPathId) : null;
@@ -280,8 +283,11 @@ function saveHeight(value: number | null): void {
   }
 }
 
-/** Drag the handle to resize, double-click to go back to the default height. */
-function useResizableHeight(): {
+/**
+ * Drag the handle to resize, double-click to go back to the default height. SkillsPanel shares
+ * it, so both cards in the lower sidebar keep one height.
+ */
+export function useResizableHeight(): {
   height: number | null;
   handleProps: {
     onPointerDown: (e: PointerEvent<HTMLDivElement>) => void;

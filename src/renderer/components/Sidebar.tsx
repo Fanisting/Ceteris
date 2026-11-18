@@ -37,6 +37,7 @@ import { PICK_REMOTE_FOLDER_EVENT } from './ViewSwitchButton';
 import {
   AccountTree,
   ArrowBack,
+  AutoAwesome,
   CheckBold,
   ChevronRight,
   CloseBold,
@@ -47,6 +48,7 @@ import {
   ViewList,
 } from './material-symbols';
 import { FileTreePanel } from './FileTreePanel';
+import { SkillsPanel } from './SkillsPanel';
 import { TagDot, TagEditor, TagSettings } from './TagEditor';
 import { RemoteFolderPicker } from './RemoteFolderPicker';
 import { focusTerminalDom } from '../focus';
@@ -114,12 +116,20 @@ const STATE_DOT_COLOR: Record<SessionInfo['state'], string> = {
  * 持久化到 localStorage,跨重启保留。
  */
 const FILE_TREE_OPEN_LS_KEY = 'ceteris.sidebar.fileTreeOpen';
+/** ADR-053: the lower sidebar shows the file tree or the skills card, never both. */
+const BOTTOM_PANEL_LS_KEY = 'ceteris.sidebar.bottomPanel';
 
-function readFileTreeOpenFromStorage(): boolean {
+type BottomPanel = 'files' | 'skills' | null;
+
+function readBottomPanelFromStorage(): BottomPanel {
   try {
-    return window.localStorage?.getItem(FILE_TREE_OPEN_LS_KEY) === 'true';
+    const saved = window.localStorage?.getItem(BOTTOM_PANEL_LS_KEY);
+    if (saved === 'files' || saved === 'skills') return saved;
+    if (saved === 'none') return null;
+    // Before ADR-053 only the file tree had a switch.
+    return window.localStorage?.getItem(FILE_TREE_OPEN_LS_KEY) === 'true' ? 'files' : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -194,12 +204,15 @@ export function Sidebar(): JSX.Element {
     return () => window.removeEventListener(PICK_REMOTE_FOLDER_EVENT, open);
   }, []);
 
-  const [fileTreeOpen, setFileTreeOpen] = useState<boolean>(() => readFileTreeOpenFromStorage());
-  const toggleFileTree = (): void => {
-    const next = !fileTreeOpen;
-    setFileTreeOpen(next);
+  const [bottomPanel, setBottomPanel] = useState<BottomPanel>(readBottomPanelFromStorage);
+  const fileTreeOpen = bottomPanel === 'files';
+  const skillsOpen = bottomPanel === 'skills';
+  /** Each footer button opens its card and closes the other one; a second click closes it. */
+  const toggleBottomPanel = (panel: 'files' | 'skills'): void => {
+    const next = bottomPanel === panel ? null : panel;
+    setBottomPanel(next);
     try {
-      window.localStorage?.setItem(FILE_TREE_OPEN_LS_KEY, String(next));
+      window.localStorage?.setItem(BOTTOM_PANEL_LS_KEY, next ?? 'none');
     } catch {
       // localStorage 不可用时只影响下次启动的默认状态
     }
@@ -599,6 +612,7 @@ export function Sidebar(): JSX.Element {
       </div>
       {managedTag && <TagSettings tag={managedTag} onClose={() => setManagedTag(null)} />}
       {fileTreeOpen && <FileTreePanel />}
+      {skillsOpen && <SkillsPanel />}
       {remotePickerOpen && (
         <RemoteFolderPicker
           profiles={
@@ -648,8 +662,19 @@ export function Sidebar(): JSX.Element {
         </button>
         <button
           type="button"
+          className={`file-tree-toggle skills-toggle${skillsOpen ? ' active' : ''}`}
+          onClick={() => toggleBottomPanel('skills')}
+          title={t('skills.toggle')}
+          aria-label={t('skills.toggle')}
+          aria-pressed={skillsOpen}
+          data-testid="skills-toggle"
+        >
+          <AutoAwesome size={20} />
+        </button>
+        <button
+          type="button"
           className={`file-tree-toggle${fileTreeOpen ? ' active' : ''}`}
-          onClick={toggleFileTree}
+          onClick={() => toggleBottomPanel('files')}
           title={t('fileTree.toggle')}
           aria-label={t('fileTree.toggle')}
           aria-pressed={fileTreeOpen}

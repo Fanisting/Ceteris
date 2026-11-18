@@ -13,6 +13,8 @@
  * - 显示期间 watchPdf 轮询文件,变了自动重读(见 pdf-view-store.ts)。标题栏显示
  *   刷新状态:更新中 / 无法刷新(可点重试)。
  * - 焦点由 focusTerminalDom 统一处理:有 PDF 时它把焦点给关闭按钮,而不是下面的终端。
+ * - YAML front matter at the top of a Markdown file renders as a code block (frontMatterAsCode),
+ *   so a SKILL.md opened from the skills panel (ADR-053) does not start with a giant heading.
  * - Markdown opens rendered. The header's Edit button swaps in TextFileView on the same file
  *   (ADR-028); Preview swaps back and renders the unsaved draft if there is one, so the user
  *   sees the edit without saving first. A file with an unsaved draft reopens in the editor.
@@ -30,6 +32,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import MarkdownIt from 'markdown-it';
+import { frontMatterAsCode } from '@shared/agent-skills';
 import { fileViewKind } from '@shared/file-tree';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import { focusTerminalDom } from '../focus';
@@ -68,7 +71,8 @@ const slidesChoices = new Set<string>();
 const markdown = new MarkdownIt({ html: false, linkify: true });
 
 function MarkdownView({ text }: { text: string }): JSX.Element {
-  const html = useMemo(() => markdown.render(text), [text]);
+  // Front matter (SKILL.md and many notes) shows as a yaml block, not as one huge heading.
+  const html = useMemo(() => markdown.render(frontMatterAsCode(text)), [text]);
 
   const openLink = (e: MouseEvent<HTMLElement>): void => {
     const link = (e.target as Element).closest('a');

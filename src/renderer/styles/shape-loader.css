@@ -1,0 +1,73 @@
+/*
+ * @file shape-loader.css
+ * @purpose ShapeLoader.tsx 的颜色和排版 (ADR-054)。
+ *
+ * @关键设计:
+ * - 颜色对应 Material 的 ContainedLoadingIndicator:圆是 primaryContainer,形状是
+ *   onPrimaryContainer。主题里没有 primary-container 变量,圆用 primary 混进表面色
+ *   得到,形状用 primary;不带圆时形状也是 primary。所有主题自动跟随。
+ * - 带圆 + 文字:上下排,文字在下 (legado 的 view_loading);不带圆:左右排,文字在右。
+ * - 出现时淡入 150ms;prefers-reduced-motion 下不淡入 (形状本身也不动,见组件)。
+ *
+ * @对应文档章节:软件定义书.md ADR-054
+ */
+
+.shape-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--md-on-surface-variant, #f0f);
+  animation: shape-loader-in var(--md-duration-short3, 150ms) ease-out backwards;
+}
+
+.shape-loader.contained.labelled {
+  flex-direction: column;
+  gap: 14px;
+}
+
+.shape-loader-mark {
+  flex: none;
+  display: block;
+}
+
+.shape-loader-container {
+  fill: color-mix(in srgb, var(--md-primary, #f0f) 22%, var(--md-surface, #f0f));
+}
+
+.shape-loader-shape {
+  fill: var(--md-primary, #f0f);
+}
+
+.shape-loader-label {
+  min-width: 0;
+}
+
+/* 新标签等第一行输出时盖在终端中间;不挡点击,不占布局 (占布局会改 PTY 尺寸) */
+.terminal-first-output {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 13px;
+}
+
+/* 文件查看器"正在打开":居中 */
+.shape-loader.file-view-loading {
+  margin: auto;
+  font-size: 13px;
+}
+
+@keyframes shape-loader-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shape-loader {
+    animation: none;
+  }
+}

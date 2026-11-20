@@ -170,6 +170,11 @@ export interface LinkAuth {
    * 客户端据此原地同步,不再 reload 窗口。首次连接时省略。
    */
   resume?: LinkResumeRequest;
+  /**
+   * ADR-055 / ADR-056:本端支持的可选能力,见 LINK_FEATURES。0.4.5 及更早的客户端
+   * 不带这个字段,Host 就当它什么都不支持。
+   */
+  features?: string[];
 }
 
 /**
@@ -228,6 +233,8 @@ export interface LinkAuthOk {
   hostName: string;
   /** Host 端 Ceteris 的 app 版本 */
   hostVersion: string;
+  /** ADR-055 / ADR-056:Host 支持的可选能力。旧 Host 不带,客户端当它什么都不支持 */
+  features?: string[];
 }
 
 /**
@@ -316,6 +323,49 @@ export interface LinkBye {
   reason: string;
 }
 
+/**
+ * ADR-055 连接测试:客户端请 Host 发 bytes 字节的测速数据(下行)。
+ *
+ * Host 回若干条 probe-data,最后一条 probe-end。只有 auth-ok 的 features 含
+ * LINK_FEATURE_PROBE 时客户端才发;旧 Host 会按"未知类型"忽略它。
+ */
+export interface LinkProbe {
+  type: 'probe';
+  /** 本连接内的测试编号,用来把 probe-end 配回请求 */
+  id: number;
+  /** 请求的字节数,Host 截到 LINK_PROBE_MAX_BYTES */
+  bytes: number;
+}
+
+/**
+ * ADR-055 测速数据,两个方向都用。data 是随机字节的 base64,压不小,
+ * 所以发送方不压缩它(见 link-message-codec.ts)。
+ */
+export interface LinkProbeData {
+  type: 'probe-data';
+  id: number;
+  data: string;
+}
+
+/**
+ * ADR-055 一段测速数据结束。
+ *
+ * Host → Client:下行数据发完了,bytes 是实际发出的 data 字符数。
+ * Client → Host:上行数据发完了,Host 收到后回 probe-ack。
+ */
+export interface LinkProbeEnd {
+  type: 'probe-end';
+  id: number;
+  bytes: number;
+}
+
+/** ADR-055 Host → Client:上行测速收到了 probe-end,bytes 是 Host 实际收到的 data 字符数。 */
+export interface LinkProbeAck {
+  type: 'probe-ack';
+  id: number;
+  bytes: number;
+}
+
 export type LinkMessage =
   | LinkAuth
   | LinkAuthOk
@@ -326,7 +376,42 @@ export type LinkMessage =
   | LinkPing
   | LinkPong
   | LinkBye
-  | LinkResume;
+  | LinkResume
+  | LinkProbe
+  | LinkProbeData
+  | LinkProbeEnd
+  | LinkProbeAck;
+
+// ──────────────────────────────────────────────────────────────────
+// 可选能力(ADR-055 / ADR-056)
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * ADR-056:本端能解压,也愿意收压缩过的帧。两端都声明了才压缩。
+ *
+ * 为什么用能力声明而不是 bump LINK_PROTOCOL_VERSION:版本号一变,新旧两端就
+ * 完全连不上。压缩是可选的优化,对不上时退回不压缩就行,没有理由让 0.4.5 的
+ * Host 拒绝新客户端。
+ */
+export const LINK_FEATURE_DEFLATE = 'deflate';
+
+/** ADR-055:Host 会回应 probe(测速)。 */
+export const LINK_FEATURE_PROBE = 'probe';
+
+/** 这个版本的 Ceteris 支持的全部可选能力,auth / auth-ok 里原样带上。 */
+export const LINK_FEATURES: readonly string[] = [LINK_FEATURE_DEFLATE, LINK_FEATURE_PROBE];
+
+/**
+ * ADR-056:明文短于这个字节数的消息不压缩。ping、按键、小块输出压了也省不了
+ * 几个字节,却要多花一次 deflate。
+ */
+export const LINK_DEFLATE_MIN_BYTES = 512;
+
+/** ADR-055:一次下行测速最多请求的字节数。Host 收到更大的请求时截到这里 */
+export const LINK_PROBE_MAX_BYTES = 4 * 1024 * 1024;
+
+/** ADR-055:每条 probe-data 带的随机字节数(base64 之前) */
+export const LINK_PROBE_CHUNK_BYTES = 48 * 1024;
 
 /**
  * 心跳间隔:每 5 秒发一次 ping(ADR-050,原 15 秒)。
@@ -495,6 +580,8 @@ export const LINK_LOCAL_ONLY_CHANNELS: ReadonlySet<string> = new Set([
   'cmd:link:list-bind-candidates',
   'cmd:link:get-window-state',
   'cmd:link:ack-unconfirmed',
+  // ADR-055:测的是本机发起的这条连接
+  'cmd:link:test',
   // Export and import read and write the disk of the machine in front of the user.
   'cmd:data:measure-agents',
   'cmd:data:export-bundle',

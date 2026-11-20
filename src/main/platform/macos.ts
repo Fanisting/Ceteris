@@ -67,6 +67,15 @@ export class MacOSAdapter implements PlatformAdapter {
     return [...shells].sort((a, b) => Number(b.id === login) - Number(a.id === login));
   }
 
+  /** App Store 和独立安装版都把命令行放在 app 包里;Homebrew 版在 PATH 上。 */
+  tailscaleCliCandidates(): string[] {
+    return [
+      '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+      '/opt/homebrew/bin/tailscale',
+      '/usr/local/bin/tailscale',
+    ];
+  }
+
   resolveExecutable(commandName: string, env: Record<string, string>): string | null {
     return this.posix.resolveExecutable(commandName, env);
   }

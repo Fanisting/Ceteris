@@ -21,6 +21,7 @@ import { remoteDirname } from '@shared/remote-path';
 import type { SshProfile } from '@shared/types';
 import { useTranslation } from './LanguageProvider';
 import { ChevronRight, Folder } from './material-symbols';
+import { ShapeLoader } from './ShapeLoader';
 
 interface RemoteFolderPickerProps {
   profiles: readonly SshProfile[];
@@ -131,7 +132,9 @@ export function RemoteFolderPicker({
         </div>
         <div className="remote-picker-list">
           {listing.status === 'loading' && (
-            <p className="file-tree-hint">{tx('正在连接…', 'Connecting…')}</p>
+            <p className="file-tree-hint">
+              <ShapeLoader size={18} label={tx('正在连接…', 'Connecting…')} />
+            </p>
           )}
           {listing.status === 'error' && (
             <p className="file-tree-hint">{t(`fileTree.error.${listing.reason}`)}</p>

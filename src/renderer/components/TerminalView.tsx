@@ -159,6 +159,7 @@ import { useModal } from './Modal';
 import { useTranslation } from './LanguageProvider';
 import { matchKeybinding } from '@shared/terminal-keybindings';
 import '@xterm/xterm/css/xterm.css';
+import { ShapeLoader } from './ShapeLoader';
 
 /**
  * 浅色主题的 ANSI 256 色扩展表(索引 16-255,共 240 项)。
@@ -1004,6 +1005,16 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // 详见 docs/issues/scroll-1-session-switch-progressive-refresh.md 与
   // docs/键盘交互规范.md 中"replay 期间按键不响应"决定。
   const [hostRevealed, setHostRevealed] = useState(false);
+  // ADR-054:session 还没有任何输出 (新开的 agent 标签、启动时恢复的标签、全量重载后开回来的
+  // 标签) 时盖一个 ShapeLoader。scrollback 非空或收到第一块 live 输出就置 true,之后不再变回。
+  // ref 让输出回调只 setState 一次,不在每块输出上触发渲染。
+  const [hasOutput, setHasOutput] = useState(false);
+  const hasOutputRef = useRef(false);
+  const markOutput = useCallback((): void => {
+    if (hasOutputRef.current) return;
+    hasOutputRef.current = true;
+    setHasOutput(true);
+  }, []);
 
   // 搜索栏状态
   const [searchVisible, setSearchVisible] = useState(false);
@@ -1806,6 +1817,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     const onVisibility = (): void => acker.setHidden(document.hidden);
     document.addEventListener('visibilitychange', onVisibility);
     const writeLive = (bytes: Uint8Array): void => {
+      if (bytes.length > 0) markOutput();
       const parsed = acker.received(bytes.length);
       term.write(bytes, () => {
         parsed?.();
@@ -1905,6 +1917,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         )
         .then(async (res) => {
           if (disposed) return;
+          if (res.data) markOutput();
+          if (pending.length > 0) markOutput();
           if (res.data) {
             // FLK-1:分片 write 避免 2MB scrollback 同步阻塞主线程 100-300ms
             // (用户看到的"切 session 后黑屏一下,然后内容瞬间涌出"卡顿)。
@@ -1965,6 +1979,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         .catch((err) => {
           console.warn('[TerminalView] get-scrollback failed, falling back', err);
           if (disposed) return;
+          if (pending.length > 0) markOutput();
           for (const c of pending) term.write(c.bytes, acker.received(c.bytes.length));
           pending = [];
           if (!rounds.done()) return;
@@ -2699,6 +2714,11 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         onWheel={handleWheel}
         onDrop={handleTerminalDrop}
       />
+      {hostRevealed && !hasOutput && session.state !== 'exited' && (
+        <div className="terminal-first-output">
+          <ShapeLoader size={48} contained label={tx('正在启动…', 'Starting…')} />
+        </div>
+      )}
       {searchVisible && (
         <div
           className="terminal-search-bar"

@@ -13,9 +13,16 @@
  * - 显示期间 watchPdf 轮询文件,变了自动重读(见 pdf-view-store.ts)。标题栏显示
  *   刷新状态:更新中 / 无法刷新(可点重试)。
  * - 焦点由 focusTerminalDom 统一处理:有 PDF 时它把焦点给关闭按钮,而不是下面的终端。
+ * - YAML front matter at the top of a Markdown file renders as a code block (frontMatterAsCode),
+ *   so a SKILL.md opened from the skills panel (ADR-053) does not start with a giant heading.
  * - Markdown opens rendered. The header's Edit button swaps in TextFileView on the same file
  *   (ADR-028); Preview swaps back and renders the unsaved draft if there is one, so the user
  *   sees the edit without saving first. A file with an unsaved draft reopens in the editor.
+ * - PDF has a Scroll | Slides switch in the same words style. Slides shows one page fitted to
+ *   the pane with a thumbnail strip; the header shows the page number with previous and next
+ *   buttons, and the zoom buttons hide because the page always fits. The choice is kept per
+ *   view key and path in slidesChoices for the life of the window, so switching sessions and
+ *   coming back keeps it, while another file starts in Scroll.
  *
  * @对应文档章节: 软件定义书.md 14.6, ADR-028
  *
@@ -25,6 +32,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import MarkdownIt from 'markdown-it';
+import { frontMatterAsCode } from '@shared/agent-skills';
 import { fileViewKind } from '@shared/file-tree';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import { focusTerminalDom } from '../focus';
@@ -39,8 +47,9 @@ import {
 import { getTextDraft } from '../text-drafts';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
-import { FitWidth, Sync, ZoomIn, ZoomOut } from './material-symbols';
+import { ChevronRight, FitWidth, Sync, ZoomIn, ZoomOut } from './material-symbols';
 import { PdfJsViewer, type PdfJsViewerHandle } from './PdfJsViewer';
+import { ShapeLoader } from './ShapeLoader';
 import { draftKeyOf, TextFileView } from './TextFileView';
 
 /**
@@ -53,10 +62,18 @@ interface MarkdownMode {
   draft: string | null;
 }
 
+/**
+ * PDFs the user switched to Slides in this window, as `${viewKey}
+${path}`. Module level so
+ * the choice survives PdfOverlay unmounting when the user switches sessions.
+ */
+const slidesChoices = new Set<string>();
+
 const markdown = new MarkdownIt({ html: false, linkify: true });
 
 function MarkdownView({ text }: { text: string }): JSX.Element {
-  const html = useMemo(() => markdown.render(text), [text]);
+  // Front matter (SKILL.md and many notes) shows as a yaml block, not as one huge heading.
+  const html = useMemo(() => markdown.render(frontMatterAsCode(text)), [text]);
 
   const openLink = (e: MouseEvent<HTMLElement>): void => {
     const link = (e.target as Element).closest('a');
@@ -116,7 +133,14 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
   const generation = view?.generation;
   const viewerRef = useRef<PdfJsViewerHandle | null>(null);
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode | null>(null);
+  const [, setSlidesTick] = useState(0);
+  const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
   const source = view?.source;
+
+  // A new file or a reload from scratch must not show the previous file's page numbers.
+  useEffect(() => {
+    setPageInfo(null);
+  }, [generation, viewKey]);
 
   useEffect(() => {
     if (generation === undefined) return undefined;
@@ -147,6 +171,14 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
   const editingMarkdown = kind === 'markdown' && Boolean(mode?.editing);
   // SSH tabs show the source read-only, so "Edit" would promise too much there.
   const editLabel = view.source.sshProfileId ? tx('源文本', 'Source') : tx('编辑', 'Edit');
+  const slidesKey = `${viewKey}
+${view.source.path}`;
+  const slides = kind === 'pdf' && slidesChoices.has(slidesKey);
+  const setSlides = (on: boolean): void => {
+    if (on) slidesChoices.add(slidesKey);
+    else slidesChoices.delete(slidesKey);
+    setSlidesTick((n) => n + 1);
+  };
 
   const showMarkdownPreview = async (): Promise<void> => {
     const viewSource = view.source;
@@ -161,7 +193,34 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
       <header className="pdf-overlay-header" title={view.source.path}>
         <span className="pdf-overlay-name">{view.source.name}</span>
         {ready && <RefreshBadge viewKey={viewKey} view={ready} />}
-        {ready && kind === 'pdf' && (
+        {ready && kind === 'pdf' && slides && (
+          <span className="pdf-overlay-tools">
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={tx('上一页', 'Previous page')}
+              aria-label={tx('上一页', 'Previous page')}
+              disabled={!pageInfo || pageInfo.page <= 1}
+              onClick={() => viewerRef.current?.previousPage()}
+            >
+              <ChevronRight size={18} className="pdf-overlay-flip" />
+            </button>
+            <span className="pdf-overlay-page" aria-live="polite">
+              {pageInfo ? `${pageInfo.page} / ${pageInfo.total}` : ''}
+            </span>
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={tx('下一页', 'Next page')}
+              aria-label={tx('下一页', 'Next page')}
+              disabled={!pageInfo || pageInfo.page >= pageInfo.total}
+              onClick={() => viewerRef.current?.nextPage()}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </span>
+        )}
+        {ready && kind === 'pdf' && !slides && (
           <span className="pdf-overlay-tools">
             <button
               type="button"
@@ -189,6 +248,26 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
               onClick={() => viewerRef.current?.fitWidth()}
             >
               <FitWidth size={16} />
+            </button>
+          </span>
+        )}
+        {ready && kind === 'pdf' && (
+          <span className="pdf-overlay-tools" role="group" aria-label={tx('显示方式', 'Show as')}>
+            <button
+              type="button"
+              className={`pdf-overlay-tool pdf-overlay-tool-text${slides ? '' : ' active'}`}
+              aria-pressed={!slides}
+              onClick={() => setSlides(false)}
+            >
+              {tx('滚动', 'Scroll')}
+            </button>
+            <button
+              type="button"
+              className={`pdf-overlay-tool pdf-overlay-tool-text${slides ? ' active' : ''}`}
+              aria-pressed={slides}
+              onClick={() => setSlides(true)}
+            >
+              {tx('幻灯片', 'Slides')}
             </button>
           </span>
         )}
@@ -251,18 +330,23 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
               blob={ready.blob}
               revision={ready.revision}
               name={view.source.name}
+              slides={slides}
               onReady={(handle) => {
                 viewerRef.current = handle;
               }}
+              onPage={(page, total) => setPageInfo({ page, total })}
             />
           </div>
         ) : null
+      ) : view.status === 'error' ? (
+        <p className="pdf-overlay-status">{t(`fileTree.error.${view.reason}`)}</p>
       ) : (
-        <p className="pdf-overlay-status">
-          {view.status === 'error'
-            ? t(`fileTree.error.${view.reason}`)
-            : tx('正在打开…', 'Opening…')}
-        </p>
+        <ShapeLoader
+          size={48}
+          contained
+          label={tx('正在打开…', 'Opening…')}
+          className="file-view-loading"
+        />
       )}
     </section>
   );

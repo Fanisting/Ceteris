@@ -331,7 +331,155 @@
   position: absolute;
   inset: 0;
   overflow: auto;
+  /* 滚动条的位置一直留着。否则页面高度刚好接近窗格高度时(最大化窗口常见):
+     出现滚动条 → 内容变窄 → ResizeObserver 按宽度重排 → 页面变矮 → 滚动条消失 →
+     内容变宽 → 页面变高 → 滚动条又出现,每秒几十次,看起来就是闪 */
+  scrollbar-gutter: stable;
   background-color: var(--color-bg-secondary, #f0f);
+}
+
+/* PdfJsViewer 的外壳:上面是 pdf.js 的容器(必须绝对定位),幻灯片时下面多一条缩略图 */
+.pdf-js-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-js-stage {
+  flex: 1 1 0;
+  position: relative;
+  min-height: 0;
+}
+
+/* 幻灯片:深色舞台,一页居中,周围留一点边 */
+.pdf-js-slides {
+  --pdf-stage: color-mix(in srgb, var(--color-bg-secondary, #f0f) 14%, #1b1c1f);
+  background-color: var(--pdf-stage, #f0f);
+}
+
+.pdf-js-slides .pdf-overlay-viewer {
+  overflow: hidden;
+  /* 幻灯片不滚动,不用给滚动条留位置,页面左右才对称 */
+  scrollbar-gutter: auto;
+  background-color: var(--pdf-stage, #f0f);
+  cursor: pointer;
+}
+
+.pdf-js-slides .pdf-overlay-viewer .pdfViewer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+
+.pdf-js-slides .pdf-overlay-viewer .pdfViewer .page {
+  margin: 0 auto;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 45%);
+}
+
+/* 文字仍可选:在文字上显示文本光标,别处是翻页的手形 */
+.pdf-js-slides .textLayer span {
+  cursor: text;
+}
+
+/* 左右两侧的翻页提示,只是提示,不挡点击和选字 */
+.pdf-slide-edge {
+  position: absolute;
+  top: 50%;
+  display: flex;
+  padding: 6px 2px;
+  border-radius: var(--block-radius, 8px);
+  color: rgb(255 255 255 / 80%);
+  background-color: rgb(0 0 0 / 30%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--md-duration-short4, 200ms) var(--md-easing-standard, ease);
+}
+
+.pdf-js-stage:hover .pdf-slide-edge {
+  opacity: 1;
+}
+
+.pdf-slide-edge-prev {
+  left: 6px;
+}
+
+.pdf-slide-edge-prev svg,
+.pdf-overlay-flip {
+  transform: scaleX(-1);
+}
+
+.pdf-slide-edge-next {
+  right: 6px;
+}
+
+/* 缩略图条:横向排开,当前页描边 */
+.pdf-thumb-strip {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 60px;
+  padding: 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background-color: color-mix(in srgb, var(--pdf-stage, #f0f) 82%, #000);
+  /* 没有滚动条:滚轮在条上横向滚动,当前页总会滚进视野 */
+  scrollbar-width: none;
+}
+
+.pdf-thumb-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.pdf-thumb {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background-color: #fff;
+  opacity: 0.6;
+  cursor: pointer;
+  overflow: hidden;
+  transition: opacity var(--md-duration-short2, 100ms) var(--md-easing-standard, ease);
+}
+
+.pdf-thumb:hover {
+  opacity: 0.9;
+}
+
+.pdf-thumb.current {
+  opacity: 1;
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: 1px;
+}
+
+.pdf-thumb canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 幻灯片的页码:等宽数字,翻页时宽度不跳 */
+.pdf-overlay-page {
+  min-width: 44px;
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary, #f0f);
+}
+
+.pdf-overlay-tool:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.pdf-overlay-tool:disabled:hover {
+  background-color: transparent;
 }
 
 /* pdf.js 自带的页间距偏大,这里按桌面密度收一点 */
@@ -339,6 +487,17 @@
   margin: 8px auto;
   border: none;
   box-shadow: 0 1px 4px rgb(0 0 0 / 30%);
+}
+
+/* The text layer is invisible text laid over the page canvas; only its selection highlight should
+   show. pdf_viewer.css (pdfjs-dist 6) writes the selection rule nested as
+   `.textLayer { ::selection { color: transparent } }`, and Chromium 126 (Electron 31) drops nested
+   rules that start with a pseudo-element. Without it a selection paints the text layer's own
+   glyphs in a fallback font over the PDF. Repeat the rule flat; drop it once Electron's Chromium
+   applies the nested one. */
+.pdf-overlay-viewer .textLayer ::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--md-primary, #f0f) 35%, transparent);
 }
 
 .pdf-overlay-tools {
@@ -811,4 +970,90 @@
 .file-tree-pin.active {
   background-color: var(--md-secondary-container, #f0f);
   color: var(--md-on-secondary-container, #f0f);
+}
+
+/* ── Skills card (ADR-053) ──────────────────────────────────────────────
+ * Shares the file tree's slot, card, header, list and hint styles; only the group headers and
+ * the two-line rows are its own. The toggle sits right before the file tree toggle, so it
+ * pushes itself to the right end and leaves settings alone on the left. */
+.sidebar-footer .skills-toggle {
+  margin-left: auto;
+}
+
+/* The list keeps a 12px scrollbar gutter plus 4px padding, so group counts end 16px from the card's
+   right edge. The header count is moved to the same edge so all counts line up. */
+.skills-panel .file-tree-header {
+  padding-right: 16px;
+}
+
+.skills-count {
+  flex: 0 0 auto;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.skills-group-header,
+.skills-row {
+  display: flex;
+  width: 100%;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.skills-group-header:hover,
+.skills-row:hover {
+  background-color: var(--md-state-hover, transparent);
+}
+
+.skills-group-header:focus-visible,
+.skills-row:focus-visible {
+  outline: 2px solid var(--md-primary, #f0f);
+  outline-offset: -2px;
+}
+
+.skills-group-header {
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0;
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.skills-group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Name over a one-line description; the indent lines the name up with the group title. */
+.skills-row {
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px 4px 20px;
+  color: var(--md-on-surface, #f0f);
+  font-size: 12px;
+}
+
+.skills-row-name,
+.skills-row-desc {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.skills-row-desc {
+  color: var(--md-on-surface-variant, #f0f);
+  font-size: 11px;
 }

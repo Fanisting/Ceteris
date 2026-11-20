@@ -41,12 +41,16 @@
  *   Tailscale 还没起来就启动了 Ceteris),改成 auto 或等 Tailscale 就绪后重开
  */
 import { createServer, type Server, type Socket } from 'node:net';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { app } from 'electron';
 import { hostname } from 'node:os';
 import {
+  LINK_FEATURE_DEFLATE,
+  LINK_FEATURES,
   LINK_HANDSHAKE_TIMEOUT_MS,
   LINK_HEARTBEAT_INTERVAL_MS,
+  LINK_PROBE_CHUNK_BYTES,
+  LINK_PROBE_MAX_BYTES,
   LINK_HEARTBEAT_TIMEOUT_MS,
   LINK_MAX_CLIENTS,
   LINK_MAX_WRITE_BACKLOG_BYTES,
@@ -65,6 +69,10 @@ import {
   type LinkHostStatus,
   type LinkMessage,
   type LinkPong,
+  type LinkProbe,
+  type LinkProbeAck,
+  type LinkProbeData,
+  type LinkProbeEnd,
   type LinkResume,
   type LinkResumeRequest,
   LINK_DEFAULT_PORT,
@@ -80,6 +88,7 @@ import {
 } from '@shared/protocol';
 import type { AppSnapshot } from '@shared/types';
 import { encodeFrame, FrameDecodeError, FrameDecoder } from './frame-codec';
+import { decodeLinkMessage, encodeLinkMessage, peerHasFeature } from './link-message-codec';
 import {
   createCipherPair,
   deriveSessionKeys,
@@ -220,6 +229,11 @@ class LinkConnection {
   private handshakeTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private lastInboundAt = Date.now();
+
+  /** ADR-056:客户端在 auth 里声明了 deflate,发给它的大消息压缩 */
+  private compressOut = false;
+  /** ADR-055:上行测速中,测试编号 → 已收到的 data 字符数 */
+  private readonly probeBytesIn = new Map<number, number>();
 
   /**
    * ADR-050:认证期间(虚拟窗口已注册、auth-ok 未发)发给这个窗口的事件。只在
@@ -386,7 +400,7 @@ class LinkConnection {
   private handleEncryptedFrame(frame: Buffer): void {
     if (!this.recv) throw new Error('内部错误:recv 通道未初始化');
     const plaintext = this.recv.decrypt(frame);
-    const msg = JSON.parse(plaintext.toString('utf8')) as LinkMessage;
+    const msg = decodeLinkMessage(plaintext) as LinkMessage;
 
     if (this.state === 'awaiting-auth') {
       if (msg.type !== 'auth') {
@@ -418,6 +432,22 @@ class LinkConnection {
         logger.info('LinkServer', `客户端主动断开(${this.remoteAddress}):${msg.reason}`);
         this.destroy('client-bye');
         break;
+      case 'probe':
+        this.sendProbe(msg);
+        break;
+      case 'probe-data':
+        this.probeBytesIn.set(
+          msg.id,
+          (this.probeBytesIn.get(msg.id) ?? 0) +
+            (typeof msg.data === 'string' ? msg.data.length : 0),
+        );
+        break;
+      case 'probe-end': {
+        const bytes = this.probeBytesIn.get(msg.id) ?? 0;
+        this.probeBytesIn.delete(msg.id);
+        this.writeEncrypted<LinkProbeAck>({ type: 'probe-ack', id: msg.id, bytes });
+        break;
+      }
       default:
         // 未知类型不算致命:同 major 版本内允许新增消息类型(向后兼容),
         // 老 Host 忽略掉新消息即可。
@@ -452,6 +482,7 @@ class LinkConnection {
 
     this.clientName = msg.clientName || 'unknown';
     this.clientVersion = msg.clientVersion || 'unknown';
+    this.compressOut = peerHasFeature(msg.features, LINK_FEATURE_DEFLATE);
 
     if (msg.preferredWindowId) this.hooks.releaseWindow(msg.preferredWindowId);
 
@@ -496,6 +527,7 @@ class LinkConnection {
       virtualWindowNumber: info.number,
       hostName: hostname(),
       hostVersion: app.getVersion(),
+      features: [...LINK_FEATURES],
     });
 
     if (resume && this.outboxOverflowed) {
@@ -520,7 +552,7 @@ class LinkConnection {
     logger.info(
       'LinkServer',
       `客户端认证通过:name="${this.clientName}" addr=${this.remoteAddress} ` +
-        `虚拟窗口=${info.id} (Window ${info.number})`,
+        `虚拟窗口=${info.id} (Window ${info.number}) 压缩=${this.compressOut ? '开' : '关'}`,
     );
   }
 
@@ -748,8 +780,33 @@ class LinkConnection {
     this.writeFrame(encodeFrame(Buffer.from(JSON.stringify(msg), 'utf8')));
   }
 
-  /** 写一个加密帧。 */
-  private writeEncrypted<T>(msg: T): void {
+  /**
+   * ADR-055 下行测速:按请求发随机数据,最后发 probe-end。
+   *
+   * 随机数据压不小,所以不压缩;发出的字节数就是线路上的字节数。数据一次写完,
+   * 由 socket 的发送缓冲排队,客户端按收到 probe-end 的时刻算速度。
+   */
+  private sendProbe(msg: LinkProbe): void {
+    const requested = Number.isFinite(msg.bytes) ? Math.max(0, Math.floor(msg.bytes)) : 0;
+    let remaining = Math.min(requested, LINK_PROBE_MAX_BYTES);
+    let sent = 0;
+    while (remaining > 0 && !this.isClosed()) {
+      const size = Math.min(remaining, LINK_PROBE_CHUNK_BYTES);
+      const data = randomBytes(size).toString('base64');
+      this.writeEncrypted<LinkProbeData>({ type: 'probe-data', id: msg.id, data }, false);
+      sent += data.length;
+      remaining -= size;
+    }
+    this.writeEncrypted<LinkProbeEnd>({ type: 'probe-end', id: msg.id, bytes: sent });
+    logger.info('LinkServer', `测速:向 ${this.remoteAddress} 发出 ${sent} 字节(测试 ${msg.id})`);
+  }
+
+  /**
+   * 写一个加密帧。
+   *
+   * @param compress false 时不压缩(测速数据);默认按客户端是否声明 deflate
+   */
+  private writeEncrypted<T>(msg: T, compress = true): void {
     if (this.socket.destroyed || !this.send) return;
     const backlogLimit = this.deps.maxWriteBacklogBytes ?? LINK_MAX_WRITE_BACKLOG_BYTES;
     if (this.socket.writableLength > backlogLimit) {
@@ -762,7 +819,7 @@ class LinkConnection {
       return;
     }
     try {
-      const plaintext = Buffer.from(JSON.stringify(msg), 'utf8');
+      const plaintext = encodeLinkMessage(msg, { deflate: compress && this.compressOut });
       this.writeFrame(encodeFrame(this.send.encrypt(plaintext)));
     } catch (err) {
       // 写失败(socket 已断 / 帧超限)不能向上抛:调用方多半是事件广播,

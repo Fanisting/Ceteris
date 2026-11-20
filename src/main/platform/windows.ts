@@ -330,6 +330,12 @@ export class WindowsAdapter implements PlatformAdapter {
     return result;
   }
 
+  /** 官方安装包把命令行放在 Program Files 下,一般也加进了 PATH,这里兜底。 */
+  tailscaleCliCandidates(): string[] {
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    return [join(programFiles, 'Tailscale', 'tailscale.exe')];
+  }
+
   /**
    * 解析 Windows 可执行文件路径。
    *

@@ -112,6 +112,21 @@ frame  = AES-256-GCM(key, nonce, plaintext) ‖ tag
 
 实现:`src/main/link/link-crypto.ts`。
 
+### 3.4 压缩(ADR-056)
+
+加密之前的明文有两种格式,看第一个字节:
+
+```
+'{'   JSON(原来的格式)
+0x01  raw deflate(JSON)
+```
+
+只有两端都在 `auth` / `auth-ok` 的 `features` 里声明了 `deflate`,发送方才压缩;明文不到 512 字节(`LINK_DEFLATE_MIN_BYTES`)或压缩后不更小时仍发 JSON。接收方两种都认。每条消息单独压缩,不共享字典;解压上限是 `LINK_MAX_FRAME_BYTES`。
+
+`evt:session:output` 在压缩帧里把 base64 的 `data` 换成 latin1 字符串 `dataLatin1`(一个字符一个字节),接收方解压后换回 base64。替换只发生在压缩帧里。
+
+实现:`src/main/link/link-message-codec.ts`。
+
 ---
 
 ## 4. 消息类型
@@ -128,8 +143,8 @@ frame  = AES-256-GCM(key, nonce, plaintext) ‖ tag
 
 | type | 方向 | 说明 |
 |------|------|------|
-| `auth` | C → S | 客户端名、版本、IPC 协议版本、可选 `preferredWindowId`、可选 `resume`(重连时,见 6.1) |
-| `auth-ok` | S → C | 分配的虚拟 windowId / windowNumber、Host 名与版本 |
+| `auth` | C → S | 客户端名、版本、IPC 协议版本、可选 `preferredWindowId`、可选 `resume`(重连时,见 6.1)、可选 `features`(见 4.2) |
+| `auth-ok` | S → C | 分配的虚拟 windowId / windowNumber、Host 名与版本、可选 `features` |
 | `resume` | S → C | 仅当 auth 带了 `resume`:紧跟 auth-ok,带 snapshot 和每个 session 的补发结果(见 6.1) |
 | `auth-rejected` | S → C | IPC 版本不匹配、客户端数超限 |
 | `cmd` | C → S | 转发一条 `cmd:*`,带自增 `id` |
@@ -137,6 +152,10 @@ frame  = AES-256-GCM(key, nonce, plaintext) ‖ tag
 | `evt` | S → C | 转发一条 `evt:*`,含完整 EventEnvelope |
 | `ping` / `pong` | 双向 | 心跳,5 秒一次,15 秒无入站即判定连接已死(Host 每个心跳周期检查一次,实际 15 到 20 秒) |
 | `bye` | 双向 | 优雅关闭,收到后不触发重连退避 |
+| `probe` | C → S | 下行测速:请 Host 发 `bytes` 字节随机数据(最多 4 MiB),见 4.3 |
+| `probe-data` | 双向 | 测速数据,base64 的随机字节,不压缩 |
+| `probe-end` | 双向 | 一段测速数据结束,带实际发出的字符数 |
+| `probe-ack` | S → C | 上行测速:Host 收到 `probe-end` 后回实际收到的字符数 |
 
 **凭据错误不发 `handshake-error`**:令牌不对时静默断开,不告诉对方"你的令牌错了"还是"这里根本没开 Host 模式"。
 
@@ -157,6 +176,28 @@ frame  = AES-256-GCM(key, nonce, plaintext) ‖ tag
 客户端判断变慢和断线时,判定与下一次检查时刻用同一次时钟读数(`evaluateLiveness`),跨毫秒不会漏掉阈值。
 
 开发用:dev / beta 构建读 `CETERIS_LINK_DELAY_MS`,两端每个出站帧推迟这么多毫秒(上限 5 秒),在一台机器上模拟 DERP 中继。stable 忽略它。
+
+### 4.2 可选能力(ADR-055 / ADR-056)
+
+`auth.features` 和 `auth-ok.features` 列出本端支持的可选能力(`LINK_FEATURES`):
+
+| 能力 | 含义 |
+|------|------|
+| `deflate` | 能解压,也愿意收压缩帧(3.4) |
+| `probe` | 会回应测速消息(4.3) |
+
+没有这个字段的一端(0.4.5 及更早)当作什么都不支持。新增能力不需要升 `LINK_PROTOCOL_VERSION`。
+
+### 4.3 连接测试(ADR-055)
+
+设置页的“测试”按钮走 `cmd:link:test`,只在客户端本机执行:
+
+1. 20 个 `ping`,间隔 100 ms,用 `t` 配对 `pong`,算往返中位数、p95、抖动和丢失。
+2. Host 声明了 `probe` 时:下行发 `probe`,从发出到收到 `probe-end` 计时;上行连发 `probe-data` 再发 `probe-end`,到收到 `probe-ack` 计时。都扣掉最小往返。
+3. 读本机 `tailscale status --json` 判断直连还是中继。
+4. 报出客户端最近 5 分钟收到输出最多的标签(`LinkOutputStats`)。
+
+没连上时只做裸 TCP 建连(连上即关,不握手)并读 Tailscale 路径。
 
 ---
 
@@ -273,12 +314,14 @@ Link 引入后,`ipc.ts` 的 `broadcastEvent` 有两处偏离"发给所有 Browse
 
 **v2(ADR-050)**:新增 `resume` 消息和 `auth.resume` 字段本身可以不 bump,但新客户端连旧 Host 会一直等不到 resume,两端心跳规则也变了,所以还是 bump,让版本不一致在握手时就明确报出来。
 
+**v2 内的新增(ADR-055 / ADR-056)**:`features` 字段、压缩帧和测速消息都靠能力声明协商,旧的一端不声明就不用,所以没有 bump。
+
 ---
 
 ## 9. 已知的协议层限制
 
 - 单 Host 同时最多 `LINK_MAX_CLIENTS = 8` 个客户端(与 WindowManager 的 20 窗口上限呼应)。
-- 无消息压缩。PTY 输出经 base64 后膨胀 4/3,实测在终端交互场景下带宽不是瓶颈,不值得引入压缩带来的 CRIME 类风险面。
+- 压缩(3.4)按消息独立进行,压缩后的长度仍随内容变化。风险评估见 ADR-056。与旧版本互连时不压缩,PTY 输出经 base64 后膨胀 4/3。
 - 命令转发超时固定 30 秒,不可配置。
 - 原地恢复只覆盖每个 session 最近约 1 MiB 的输出。断线期间输出更多的 session 会重建终端并重拉 scrollback,用户会看到这一个终端重画一次。
 - 一次 resume 最多处理 512 个 session,多出的不补发。

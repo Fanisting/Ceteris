@@ -29,7 +29,9 @@ import {
 } from '@shared/link-protocol';
 import type { LinkConnectionStatePayload } from '@shared/protocol';
 import type { LinkSettings } from '@shared/types';
+import type { LinkTestResult } from '@shared/link-test';
 import { LinkClient, type LinkClientConfig } from './link-client';
+import { runLinkTest } from './link-test-runner';
 import { readLinkDelayMs } from './link-liveness';
 import { LinkServer } from './link-server';
 import { setLinkCommandForwarder } from '../ipc';
@@ -181,6 +183,20 @@ export class LinkManager {
     client.connect();
     logger.info('LinkManager', `发起连接:${config.label} → ${config.host}:${config.port}`);
     return linkId;
+  }
+
+  /**
+   * ADR-055 连接测试。这个地址已经连上时测往返、速度和重标签,否则只测建连。
+   *
+   * @throws Error 测试途中连接断开
+   */
+  testLink(host: string, port: number): Promise<LinkTestResult> {
+    const address = `${host}:${port}`;
+    const client =
+      [...this.clients.values()].find(
+        (c) => c.targetAddress === address && c.getStatus().state === 'connected',
+      ) ?? null;
+    return runLinkTest(host, port, client);
   }
 
   /** 断开一条连接并关闭它的远程窗口。 */

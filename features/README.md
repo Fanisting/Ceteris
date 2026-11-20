@@ -28,6 +28,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------ | ------- |
 | [File viewer](file-viewer.md)                                     | PDFs, images and Markdown beside the terminal                            | 0.3.0   |
 | [Live PDF preview](live-pdf-preview.md)                           | PDFs refresh when rebuilt, keeping page and zoom                         | 0.4.1   |
+| [PDF slides view](pdf-slides-view.md)                             | One page at a time with a thumbnail strip, for Beamer and other decks    | 0.4.6   |
 | [Text file editing](text-file-editing.md)                         | Edit txt, json, md and tex in place                                      | 0.3.0   |
 | [Code and data files](code-files.md)                              | R, Python, Julia, Stata, SQL and more, highlighted, with lint after save | 0.4.3   |
 | [Large text files](large-text-files.md)                           | Multi-gigabyte files open at once as read-only pages                     | 0.3.0   |
@@ -48,6 +49,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [SSH login prompts](ssh-login-prompts.md)                | Answer password, Duo and host key prompts in a dialog            | 0.4.1   |
 | [Ceteris Link](ceteris-link.md)                          | Open the live terminal tabs of another computer                  | 0.3.0   |
 | [Type ahead on remote agent tabs](remote-type-ahead.md)  | Type a prompt locally, Enter sends it to the host in one message | 0.4.4   |
+| [Link connection test](link-connection-test.md)          | Test a host: path, speed, heavy tabs; Link traffic compressed    | 0.4.6   |
 
 ## Agents
 
@@ -58,6 +60,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Next prompt suggestions](next-prompt-suggestions.md)                     | A suggested next message that learns your habits                               | 0.3.0   |
 | [Agent tab titles](agent-tab-titles.md)                                   | Short, readable titles, optionally written by a model                          | 0.4.1   |
 | [Model and effort](agent-model-effort.md)                                 | Folder defaults and per tab switching for Claude Code and Codex                | 0.4.3   |
+| [Skills panel](agent-skills-panel.md)                                     | See the skills of the agent in this tab, open a SKILL.md with one click        | 0.4.6   |
 | [Choice notice](agent-choice-notice.md)                                   | A notice points to the tab waiting for your decision, and answers it           | 0.4.3   |
 | [Done notifications](done-notifications.md)                               | A system notification when a belled agent tab finishes; click to go back       | 0.4.4   |
 | [Main agent](main-agent.md)                                               | Pick the agent you use most once; quick launch, guides and setup start from it | 0.4.4   |
@@ -70,13 +73,14 @@ The Version column shows the first release that contains the feature. "Next" mea
 
 ## Appearance
 
-| Feature                                           | Summary                                                         | Version |
-| ------------------------------------------------- | --------------------------------------------------------------- | ------- |
-| [Built-in themes](built-in-themes.md)             | More than 90 themes, including pearl and Beamer                 | 0.4.1   |
-| [Legado MD3 themes](legado-themes.md)             | Material 3 colour sets plus live seed and Windows accent themes | 0.4.1   |
-| [Pili themes](pili-themes.md)                     | 38 Material 3 themes from PiliPlus seed colours                 | 0.4.2   |
-| [Custom themes](custom-themes.md)                 | A theme is one CSS file in the themes folder                    | 0.4.1   |
-| [Material Design 3 look](material-design-look.md) | Material shapes and motion across the app                       | 0.3.0   |
+| Feature                                           | Summary                                                                   | Version |
+| ------------------------------------------------- | ------------------------------------------------------------------------- | ------- |
+| [Built-in themes](built-in-themes.md)             | More than 90 themes, including pearl and Beamer                           | 0.4.1   |
+| [Legado MD3 themes](legado-themes.md)             | Material 3 colour sets plus live seed and Windows accent themes           | 0.4.1   |
+| [Pili themes](pili-themes.md)                     | 38 Material 3 themes from PiliPlus seed colours                           | 0.4.2   |
+| [Custom themes](custom-themes.md)                 | A theme is one CSS file in the themes folder                              | 0.4.1   |
+| [Material Design 3 look](material-design-look.md) | Material shapes and motion across the app                                 | 0.3.0   |
+| [Shape loader](shape-loader.md)                   | A morphing Material shape shows while files, tabs and remote folders load | 0.4.6   |
 
 ## Setup
 

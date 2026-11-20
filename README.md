@@ -109,19 +109,19 @@ Ceteris gives you:
 
 ### Install
 
-Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.5):
+Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.6):
 
 | System | Download |
 |---|---|
-| Windows 10/11 (x64) | [Ceteris-Setup-0.4.5-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-Setup-0.4.5-x64.exe) |
-| macOS, Apple Silicon | [Ceteris-0.4.5-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-arm64.dmg) |
-| macOS, Intel | [Ceteris-0.4.5-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-x64.dmg) |
-| Linux (x64), any distribution | [Ceteris-0.4.5-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-x86_64.AppImage) |
-| Ubuntu or Debian (x64) | [Ceteris-0.4.5-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-amd64.deb) |
+| Windows 10/11 (x64) | [Ceteris-Setup-0.4.6-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-Setup-0.4.6-x64.exe) |
+| macOS, Apple Silicon | [Ceteris-0.4.6-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-arm64.dmg) |
+| macOS, Intel | [Ceteris-0.4.6-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-x64.dmg) |
+| Linux (x64), any distribution | [Ceteris-0.4.6-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-x86_64.AppImage) |
+| Ubuntu or Debian (x64) | [Ceteris-0.4.6-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-amd64.deb) |
 
 - **Windows**: run the installer, then launch Ceteris from the Start Menu or your desktop. The installer is not code signed yet, so SmartScreen may warn: choose **More info**, then **Run anyway**.
 - **macOS**: open the `.dmg` and drag Ceteris into Applications. The app is not signed yet, so the first time, right-click it and choose **Open**.
-- **Linux**: run `chmod +x Ceteris-0.4.5-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.5-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
+- **Linux**: run `chmod +x Ceteris-0.4.6-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.6-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
 
 Windows gets the most testing. The macOS and Linux builds are newer, so please [open an issue](https://github.com/Fanisting/ceteris/issues) if something breaks.
 
@@ -204,6 +204,10 @@ Every feature has its own page with what it does and where to find it: see the [
 - ✅ **[Resize split panes](features/split-pane-resize.md)**: drag the line between split terminals; double-click resets it
 - ✅ **[Your name](features/user-name.md)**: asked once; notices end with your name and the new tab page greets you
 - ✅ **[In-app update notice](features/update-checks.md)**: a message in the window when a new Ceteris version is out, with a download button
+- ✅ **[PDF slides view](features/pdf-slides-view.md)**: one page at a time with a thumbnail strip, for Beamer and other decks
+- ✅ **[Skills panel](features/agent-skills-panel.md)**: see the skills of the agent in this tab and open a SKILL.md with one click
+- ✅ **[Shape loader](features/shape-loader.md)**: a morphing Material shape shows while files, tabs and remote folders load
+- ✅ **[Link connection test](features/link-connection-test.md)**: test a remote host's path, speed and busiest tabs; Link traffic is compressed
 - ✅ **Formulas as images**: LaTeX that Claude Code and Codex print shows as rendered formulas in the terminal
 - ✅ **Update check**: Ceteris looks for a newer GitHub release and offers the right download for your system
 - ✅ **Material Design 3 look** across windows, menus, dialogs and settings

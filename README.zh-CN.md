@@ -107,19 +107,19 @@ Ceteris 给你:
 
 ### 安装
 
-从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.5)下载适合你系统的文件:
+从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.6)下载适合你系统的文件:
 
 | 系统 | 下载 |
 |---|---|
-| Windows 10/11(x64) | [Ceteris-Setup-0.4.5-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-Setup-0.4.5-x64.exe) |
-| macOS,Apple 芯片 | [Ceteris-0.4.5-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-arm64.dmg) |
-| macOS,Intel 芯片 | [Ceteris-0.4.5-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-x64.dmg) |
-| Linux(x64),任意发行版 | [Ceteris-0.4.5-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-x86_64.AppImage) |
-| Ubuntu 或 Debian(x64) | [Ceteris-0.4.5-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.5/Ceteris-0.4.5-amd64.deb) |
+| Windows 10/11(x64) | [Ceteris-Setup-0.4.6-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-Setup-0.4.6-x64.exe) |
+| macOS,Apple 芯片 | [Ceteris-0.4.6-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-arm64.dmg) |
+| macOS,Intel 芯片 | [Ceteris-0.4.6-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-x64.dmg) |
+| Linux(x64),任意发行版 | [Ceteris-0.4.6-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-x86_64.AppImage) |
+| Ubuntu 或 Debian(x64) | [Ceteris-0.4.6-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-amd64.deb) |
 
 - **Windows**:运行安装程序,然后从开始菜单或桌面启动。安装程序还没有代码签名,SmartScreen 可能拦截:点**更多信息**,再点**仍要运行**。
 - **macOS**:打开 `.dmg`,把 Ceteris 拖进"应用程序"。应用还没有签名,第一次打开时请右键点它,选**打开**。
-- **Linux**:运行 `chmod +x Ceteris-0.4.5-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.5-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
+- **Linux**:运行 `chmod +x Ceteris-0.4.6-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.6-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
 
 Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 issue](https://github.com/Fanisting/ceteris/issues)。
 
@@ -202,6 +202,10 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **[拖动调整分屏大小](features/split-pane-resize.md)**:拖动两个终端之间的线,双击回到一半一半
 - ✅ **[你的称呼](features/user-name.md)**:只问一次,通知末尾带上你的名字,新建页向你问好
 - ✅ **[窗口里的更新消息](features/update-checks.md)**:有 Ceteris 新版本时窗口里弹一条消息,带下载按钮
+- ✅ **[PDF 幻灯片视图](features/pdf-slides-view.md)**:一次看一页,底部一条缩略图,适合 Beamer 等幻灯片
+- ✅ **[Skill 列表](features/agent-skills-panel.md)**:看当前标签里 agent 能用的 skill,点一下打开它的 SKILL.md
+- ✅ **[等待动画](features/shape-loader.md)**:打开文件、新标签、远程文件夹加载时显示一个变形的 Material 小图形
+- ✅ **[测试 Link 连接](features/link-connection-test.md)**:测远程电脑的线路、速度和输出最多的标签;Link 流量先压缩再发送
 - ✅ **公式显示成图片**:Claude Code 和 Codex 输出的 LaTeX 公式在终端里显示为排好的公式
 - ✅ **检查更新**:发现 GitHub 上有新版本时,给出适合你系统的下载
 - ✅ **Material Design 3 外观**:窗口、菜单、对话框和设置统一风格

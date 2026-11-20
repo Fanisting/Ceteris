@@ -58,6 +58,7 @@ import { readTextRange, type PdfSource } from '../pdf-view-store';
 import { clearTextDraft, getTextDraft, setTextDraft, type TextStamp } from '../text-drafts';
 import { CodeEditor, type CodeEditorHandle } from './CodeEditor';
 import { useTranslation } from './LanguageProvider';
+import { ShapeLoader } from './ShapeLoader';
 
 type TxFn = ReturnType<typeof useTranslation>['tx'];
 
@@ -171,7 +172,14 @@ export function TextFileView({ source }: { source: PdfSource }): JSX.Element {
   const reload = useCallback(() => setLoadCount((n) => n + 1), []);
 
   if (loaded.mode === 'loading') {
-    return <p className="pdf-overlay-status">{tx('正在打开…', 'Opening…')}</p>;
+    return (
+      <ShapeLoader
+        size={48}
+        contained
+        label={tx('正在打开…', 'Opening…')}
+        className="file-view-loading"
+      />
+    );
   }
   if (loaded.mode === 'error') {
     return <p className="pdf-overlay-status">{t(`fileTree.error.${loaded.reason}`)}</p>;

@@ -57,6 +57,7 @@ import {
   type UsageTab,
 } from './agent-usage';
 import { AgentModelSwitcher } from './agent-model-switch';
+import { listAgentSkills } from './agent-skills';
 import {
   CLAUDE_EFFORTS,
   CLAUDE_MODELS,
@@ -159,6 +160,8 @@ import {
   type AgentModelOptionsResponse,
   type AgentSwitchModelPayload,
   type AgentSwitchModelResponse,
+  type AgentListSkillsPayload,
+  type AgentListSkillsResponse,
   type AgentUsagePayload,
   type AgentUsageResponse,
   type ListSshProfilesResponse,
@@ -219,6 +222,7 @@ import {
   type LinkConnectResponse,
   type LinkDisconnectPayload,
   type LinkKickClientPayload,
+  type LinkTestPayload,
   type LinkListBindCandidatesResponse,
   type LinkRegenerateTokenResponse,
   type LinkStatusChangedPayload,
@@ -231,6 +235,7 @@ import {
   type ShelfRestoreResponse,
 } from '@shared/protocol';
 import type { AppSnapshot, SessionInfo, Settings, Template, ThemeId } from '@shared/types';
+import type { LinkTestResult } from '@shared/link-test';
 import type { ShelfManager } from './shelf-manager';
 import type { DoneNotifier } from './done-notifier';
 import type { WindowManager } from './window-manager';
@@ -2557,6 +2562,29 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     },
   );
 
+  // ADR-053: the template names the agent; a shell where the user typed claude or codex is
+  // recognised from its screen, the same way the next-prompt hint does it.
+  handleCommand(
+    COMMAND_CHANNELS.AGENT_LIST_SKILLS,
+    async (
+      _e,
+      envelope: CommandEnvelope<AgentListSkillsPayload>,
+    ): Promise<AgentListSkillsResponse> => {
+      const s = sessionManager.get(envelope.payload.sessionId);
+      if (!s || s.state === 'exited') return { ok: false, reason: 'no-session' };
+      if (pathRefFromId(s.pathId).kind === 'ssh') return { ok: false, reason: 'remote' };
+      const seen = detectAgent(s.templateId, sessionManager.getScreenTail(s.id, 40));
+      const agent = modelAgentOf(s.templateId) ?? (seen === 'claude' ? 'claude-code' : seen);
+      if (!agent) return { ok: false, reason: 'no-agent' };
+      const groups = await listAgentSkills(agent, s.currentCwd || s.originalCwd, {
+        home: homedir(),
+        claudeDir: process.env['CLAUDE_CONFIG_DIR'] || joinPath(homedir(), '.claude'),
+        codexDir: process.env['CODEX_HOME'] || joinPath(homedir(), '.codex'),
+      });
+      return { ok: true, agent, groups };
+    },
+  );
+
   handleCommand(
     COMMAND_CHANNELS.AGENT_SWITCH_MODEL,
     async (
@@ -2839,6 +2867,20 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
     COMMAND_CHANNELS.LINK_KICK_CLIENT,
     (_e, envelope: CommandEnvelope<LinkKickClientPayload>): void => {
       requireLinkManager(deps).disconnectHostClient(envelope.payload.virtualWindowId);
+    },
+  );
+
+  handleCommand(
+    COMMAND_CHANNELS.LINK_TEST,
+    async (_e, envelope: CommandEnvelope<LinkTestPayload>): Promise<LinkTestResult> => {
+      const { host, port } = envelope.payload ?? ({} as Partial<LinkTestPayload>);
+      if (typeof host !== 'string' || !host.trim() || !Number.isInteger(port)) {
+        throw new Error(
+          `[ipc] cmd:link:test: 需要 host(非空字符串)和 port(整数),收到 host=${String(host)} ` +
+            `port=${String(port)}。可能原因:设置页传错了字段,或保存的主机记录损坏。`,
+        );
+      }
+      return requireLinkManager(deps).testLink(host.trim(), port as number);
     },
   );
 

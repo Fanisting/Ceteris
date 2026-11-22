@@ -16,7 +16,7 @@ Claude Code gets nine tools:
 | `wait_for_tab`   | Waits until an agent is done or blocked, a shell goes quiet, or the tab exits                                                                                                           |
 | `rename_tab`     | Renames a tab                                                                                                                                                                           |
 | `close_tab`      | Closes a tab and ends its process                                                                                                                                                       |
-| `open_file`      | Shows a file in the Ceteris viewer beside a tab (its own by default): Markdown as a rendered page, `.txt` / `.json` / `.tex` as text, PDFs and images as themselves. Works from any tab |
+| `open_file`      | Shows a file in the Ceteris viewer beside a tab (its own by default): Markdown as a rendered page, `.txt` / `.json` / `.tex` as text, PDFs and images as themselves. Several files in one call (`paths`): the first is shown, the others wait as pills in the viewer header. Works from any tab |
 
 It also has two hooks. After every Write, Edit or MultiEdit, and after a Bash command that builds a document (latexmk, pdflatex, typst, pandoc, quarto and a few more), it shows the file or the finished PDF beside the tab, so you never have to ask. It skips Claude's own memory, plans and temp files. It runs in the background and never slows Claude Code down.
 
@@ -24,7 +24,7 @@ The other one runs on every session start and tells Ceteris the Claude Code sess
 
 ## Who may use it
 
-`open_file` works from every Ceteris tab, with no setting to turn on. Tell Claude Code "display your answer in md and open it as a tab in Ceteris": it writes the file and the rendered page appears beside the terminal. You can switch it to the editor like any file from the file tree.
+`open_file` works from every Ceteris tab, with no setting to turn on. Tell Claude Code "display your answer in md and open it as a tab in Ceteris": it writes the file and the rendered page appears beside the terminal. You can switch it to the editor like any file from the file tree. Ask for several files at once ("open the three scripts you wrote") and they arrive together: the first is shown and each file gets a pill in the viewer header, so one click switches between them.
 
 The tab tools work only from a tab in the coordinator row (right-click the tab, Role, Coordinator or Fintuner). There is no other switch: ask that tab to open workers and it can. Ceteris checks the role on every call, so unmarking the tab cuts it off at once. A coordinator sees only the tabs of its own folder and cannot close or type into itself.
 

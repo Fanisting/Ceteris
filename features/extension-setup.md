@@ -4,7 +4,7 @@ On the first start after you install or update Ceteris, one card lists the agent
 
 ## What it lists
 
-Three groups, five items: for Claude Code, the ceteris-tabs plugin and formula images; for Codex, the ceteris-tabs server and formula rendering; for Ceteris, the Coordinator tab control switch. Items are ticked in advance for the agents this computer has.
+Two groups, four items: for Claude Code, the ceteris-tabs plugin and formula images; for Codex, the ceteris-tabs server and formula rendering. A Coordinator needs no switch of its own; the ceteris-tabs item is enough. Items are ticked in advance for the agents this computer has.
 
 ## Setting up
 

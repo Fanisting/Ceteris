@@ -98,7 +98,6 @@ export interface TabControlRequest {
 
 export type TabControlErrorCode =
   | 'bad-request'
-  | 'disabled'
   | 'unknown-token'
   | 'not-coordinator'
   | 'not-found'

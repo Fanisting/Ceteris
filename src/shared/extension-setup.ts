@@ -5,7 +5,7 @@
  *
  * @关键设计:
  * - Three kinds of work hide behind the checkboxes. Settings flip at once (formula images,
- *   Codex formula rendering, coordinator switch). The Codex config entry is written by main
+ *   Codex formula rendering). The Codex config entry is written by main
  *   (cmd:extensions:codex-mcp-install). Everything that changes Claude Code's or Codex's own
  *   files goes into ONE terminal as one line, so the user reads it and presses Enter once; that
  *   Enter is the consent, as for the single rows in Settings.
@@ -22,19 +22,13 @@ import { LATEX_MATH_INSTALL_COMMAND, latexMathMarketplaceCommand } from './claud
 import { TAB_CONTROL_INSTALL_COMMAND } from './tab-control';
 import { codexMathInstructionCommand } from './terminal-math';
 
-export type ExtensionSetupItemId =
-  | 'claude-tabs'
-  | 'claude-math'
-  | 'codex-tabs'
-  | 'codex-math'
-  | 'coordinator';
+export type ExtensionSetupItemId = 'claude-tabs' | 'claude-math' | 'codex-tabs' | 'codex-math';
 
 export const EXTENSION_SETUP_ITEMS: readonly ExtensionSetupItemId[] = [
   'claude-tabs',
   'claude-math',
   'codex-tabs',
   'codex-math',
-  'coordinator',
 ];
 
 /** Window event that opens the card again (Settings, Extensions, "Open the setup list"). */
@@ -75,11 +69,9 @@ export function extensionSetupCommand(
 export function extensionSetupSettings(selected: ReadonlySet<ExtensionSetupItemId>): {
   claudeMathImages?: true;
   terminalMath?: true;
-  tabControl?: true;
 } {
   return {
     ...(selected.has('claude-math') ? { claudeMathImages: true as const } : {}),
     ...(selected.has('codex-math') ? { terminalMath: true as const } : {}),
-    ...(selected.has('coordinator') ? { tabControl: true as const } : {}),
   };
 }

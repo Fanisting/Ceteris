@@ -4,7 +4,7 @@
  *   window. It first introduces three roles: the Coordinator, which monitors and controls your
  *   other agents; Workers, the normal tabs of its folder that take its work; and the
  *   Fintuner, which learns from the chat history where to save time and work more efficiently. Then it spotlights the tab to right-click, plays a cursor doing
- *   it, points at the Coordinator item in the menu, the new coordinator row, the setting and the
+ *   it, points at the Coordinator item in the menu, the new coordinator row, the
  *   plugin install, shows how to add normal tabs as workers, how to give the coordinator a job, and ends with a button that opens
  *   a Fintuner.
  * - The roles are a recommended way to use tabs, not code: a coordinator is an agent tab with
@@ -25,10 +25,10 @@
  *   The overlay lets every click through (pointer-events: none) except on its own bubble.
  * - The step comes from app state (coordinatorTourStep in @shared/coordinator-tour), checked
  *   every animation frame together with where the target is. Right-clicking a tab, ticking
- *   Coordinator or turning the setting on moves the tour forward by itself.
+ *   Coordinator or installing the plugin moves the tour forward by itself.
  * - It does not assume Claude Code. It points at whichever agent comes first among the quick
  *   launch icons (the main agent comes first there, ADR-042), the Fintuner runs the same agent
- *   as the coordinator, and the setting and plugin steps drop out for a coordinator running an
+ *   as the coordinator, and the plugin step drops out for a coordinator running an
  *   agent other than Claude Code or Codex, or when the user says they use neither
  *   (canControlTabs in @shared/coordinator-tour). For a Codex coordinator the plugin step
  *   writes the ceteris-tabs entry into ~/.codex/config.toml instead of typing plugin commands.
@@ -196,13 +196,12 @@ export function CoordinatorTour(): JSX.Element | null {
   const toast = useToast();
   const typer = useTypeIntoNewTerminal();
   const seen = state.settings.extensions?.tabControlGuideSeen ?? false;
-  const enabled = state.settings.extensions?.tabControl ?? false;
   // 启动时没看过就打开;之后勾选协调者能再打开它
   const [open, setOpen] = useState(!seen);
   const [introSeen, setIntroSeen] = useState(false);
   const [rowSeen, setRowSeen] = useState(false);
   const [workerSeen, setWorkerSeen] = useState(false);
-  // 用户说自己不用 Claude Code:跳过设置和插件两步
+  // 用户说自己不用 Claude Code:跳过插件这一步
   const [noClaude, setNoClaude] = useState(false);
   const [startSeen, setStartSeen] = useState(false);
   // Fintuner 那一段开始时已有的标签和 Fintuner:之后新开的标签才算候选,新出现的 Fintuner 才粘贴
@@ -259,7 +258,7 @@ export function CoordinatorTour(): JSX.Element | null {
         .filter((s) => !s.role && !s.coordinator && !fintunerBaseline.sessions.has(s.id))
         .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null)
     : null;
-  // 标签控制 Claude Code 和 Codex 能用:协调者跑的是别的 agent,或用户说都不用,就跳过那两步
+  // 标签控制 Claude Code 和 Codex 能用:协调者跑的是别的 agent,或用户说都不用,就跳过插件这一步
   const controlSupported = !noClaude && (coord ? canControlTabs(coord.templateId) : true);
   // ADR-042:Codex 协调者的"插件"是 config.toml 里的一项,由 main 写,不用开终端
   const coordIsCodex = coord?.templateId === 'codex';
@@ -271,7 +270,6 @@ export function CoordinatorTour(): JSX.Element | null {
     rowSeen: false,
     workerSeen: false,
     controlSupported: true,
-    enabled: false,
     pluginInstalled: null,
     startSeen: false,
     hasFintuner: false,
@@ -283,7 +281,6 @@ export function CoordinatorTour(): JSX.Element | null {
     rowSeen,
     workerSeen,
     controlSupported,
-    enabled,
     pluginInstalled,
     startSeen,
     hasFintuner: newestFintuner !== null,
@@ -674,13 +671,6 @@ export function CoordinatorTour(): JSX.Element | null {
             `Any normal tab is a ${WORKER_NAME}. Open one here, or let ${COORD_NAME} open them.`,
           ),
         },
-    enable: {
-      title: tx(`允许 ${COORD_NAME} 控制标签`, `Let ${COORD_NAME} control tabs`),
-      body: tx(
-        '需要 Claude Code 或 Codex,且只有协调者标签能用。',
-        'Needs Claude Code or Codex, and only coordinator tabs get it.',
-      ),
-    },
     plugin: coordIsCodex
       ? {
           title: tx('给 Codex 加上 ceteris-tabs', 'Add ceteris-tabs to Codex'),
@@ -858,11 +848,11 @@ export function CoordinatorTour(): JSX.Element | null {
             {tx(`把一个例子粘贴到 ${COORD_NAME}`, `Paste an example into ${COORD_NAME}`)}
           </button>
         )}
-        {(step === 'enable' || step === 'plugin') && (
+        {step === 'plugin' && (
           <button type="button" className="ctour-link" onClick={() => setNoClaude(true)}>
             {tx(
-              '不用 Claude Code 或 Codex?跳过这两步',
-              'Using neither Claude Code nor Codex? Skip these two steps',
+              '不用 Claude Code 或 Codex?跳过这一步',
+              'Using neither Claude Code nor Codex? Skip this step',
             )}
           </button>
         )}
@@ -895,15 +885,6 @@ export function CoordinatorTour(): JSX.Element | null {
           {step === 'worker' && (
             <button type="button" className="ctour-primary" onClick={() => setWorkerSeen(true)}>
               {tx('下一步', 'Next')}
-            </button>
-          )}
-          {step === 'enable' && (
-            <button
-              type="button"
-              className="ctour-primary"
-              onClick={() => void saveExtensions({ tabControl: true }, showError)}
-            >
-              {tx('打开', 'Turn on')}
             </button>
           )}
           {step === 'plugin' && (

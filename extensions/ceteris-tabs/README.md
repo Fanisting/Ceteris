@@ -24,7 +24,7 @@ It also has one hook. On every session start it tells Ceteris the Claude Code se
 
 `open_file` works from every Ceteris tab, with no setting to turn on. Tell Claude Code "display your answer in md and open it as a tab in Ceteris": it writes the file and the rendered page appears beside the terminal. You can switch it to the editor like any file from the file tree.
 
-The tab tools work only from a tab you marked as coordinator (right-click the tab, tick Coordinator), and only while Settings, Extensions, Coordinator tab control is on. Ceteris checks this on every call, so unmarking the tab cuts it off at once. A coordinator sees only the tabs of its own folder and cannot close or type into itself.
+The tab tools work only from a tab in the coordinator row (right-click the tab, Role, Coordinator or Fintuner). There is no other switch: ask that tab to open workers and it can. Ceteris checks the role on every call, so unmarking the tab cuts it off at once. A coordinator sees only the tabs of its own folder and cannot close or type into itself.
 
 ## Install
 

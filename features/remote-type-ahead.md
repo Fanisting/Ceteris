@@ -2,7 +2,7 @@
 
 On a [Ceteris Link](ceteris-link.md) window, what you type into a Claude Code or Codex tab stays on your computer until you press Enter. Typing never waits on the network or on a busy agent.
 
-The text appears where the agent's input cursor is, with a small "sends on Enter" mark after it. Enter sends the whole text to the host in one message, then presses Enter there.
+The text appears where the agent's input cursor is. Enter sends the whole text to the host in one message, then presses Enter there.
 
 While you type:
 

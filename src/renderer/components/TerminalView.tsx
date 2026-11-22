@@ -1875,11 +1875,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         term.options.mouseEventsRequireAlt = true;
         echo = attachLocalEcho(term);
         typeAhead = new TypeAhead(loadTypeAhead(session.id));
-        typeAheadView = attachTypeAheadView(
-          term,
-          tx('按 Enter 发送', 'sends on Enter'),
-          () => !typeAhead!.isLive && promptReady(),
-        );
+        typeAheadView = attachTypeAheadView(term, () => !typeAhead!.isLive && promptReady());
         showTypeAhead();
         typeAheadRef.current = {
           take(text) {

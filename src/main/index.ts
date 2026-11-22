@@ -420,7 +420,6 @@ function bootstrap(): void {
   );
   tabControl = new TabControlServer(
     {
-      enabled: () => settingsManager.get().extensions?.tabControl === true,
       list: () => sessionManager.list(),
       get: (sessionId) => sessionManager.get(sessionId),
       templates: () => templatesManager.list(),

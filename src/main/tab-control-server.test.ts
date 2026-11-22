@@ -36,17 +36,13 @@ const TEMPLATES = [
   { id: 'claude-code', name: 'Claude Code', command: 'claude', args: [] },
 ] as unknown as Template[];
 
-function setup(
-  sessions: SessionInfo[],
-  opts: { enabled?: boolean; paste?: boolean; files?: string[] } = {},
-) {
+function setup(sessions: SessionInfo[], opts: { paste?: boolean; files?: string[] } = {}) {
   const writes: { id: string; data: string }[] = [];
   const closed: string[] = [];
   const created: Parameters<TabControlHost['create']>[0][] = [];
   const shown: Parameters<TabControlHost['showFile']>[0][] = [];
   const announced: { sessionId: string; agent: string; agentSessionId: string }[] = [];
   const host: TabControlHost = {
-    enabled: () => opts.enabled ?? true,
     list: () => sessions,
     get: (id) => sessions.find((s) => s.id === id) ?? null,
     templates: () => TEMPLATES,
@@ -87,9 +83,11 @@ describe('TabControlService access', () => {
     expect(errorCode(await call(tokenOf('a'), 'list'))).toBe('not-coordinator');
   });
 
-  it('refuses a coordinator while the extension is off', async () => {
-    const { tokenOf, call } = setup([session('a', { coordinator: true })], { enabled: false });
-    expect(errorCode(await call(tokenOf('a'), 'list'))).toBe('disabled');
+  it('lets a tab in the coordinator row open a worker tab with nothing else turned on', async () => {
+    const { tokenOf, call, created } = setup([session('a', { coordinator: true })]);
+    const reply = await call(tokenOf('a'), 'create', { template: 'claude-code' });
+    expect(reply.ok).toBe(true);
+    expect(created.map((c) => c.templateId)).toEqual(['claude-code']);
   });
 
   it('refuses a token from a destroyed tab', async () => {
@@ -181,15 +179,14 @@ describe('TabControlService open-file (ADR-033)', () => {
     expect(shown).toEqual([{ sessionId: 'a', name: 'answer.md', path: note }]);
   });
 
-  it('works from a plain worker tab with the extension off', async () => {
+  it('works from a plain worker tab', async () => {
     const { tokenOf, call, shown } = setup([session('w', { currentCwd: cwd })], {
-      enabled: false,
       files: [note],
     });
     const reply = await call(tokenOf('w'), 'open-file', { path: 'notes/answer.md' });
     expect(reply.ok).toBe(true);
     expect(shown.map((s) => s.sessionId)).toEqual(['w']);
-    expect(errorCode(await call(tokenOf('w'), 'list'))).toBe('disabled');
+    expect(errorCode(await call(tokenOf('w'), 'list'))).toBe('not-coordinator');
   });
 
   it('still refuses an exited tab', async () => {
@@ -335,8 +332,8 @@ describe('TabControlService open-file with several paths (ADR-059)', () => {
 describe('TabControlService agent-session (ADR-036)', () => {
   const uuid = '0a4086ef-5f12-425e-a27a-e918b2302170';
 
-  it('records the calling tab agent session from any live tab, extension off', async () => {
-    const { tokenOf, call, announced } = setup([session('w')], { enabled: false });
+  it('records the calling tab agent session from any live tab', async () => {
+    const { tokenOf, call, announced } = setup([session('w')]);
     const reply = await call(tokenOf('w'), 'agent-session', {
       agent: 'claude-code',
       sessionId: uuid,

@@ -43,7 +43,6 @@ async function start(sessions: SessionInfo[]) {
   const writes: string[] = [];
   const shown: { sessionId: string; path: string; more?: unknown[] | undefined }[] = [];
   const host: TabControlHost = {
-    enabled: () => true,
     list: () => sessions,
     get: (id) => sessions.find((s) => s.id === id) ?? null,
     templates: () => [] as Template[],

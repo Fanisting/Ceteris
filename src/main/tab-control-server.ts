@@ -6,8 +6,11 @@
  *
  * @关键设计:
  * - The rule is checked on every request, against the session as it is now: the calling tab
- *   exists, has not exited, is marked coordinator, and the extension is on in Settings. So
- *   unmarking a tab, or turning the extension off, cuts it off at once.
+ *   exists, has not exited, and is marked coordinator (it sits in the coordinator row). So
+ *   unmarking a tab cuts it off at once.
+ * - The Coordinator role is the whole consent. There is no Settings switch on top of it: a
+ *   tab the user put in the coordinator row opens worker tabs when asked, with nothing else to
+ *   turn on (2026-11-22, ADR-024 note; the user's own-agent rule).
  * - Scope is the caller's folder (its pathId). Tabs in other folders are not listed and cannot
  *   be named. A coordinator cannot close or type into itself, which would only loop.
  * - Tokens are random per tab and only map to a session id. They are issued at spawn and
@@ -28,7 +31,7 @@
  * - ADR-059: one request may name several files (`paths`). All are checked before any is
  *   shown, so an agent with one typo gets one clear refusal instead of half a set. The first
  *   file is shown, the rest go into the viewer header's file list unread.
- * - open-file is open to every live tab, coordinator or not, extension on or off: the user
+ * - open-file is open to every live tab, coordinator or not: the user
  *   asks their own Claude Code to "show the answer in Ceteris", and that tab must be able to
  *   do it without any setup. It shows nothing the user could not click in the file tree, and
  *   it only touches the tab that asks (or another tab of the same folder).
@@ -83,8 +86,6 @@ const CONNECTION_DEADLINE_MS = 30_000;
 
 /** What the server needs from the rest of main. SessionManager and friends, or a fake. */
 export interface TabControlHost {
-  /** settings.extensions.tabControl */
-  enabled(): boolean;
   list(): SessionInfo[];
   get(sessionId: string): SessionInfo | null;
   templates(): Template[];
@@ -196,8 +197,8 @@ export class TabControlService {
   }
 
   /**
-   * The calling tab, if it may use the pipe right now. Controlling tabs needs the extension on
-   * and a coordinator tab; open-file (ADR-033) needs only a live tab, see the file header.
+   * The calling tab, if it may use the pipe right now. Controlling tabs needs a coordinator
+   * tab; open-file (ADR-033) and agent-session need only a live tab, see the file header.
    */
   private authorize(request: TabControlRequest): SessionInfo {
     if (request.v !== TAB_CONTROL_VERSION) {
@@ -207,12 +208,6 @@ export class TabControlService {
       );
     }
     const anyTab = TAB_CONTROL_ANY_TAB_OPS.includes(request.op);
-    if (!anyTab && !this.host.enabled()) {
-      throw new RequestError(
-        'disabled',
-        'Tab control is off. Turn it on in Ceteris Settings, Extensions, Coordinator tab control.',
-      );
-    }
     const callerId = this.tokens.get(request.token);
     const caller = callerId ? this.host.get(callerId) : null;
     if (!caller) {

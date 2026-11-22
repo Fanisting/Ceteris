@@ -150,6 +150,7 @@ import { isWheelReport, WheelBatch } from '@shared/wheel-batch';
 import { detectAgent } from '@shared/next-prompt';
 import { PasteLanding } from '@shared/paste-landing';
 import { ColonTracker, findColonCommand } from '@shared/colon-commands';
+import { isFocusReport } from '@shared/next-prompt';
 import type {
   LinkConnectionStatePayload,
   SuggestNextPromptPayload,
@@ -2274,7 +2275,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         return;
       }
       if (typeAheadTakes()) {
-        setSuggestion(null);
+        if (!isFocusReport(data)) setSuggestion(null);
         routeTypeAhead(typeAhead!.feed(data, resolveColonCommand));
         return;
       }
@@ -2289,7 +2290,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     const sendInput = (data: string): Promise<boolean> => {
       const toSend = colonTracker.feed(data, resolveColonCommand);
       const base64 = encodeStringToBase64(toSend);
-      setSuggestion(null);
+      // A focus report is the terminal talking, not the user typing; see isFocusReport.
+      if (!isFocusReport(toSend)) setSuggestion(null);
       const echoId = echo?.noteInput(toSend) ?? null;
       return window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
@@ -2799,7 +2801,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       {/* Floats over the terminal. Taking layout space would resize the PTY and make the
           agent redraw every time a suggestion appears. */}
       {suggestion && (
-        <div className="next-prompt-chip">
+        // preventDefault on mousedown keeps focus in xterm, so pressing the chip sends no
+        // focus out report to the agent and the agent does not redraw under the click.
+        <div className="next-prompt-chip" onMouseDown={(e) => e.preventDefault()}>
           <button
             type="button"
             className="next-prompt-accept"

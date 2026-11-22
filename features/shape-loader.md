@@ -7,6 +7,7 @@ While Ceteris waits for something, a small filled shape morphs through seven Mat
 - **Opening a file** beside the terminal: a filled circle with the shape inside, and "Opening…" under it.
 - **A new tab before it prints anything**: a new agent tab, a tab reopened at launch, or a tab reopened after an agent update. The loader sits in the middle of the empty terminal and goes away with the first output. It never covers text and clicks pass through it.
 - **Connecting to a remote**: in the SSH folder picker, at the top of the file tree while SFTP connects, and in the Ceteris Link banner and status while it connects or reconnects.
+- **Changing a tab's model or effort**: the tab dims behind a light veil, in every window that shows it, with the loader and "Switching to Opus 5.5…" in the middle. You do not see the agent exit and start again; the veil lifts once the agent's input box is back.
 - **The file tree while a folder loads**: at the top while the folder list is read, and under a folder you open until its contents arrive. This matters on network drives, WSL paths, online-only cloud files and Link remotes.
 
 ## When it does not appear

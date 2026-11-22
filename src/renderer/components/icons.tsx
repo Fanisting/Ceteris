@@ -17,21 +17,34 @@ import {
   Add,
   Atr,
   AutoAwesome,
+  Bolt,
   Bookmark,
   Build,
+  Checklist,
   ChevronRight,
   Close,
+  Cloud,
   Code,
   ContentCopy,
   ContentPaste,
+  DarkMode,
   Database,
+  DataObject,
   DeployedCode,
   Dns,
+  Extension,
+  Favorite,
+  FlutterDash,
   ForkRight,
+  FunctionSymbol,
+  Handshake,
   History,
+  Hub,
   Info,
   InkEraser,
+  IntegrationInstructions,
   LinkIcon,
+  Memory,
   Notifications,
   NotificationsActive,
   NotificationsOff,
@@ -39,10 +52,12 @@ import {
   Palette,
   Psychology,
   RadioChecked,
+  Refresh,
+  Scale,
   Schedule,
   Search,
-  Refresh,
   Settings,
+  SmartToy,
   Terminal,
   Tune,
   Warning,
@@ -109,6 +124,22 @@ export const Icons = {
   templateCopilot: ForkRight,
   templateCursor: Code,
   templateAider: Build,
+  // 1.50 新增的内置 agent:同样没有品牌 SVG,挑名字或 logo 能联想到的符号
+  templatePi: FunctionSymbol, // π 的数学意象
+  templateOmp: Extension, // Oh My Pi = pi 加一堆扩展
+  templateQwen: Cloud,
+  templateAmp: Bolt, // 电流 / 放大
+  templateCrush: Favorite,
+  templateKimi: DarkMode, // Moonshot 的月亮
+  templateGoose: FlutterDash, // 一只鸟
+  templateDroid: SmartToy, // 机器人
+  templateKiro: Checklist, // Kiro 主打 spec 驱动
+  templateCline: DataObject,
+  templateAuggie: Hub,
+  templateKilo: Scale, // 千克
+  templateCodeBuddy: Handshake,
+  templateQoder: IntegrationInstructions,
+  templateLetta: Memory, // Letta 主打记忆
 
   // shell 图标:不同 shell 用不同符号区分
   shellPwsh: Terminal, // PowerShell 7

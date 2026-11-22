@@ -5,6 +5,7 @@ import {
   clampTitleLength,
   cleanAgentTitle,
   fitTitle,
+  isAgentNameTitle,
   isAgentTemplate,
   shortenAgentTitle,
 } from './agent-title';
@@ -41,8 +42,23 @@ describe('agent titles (ADR-029)', () => {
   });
 
   it('counts every built-in agent template, not shells', () => {
-    const agents = ['claude-code', 'codex', 'opencode', 'gemini-cli', 'github-copilot', 'cursor', 'aider'];
+    const agents = [
+      'claude-code',
+      'codex',
+      'opencode',
+      'gemini-cli',
+      'github-copilot',
+      'cursor',
+      'aider',
+    ];
     for (const id of agents) expect(isAgentTemplate(id)).toBe(true);
     expect(isAgentTemplate('shell')).toBe(false);
+  });
+
+  it('treats the names of the agents added in 1.50 as no task title', () => {
+    for (const t of ['Oh My Pi', 'kiro cli', 'Qwen Code', 'Letta Code']) {
+      expect(isAgentNameTitle(t)).toBe(true);
+    }
+    expect(isAgentNameTitle('Fix the omp resize')).toBe(false);
   });
 });

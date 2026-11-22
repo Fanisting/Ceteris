@@ -11,6 +11,9 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { BUILTIN_TEMPLATES, TemplatesManager, TemplatesManagerError } from './templates-manager';
+import { findAgentSpec } from './agent-versions';
+import { isAgentTemplate } from '@shared/agent-title';
+import { canControlTabs } from '@shared/coordinator-tour';
 import type { JsonStore } from './persistence';
 import type { Template, TemplatesFile } from '@shared/types';
 
@@ -325,6 +328,20 @@ describe('TemplatesManager — add / update / delete (CP-4)', () => {
     });
   });
 
+  it('每个内置 agent 模板都能被检测到、算作 agent,且命令与检测用的一致', () => {
+    const agents = BUILTIN_TEMPLATES.filter((t) => t.id !== 'shell' && t.id !== 'admin-shell');
+    for (const t of agents) {
+      expect(findAgentSpec(t.id)?.command, t.id).toBe(t.command);
+      expect(isAgentTemplate(t.id), t.id).toBe(true);
+      expect(t.postExitAction, t.id).toBe('keep_shell');
+    }
+    // 只有 Claude Code 和 Codex 接得上 tab control (ADR-033)
+    expect(agents.filter((t) => canControlTabs(t.id)).map((t) => t.id)).toEqual([
+      'claude-code',
+      'codex',
+    ]);
+  });
+
   it('新增的内置模板用的是各工具当前的命令', () => {
     const commands = Object.fromEntries(BUILTIN_TEMPLATES.map((b) => [b.id, b.command]));
     expect(commands).toMatchObject({
@@ -332,6 +349,11 @@ describe('TemplatesManager — add / update / delete (CP-4)', () => {
       'github-copilot': 'copilot',
       cursor: 'agent',
       aider: 'aider',
+      pi: 'pi',
+      omp: 'omp',
+      'qwen-code': 'qwen',
+      kiro: 'kiro-cli',
+      qoder: 'qodercli',
     });
   });
 });

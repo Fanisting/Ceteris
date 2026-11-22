@@ -98,7 +98,7 @@ Ceteris 给你:
 - **CWD 跟踪** — agent 在 session 里 cd 了,tab 上自动出 ⚠,悬停看真实 cwd
 - **SSH 路径书签**:保存远程配置,把远程工作目录和本地路径放在一起
 - **远程 tmux 启动**:在远程主机上新建或接入 tmux,tmux 退出后回到远程 shell
-- **启动模板**:内置 Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor 和 Aider;支持自定义模板,环境变量带遮罩(防止 API key 被旁人扫到)
+- **启动模板**:内置 Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor、Aider 等 22 个 agent;支持自定义模板,环境变量带遮罩(防止 API key 被旁人扫到)
 - **Session 不灭** — 不小心关掉窗口,agent 继续跑;重开窗口接着用
 
 ## 快速开始
@@ -107,19 +107,19 @@ Ceteris 给你:
 
 ### 安装
 
-从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.6)下载适合你系统的文件:
+从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.7)下载适合你系统的文件:
 
 | 系统 | 下载 |
 |---|---|
-| Windows 10/11(x64) | [Ceteris-Setup-0.4.6-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-Setup-0.4.6-x64.exe) |
-| macOS,Apple 芯片 | [Ceteris-0.4.6-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-arm64.dmg) |
-| macOS,Intel 芯片 | [Ceteris-0.4.6-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-x64.dmg) |
-| Linux(x64),任意发行版 | [Ceteris-0.4.6-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-x86_64.AppImage) |
-| Ubuntu 或 Debian(x64) | [Ceteris-0.4.6-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.6/Ceteris-0.4.6-amd64.deb) |
+| Windows 10/11(x64) | [Ceteris-Setup-0.4.7-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-Setup-0.4.7-x64.exe) |
+| macOS,Apple 芯片 | [Ceteris-0.4.7-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-arm64.dmg) |
+| macOS,Intel 芯片 | [Ceteris-0.4.7-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-x64.dmg) |
+| Linux(x64),任意发行版 | [Ceteris-0.4.7-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-x86_64.AppImage) |
+| Ubuntu 或 Debian(x64) | [Ceteris-0.4.7-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-amd64.deb) |
 
 - **Windows**:运行安装程序,然后从开始菜单或桌面启动。安装程序还没有代码签名,SmartScreen 可能拦截:点**更多信息**,再点**仍要运行**。
 - **macOS**:打开 `.dmg`,把 Ceteris 拖进"应用程序"。应用还没有签名,第一次打开时请右键点它,选**打开**。
-- **Linux**:运行 `chmod +x Ceteris-0.4.6-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.6-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
+- **Linux**:运行 `chmod +x Ceteris-0.4.7-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.7-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
 
 Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 issue](https://github.com/Fanisting/ceteris/issues)。
 
@@ -167,7 +167,7 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **标签**:彩色标签以圆点显示在文件夹上,可按一个或多个标签筛选
 - ✅ **远程路径**:SSH 配置、远程书签,侧栏标签同时显示配置名和远程路径
 - ✅ **Session 生命周期**:`active / idle / exited` 三态;**已退出 session 无时限保留**,用户手动右键关闭才销毁(ADR-008)
-- ✅ **启动模板**:内置 Shell、Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor、Aider,Windows 上另有 Admin Shell,也可以自定义;快捷启动的选项放在标签栏末尾的虚线标签里,点一下即启动
+- ✅ **启动模板**:内置 Shell、Claude Code、Codex、OpenCode、Gemini CLI、GitHub Copilot、Cursor、Aider,Windows 上另有 Admin Shell,另认得 Pi、omp、Qwen Code、Amp、Crush、Kimi CLI 等 15 个 agent(只显示装了的),也可以自定义;快捷启动的选项放在标签栏末尾的虚线标签里,点一下即启动
 - ✅ **SSH tmux 模式**:每次启动时新建或接入 tmux,tmux 会话名由目录推导,tmux 退出后回到 shell
 - ✅ **多窗口**:任意数量平等窗口;关窗即托盘模式;跨窗口 session 可见
 - ✅ **Ceteris Link(远程挂载)**:在另一台 Windows 机器上打开这台机器正在跑的终端标签页。同一批 session、同一份 scrollback、同一个正在跑的 agent;会话始终留在原机器运行。端到端加密(X25519 + AES-256-GCM),预共享令牌**从不上线路**。见 [docs/远程访问指南.md](docs/远程访问指南.md)
@@ -185,7 +185,7 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **“运行中”和“等你处理”筛选**:放在标签栏最前面;协调者标签切到任何文件夹都在,还能管理同一文件夹的其他标签
 - ✅ **给我看文件**:让你的 Claude Code 在 Ceteris 里打开它的答案,文件出现在标签旁的文件面板,不需要协调者
 - ✅ **更新 agent 时完整重载**:关掉该 agent 的标签、更新、再带着对话重新打开
-- ✅ **[换模型和 effort](features/agent-model-effort.md)**:给文件夹设默认模型,或在正在运行的 Claude Code、Codex 标签里换,对话接着进行
+- ✅ **[换模型和 effort](features/agent-model-effort.md)**:给文件夹设默认模型,或在正在运行的 Claude Code、Codex 标签里换,对话接着进行;切换时标签上有加载动画
 - ✅ **[等你决定时弹消息](features/agent-choice-notice.md)**:agent 在你没看的标签里等你选择时,消息指到那个标签,也能直接在消息里选
 - ✅ **[收纳盒](features/tab-shelf.md)**:闲置标签收起来省内存,点一下带着对话回来
 - ✅ **[启动时恢复标签](features/reopen-tabs-at-launch.md)**:退出、更新或崩溃后,标签和 agent 对话都回来
@@ -197,7 +197,7 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **[回到上一个会话](features/back-to-last-session.md)**:“运行中”左边的小块在最近两个会话之间切换
 - ✅ **[回答完弹通知](features/done-notifications.md)**:点亮标签的铃铛,agent 回答完时弹系统通知
 - ✅ **[大量输出时终端照样跟手](features/output-flow-control.md)**:程序刷屏时打字和 Ctrl+C 照样立即响应
-- ✅ **[远程 agent 标签先在本机打字](features/remote-type-ahead.md)**:经 Ceteris Link 时在本机打好一段,Enter 一次发出
+- ✅ **[远程 agent 标签先在本机打字](features/remote-type-ahead.md)**:经 Ceteris Link 时在本机打好一段,Enter 一次发出;支持 Claude Code 全屏模式,长粘贴带加载动画一次发出,拖动在本机选字
 - ✅ **[更顺的 Ceteris Link](features/ceteris-link.md)**:重连不刷新窗口,连接变慢时有提示
 - ✅ **[拖动调整分屏大小](features/split-pane-resize.md)**:拖动两个终端之间的线,双击回到一半一半
 - ✅ **[你的称呼](features/user-name.md)**:只问一次,通知末尾带上你的名字,新建页向你问好

@@ -142,6 +142,8 @@ import {
   TYPE_AHEAD_SUBMIT_DELAY_MS,
   TypeAhead,
   agentPromptReady,
+  isLongPaste,
+  pastedLineCount,
   type TypeAheadWrite,
 } from '@shared/type-ahead';
 import { detectAgent } from '@shared/next-prompt';
@@ -160,6 +162,28 @@ import { useTranslation } from './LanguageProvider';
 import { matchKeybinding } from '@shared/terminal-keybindings';
 import '@xterm/xterm/css/xterm.css';
 import { ShapeLoader } from './ShapeLoader';
+import { modelAgentOf, modelLabel } from '@shared/agent-model';
+
+/**
+ * Text under the model switch loader: the model asked for, else the effort.
+ *
+ * @param switching SessionInfo.agentSwitching, set by main while a switch runs
+ */
+function switchingLabel(
+  session: SessionInfo,
+  switching: { model?: string; effort?: string },
+  tx: (zh: string, en: string) => string,
+): string {
+  const agent = modelAgentOf(session.templateId);
+  if (switching.model && agent) {
+    const name = modelLabel(agent, switching.model);
+    return tx(`正在切换到 ${name}…`, `Switching to ${name}…`);
+  }
+  if (switching.effort) {
+    return tx(`正在切换到 ${switching.effort} effort…`, `Switching to ${switching.effort} effort…`);
+  }
+  return tx('正在切换…', 'Switching…');
+}
 
 /**
  * 浅色主题的 ANSI 256 色扩展表(索引 16-255,共 240 项)。
@@ -1009,6 +1033,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // 标签) 时盖一个 ShapeLoader。scrollback 非空或收到第一块 live 输出就置 true,之后不再变回。
   // ref 让输出回调只 setState 一次,不在每块输出上触发渲染。
   const [hasOutput, setHasOutput] = useState(false);
+  // Remote windows: lines of the long paste on its way to the Host (shown with a loader in
+  // the corner), or null. A second paste sent before the first lands replaces the count.
+  const [pasteSending, setPasteSending] = useState<number | null>(null);
   const hasOutputRef = useRef(false);
   const markOutput = useCallback((): void => {
     if (hasOutputRef.current) return;
@@ -1049,10 +1076,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
   // Shift+Enter; null unless this is a remote window. take and newline return false when the
   // text is not held; send writes through the same queue as typed keys, so a paste cannot
   // overtake a prompt that is still on its way.
+  // pasteNow sends a long paste at once (isLongPaste): held text first, then the paste.
   const typeAheadRef = useRef<{
     take(text: string): boolean;
     send(data: string): void;
     newline(): boolean;
+    pasteNow(text: string, payload: string, lines: number): void;
   } | null>(null);
 
   // ── 操作:复制 / 粘贴 / 清屏 / 搜索 ──
@@ -1169,13 +1198,19 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         }
       }
 
-      // Type ahead (ADR-047): the paste joins the held prompt, in order with what was typed.
-      const typeAheadEntry = typeAheadRef.current;
-      if (typeAheadEntry?.take(text)) return;
-
       // bracketed paste 包裹(可通过 settings.behavior.bracketedPaste 关闭,
       // cmd.exe 等不支持 readline 的 shell 用户应当关闭以免看到字面 marker)
       const payload = bracketedPaste ? `\x1b[200~${text}\x1b[201~` : text;
+
+      // Remote windows: a long paste goes to the Host at once as one block, with a loader,
+      // after any held text. A short one joins the held prompt, in order (ADR-047).
+      const typeAheadEntry = typeAheadRef.current;
+      if (typeAheadEntry && isLongPaste(text)) {
+        typeAheadEntry.pasteNow(text, payload, pastedLineCount(text));
+        return;
+      }
+      if (typeAheadEntry?.take(text)) return;
+
       if (typeAheadEntry) {
         typeAheadEntry.send(payload);
         return;
@@ -1832,6 +1867,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       )
       .then((link) => {
         if (!link || disposed) return;
+        // A program that tracks the mouse (Claude Code fullscreen turns on any-motion 1003)
+        // gets every move and drag over the Link, and draws its own selection only after the
+        // Host answers, so selecting lagged. Here a plain drag selects locally at once, hover
+        // moves stay local, the wheel still reaches the program, and Alt+click or Alt+drag
+        // goes to the program as before.
+        term.options.mouseEventsRequireAlt = true;
         echo = attachLocalEcho(term);
         typeAhead = new TypeAhead(loadTypeAhead(session.id));
         typeAheadView = attachTypeAheadView(
@@ -1853,6 +1894,30 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
             routeTypeAhead(typeAhead!.feed('\n'));
             return true;
           },
+          pasteNow(text, payload, lines) {
+            if (typeAheadTakes()) routeTypeAhead(typeAhead!.beforeImmediatePaste());
+            // Wrapped when the setting or the program asks for it: with the setting off, a
+            // raw \r inside the lines would submit the agent's prompt halfway through.
+            const data = payload !== text ? payload : asTyped(text);
+            pastesInFlight++;
+            setPasteSending(lines);
+            void sendQueuedAwait(data).then((sent) => {
+              pastesInFlight--;
+              // After a remount the counter starts over, so clear on every finish at zero.
+              if (pastesInFlight === 0) setPasteSending(null);
+              if (sent || disposed) return;
+              // sendInput toasts when the Host refuses; a dropped link toasts here.
+              if (Date.now() - lastInputRejectToastAtRef.current < 5000) return;
+              lastInputRejectToastAtRef.current = Date.now();
+              toastRef.current.push({
+                kind: 'warn',
+                message: tx(
+                  `${lines} 行的粘贴没有发到另一台电脑,请再粘贴一次`,
+                  `The ${lines}-line paste did not reach the other computer. Paste it again.`,
+                ),
+              });
+            });
+          },
         };
       })
       .catch(() => {});
@@ -1870,15 +1935,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       const buffer = term.buffer.active;
       const at = typeAheadView?.inputCell();
       if (!at) return false;
-      const fromInput: string[] = [];
-      for (let y = at.y; y < term.rows; y++) {
-        fromInput.push(buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? '');
+      const viewport: string[] = [];
+      for (let y = 0; y < term.rows; y++) {
+        viewport.push(buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? '');
       }
       const screen: string[] = [];
       for (let y = Math.max(0, buffer.length - COLON_SCREEN_LINES); y < buffer.length; y++) {
         screen.push(buffer.getLine(y)?.translateToString(true) ?? '');
       }
-      return agentPromptReady(fromInput.join('\n'), screen.join('\n'));
+      return agentPromptReady(viewport, at.y, screen.join('\n'), buffer.type === 'alternate');
     };
     /**
      * True when this key belongs to the type ahead: a live message runs or the agent's input
@@ -2240,6 +2305,14 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         void sendInput(data);
       });
     };
+    /** sendQueued that resolves once the Host accepted (true) or refused (false) the write. */
+    const sendQueuedAwait = (data: string): Promise<boolean> => {
+      if (submitsInFlight === 0) return sendInput(data);
+      const sent = submitChain.then(() => sendInput(data));
+      submitChain = sent.then(() => undefined);
+      return sent;
+    };
+    let pastesInFlight = 0;
 
     /** Multi-line text goes as a paste when the program asked for that, so a newline cannot submit. */
     const asTyped = (text: string): string =>
@@ -2719,6 +2792,18 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           <ShapeLoader size={48} contained label={tx('正在启动…', 'Starting…')} />
         </div>
       )}
+      {hostRevealed && session.agentSwitching && session.state !== 'exited' && (
+        // ADR-054 option A for a model switch (ADR-038): a veil hides /exit and the relaunch
+        // line until main reports the agent's input box back (agent-model-switch.ts)
+        <div className="terminal-switching">
+          <ShapeLoader
+            size={48}
+            contained
+            delayMs={0}
+            label={switchingLabel(session, session.agentSwitching, tx)}
+          />
+        </div>
+      )}
       {searchVisible && (
         <div
           className="terminal-search-bar"
@@ -2804,6 +2889,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
           >
             ×
           </button>
+        </div>
+      )}
+      {pasteSending !== null && (
+        <div className="terminal-paste-sending" role="status">
+          <ShapeLoader
+            size={16}
+            className="paste-sending-pill"
+            label={tx(`正在发送 ${pasteSending} 行`, `Sending ${pasteSending} lines`)}
+          />
         </div>
       )}
     </div>

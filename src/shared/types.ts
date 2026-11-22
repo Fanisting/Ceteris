@@ -370,6 +370,12 @@ export interface SessionInfo {
   /** ADR-038: the `--session-id` given to Claude Code at launch, so its transcript is found */
   agentLaunchId?: string;
   /**
+   * ADR-038 / ADR-054: a model or effort switch is running in this tab, from the click until
+   * the relaunched agent shows its input box again. Holds what was asked for, so every window
+   * can say what it switches to. null or absent = no switch running.
+   */
+  agentSwitching?: { model?: string; effort?: string } | null;
+  /**
    * ADR-048: the user turned on this tab's bell, so a finished agent turn shows a system
    * notification (when settings.notifications.enabled). Absent or false = off, the default.
    */

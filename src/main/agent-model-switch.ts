@@ -32,8 +32,12 @@
  * - Refused while the agent is mid-turn or waiting on an approval, for SSH tabs (the remote
  *   shell may have no hook) and for templates that do not keep a shell.
  * - One switch per tab at a time; a second click while one runs answers 'busy'.
+ * - The tab carries `agentSwitching` from the moment a switch starts until the relaunched
+ *   agent shows its input box (or the wait ends another way), so every window covers the tab
+ *   with the loader (ADR-054) instead of showing /exit and the relaunch line. switch() itself
+ *   resolves only then, so the result toast appears when the agent is back.
  *
- * @对应文档章节: 软件定义书.md ADR-038; ipc-protocol.md 5.13
+ * @对应文档章节: 软件定义书.md ADR-038, ADR-054; ipc-protocol.md 5.13
  *
  * @不要在这里做的事:
  * - No direct SessionManager / PTY / file access: everything comes through deps, so tests
@@ -44,6 +48,7 @@
 import type { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import {
+  agentInputAfter,
   exitResumeId,
   INPUT_LINE_ROWS,
   inputLineReads,
@@ -87,6 +92,20 @@ const BACKSPACE = '\x7f';
 const EXIT_COMMAND = '/exit';
 /** Stands in for a real id while checking that the line can be typed at all */
 const PLACEHOLDER_ID = '00000000-0000-0000-0000-000000000000';
+/**
+ * The loader stays at most this long after the relaunch line is typed. Claude Code takes a
+ * few seconds to redraw a long resumed conversation; past this the tab is shown as it is.
+ */
+export const READY_TIMEOUT_MS = 60_000;
+/** How often the screen is read while waiting for the relaunched agent */
+export const READY_POLL_MS = 200;
+/**
+ * The input box must stay on an unchanged screen for this long: Claude Code draws the box
+ * early and then fills in the resumed conversation above it.
+ */
+export const READY_QUIET_MS = 600;
+/** The box counts after this long even if the screen keeps changing (a ticking status line) */
+export const READY_BUSY_SCREEN_MS = 3_000;
 
 export interface ModelSwitchDeps {
   session: (sessionId: string) => SessionInfo | null;
@@ -104,6 +123,11 @@ export interface ModelSwitchDeps {
    */
   resumeIdOf: (sessionId: string) => Promise<string | null>;
   setPick: (sessionId: string, pick: ModelEffort & { launchId?: string }) => void;
+  /**
+   * Mark the tab as switching (what was asked for) or clear it (null), so every window shows
+   * the loader over it until the agent is back (SessionManager.setAgentSwitching).
+   */
+  setSwitching: (sessionId: string, value: Partial<ModelEffort> | null) => void;
   /** The usage reader must look for the tab's file again (a fresh start makes a new one) */
   forgetUsage: (sessionId: string) => void;
   newId?: () => string;
@@ -150,6 +174,7 @@ export class AgentModelSwitcher {
       effort: next.effort ?? s.agentEffort ?? '',
     };
     this.inFlight.add(sessionId);
+    let marked = false;
     try {
       // Check the line can be typed at all before the agent is stopped: a template with
       // arguments that are not plain words keeps its agent running untouched
@@ -166,6 +191,12 @@ export class AgentModelSwitcher {
         logger.warn('AgentModelSwitcher', `sid=${sessionId}: cannot build the relaunch line`, err);
         return { applied: false, reason: 'cannot-restart' };
       }
+      // From here on the tab changes on screen: cover it in every window (ADR-054)
+      this.deps.setSwitching(sessionId, {
+        ...(next.model !== undefined ? { model: next.model } : {}),
+        ...(next.effort !== undefined ? { effort: next.effort } : {}),
+      });
+      marked = true;
 
       // Clear any draft, type "/exit", and press Enter only once the input box reads exactly
       // "/exit": a draft left in place would turn it into the end of a prompt the agent then
@@ -204,7 +235,12 @@ export class AgentModelSwitcher {
       const printed = exitResumeId(agent, this.deps.screenOf(sessionId, SCREEN_ROWS));
       const resumeId = printed ?? (await this.deps.resumeIdOf(sessionId));
       const { line, launchId } = build(resumeId);
-      if (!(await this.type(sessionId, line))) return { applied: false, reason: 'exited' };
+      // Listen before Enter: an agent that fails at once brings the shell prompt back fast
+      const shellBack = this.watchPrompt(sessionId);
+      if (!(await this.type(sessionId, line))) {
+        shellBack.stop();
+        return { applied: false, reason: 'exited' };
+      }
 
       this.deps.setPick(sessionId, { ...pick, ...(launchId ? { launchId } : {}) });
       this.deps.forgetUsage(sessionId);
@@ -212,10 +248,64 @@ export class AgentModelSwitcher {
         'AgentModelSwitcher',
         `sid=${sessionId} ${agent}: relaunched with "${line}" (id ${printed ? 'printed by the agent' : resumeId ? 'from its file' : 'none, new conversation'})`,
       );
+      const ready = await this.waitForAgent(sessionId, line, shellBack);
+      logger.info('AgentModelSwitcher', `sid=${sessionId} ${agent}: loader cleared (${ready})`);
       return { applied: true, resumed: resumeId !== null };
     } finally {
       this.inFlight.delete(sessionId);
+      if (marked) this.deps.setSwitching(sessionId, null);
     }
+  }
+
+  /**
+   * Waits until the relaunched agent can take input, so the loader covers the whole switch:
+   * its input box is below the typed line on a screen unchanged for READY_QUIET_MS (or for
+   * READY_BUSY_SCREEN_MS on a screen that keeps changing), or it stopped at a question
+   * (agentPhase 'blocked', e.g. a trust prompt). Stops early when the tab closes or the shell
+   * prompt comes back (the agent did not start); gives up after READY_TIMEOUT_MS.
+   *
+   * @returns why the wait ended; only logged, the switch itself already happened
+   */
+  private async waitForAgent(
+    sessionId: string,
+    line: string,
+    shellBack: { seen: () => boolean; stop: () => void },
+  ): Promise<'ready' | 'blocked' | 'shell' | 'exited' | 'timeout'> {
+    let last = '';
+    let quietFor = 0;
+    let boxFor = 0;
+    try {
+      for (let waited = 0; waited <= READY_TIMEOUT_MS; waited += READY_POLL_MS) {
+        const s = this.deps.session(sessionId);
+        if (!s || s.state === 'exited') return 'exited';
+        if (shellBack.seen()) return 'shell';
+        if (s.agentPhase === 'blocked') return 'blocked';
+        const screen = this.deps.screenOf(sessionId, SCREEN_ROWS);
+        quietFor = screen === last ? quietFor + READY_POLL_MS : 0;
+        last = screen;
+        boxFor = agentInputAfter(screen, line) ? boxFor + READY_POLL_MS : 0;
+        if (boxFor > 0 && (quietFor >= READY_QUIET_MS || boxFor >= READY_BUSY_SCREEN_MS)) {
+          return 'ready';
+        }
+        await this.sleep(READY_POLL_MS);
+      }
+      return 'timeout';
+    } finally {
+      shellBack.stop();
+    }
+  }
+
+  /** Notes whether the tab's shell reports a prompt from now on, until stop(). */
+  private watchPrompt(sessionId: string): { seen: () => boolean; stop: () => void } {
+    let seen = false;
+    const onPrompt = (p: { sessionId: string }): void => {
+      if (p.sessionId === sessionId) seen = true;
+    };
+    this.deps.events.on('shellPrompt', onPrompt);
+    return {
+      seen: () => seen,
+      stop: () => this.deps.events.off('shellPrompt', onPrompt),
+    };
   }
 
   /** Polls the screen until the input box reads exactly `text`; false after INPUT_CHECK_MS. */

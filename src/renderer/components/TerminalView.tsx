@@ -160,6 +160,28 @@ import { useTranslation } from './LanguageProvider';
 import { matchKeybinding } from '@shared/terminal-keybindings';
 import '@xterm/xterm/css/xterm.css';
 import { ShapeLoader } from './ShapeLoader';
+import { modelAgentOf, modelLabel } from '@shared/agent-model';
+
+/**
+ * Text under the model switch loader: the model asked for, else the effort.
+ *
+ * @param switching SessionInfo.agentSwitching, set by main while a switch runs
+ */
+function switchingLabel(
+  session: SessionInfo,
+  switching: { model?: string; effort?: string },
+  tx: (zh: string, en: string) => string,
+): string {
+  const agent = modelAgentOf(session.templateId);
+  if (switching.model && agent) {
+    const name = modelLabel(agent, switching.model);
+    return tx(`正在切换到 ${name}…`, `Switching to ${name}…`);
+  }
+  if (switching.effort) {
+    return tx(`正在切换到 ${switching.effort} effort…`, `Switching to ${switching.effort} effort…`);
+  }
+  return tx('正在切换…', 'Switching…');
+}
 
 /**
  * 浅色主题的 ANSI 256 色扩展表(索引 16-255,共 240 项)。
@@ -2717,6 +2739,18 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       {hostRevealed && !hasOutput && session.state !== 'exited' && (
         <div className="terminal-first-output">
           <ShapeLoader size={48} contained label={tx('正在启动…', 'Starting…')} />
+        </div>
+      )}
+      {hostRevealed && session.agentSwitching && session.state !== 'exited' && (
+        // ADR-054 option A for a model switch (ADR-038): a veil hides /exit and the relaunch
+        // line until main reports the agent's input box back (agent-model-switch.ts)
+        <div className="terminal-switching">
+          <ShapeLoader
+            size={48}
+            contained
+            delayMs={0}
+            label={switchingLabel(session, session.agentSwitching, tx)}
+          />
         </div>
       )}
       {searchVisible && (

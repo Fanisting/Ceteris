@@ -54,6 +54,24 @@
   font-size: 13px;
 }
 
+/*
+ * 换模型 / effort 时 (ADR-038,用户 2026-11-22 选 A):整个终端蒙一层半透明表面色并轻微模糊,
+ * 盖住 /exit 和重新启动那一行,中间是加载器和"正在切换到 X…"。挡住鼠标 (不让人点进正在
+ * 重启的终端),不占布局 (占布局会改 PTY 尺寸)。main 看到新 agent 的输入框后撤掉。
+ */
+.terminal-switching {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  background-color: color-mix(in srgb, var(--md-surface, #f0f) 82%, transparent);
+  backdrop-filter: blur(2px);
+  animation: shape-loader-in var(--md-duration-short3, 150ms) ease-out backwards;
+}
+
 /* 文件查看器"正在打开":居中 */
 .shape-loader.file-view-loading {
   margin: auto;
@@ -67,7 +85,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shape-loader {
+  .shape-loader,
+  .terminal-switching {
     animation: none;
   }
 }

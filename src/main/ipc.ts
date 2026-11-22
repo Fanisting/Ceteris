@@ -2525,6 +2525,7 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
       return tab?.launchId ? usageReader.conversationId(tab) : null;
     },
     setPick: (id, pick) => sessionManager.setAgentPick(id, pick),
+    setSwitching: (id, value) => sessionManager.setAgentSwitching(id, value),
     forgetUsage: (id) => usageReader.forget(id),
   });
 

@@ -6,6 +6,10 @@
 
 ### 新增
 
+- **agent 写的东西自动在终端旁打开。** Claude Code 写完或改完一个文件(代码、Markdown、文本、数据),它马上出现在这个标签旁边的查看器里,不用再说“在 Ceteris 里打开”。用 latexmk、pdflatex、typst、pandoc、quarto 编出的 PDF 也会自动打开。agent 自己的记忆、计划和临时文件不弹。需要把 ceteris-tabs 插件更新到 0.4.0:`claude plugin update ceteris-tabs@ceteris`。Codex 没有这种钩子,会按说明在写完后自己打开。
+
+- **查看器认得更多代码。** JavaScript、TypeScript、HTML、CSS、C、Java、C#、Kotlin、Go、Rust、Swift、Ruby、Lua、Perl 等文件现在可以在文件树里点开,带高亮,也能编辑保存。
+
 - **一次打开多个文件,在标题栏切换。** 对 Claude Code 或 Codex 说“把刚写的几个脚本在 Ceteris 里打开”,它们一起出现在终端旁边:第一个显示出来,每个文件在查看器顶上有一个小药丸,点一下就切过去。文件树里接着点开的文件也加进这一排。点当前那个复制文件名,× 或中键把文件移出这一排,标题栏放不下的收进“+N”。Claude Code 要先在设置 → 扩展里更新一次 ceteris-tabs 插件。
 
 ## [0.4.7] (2026-11-22)

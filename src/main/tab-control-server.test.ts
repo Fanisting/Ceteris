@@ -211,9 +211,9 @@ describe('TabControlService open-file (ADR-033)', () => {
 
   it('refuses a kind the viewer cannot show without touching the disk', async () => {
     const { tokenOf, call, shown } = setup([session('a', { coordinator: true })], {
-      files: [resolve(cwd, 'main.ts')],
+      files: [resolve(cwd, 'setup.exe')],
     });
-    const reply = await call(tokenOf('a'), 'open-file', { path: resolve(cwd, 'main.ts') });
+    const reply = await call(tokenOf('a'), 'open-file', { path: resolve(cwd, 'setup.exe') });
     expect(errorCode(reply)).toBe('bad-request');
     expect(shown).toEqual([]);
   });
@@ -244,7 +244,7 @@ describe('TabControlService open-file (ADR-033)', () => {
   });
 });
 
-describe('TabControlService open-file with several paths (ADR-058)', () => {
+describe('TabControlService open-file with several paths (ADR-059)', () => {
   const cwd = resolve('/proj/a');
   const answer = resolve(cwd, 'answer.md');
   const script = resolve(cwd, 'src', 'clean.py');
@@ -300,9 +300,9 @@ describe('TabControlService open-file with several paths (ADR-058)', () => {
 
   it('shows nothing when one file is of a kind the viewer cannot show', async () => {
     const { tokenOf, call, shown } = setup([session('a', { currentCwd: cwd })], {
-      files: [answer, resolve(cwd, 'main.ts')],
+      files: [answer, resolve(cwd, 'tool.exe')],
     });
-    const reply = await call(tokenOf('a'), 'open-file', { paths: ['answer.md', 'main.ts'] });
+    const reply = await call(tokenOf('a'), 'open-file', { paths: ['answer.md', 'tool.exe'] });
     expect(errorCode(reply)).toBe('bad-request');
     expect(shown).toEqual([]);
   });

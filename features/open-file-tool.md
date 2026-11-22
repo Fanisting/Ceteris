@@ -6,6 +6,6 @@ It works from any tab. It needs no Coordinator role and no extension switch. Cla
 
 Ask for several files at once, for example "open the three scripts you just wrote in Ceteris". The first one is shown and every file gets a small pill at the top of the viewer, so one click switches between them. One call opens up to 20 files.
 
-A tab of the same folder can be named as the target. The tool opens Markdown, text, JSON, LaTeX, PDF and image files. Folders on SSH servers are not supported yet.
+A tab of the same folder can be named as the target. The tool opens Markdown, text, code and data files, PDFs and images. Files that Claude Code writes, and PDFs it builds, open on their own without the tool; see [Auto open written files](auto-open-written-files.md). Folders on SSH servers are not supported yet.
 
-Related: [ADR-033](../docs/软件定义书.md), [ADR-058](../docs/软件定义书.md), [File viewer](file-viewer.md) and [Tab control plugin](tab-control-plugin.md).
+Related: [ADR-033](../docs/软件定义书.md), [ADR-059](../docs/软件定义书.md), [File viewer](file-viewer.md) and [Tab control plugin](tab-control-plugin.md).

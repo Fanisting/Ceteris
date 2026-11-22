@@ -322,7 +322,7 @@
   min-width: 0;
 }
 
-/* ADR-058: open files as pills in the viewer header; the current one filled like the
+/* ADR-059: open files as pills in the viewer header; the current one filled like the
    Preview / Edit switch. The x shows on hover and on the current pill only. */
 .file-pills {
   flex: 0 1 auto;

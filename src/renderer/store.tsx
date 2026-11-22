@@ -813,7 +813,7 @@ export function useIpcSync(): { ready: boolean; error: string | null } {
           ),
           // ADR-033: a coordinator's agent asks to show a file beside a tab. Same viewer as a
           // click in the file tree; the window showing that tab has it on screen at once.
-          // ADR-058: the other files of the same call join the header pills unread.
+          // ADR-059: the other files of the same call join the header pills unread.
           window.api.on<FileViewOpenRequestedPayload>(
             EVENT_CHANNELS.FILE_VIEW_OPEN_REQUESTED,
             (p) =>

@@ -25,7 +25,7 @@
  *   same viewer a click in the file tree opens. Main checks the type and that the file exists;
  *   the window reads the content itself. A relative path counts from the tab's current
  *   directory, because that is where the agent just wrote the file.
- * - ADR-058: one request may name several files (`paths`). All are checked before any is
+ * - ADR-059: one request may name several files (`paths`). All are checked before any is
  *   shown, so an agent with one typo gets one clear refusal instead of half a set. The first
  *   file is shown, the rest go into the viewer header's file list unread.
  * - open-file is open to every live tab, coordinator or not, extension on or off: the user
@@ -107,7 +107,7 @@ export interface TabControlHost {
   isFile(path: string): Promise<boolean>;
   /**
    * Asks every window to show the file in the viewer beside the tab (ADR-033). `more` are the
-   * other files of the same request (ADR-058), listed in the viewer header but not loaded.
+   * other files of the same request (ADR-059), listed in the viewer header but not loaded.
    */
   showFile(input: {
     sessionId: string;
@@ -360,10 +360,10 @@ export class TabControlService {
 
   /**
    * Shows local files in the viewer beside a tab of the folder; the caller's own tab when
-   * `tab` is not given. Takes `path` (one file) or `paths` (ADR-058, up to
+   * `tab` is not given. Takes `path` (one file) or `paths` (ADR-059, up to
    * TAB_CONTROL_MAX_OPEN_FILES); the first file is shown and the others are listed in the
    * viewer header. Only the kinds the viewer knows (fileViewKind) are accepted, so an agent
-   * asking for a .ts file gets a clear refusal instead of a blank pane. Every file is checked
+   * asking for a .exe or .docx file gets a clear refusal instead of a blank pane. Every file is checked
    * before anything is shown. Any live tab may call this (see authorize); naming another tab
    * still needs it to be in the same folder.
    *
@@ -609,7 +609,7 @@ export class TabControlServer {
 
 /**
  * The paths of an open-file request, trimmed, in request order. Accepts `path` (a string) or
- * `paths` (a non-empty array of strings, ADR-058), never both.
+ * `paths` (a non-empty array of strings, ADR-059), never both.
  *
  * @throws RequestError bad-request for anything else, naming what was wrong
  */

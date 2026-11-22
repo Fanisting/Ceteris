@@ -22,7 +22,7 @@
  *   轮询和自动重读都不传 fresh:它们不能触发 SFTP 登录提示,也不能跳过失败缓存。
  * - Text is not loaded here: TextFileView reads what it needs, as a large file must never be
  *   read whole. Its unsaved edits live in text-drafts.ts, so closing a view cannot lose them.
- * - ADR-058: each view key also keeps the list of files opened there (file tree clicks and
+ * - ADR-059: each view key also keeps the list of files opened there (file tree clicks and
  *   open_file, which may name several at once), shown as pills in the viewer header. Only
  *   the shown file is loaded; a pill click is an ordinary openPdf of that file. The list goes
  *   whenever the view goes (close, prune, eviction), so a pill never outlives its viewer.
@@ -78,7 +78,7 @@ export type PdfView = { source: PdfSource; generation: number } & (
 );
 
 const MAX_READY_VIEWS = 3;
-/** Longest file list of one view (ADR-058); the oldest file not on screen drops off. */
+/** Longest file list of one view (ADR-059); the oldest file not on screen drops off. */
 export const MAX_LISTED_FILES = 20;
 const FOLDER_KEY_PREFIX = 'path:';
 const LOCAL_POLL_MS = 1500;
@@ -94,7 +94,7 @@ const views = new Map<string, PdfView>();
 const lastShown = new Map<string, number>();
 let shownCounter = 0;
 /**
- * view key → files listed in its viewer header (ADR-058), in the order they were opened.
+ * view key → files listed in its viewer header (ADR-059), in the order they were opened.
  * Each change stores a new array, so useSyncExternalStore sees it.
  */
 const fileLists = new Map<string, readonly PdfSource[]>();
@@ -286,7 +286,7 @@ export async function openPdf(
   const generation = nextGeneration;
   nextGeneration += 1;
   const base = { source, generation };
-  // ADR-058: the file joins the header pills, and so do options.more, listed but not read.
+  // ADR-059: the file joins the header pills, and so do options.more, listed but not read.
   fileLists.set(
     viewKey,
     mergeFileList(fileLists.get(viewKey) ?? [], [source, ...(options.more ?? [])], source),
@@ -343,7 +343,7 @@ export function closePdf(viewKey: string): void {
 }
 
 /**
- * Takes one file off a view's list (ADR-058). Removing the file on screen shows its right
+ * Takes one file off a view's list (ADR-059). Removing the file on screen shows its right
  * neighbour, or the left one at the end; removing the last file closes the viewer.
  */
 export function removeListedFile(viewKey: string, source: PdfSource): void {
@@ -552,7 +552,7 @@ export function usePdfView(viewKey: string): PdfView | null {
 
 const NO_FILES: readonly PdfSource[] = [];
 
-/** The files listed in a view's header (ADR-058), oldest first; empty when nothing is open. */
+/** The files listed in a view's header (ADR-059), oldest first; empty when nothing is open. */
 export function usePdfFileList(viewKey: string): readonly PdfSource[] {
   return useSyncExternalStore(subscribe, () => fileLists.get(viewKey) ?? NO_FILES);
 }

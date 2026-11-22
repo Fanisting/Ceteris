@@ -12,4 +12,4 @@ Open a second file beside the same tab and the name turns into a row of small pi
 
 The same viewer works for local folders and, read-only, for folders on SSH servers.
 
-Related: [ADR-016](../docs/软件定义书.md), [ADR-017](../docs/软件定义书.md) and [ADR-058](../docs/软件定义书.md).
+Related: [ADR-016](../docs/软件定义书.md), [ADR-017](../docs/软件定义书.md) and [ADR-059](../docs/软件定义书.md).

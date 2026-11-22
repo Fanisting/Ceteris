@@ -27,11 +27,11 @@
  *   after the name that copies the contents: the unsaved draft if there is one, otherwise the
  *   file (readTextForCopy). Files too large to edit are not copied. A short note after the
  *   button says what happened; it goes through clipboard.ts, never navigator.clipboard.
- * - ADR-058: with two or more files opened beside the tab (open_file with several paths, or
+ * - ADR-059: with two or more files opened beside the tab (open_file with several paths, or
  *   several file tree clicks) the name turns into FilePills, one pill per file. The current
  *   pill still copies the name; the others switch to their file.
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-028, ADR-058
+ * @对应文档章节: 软件定义书.md 14.6, ADR-028, ADR-059
  *
  * @不要在这里做的事:
  * - 不要给 PDF 和图片加编辑或批注。文本编辑见 TextFileView

@@ -8,18 +8,19 @@ Click any of these in the file tree:
 
 - Analysis code: .py, .R, .Rmd, .qmd, .jl, .do and .ado (Stata), .m (MATLAB), .mod (Dynare), .sas, .gms (GAMS), .f and .f90 (Fortran), .cpp
 - Queries: .sql and .hive
-- Configuration and scripts: .yaml, .yml, .toml, .ini, .cfg, .sh, .ps1, .bib
+- General programming (highlight only, no lint): .js, .mjs, .cjs, .jsx, .ts, .tsx, .html, .vue, .svelte, .xml, .css, .scss, .less, .c, .h, .cc, .hpp, .java, .cs, .kt, .scala, .dart, .go, .rs, .swift, .rb, .lua, .pl, .php, .typ
+- Configuration and scripts: .yaml, .yml, .toml, .ini, .cfg, .sh, .bash, .zsh, .ps1, .psm1, .bat, .cmd, .bib
 - Data and logs as text: .csv, .tsv, .log
 
 Code shows line numbers and keeps long lines on one line, so columns stay in line. Colours follow your theme. Files over 2 MB open as read-only pages, as before.
 
 ## Lint after save
 
-| Files | Tool | How Ceteris finds it |
-|---|---|---|
-| .py | ruff | ruff on PATH, or `uvx ruff` when uv is installed |
-| .R, .Rmd, .qmd | lintr | Rscript on PATH, or where the R installer put it; needs the lintr package |
-| .sql, .hive | sqlfluff | sqlfluff on PATH, or `uvx sqlfluff`; .hive uses the Hive dialect unless your sqlfluff config names one |
+| Files          | Tool     | How Ceteris finds it                                                                                   |
+| -------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| .py            | ruff     | ruff on PATH, or `uvx ruff` when uv is installed                                                       |
+| .R, .Rmd, .qmd | lintr    | Rscript on PATH, or where the R installer put it; needs the lintr package                              |
+| .sql, .hive    | sqlfluff | sqlfluff on PATH, or `uvx sqlfluff`; .hive uses the Hive dialect unless your sqlfluff config names one |
 
 Problems get a wavy underline; hover one to read it. A panel under the editor lists them all by line. Click a row to jump there, or Hide to fold the panel. Your project's own config (pyproject.toml, .lintr, .sqlfluff) applies, because the tool itself runs.
 

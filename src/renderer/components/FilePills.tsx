@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/components/FilePills.tsx
- * @purpose The files open beside one tab, as small pills in the viewer header (ADR-058). Shown
+ * @purpose The files open beside one tab, as small pills in the viewer header (ADR-059). Shown
  *   by PdfOverlay in place of the plain file name once two or more files are listed.
  *
  * @关键设计:
@@ -17,7 +17,7 @@
  * - Remove a file with the small × on a pill (shown on hover and on the current pill) or a
  *   middle click. Removing the shown file shows its neighbour (removeListedFile).
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-058
+ * @对应文档章节: 软件定义书.md 14.6, ADR-059
  *
  * @不要在这里做的事:
  * - 不要加键盘快捷键切换文件 (13.2 鼠标优先)

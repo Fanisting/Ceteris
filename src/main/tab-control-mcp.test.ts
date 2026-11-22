@@ -109,7 +109,7 @@ describe('ceteris-tabs MCP server', () => {
     expect(shown[0]!.path.endsWith('answer.md')).toBe(true);
   });
 
-  it('opens several files in one call and names the ones left in the header (ADR-058)', async () => {
+  it('opens several files in one call and names the ones left in the header (ADR-059)', async () => {
     const { server: s, shown } = await start([session('boss')]);
     const reply = await handleMessage(s.envFor('boss'), {
       jsonrpc: '2.0',

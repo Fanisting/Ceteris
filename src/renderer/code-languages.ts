@@ -19,20 +19,28 @@
 import { HighlightStyle, StreamLanguage, type StreamParser } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { cpp } from '@codemirror/legacy-modes/mode/clike';
+import { c, cpp, csharp, dart, java, kotlin, scala } from '@codemirror/legacy-modes/mode/clike';
+import { css, less, sCSS } from '@codemirror/legacy-modes/mode/css';
+import { go } from '@codemirror/legacy-modes/mode/go';
 import { fortran } from '@codemirror/legacy-modes/mode/fortran';
-import { json } from '@codemirror/legacy-modes/mode/javascript';
+import { javascript, json, typescript } from '@codemirror/legacy-modes/mode/javascript';
 import { julia } from '@codemirror/legacy-modes/mode/julia';
+import { lua } from '@codemirror/legacy-modes/mode/lua';
 import { octave } from '@codemirror/legacy-modes/mode/octave';
+import { perl } from '@codemirror/legacy-modes/mode/perl';
 import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
 import { properties } from '@codemirror/legacy-modes/mode/properties';
 import { python } from '@codemirror/legacy-modes/mode/python';
 import { r } from '@codemirror/legacy-modes/mode/r';
+import { ruby } from '@codemirror/legacy-modes/mode/ruby';
+import { rust } from '@codemirror/legacy-modes/mode/rust';
 import { sas } from '@codemirror/legacy-modes/mode/sas';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { hive, standardSQL } from '@codemirror/legacy-modes/mode/sql';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
+import { swift } from '@codemirror/legacy-modes/mode/swift';
 import { toml } from '@codemirror/legacy-modes/mode/toml';
+import { html, xml } from '@codemirror/legacy-modes/mode/xml';
 import { yaml } from '@codemirror/legacy-modes/mode/yaml';
 import type { CodeLanguage } from '@shared/code-files';
 import { stata } from '@shared/stata-mode';
@@ -55,6 +63,25 @@ const PARSERS: Record<CodeLanguage, StreamParser<unknown>> = {
   shell,
   powershell: powerShell,
   properties,
+  javascript,
+  typescript,
+  html,
+  xml,
+  css,
+  scss: sCSS,
+  less,
+  c,
+  java,
+  csharp,
+  kotlin,
+  scala,
+  dart,
+  go,
+  rust,
+  swift,
+  ruby,
+  lua,
+  perl,
 };
 
 const languages = new Map<CodeLanguage, StreamLanguage<unknown>>();

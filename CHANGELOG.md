@@ -25,6 +25,12 @@
 
 - **完成通知可以由 AI 用可爱的语气写。** 设置 → 通知 打开“让 AI 用可爱的语气写通知”,从五种语气里选一个:团子、最后一口、小猫、副本、贴纸本。点一张卡片,下面就出现这个语气的两条示例通知;“用这个语气发一条真的试试”会真的弹一条。通知会说清做成了什么、还差你哪一步;卡住的回合一定写成“等你决定”,不会说成完成。用的是 设置 → AI 助手 里连接的 OpenRouter,默认模型 GLM 5.3 Flash,每条约 0.00005 美元、不到 1 秒。可以只发名字,或再带上回答的最后 600 个字。AI 5 秒内没写出来就照常发普通通知。
 
+### 新增
+
+- **agent 写的东西自动在终端旁打开。** Claude Code 写完或改完一个文件(代码、Markdown、文本、数据),它马上出现在这个标签旁边的查看器里,不用再说“在 Ceteris 里打开”。用 latexmk、pdflatex、typst、pandoc、quarto 编出的 PDF 也会自动打开。agent 自己的记忆、计划和临时文件不弹。需要把 ceteris-tabs 插件更新到 0.4.0:`claude plugin update ceteris-tabs@ceteris`。Codex 没有这种钩子,会按说明在写完后自己打开。
+
+- **查看器认得更多代码。** JavaScript、TypeScript、HTML、CSS、C、Java、C#、Kotlin、Go、Rust、Swift、Ruby、Lua、Perl 等文件现在可以在文件树里点开,带高亮,也能编辑保存。
+
 ## [0.4.7] (2026-11-22)
 
 ### 新增

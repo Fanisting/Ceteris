@@ -33,9 +33,13 @@ const REQUEST_TIMEOUT_MS = 20_000;
 
 const INSTRUCTIONS = [
   'You are running in a terminal tab of Ceteris, a terminal app with a file viewer beside each tab.',
-  'open_file works from any tab: when the user asks you to show, display or open your answer, a',
-  'report or a file "in Ceteris", "as a tab" or "as a page", write it to a .md (or .txt, .json,',
-  '.tex, .pdf, image) file and call open_file with its path. Ceteris displays it next to this tab.',
+  'open_file works from any tab. In Claude Code with the ceteris-tabs plugin, a file you write or',
+  'edit with Write or Edit, and a PDF a latexmk, typst, pandoc or quarto command builds, open next',
+  'to this tab on their own; do not call open_file for them. Call open_file yourself after you',
+  'produce any other file the user will want to see (code, Markdown, a PDF, a figure, data) by',
+  'other means, for example a script that saves a plot, and always in Codex. When the user asks to',
+  'see your answer, a report or a summary "in Ceteris", "as a tab" or "as a page", write it to a',
+  '.md file and open it. Ceteris shows Markdown, text, code and data files, PDFs and images.',
   'The other tools control the other terminal tabs of this folder and work only while this tab is',
   'marked as coordinator in Ceteris; otherwise every call says so.',
   'Typical loop: list_tabs; open_tab with your own agent template ("claude-code" or "codex", see',
@@ -168,7 +172,7 @@ export const TOOLS = [
   {
     name: 'open_file',
     description:
-      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, text, code and data files (.txt, .json, .tex, .py, .R, .sql, .csv and more) as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or a file in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
+      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, text, code and data files (.txt, .json, .tex, .py, .R, .sql, .csv and more) as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Files written with the Write or Edit tools of Claude Code and PDFs built by latexmk, typst, pandoc or quarto open on their own. Call this for any other file you produced that the user will want to see (in Codex, for every file you write), and when the user asks to see your answer or a summary in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -71,6 +71,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Coordinator tour](coordinator-tour.md)                                   | An animated guide to roles and tab control                                     | 0.4.1   |
 | [Tab control plugin](tab-control-plugin.md)                               | A Coordinator opens, reads and drives other tabs                               | 0.4.1   |
 | [Open file tool](open-file-tool.md)                                       | Your agent shows you a file beside its tab; Codex since 0.4.3                  | 0.4.2   |
+| [Auto open written files](auto-open-written-files.md)                     | Files Claude Code writes and PDFs it builds open beside its tab                | Next    |
 
 ## Appearance
 

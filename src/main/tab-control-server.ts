@@ -343,7 +343,7 @@ export class TabControlService {
   /**
    * Shows a local file in the viewer beside a tab of the folder; the caller's own tab when
    * `tab` is not given. Only the kinds the viewer knows (fileViewKind) are accepted, so an
-   * agent asking for a .ts file gets a clear refusal instead of a blank pane. Any live tab may
+   * agent asking for a .exe or .docx file gets a clear refusal instead of a blank pane. Any live tab may
    * call this (see authorize); naming another tab still needs it to be in the same folder.
    */
   private async openFile(

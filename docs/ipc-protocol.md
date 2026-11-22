@@ -2543,6 +2543,8 @@ interface TabControlRequest {
 
 `open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path }`)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
 
+ceteris-tabs 插件 0.4.0 的 PostToolUse 钩子(`hooks/open-written.mjs`,ADR-058)在 Claude Code 写完文件或编出 PDF 后也发这一条 `open-file`,`path` 为绝对路径,不带 `tab`;回复被忽略。
+
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 和 `agent-session` 只检查令牌对应的标签存在且未退出(ADR-033、ADR-036,`TAB_CONTROL_ANY_TAB_OPS`)。
 
 **Codex 用的 IPC**(ADR-033):`cmd:extensions:codex-mcp-status` 和 `cmd:extensions:codex-mcp-install`,payload 都为空,都回复 `CodexMcpStatus`(`{ configPath, configured, codexInstalled, block }`;`codexInstalled` 是 Codex home 目录存在)。`configPath` 是 `<CODEX_HOME 或 ~/.codex>/config.toml`;`block` 是 Ceteris 要写的 TOML(`src/shared/codex-mcp.ts`:`[mcp_servers.ceteris-tabs]` 用 Ceteris 自己的可执行文件加 `ELECTRON_RUN_AS_NODE=1` 跑插件里的服务器脚本,`env_vars` 转发 `CETERIS_CONTROL_PIPE` 和 `CETERIS_CONTROL_TOKEN`)。install 把文件里这个服务器已有的表全部删掉再追加新的,其余内容原样保留,先写临时文件再 rename。

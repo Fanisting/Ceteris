@@ -322,6 +322,89 @@
   min-width: 0;
 }
 
+/* ADR-058: open files as pills in the viewer header; the current one filled like the
+   Preview / Edit switch. The x shows on hover and on the current pill only. */
+.file-pills {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  border-radius: var(--block-radius, 8px);
+  color: var(--color-text-muted, #f0f);
+}
+
+.file-pill:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.file-pill.current {
+  flex-shrink: 1;
+  min-width: 48px;
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.file-pill-name {
+  min-width: 0;
+  max-width: 160px;
+  height: 100%;
+  padding: 0 2px 0 8px;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.file-pill-remove {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 3px;
+  padding: 0;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.file-pill:hover .file-pill-remove,
+.file-pill.current .file-pill-remove {
+  visibility: visible;
+}
+
+.file-pill-remove:hover {
+  background-color: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.file-pill-more {
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 4px 0 8px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
 .pdf-overlay-close {
   flex: 0 0 auto;
   display: flex;

@@ -25,6 +25,9 @@
  *   same viewer a click in the file tree opens. Main checks the type and that the file exists;
  *   the window reads the content itself. A relative path counts from the tab's current
  *   directory, because that is where the agent just wrote the file.
+ * - ADR-058: one request may name several files (`paths`). All are checked before any is
+ *   shown, so an agent with one typo gets one clear refusal instead of half a set. The first
+ *   file is shown, the rest go into the viewer header's file list unread.
  * - open-file is open to every live tab, coordinator or not, extension on or off: the user
  *   asks their own Claude Code to "show the answer in Ceteris", and that tab must be able to
  *   do it without any setup. It shows nothing the user could not click in the file tree, and
@@ -53,12 +56,14 @@ import {
   TAB_CONTROL_ENV,
   TAB_CONTROL_KEYS,
   TAB_CONTROL_MAX_INPUT_CHARS,
+  TAB_CONTROL_MAX_OPEN_FILES,
   TAB_CONTROL_MAX_READ_LINES,
   TAB_CONTROL_MAX_REQUEST_BYTES,
   TAB_CONTROL_VERSION,
   decodeTabControlRequest,
   encodeTabControlReply,
   type TabControlErrorCode,
+  type TabControlOpenedFile,
   type TabControlOpenFileResult,
   type TabControlReply,
   type TabControlRequest,
@@ -100,8 +105,16 @@ export interface TabControlHost {
   bracketedPaste(sessionId: string): boolean;
   /** True when an absolute path is an existing regular file. */
   isFile(path: string): Promise<boolean>;
-  /** Asks every window to show the file in the viewer beside the tab (ADR-033). */
-  showFile(input: { sessionId: string; name: string; path: string }): void;
+  /**
+   * Asks every window to show the file in the viewer beside the tab (ADR-033). `more` are the
+   * other files of the same request (ADR-058), listed in the viewer header but not loaded.
+   */
+  showFile(input: {
+    sessionId: string;
+    name: string;
+    path: string;
+    more?: Array<{ name: string; path: string }>;
+  }): void;
   /**
    * The agent in a tab told us its own session id (ADR-036), from the plugin's SessionStart
    * hook. The shelf resumes the tab with it. SessionManager.setAgentSession.
@@ -346,10 +359,17 @@ export class TabControlService {
   }
 
   /**
-   * Shows a local file in the viewer beside a tab of the folder; the caller's own tab when
-   * `tab` is not given. Only the kinds the viewer knows (fileViewKind) are accepted, so an
-   * agent asking for a .ts file gets a clear refusal instead of a blank pane. Any live tab may
-   * call this (see authorize); naming another tab still needs it to be in the same folder.
+   * Shows local files in the viewer beside a tab of the folder; the caller's own tab when
+   * `tab` is not given. Takes `path` (one file) or `paths` (ADR-058, up to
+   * TAB_CONTROL_MAX_OPEN_FILES); the first file is shown and the others are listed in the
+   * viewer header. Only the kinds the viewer knows (fileViewKind) are accepted, so an agent
+   * asking for a .ts file gets a clear refusal instead of a blank pane. Every file is checked
+   * before anything is shown. Any live tab may call this (see authorize); naming another tab
+   * still needs it to be in the same folder.
+   *
+   * @throws RequestError bad-request for a missing, empty or unknown-kind path, both or
+   *   neither of path and paths, too many paths, or an SSH folder; not-found for a file that
+   *   does not exist (the message names every such file)
    */
   private async openFile(
     caller: SessionInfo,
@@ -363,23 +383,41 @@ export class TabControlService {
     }
     const target =
       args.tab === undefined ? caller : this.target(caller, args.tab, { allowSelf: true });
-    const raw = typeof args.path === 'string' ? args.path.trim() : '';
-    if (!raw) throw new RequestError('bad-request', 'path must be a non-empty string');
-    const path = isAbsolute(raw) ? resolve(raw) : resolve(target.currentCwd, raw);
-    const name = basename(path);
-    const kind = fileViewKind(name);
-    if (!kind) {
+    const files: TabControlOpenedFile[] = [];
+    for (const raw of requestedPaths(args)) {
+      const path = isAbsolute(raw) ? resolve(raw) : resolve(target.currentCwd, raw);
+      // The same file named twice (a.md and ./a.md) is one pill, not two.
+      if (files.some((f) => f.path === path)) continue;
+      const name = basename(path);
+      const kind = fileViewKind(name);
+      if (!kind) {
+        throw new RequestError(
+          'bad-request',
+          `Ceteris cannot show "${name}". It shows Markdown, text, code and data files (.py, .R, .jl, .do, .sql, .csv and more), PDFs and images.`,
+        );
+      }
+      files.push({ path, name, kind });
+    }
+    const exists = await Promise.all(files.map((f) => this.host.isFile(f.path)));
+    const missing = files.filter((_, i) => !exists[i]).map((f) => f.path);
+    if (missing.length > 0) {
       throw new RequestError(
-        'bad-request',
-        `Ceteris cannot show "${name}". It shows Markdown, text, code and data files (.py, .R, .jl, .do, .sql, .csv and more), PDFs and images.`,
+        'not-found',
+        `No file at ${missing.join(', ')}. Write ${missing.length > 1 ? 'them' : 'it'} first, then open ${missing.length > 1 ? 'them' : 'it'}; nothing was shown.`,
       );
     }
-    if (!(await this.host.isFile(path))) {
-      throw new RequestError('not-found', `No file at ${path}. Write it first, then open it.`);
-    }
-    this.host.showFile({ sessionId: target.id, name, path });
-    logger.info('TabControl', `open-file sid=${target.id} path=${path} by tab ${caller.id}`);
-    return { tab: summarize(target, caller.id), path, name, kind };
+    const [first, ...rest] = files as [TabControlOpenedFile, ...TabControlOpenedFile[]];
+    this.host.showFile({
+      sessionId: target.id,
+      name: first.name,
+      path: first.path,
+      ...(rest.length > 0 ? { more: rest.map(({ name, path }) => ({ name, path })) } : {}),
+    });
+    logger.info(
+      'TabControl',
+      `open-file sid=${target.id} path=${first.path} more=${rest.length} by tab ${caller.id}`,
+    );
+    return { tab: summarize(target, caller.id), ...first, files };
   }
 
   /**
@@ -567,4 +605,37 @@ export class TabControlServer {
       this.sockets.delete(socket);
     });
   }
+}
+
+/**
+ * The paths of an open-file request, trimmed, in request order. Accepts `path` (a string) or
+ * `paths` (a non-empty array of strings, ADR-058), never both.
+ *
+ * @throws RequestError bad-request for anything else, naming what was wrong
+ */
+function requestedPaths(args: Record<string, unknown>): string[] {
+  if (args.path !== undefined && args.paths !== undefined) {
+    throw new RequestError('bad-request', 'Give path or paths, not both.');
+  }
+  const many = args.paths !== undefined;
+  if (many && (!Array.isArray(args.paths) || args.paths.length === 0)) {
+    throw new RequestError('bad-request', 'paths must be a non-empty array of strings');
+  }
+  const list: unknown[] = many ? (args.paths as unknown[]) : [args.path];
+  if (list.length > TAB_CONTROL_MAX_OPEN_FILES) {
+    throw new RequestError(
+      'bad-request',
+      `paths has ${list.length} entries; at most ${TAB_CONTROL_MAX_OPEN_FILES} files open at once.`,
+    );
+  }
+  return list.map((raw) => {
+    const path = typeof raw === 'string' ? raw.trim() : '';
+    if (!path) {
+      throw new RequestError(
+        'bad-request',
+        many ? 'paths must be an array of non-empty strings' : 'path must be a non-empty string',
+      );
+    }
+    return path;
+  });
 }

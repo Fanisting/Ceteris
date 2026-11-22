@@ -25,7 +25,7 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
 export const PROTOCOL_VERSION = 1;
-export const SERVER_VERSION = '0.2.0';
+export const SERVER_VERSION = '0.4.0';
 const SUPPORTED_MCP_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18'];
 const AGENT_TEMPLATES = new Set(['claude-code', 'codex']);
 const POLL_MS = 1000;
@@ -36,6 +36,8 @@ const INSTRUCTIONS = [
   'open_file works from any tab: when the user asks you to show, display or open your answer, a',
   'report or a file "in Ceteris", "as a tab" or "as a page", write it to a .md (or .txt, .json,',
   '.tex, .pdf, image) file and call open_file with its path. Ceteris displays it next to this tab.',
+  'To show several files (say the scripts you just wrote), pass them all in one open_file call as',
+  'paths: the first is shown and the user switches between them in the viewer header.',
   'The other tools control the other terminal tabs of this folder and work only while this tab is',
   'marked as coordinator in Ceteris; otherwise every call says so.',
   'Typical loop: list_tabs; open_tab with your own agent template ("claude-code" or "codex", see',
@@ -168,14 +170,20 @@ export const TOOLS = [
   {
     name: 'open_file',
     description:
-      'Show a file in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, text, code and data files (.txt, .json, .tex, .py, .R, .sql, .csv and more) as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or a file in Ceteris, as a tab or as a page: write the file first, then call this with its path. A relative path counts from the current directory of the tab.',
+      'Show files in Ceteris, next to this terminal tab (or another tab of the folder): Markdown rendered as a page, text, code and data files (.txt, .json, .tex, .py, .R, .sql, .csv and more) as text, PDFs and images as themselves. Works from any tab, no coordinator needed. Use it when the user asks to see your answer, a summary or files in Ceteris, as a tab or as a page: write the files first, then call this with path (one file) or paths (several, up to 20; the first is shown and the others wait as pills in the viewer header). A relative path counts from the current directory of the tab.',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path, absolute or relative to the tab' },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          maxItems: 20,
+          description: 'Several file paths to open at once instead of path; the first is shown',
+        },
         tab: { ...TAB, description: `${TAB.description}; default your own tab` },
       },
-      required: ['path'],
       additionalProperties: false,
     },
   },
@@ -381,11 +389,18 @@ export async function runTool(env, name, args = {}, options = {}) {
       return `Closed ${closed}.`;
     }
     case 'open_file': {
-      const { tab, path, kind } = await callCeteris(env, 'open-file', {
-        path: args.path,
+      const { tab, path, kind, files } = await callCeteris(env, 'open-file', {
+        ...(args.path !== undefined ? { path: args.path } : {}),
+        ...(args.paths !== undefined ? { paths: args.paths } : {}),
         ...(args.tab !== undefined ? { tab: args.tab } : {}),
       });
-      return `Showing ${path} (${kind}) beside ${describeTab(tab)}`;
+      const shown = `Showing ${path} (${kind}) beside ${describeTab(tab)}`;
+      // A Ceteris older than ADR-058 replies without files.
+      const others = Array.isArray(files) ? files.slice(1) : [];
+      return others.length === 0
+        ? shown
+        : `${shown}
+Also listed in the viewer header: ${others.map((f) => f.path).join(', ')}`;
     }
     default:
       throw new ControlError(`Unknown tool ${name}`);

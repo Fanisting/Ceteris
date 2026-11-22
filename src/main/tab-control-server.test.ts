@@ -6,7 +6,11 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SessionInfo, Template } from '@shared/types';
-import { TAB_CONTROL_VERSION, type TabControlReply } from '@shared/tab-control';
+import {
+  TAB_CONTROL_MAX_OPEN_FILES,
+  TAB_CONTROL_VERSION,
+  type TabControlReply,
+} from '@shared/tab-control';
 import { TabControlService, type TabControlHost } from './tab-control-server';
 
 function session(id: string, over: Partial<SessionInfo> = {}): SessionInfo {
@@ -237,6 +241,94 @@ describe('TabControlService open-file (ADR-033)', () => {
       { files: [note] },
     );
     expect(errorCode(await call(tokenOf('a'), 'open-file', { path: note }))).toBe('bad-request');
+  });
+});
+
+describe('TabControlService open-file with several paths (ADR-058)', () => {
+  const cwd = resolve('/proj/a');
+  const answer = resolve(cwd, 'answer.md');
+  const script = resolve(cwd, 'src', 'clean.py');
+  const query = resolve(cwd, 'query.sql');
+
+  it('shows the first file and lists the others in request order', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { currentCwd: cwd })], {
+      files: [answer, script, query],
+    });
+    const reply = await call(tokenOf('a'), 'open-file', {
+      paths: ['answer.md', 'src/clean.py', query],
+    });
+    expect(reply.ok && reply.result).toMatchObject({
+      path: answer,
+      kind: 'markdown',
+      files: [
+        { path: answer, name: 'answer.md', kind: 'markdown' },
+        { path: script, name: 'clean.py' },
+        { path: query, name: 'query.sql' },
+      ],
+    });
+    expect(shown).toEqual([
+      {
+        sessionId: 'a',
+        name: 'answer.md',
+        path: answer,
+        more: [
+          { name: 'clean.py', path: script },
+          { name: 'query.sql', path: query },
+        ],
+      },
+    ]);
+  });
+
+  it('lists a file named twice once', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { currentCwd: cwd })], {
+      files: [answer],
+    });
+    const reply = await call(tokenOf('a'), 'open-file', { paths: ['answer.md', answer] });
+    expect(reply.ok && (reply.result as { files: unknown[] }).files).toHaveLength(1);
+    expect(shown).toEqual([{ sessionId: 'a', name: 'answer.md', path: answer }]);
+  });
+
+  it('shows nothing when one file is missing and names it', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { currentCwd: cwd })], {
+      files: [answer],
+    });
+    const reply = await call(tokenOf('a'), 'open-file', { paths: ['answer.md', 'query.sql'] });
+    expect(errorCode(reply)).toBe('not-found');
+    expect(!reply.ok && reply.message).toContain(query);
+    expect(shown).toEqual([]);
+  });
+
+  it('shows nothing when one file is of a kind the viewer cannot show', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { currentCwd: cwd })], {
+      files: [answer, resolve(cwd, 'main.ts')],
+    });
+    const reply = await call(tokenOf('a'), 'open-file', { paths: ['answer.md', 'main.ts'] });
+    expect(errorCode(reply)).toBe('bad-request');
+    expect(shown).toEqual([]);
+  });
+
+  it('refuses path and paths together, an empty list, a blank entry and a non-array', async () => {
+    const { tokenOf, call } = setup([session('a', { currentCwd: cwd })], { files: [answer] });
+    const bad = [
+      { path: 'answer.md', paths: ['answer.md'] },
+      { paths: [] },
+      { paths: ['answer.md', ' '] },
+      { paths: ['answer.md', 3] },
+      { paths: 'answer.md' },
+      {},
+    ];
+    for (const args of bad) {
+      expect(errorCode(await call(tokenOf('a'), 'open-file', args))).toBe('bad-request');
+    }
+  });
+
+  it('refuses more files than the limit', async () => {
+    const { tokenOf, call, shown } = setup([session('a', { currentCwd: cwd })], {
+      files: [answer],
+    });
+    const paths = Array.from({ length: TAB_CONTROL_MAX_OPEN_FILES + 1 }, (_, i) => `f${i}.md`);
+    expect(errorCode(await call(tokenOf('a'), 'open-file', { paths }))).toBe('bad-request');
+    expect(shown).toEqual([]);
   });
 });
 

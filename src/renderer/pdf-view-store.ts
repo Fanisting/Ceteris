@@ -22,6 +22,10 @@
  *   轮询和自动重读都不传 fresh:它们不能触发 SFTP 登录提示,也不能跳过失败缓存。
  * - Text is not loaded here: TextFileView reads what it needs, as a large file must never be
  *   read whole. Its unsaved edits live in text-drafts.ts, so closing a view cannot lose them.
+ * - ADR-058: each view key also keeps the list of files opened there (file tree clicks and
+ *   open_file, which may name several at once), shown as pills in the viewer header. Only
+ *   the shown file is loaded; a pill click is an ordinary openPdf of that file. The list goes
+ *   whenever the view goes (close, prune, eviction), so a pill never outlives its viewer.
  *
  * @对应文档章节: 软件定义书.md 14.6
  *
@@ -74,6 +78,8 @@ export type PdfView = { source: PdfSource; generation: number } & (
 );
 
 const MAX_READY_VIEWS = 3;
+/** Longest file list of one view (ADR-058); the oldest file not on screen drops off. */
+export const MAX_LISTED_FILES = 20;
 const FOLDER_KEY_PREFIX = 'path:';
 const LOCAL_POLL_MS = 1500;
 const REMOTE_POLL_MS = 3000;
@@ -87,6 +93,11 @@ const views = new Map<string, PdfView>();
 /** view key → 最后一次显示的序号。序号大的是最近看过的。 */
 const lastShown = new Map<string, number>();
 let shownCounter = 0;
+/**
+ * view key → files listed in its viewer header (ADR-058), in the order they were opened.
+ * Each change stores a new array, so useSyncExternalStore sees it.
+ */
+const fileLists = new Map<string, readonly PdfSource[]>();
 const listeners = new Set<() => void>();
 let nextGeneration = 1;
 
@@ -101,8 +112,36 @@ function publish(viewKey: string, view: PdfView | null): void {
   } else {
     views.delete(viewKey);
     lastShown.delete(viewKey);
+    fileLists.delete(viewKey);
   }
   for (const listener of listeners) listener();
+}
+
+/** Same file: same path on the same machine. */
+export function sameSource(a: PdfSource, b: PdfSource): boolean {
+  return a.path === b.path && (a.sshProfileId ?? null) === (b.sshProfileId ?? null);
+}
+
+/**
+ * Adds files to a view's list, after the ones already there; a file already listed keeps its
+ * place. Past MAX_LISTED_FILES the oldest files drop off, never `shown`. Pure.
+ */
+export function mergeFileList(
+  list: readonly PdfSource[],
+  added: readonly PdfSource[],
+  shown: PdfSource,
+): PdfSource[] {
+  const next = [...list];
+  for (const source of added) {
+    if (!next.some((s) => sameSource(s, source))) next.push(source);
+  }
+  while (next.length > MAX_LISTED_FILES) {
+    next.splice(
+      next.findIndex((s) => !sameSource(s, shown)),
+      1,
+    );
+  }
+  return next;
 }
 
 function viewUrl(view: PdfView | null): string | null {
@@ -239,10 +278,19 @@ function evictOldViews(keepSessionId: string): void {
  *
  * 这是用户点击,所以读取带 fresh:远端连接会跳过失败缓存,需要时弹登录提示。
  */
-export async function openPdf(viewKey: string, source: PdfSource): Promise<void> {
+export async function openPdf(
+  viewKey: string,
+  source: PdfSource,
+  options: { more?: readonly PdfSource[] } = {},
+): Promise<void> {
   const generation = nextGeneration;
   nextGeneration += 1;
   const base = { source, generation };
+  // ADR-058: the file joins the header pills, and so do options.more, listed but not read.
+  fileLists.set(
+    viewKey,
+    mergeFileList(fileLists.get(viewKey) ?? [], [source, ...(options.more ?? [])], source),
+  );
   publish(viewKey, { ...base, status: 'loading' });
   const isStale = (): boolean => views.get(viewKey)?.generation !== generation;
 
@@ -295,6 +343,30 @@ export function closePdf(viewKey: string): void {
 }
 
 /**
+ * Takes one file off a view's list (ADR-058). Removing the file on screen shows its right
+ * neighbour, or the left one at the end; removing the last file closes the viewer.
+ */
+export function removeListedFile(viewKey: string, source: PdfSource): void {
+  const list = fileLists.get(viewKey) ?? [];
+  const index = list.findIndex((s) => sameSource(s, source));
+  if (index < 0) return;
+  const rest = list.filter((_, i) => i !== index);
+  const shown = views.get(viewKey)?.source;
+  if (shown && sameSource(shown, source)) {
+    const next = rest[Math.min(index, rest.length - 1)];
+    if (!next) {
+      closePdf(viewKey);
+      return;
+    }
+    fileLists.set(viewKey, rest);
+    void openPdf(viewKey, next);
+    return;
+  }
+  fileLists.set(viewKey, rest);
+  for (const listener of listeners) listener();
+}
+
+/**
  * Hands a folder's open file to the terminal just opened there, so it stays on screen beside
  * that terminal. A file still loading closes instead: its load only knows the old key.
  */
@@ -308,6 +380,9 @@ export function movePdfView(fromKey: string, toKey: string): void {
   // Not through publish: that would revoke the blob URL the view is still showing.
   views.delete(fromKey);
   views.set(toKey, view);
+  const list = fileLists.get(fromKey);
+  fileLists.delete(fromKey);
+  if (list) fileLists.set(toKey, list);
   lastShown.set(toKey, lastShown.get(fromKey) ?? 0);
   lastShown.delete(fromKey);
   for (const listener of listeners) listener();
@@ -473,4 +548,11 @@ function subscribe(listener: () => void): () => void {
 
 export function usePdfView(viewKey: string): PdfView | null {
   return useSyncExternalStore(subscribe, () => views.get(viewKey) ?? null);
+}
+
+const NO_FILES: readonly PdfSource[] = [];
+
+/** The files listed in a view's header (ADR-058), oldest first; empty when nothing is open. */
+export function usePdfFileList(viewKey: string): readonly PdfSource[] {
+  return useSyncExternalStore(subscribe, () => fileLists.get(viewKey) ?? NO_FILES);
 }

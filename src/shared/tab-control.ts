@@ -44,6 +44,12 @@ export const TAB_CONTROL_MAX_READ_LINES = 2000;
 /** Longest text one input request may type. */
 export const TAB_CONTROL_MAX_INPUT_CHARS = 64 * 1024;
 
+/**
+ * Most files one open-file request may show. The viewer header lists them as pills, and a
+ * longer list is more likely an agent globbing a folder than a set the user will read.
+ */
+export const TAB_CONTROL_MAX_OPEN_FILES = 20;
+
 export type TabControlOp =
   | 'list'
   | 'get'
@@ -125,13 +131,22 @@ export interface TabSummary {
   exitCode?: number;
 }
 
-/** Reply of `open-file`: the file now shown beside a tab. */
-export interface TabControlOpenFileResult {
-  tab: TabSummary;
+/** One file of an `open-file` request, as resolved by Ceteris. */
+export interface TabControlOpenedFile {
   /** Absolute path as resolved against the tab's current directory */
   path: string;
   name: string;
   kind: FileViewKind;
+}
+
+/**
+ * Reply of `open-file`: the file now shown beside a tab. path, name and kind describe the
+ * shown file (the first one asked for); `files` lists every file in request order, the shown
+ * one first, the others waiting in the viewer header.
+ */
+export interface TabControlOpenFileResult extends TabControlOpenedFile {
+  tab: TabSummary;
+  files: TabControlOpenedFile[];
 }
 
 /**

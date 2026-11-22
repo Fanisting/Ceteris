@@ -27,8 +27,11 @@
  *   after the name that copies the contents: the unsaved draft if there is one, otherwise the
  *   file (readTextForCopy). Files too large to edit are not copied. A short note after the
  *   button says what happened; it goes through clipboard.ts, never navigator.clipboard.
+ * - ADR-058: with two or more files opened beside the tab (open_file with several paths, or
+ *   several file tree clicks) the name turns into FilePills, one pill per file. The current
+ *   pill still copies the name; the others switch to their file.
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-028
+ * @对应文档章节: 软件定义书.md 14.6, ADR-028, ADR-058
  *
  * @不要在这里做的事:
  * - 不要给 PDF 和图片加编辑或批注。文本编辑见 TextFileView
@@ -44,11 +47,13 @@ import {
   closePdf,
   markPdfShown,
   refreshPdf,
+  usePdfFileList,
   usePdfView,
   watchPdf,
   type ReadyPdfView,
 } from '../pdf-view-store';
 import { writeClipboardText } from '../clipboard';
+import { FilePills } from './FilePills';
 import { getTextDraft } from '../text-drafts';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
@@ -147,6 +152,7 @@ function RefreshBadge({
 export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null {
   const { t, tx } = useTranslation();
   const view = usePdfView(viewKey);
+  const fileCount = usePdfFileList(viewKey).length;
   const generation = view?.generation;
   const viewerRef = useRef<PdfJsViewerHandle | null>(null);
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode | null>(null);
@@ -249,17 +255,21 @@ ${view.source.path}`;
   return (
     <section className="pdf-overlay" aria-label={view.source.name}>
       <header className="pdf-overlay-header" title={view.source.path}>
-        <button
-          type="button"
-          className="pdf-overlay-name"
-          title={tx(
-            `点击复制文件名\n${view.source.path}`,
-            `Click to copy the name\n${view.source.path}`,
-          )}
-          onClick={() => void copyName()}
-        >
-          {view.source.name}
-        </button>
+        {fileCount > 1 ? (
+          <FilePills viewKey={viewKey} shown={view.source} onCopyName={() => void copyName()} />
+        ) : (
+          <button
+            type="button"
+            className="pdf-overlay-name"
+            title={tx(
+              `点击复制文件名\n${view.source.path}`,
+              `Click to copy the name\n${view.source.path}`,
+            )}
+            onClick={() => void copyName()}
+          >
+            {view.source.name}
+          </button>
+        )}
         {canCopyContent && (
           <button
             type="button"

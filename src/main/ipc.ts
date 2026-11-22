@@ -1320,9 +1320,8 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   // 两条都不抛错:session 没了或提示变了都是正常时序,面板按 reason 改口。
   handleCommand(
     COMMAND_CHANNELS.SESSION_READ_CHOICE,
-    (_e, envelope: CommandEnvelope<ReadChoicePayload>): ReadChoiceResponse => ({
-      prompt: sessionManager.readChoice(envelope.payload.sessionId),
-    }),
+    (_e, envelope: CommandEnvelope<ReadChoicePayload>): ReadChoiceResponse =>
+      sessionManager.readChoiceView(envelope.payload.sessionId),
   );
 
   handleCommand(

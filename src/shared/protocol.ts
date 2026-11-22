@@ -21,6 +21,7 @@ import type {
   AppSnapshot,
   Bookmark,
   ChoicePrompt,
+  ScreenRun,
   PathTree,
   SessionInfo,
   Settings,
@@ -737,6 +738,11 @@ export interface ReadChoicePayload {
 export interface ReadChoiceResponse {
   /** null:agent 没停在提示上,或者屏幕上的行读不出问题和选项 */
   prompt: ChoicePrompt | null;
+  /**
+   * 提示整块在屏幕上的样子(从顶部横线到页脚,带颜色),面板照原样画出来。
+   * screen[k] 是 prompt.region.from + k 那一行;prompt 为 null 时是空数组。
+   */
+  screen: ScreenRun[][];
 }
 
 /**

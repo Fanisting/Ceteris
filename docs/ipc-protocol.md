@@ -676,6 +676,13 @@ interface ReadChoicePayload {
 // Response
 interface ReadChoiceResponse {
   prompt: ChoicePrompt | null;   // null:agent 不在 blocked,或屏幕上的行读不出提示
+  screen: ScreenRun[][];         // 提示整块在屏幕上的样子,screen[k] 是 region.from + k 那一行;prompt 为 null 时为空
+}
+interface ScreenRun {             // 一段样式相同的字(2026-11-22 加,面板照原样画提示)
+  text: string;
+  fg?: number | string;          // 数字是 256 色表下标(0-15 取终端主题),字符串是 #rrggbb;缺省是主题默认色
+  bg?: number | string;
+  bold?: true; dim?: true; italic?: true; underline?: true; inverse?: true;
 }
 interface ChoicePrompt {
   question: string;              // 选项上面那一行,去掉框线;读不到就是空串
@@ -685,6 +692,7 @@ interface ChoicePrompt {
   steps: Array<{ label: string; done: boolean }>;  // 分页提问的页签,不含最后的提交页;单页为空
   reviewing: boolean;            // 提交页:"Ready to submit your answers?"
   review: string[];              // 提交页上已选的答案行
+  region: { from: number; to: number };  // 提示占的行:顶上的横线(或框顶)到页脚,两端都含
 }
 interface ChoiceOption {
   index: number;                 // 选项前印的数字,从 1 起
@@ -695,6 +703,7 @@ interface ChoiceOption {
   input: 'none' | 'type' | 'chat';  // 直接选 / 打字回答(Type something)/ 离开提示后留言(Chat about this)
   checked: boolean | null;       // 多选的勾;单选为 null
   chosen: boolean;               // 分页提问退回某页时,先前选的那项
+  rows: { from: number; to: number };  // 这项占的屏幕行,含说明行;面板把这几行做成一个按钮
 }
 ```
 

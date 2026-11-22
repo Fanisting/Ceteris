@@ -1277,11 +1277,29 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
         rows: 24,
       });
       expect(mgr.readChoice(info.id)).toBeNull();
+      expect(mgr.readChoiceView(info.id)).toEqual({ prompt: null, screen: [] });
       expect(await run(mgr, { sessionId: info.id, index: 2 })).toEqual({
         sent: false,
         reason: 'no-prompt',
       });
       expect(FakePty.instances[0]!.written).toEqual([]);
+    });
+
+    it('hands the panel the prompt rows as drawn, colours included', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      const rows = choice(0);
+      rows[0] = '\x1b[1mWhich colour?\x1b[0m';
+      rows[1] = '\x1b[38;2;177;185;249m❯ 1. Red\x1b[0m';
+      draw(fp, ['Earlier output', ...rows]);
+      await vi.advanceTimersByTimeAsync(400);
+      const view = mgr.readChoiceView(id);
+      expect(view.prompt?.region).toEqual({ from: 1, to: 7 });
+      expect(view.screen).toHaveLength(7);
+      expect(view.screen[0]).toEqual([{ text: 'Which colour?', bold: true }]);
+      expect(view.screen[1]).toEqual([{ text: '❯ 1. Red', fg: '#b1b9f9' }]);
+      expect(view.screen[6]).toEqual([
+        { text: 'Enter to select · ↑/↓ to navigate · Esc to cancel' },
+      ]);
     });
 
     it('moves the pointer, waits for it to arrive, then presses Enter', async () => {

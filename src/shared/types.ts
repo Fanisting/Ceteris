@@ -136,6 +136,30 @@ export interface ChoiceOption {
   checked: boolean | null;
   /** A paged prompt the user stepped back into: this was the answer given before. */
   chosen: boolean;
+  /** Its rows in the screen text read, the description rows included. */
+  rows: ScreenRows;
+}
+
+/** A run of rows of the screen text a prompt was read from: 0-based, both ends included. */
+export interface ScreenRows {
+  from: number;
+  to: number;
+}
+
+/**
+ * One stretch of a screen row with a single look, for the choice panel's copy of the prompt
+ * (ADR-035). Colours: a number is an index into the 256-colour palette (0-15 come from the
+ * terminal theme), a string is "#rrggbb", absent is the theme's default.
+ */
+export interface ScreenRun {
+  text: string;
+  fg?: number | string;
+  bg?: number | string;
+  bold?: true;
+  dim?: true;
+  italic?: true;
+  underline?: true;
+  inverse?: true;
 }
 
 /** One page of a paged AskUserQuestion, from its tab strip. */
@@ -163,6 +187,11 @@ export interface ChoicePrompt {
   reviewing: boolean;
   /** That page's lines ("● Which colour?", "→ Red", "⚠ You have not answered all questions"). */
   review: string[];
+  /**
+   * The rows the whole prompt takes in the screen text read, from its top rule to its
+   * footer. The choice panel shows them as drawn, colours and all.
+   */
+  region: ScreenRows;
 }
 
 /**

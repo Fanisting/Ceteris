@@ -260,6 +260,7 @@ describe('readChoicePrompt (ADR-035)', () => {
           input: 'none',
           checked: null,
           chosen: false,
+          rows: { from: 3, to: 4 },
         },
         {
           index: 2,
@@ -270,6 +271,7 @@ describe('readChoicePrompt (ADR-035)', () => {
           input: 'none',
           checked: null,
           chosen: false,
+          rows: { from: 5, to: 6 },
         },
         {
           index: 3,
@@ -280,6 +282,7 @@ describe('readChoicePrompt (ADR-035)', () => {
           input: 'type',
           checked: null,
           chosen: false,
+          rows: { from: 7, to: 7 },
         },
         {
           index: 4,
@@ -290,6 +293,7 @@ describe('readChoicePrompt (ADR-035)', () => {
           input: 'chat',
           checked: null,
           chosen: false,
+          rows: { from: 9, to: 9 },
         },
       ],
       pointer: 0,
@@ -297,7 +301,98 @@ describe('readChoicePrompt (ADR-035)', () => {
       steps: [],
       reviewing: false,
       review: [],
+      region: { from: 0, to: 10 },
     });
+  });
+
+  it('finds the rows of the whole prompt, from its top rule to its footer', () => {
+    // An edit approval: the dashed rules around the diff are inside, not the top.
+    const edit = [
+      'Some prose with a list:',
+      '1. not an option',
+      RULE,
+      ' Edit file',
+      ' src/example.ts',
+      '╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌',
+      '  1 - old',
+      '  1 + new',
+      '╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌',
+      ' Do you want to make this edit to example.ts?',
+      ' ❯ 1. Yes',
+      '   2. No',
+      ' Esc to cancel · Tab to amend',
+      '',
+    ].join('\n');
+    expect(readChoicePrompt(edit)?.region).toEqual({ from: 2, to: 12 });
+    // An approval box ends at its bottom edge.
+    expect(readChoicePrompt(CLAUDE_APPROVAL)?.region).toEqual({ from: 0, to: 7 });
+    // No top rule: from the tab strip, or the question.
+    expect(readChoicePrompt(PAGED_Q2_BACK)?.region).toEqual({ from: 0, to: 9 });
+    expect(readChoicePrompt(APPROVAL_2_1_322)?.region).toEqual({ from: 0, to: 5 });
+    // The review page has no footer: it ends with the last option.
+    expect(readChoicePrompt(REVIEW)?.region).toEqual({ from: 0, to: 9 });
+  });
+
+  // Claude Code 2.1.322's AskUserQuestion with previews, recorded on 2026-11-22: the preview
+  // box sits right of the options and "Chat about this" has no number.
+  const PREVIEW = [
+    RULE,
+    ' ☐ Layout ',
+    '',
+    'Which layout should the settings page use?',
+    '',
+    '❯ 1. Two columns                  ┌────────────────────────┐',
+    '  2. Tabs                         │ +------------+-------+ │',
+    '  3. One long page                │ | General    | Name: | │',
+    '                                  │ | Privacy    | Theme | │',
+    '                                  └────────────────────────┘',
+    '',
+    '                                  Notes: press n to add notes',
+    '',
+    RULE,
+    '  Chat about this',
+    '',
+    'Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel',
+  ].join('\n');
+
+  it('reads a prompt with previews: labels without the box, chat row numbered next', () => {
+    const p = readChoicePrompt(PREVIEW);
+    expect(p?.options.map((o) => [o.index, o.label, o.input, o.pos, o.description])).toEqual([
+      [1, 'Two columns', 'none', 0, ''],
+      [2, 'Tabs', 'none', 1, ''],
+      [3, 'One long page', 'none', 2, ''],
+      [4, 'Chat about this', 'chat', 3, ''],
+    ]);
+    expect(p?.options.map((o) => o.rows)).toEqual([
+      { from: 5, to: 5 },
+      { from: 6, to: 6 },
+      { from: 7, to: 7 },
+      { from: 14, to: 14 },
+    ]);
+    expect(p?.pointer).toBe(0);
+    expect(p?.region).toEqual({ from: 0, to: 16 });
+    // Pointer on the chat row: option 3 keeps its ❯, the chat row wins.
+    const onChat = readChoicePrompt(
+      PREVIEW.replace('  3. One', '❯ 3. One')
+        .replace('❯ 1. Two', '  1. Two')
+        .replace('  Chat about this', '❯ Chat about this'),
+    );
+    expect(onChat?.pointer).toBe(3);
+    expect(onChat?.options.filter((o) => o.pointed).map((o) => o.index)).toEqual([4]);
+  });
+
+  it('gives option rows as rows of the screen text, blank rows counted', () => {
+    const spaced = CLAUDE_CHOICE.replace('\n  2. Blue', '\n\n  2. Blue');
+    const p = readChoicePrompt(spaced);
+    expect(p?.options.map((o) => o.rows)).toEqual([
+      { from: 3, to: 4 },
+      { from: 6, to: 7 },
+      { from: 8, to: 8 },
+      { from: 10, to: 10 },
+    ]);
+    expect(p?.region).toEqual({ from: 0, to: 11 });
+    // An option that wraps takes its second row too.
+    expect(readChoicePrompt(APPROVAL_2_1_322)?.options[1]?.rows).toEqual({ from: 2, to: 3 });
   });
 
   it('reads approval prompts, old and new', () => {

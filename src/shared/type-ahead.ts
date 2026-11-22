@@ -53,18 +53,74 @@ export const TYPE_AHEAD_SUBMIT_DELAY_MS = 150;
 /**
  * True when the agent waits at its own input box, so typed keys are prompt text.
  *
- * The agent's footer ("? for shortcuts", "shift+tab to cycle", Codex's "context left") must
- * sit on or below the input cursor row. That keeps a shell tab out after `/exit`: Claude's
- * old footer is then above the shell's cursor. The template is not trusted for the same
- * reason. An approval or choice prompt (ADR-021, ADR-035) is never prompt text: there a key
- * such as 1 must reach the agent at once.
+ * Either sign is enough:
+ * - the agent's footer ("? for shortcuts", "shift+tab to cycle", Codex's "context left") on
+ *   or below the input cursor row;
+ * - the input row sits in Claude Code's input box (claudeInputBox). Claude Code 2.1 shows
+ *   neither footer hint in many states (manual mode shows only "⏸ manual mode on"; a status
+ *   line or a warning takes the place of "? for shortcuts"), so the footer alone missed most
+ *   prompts and every key went to the Host one by one.
  *
- * @param fromInputRow screen rows from the input cursor row to the bottom, joined by "\n"
+ * In the alternate screen only the input box counts: there the cursor can sit anywhere in an
+ * editor such as vim, and the rows below it are the file, which may well say "context left".
+ *
+ * Both look at the input row, so a shell tab after `/exit` stays out: Claude's old footer and
+ * box are then above the shell's cursor. The template is not trusted for the same reason. An
+ * approval or choice prompt (ADR-021, ADR-035) is never prompt text: there a key such as 1
+ * must reach the agent at once.
+ *
+ * @param viewport the visible rows of the terminal, top to bottom
+ * @param inputRow index in viewport of the row with the input cursor
  * @param screen the last rows of the screen, as detectAgentPhase reads them
+ * @param alternate true when the terminal shows the alternate screen
  */
-export function agentPromptReady(fromInputRow: string, screen: string): boolean {
-  if (detectAgent('', fromInputRow) === null) return false;
+export function agentPromptReady(
+  viewport: string[],
+  inputRow: number,
+  screen: string,
+  alternate = false,
+): boolean {
+  const footer = !alternate && detectAgent('', viewport.slice(inputRow).join('\n')) !== null;
+  if (!footer && !claudeInputBox(viewport, inputRow)) return false;
   return detectAgentPhase('', screen, 'idle') !== 'blocked';
+}
+
+/** Longest input, in rows, that claudeInputBox walks through above and below the cursor. */
+const MAX_INPUT_ROWS = 60;
+
+/**
+ * True when the input row is inside Claude Code's input box: a `❯` row, then continuation
+ * rows indented by two spaces (or empty: a blank line of the prompt), with a full-width rule
+ * of `─` right above the `❯` row and right below the last row. The prompt mark alone is not
+ * enough: shell prompts such as oh-my-posh and starship also start with `❯`, but no rule
+ * frames them. `>` is not accepted: fzf and others draw `> query` between rules.
+ *
+ * @param viewport the visible rows of the terminal, top to bottom
+ * @param inputRow index in viewport of the row with the input cursor
+ */
+export function claudeInputBox(viewport: string[], inputRow: number): boolean {
+  let top = inputRow;
+  while (top > 0 && inputRow - top < MAX_INPUT_ROWS && isContinuation(viewport[top])) top--;
+  if (!/^❯(\s|$)/.test(viewport[top] ?? '')) return false;
+  if (!isRule(viewport[top - 1])) return false;
+  for (let row = inputRow + 1; row < viewport.length && row - inputRow <= MAX_INPUT_ROWS; row++) {
+    if (isRule(viewport[row])) return true;
+    if (!isContinuation(viewport[row])) return false;
+  }
+  return false;
+}
+
+function isContinuation(row: string | undefined): boolean {
+  return row !== undefined && (row === '' || row.startsWith('  '));
+}
+
+/** A row drawn as a horizontal line: at least 20 cells, almost all `─`. */
+function isRule(row: string | undefined): boolean {
+  const t = row?.trim() ?? '';
+  if (t.length < 20 || !t.startsWith('─') || !t.endsWith('─')) return false;
+  let lines = 0;
+  for (const ch of t) if (ch === '─') lines++;
+  return lines >= t.length * 0.8;
 }
 
 const PASTE_START = '\x1b[200~';

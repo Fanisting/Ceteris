@@ -1850,18 +1850,6 @@ select.settings-input option {
   text-underline-offset: 2px;
 }
 
-.type-ahead-mark {
-  margin-left: 8px;
-  padding: 0 6px;
-  border-radius: var(--block-radius, 8px);
-  font-family: var(--ui-font-family, sans-serif);
-  font-size: 11px;
-  white-space: nowrap;
-  vertical-align: 1px;
-  background-color: var(--md-secondary-container, transparent);
-  color: var(--md-on-secondary-container, currentColor);
-}
-
 /* xterm's own composition box sits at the Host's cursor; the overlay shows the composing text. */
 .type-ahead-composing-active .composition-view {
   opacity: 0;

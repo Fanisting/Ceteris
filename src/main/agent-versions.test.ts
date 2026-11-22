@@ -119,6 +119,37 @@ describe('agent-versions', () => {
     expect(runVersion).toHaveBeenCalledTimes(2);
   });
 
+  it('asks the registry only for agents that are installed', async () => {
+    const fetchJson = vi.fn(async () => ({ version: '1.0.0' }));
+    const checker = new AgentVersionChecker({
+      findOnPath: (cmd) => (cmd === 'omp' ? ['C:\\u\\AppData\\Local\\omp\\omp.exe'] : []),
+      realPath: (p) => p,
+      probe: noFiles,
+      runVersion: async () => 'omp/0.9.0',
+      fetchJson,
+    });
+    const all = await checker.list();
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+    expect(fetchJson).toHaveBeenCalledWith(
+      'https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/latest',
+    );
+    expect(all.find((a) => a.templateId === 'omp')).toMatchObject({
+      status: 'outdated',
+      installed: '0.9.0',
+      upgradeCommand: 'omp update',
+    });
+    expect(all.find((a) => a.templateId === 'pi')?.status).toBe('missing');
+  });
+
+  it('has one spec per agent template, each with a plain command name', () => {
+    const ids = AGENT_UPDATE_SPECS.map((s) => s.templateId);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const spec of AGENT_UPDATE_SPECS) expect(spec.command).toMatch(/^[a-z][a-z0-9-]*$/);
+    expect(findAgentSpec('kiro')?.command).toBe('kiro-cli');
+    expect(findAgentSpec('qoder')?.command).toBe('qodercli');
+    expect(findAgentSpec('qwen-code')?.command).toBe('qwen');
+  });
+
   it('lists which agents are on PATH without running --version or going online', async () => {
     const runVersion = vi.fn(async () => '1.0.0');
     const fetchJson = vi.fn(async () => ({ version: '1.0.0' }));

@@ -44,6 +44,9 @@ import { logger } from './logger';
  * 每个内置 agent 恢复上次对话的参数,追加在模板 args 后面。
  * claude / codex / opencode / gemini 对照本机 2026-11-10 的 --help;
  * copilot / cursor / aider 来自各自文档,没在本机核对。不在表里的 agent 直接重开。
+ * omp (18.22) / kiro-cli (2.3) 对照本机 2026-11-22 的 --help。kiro-cli 不带子命令时
+ * 打开对话 (顶层 --tui 写着 Launch chat),但恢复参数只挂在 chat 子命令上,所以带上 chat。
+ * 1.50 补充的其余 agent 本机没装,不猜参数,直接重开。
  */
 export const RESUME_ARGS: Readonly<Record<string, readonly string[]>> = {
   'claude-code': ['--continue'],
@@ -53,6 +56,8 @@ export const RESUME_ARGS: Readonly<Record<string, readonly string[]>> = {
   'github-copilot': ['--continue'],
   cursor: ['resume'],
   aider: ['--restore-chat-history'],
+  omp: ['--continue'],
+  kiro: ['chat', '--resume'],
 };
 
 /** 发给刚才在跑的终端的提示 */

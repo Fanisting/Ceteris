@@ -496,11 +496,13 @@ function bootstrap(): void {
     onSessionDestroyed: (fn) =>
       void sessionManager.on('sessionDestroyed', (p: { sessionId: string }) => fn(p.sessionId)),
     getScreenTail: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
+    getPromptScreen: (sessionId) => sessionManager.getPromptScreen(sessionId),
     getLastEnterAt: (sessionId) => sessionManager.getLastEnterAt(sessionId),
     currentTitle: (sessionId) => sessionManager.get(sessionId)?.displayName ?? '',
     isManuallyRenamed: (sessionId) => sessionManager.isManuallyRenamed(sessionId),
     getAgentOscTitle: (sessionId) => sessionManager.getAgentOscTitle(sessionId),
     setAiTitle: (sessionId, title) => sessionManager.setAiTitle(sessionId, title),
+    releaseAiTitle: (sessionId) => sessionManager.releaseAiTitle(sessionId),
     titleSettings: () => {
       const { tabTitles, nextPrompt } = settingsManager.get().ai;
       return tabTitles.enabled && nextPromptConfigured(nextPrompt) ? tabTitles : null;

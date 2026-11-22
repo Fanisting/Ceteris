@@ -23,6 +23,8 @@ const MAX_REPLY_TOKENS = 40;
 export interface AgentTitleRequest {
   /** The end of the tab's rendered screen */
   screen: string;
+  /** The screen when the user last pressed Enter; holds their prompt. '' when unknown */
+  promptScreen: string;
   /** The tab's name now */
   currentTitle: string;
   /** The last title the agent set itself (OSC 0), or null */
@@ -64,7 +66,9 @@ async function post(
 /**
  * @param onUsage receives each successful response's usage field, for the cost total
  * @returns the new title, or null when the model says to keep the current one
- * @throws Error when nothing is connected, the API refuses, or it does not answer in time
+ * @throws Error when nothing is connected, the API refuses, it does not answer in time, or
+ *   the reply is empty (a reasoning model can spend all MAX_REPLY_TOKENS thinking). The
+ *   titler then hands the tab back to the agent's own titles.
  */
 export async function suggestAgentTitle(
   config: NextPromptConfig,
@@ -93,5 +97,13 @@ export async function suggestAgentTitle(
     usage?: unknown;
   };
   onUsage?.(body.usage);
-  return cleanAgentTitle(body.choices?.[0]?.message?.content ?? '', request.maxChars);
+  const reply = body.choices?.[0]?.message?.content ?? '';
+  if (!reply.trim()) {
+    throw new Error(
+      `[AgentTitle] model "${config.model.trim() || NEXT_PROMPT_DEFAULT_MODEL}" sent an empty reply. ` +
+        'Possible causes: (1) a reasoning model used all its tokens thinking, ' +
+        '(2) the provider filtered the answer. Try another model in Settings, AI Assistant.',
+    );
+  }
+  return cleanAgentTitle(reply, request.maxChars);
 }

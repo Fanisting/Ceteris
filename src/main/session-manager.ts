@@ -291,6 +291,12 @@ const INPUT_QUIET_MS = 200;
 const AGENT_PHASE_CHECK_MS = 300;
 
 /**
+ * ADR-029:按回车时留下的屏幕行数,给 AI 标签标题当用户 prompt。Claude Code 的输入框
+ * 加页脚一般在最后 10 行内;长 prompt 折成多行,留 30 行。
+ */
+const PROMPT_SCREEN_ROWS = 30;
+
+/**
  * ADR-035: answering a prompt from a toast types in stages and checks the screen between
  * them. A TUI moves its pointer, and turns a row into a text field, only when it redraws;
  * text sent in the same burst as the arrow keys would reach the old row, where a digit
@@ -506,6 +512,12 @@ interface ManagedSession {
    * 自己的 OSC 标题不再覆盖它;关掉后 OSC 标题照常接管。
    */
   aiTitled: boolean;
+  /**
+   * ADR-029:用户最近一次在 agent 标签里按回车时屏幕末尾的几行,里面是用户刚发的
+   * prompt。轮次跑完后屏幕末尾多半是工具输出,模型只看那一段会按工具输出起名。
+   * 只留在内存里,不写盘;非 agent 标签恒为 ''。
+   */
+  lastPromptScreen: string;
   /**
    * PER-2 / F1:IPC 聚合缓冲 — 8ms 窗口内积累的 sessionOutput,timer 到点
    * 一次性 emit。降低高速 PTY 输出场景下 IPC 消息数,缓解 renderer 反压。
@@ -1067,6 +1079,7 @@ export class SessionManager extends EventEmitter {
       manuallyRenamed: false,
       agentOscTitle: null,
       aiTitled: false,
+      lastPromptScreen: '',
       pendingEmit: null,
       pendingEmitTimer: null,
       // hooks 走 sessions Map:destroy 之后不在 Map 里,迟到的 release 不会 emit。
@@ -1192,6 +1205,11 @@ export class SessionManager extends EventEmitter {
     return resolveLocale(pref, Intl.DateTimeFormat().resolvedOptions().locale);
   }
 
+  /** ADR-029:用户最近一次按回车 (审批菜单除外) 时的屏幕末尾,从没按过为 ''。 */
+  getPromptScreen(sessionId: string): string {
+    return this.sessions.get(sessionId)?.lastPromptScreen ?? '';
+  }
+
   /** ADR-029:agent 自己最近设的标题,没有时 null。 */
   getAgentOscTitle(sessionId: string): string | null {
     return this.sessions.get(sessionId)?.agentOscTitle ?? null;
@@ -1211,6 +1229,36 @@ export class SessionManager extends EventEmitter {
     if (managed.info.displayName === trimmed) return;
     managed.info.displayName = trimmed;
     this.emitStateChanged(managed, { displayName: trimmed });
+  }
+
+  /**
+   * ADR-029:把标签交回 agent 自己的 OSC 标题。模型请求失败、或"标签标题"关了 /
+   * 没连 API 时由 AgentTitler 调:否则 aiTitled 一直为 true,Claude Code 自己的
+   * 标题再也进不来,标签停在一个过时的模型标题上。
+   *
+   * 清掉 aiTitled 后马上用 agent 最近设的标题 (缩短后) 替换当前名;没有可用的
+   * agent 标题时名字不动,等下一个 OSC 标题。手动改过名、未知 session、
+   * 本来就不是模型标题时都是 no-op。下一次模型请求成功会再置 aiTitled。
+   */
+  releaseAiTitle(sessionId: string): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || !managed.aiTitled) return;
+    managed.aiTitled = false;
+    if (managed.manuallyRenamed || managed.agentOscTitle === null) return;
+    const short = this.shortAgentTitle(managed.agentOscTitle);
+    if (!short || short === managed.info.displayName) return;
+    managed.info.displayName = short;
+    this.emitStateChanged(managed, { displayName: short });
+  }
+
+  /**
+   * ADR-029:agent 的 OSC 标题缩短后可用作标签名时返回它;只剩转圈符号或只是
+   * agent 自己的名字 ("✳ Claude Code") 时返回 '',调用方保留当前名。
+   */
+  private shortAgentTitle(cleaned: string): string {
+    const maxChars = clampTitleLength(this.settingsManager.get().ai?.tabTitles?.maxChars);
+    const short = shortenAgentTitle(cleaned, maxChars);
+    return short && !isAgentNameTitle(short) ? short : '';
   }
 
   /**
@@ -1565,6 +1613,11 @@ export class SessionManager extends EventEmitter {
     if (enter) {
       managed.inputQuietUntil = 0;
       managed.lastEnterAt = now;
+      // ADR-029:回车前屏幕上的 prompt 留给标题请求。审批菜单上的回车是选项,
+      // 不是新任务,不覆盖上一条 prompt。
+      if (isAgentSession(managed.info) && managed.info.agentPhase !== 'blocked') {
+        managed.lastPromptScreen = this.getHeadlessTail(managed, PROMPT_SCREEN_ROWS);
+      }
     } else {
       managed.inputQuietUntil = now + this.inputQuietMs;
     }
@@ -2612,10 +2665,10 @@ export class SessionManager extends EventEmitter {
       managed.agentOscTitle = cleaned;
       const titles = this.settingsManager.get().ai?.tabTitles;
       if (titles?.enabled && managed.aiTitled) return;
-      cleaned = shortenAgentTitle(cleaned, clampTitleLength(titles?.maxChars));
       // "✳ Claude Code" at launch (or after /clear) names the agent, not the task:
       // a new tab stays "New Tab" and a task title already shown stays.
-      if (!cleaned || isAgentNameTitle(cleaned)) return;
+      cleaned = this.shortAgentTitle(cleaned);
+      if (!cleaned) return;
     }
     if (cleaned === managed.info.displayName) return;
     managed.info.displayName = cleaned;

@@ -262,7 +262,10 @@ function makeStubSettingsManager(
       savedHosts: [],
     },
     agents: { folderDefaults },
-    notifications: { enabled: true },
+    notifications: {
+      enabled: true,
+      ai: { enabled: false, voice: 'mascot', model: '', includeAnswer: true },
+    },
   };
   return {
     get: (): Settings => settings,

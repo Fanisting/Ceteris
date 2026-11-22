@@ -1792,10 +1792,15 @@ interface SetNotifyPayload { sessionId: string; notify: boolean } // 回复 void
 
 #### `cmd:notify:test`
 ```typescript
-// payload: undefined
-interface NotifyTestResponse { shown: boolean } // false = 系统没有可用的通知服务
+// payload: undefined | NotifyTestPayload
+interface NotifyTestPayload { voice?: boolean } // ADR-057
+interface NotifyTestResponse {
+  shown: boolean;    // false = 系统没有可用的通知服务
+  written?: boolean; // 只在 voice 时有:false = 模型没写出来,弹的是普通测试通知
+  error?: string;    // written 为 false 的原因,例如 "no OpenRouter key connected"
+}
 ```
-在用户面前这台机器上弹一条测试通知,不看总开关和铃铛。列在 `LINK_LOCAL_ONLY_CHANNELS`,远程窗口里也在本机弹。
+在用户面前这台机器上弹一条测试通知,不看总开关和铃铛。payload 是 `{ voice: true }` 时(ADR-057,设置页“用这个语气发一条真的试试”),先让模型按 `settings.notifications.ai` 选的语气,为一轮假想的“修好登录测试”写标题和正文,再弹出来;模型没写出来就弹普通测试通知,并在 `error` 里说原因。列在 `LINK_LOCAL_ONLY_CHANNELS`,远程窗口里也在本机弹。
 
 点通知时 main 给持有标签的窗口发 `evt:window:focus-requested`,`reason: 'notification-click'`,带 `selectSessionId`。
 

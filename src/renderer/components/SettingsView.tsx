@@ -107,6 +107,7 @@ import { TemplateIcon } from './TemplateIcon';
 import { useToast } from './Toast';
 import { useTypeIntoNewTerminal } from './type-into-terminal';
 import { useTranslation } from './LanguageProvider';
+import { PushVoiceSettings } from './PushVoiceSettings';
 import { ThemePicker } from './ThemePicker';
 import { LegadoDynamicControls } from './LegadoDynamicControls';
 import { isLegadoDynamicThemeId, LEGADO_DEFAULT_SEED } from '@shared/legado-dynamic-ids';
@@ -1292,6 +1293,11 @@ function NotificationsPanel({ setError }: { setError: (msg: string | null) => vo
           <span>{tx('启用', 'Enable')}</span>
         </label>
       </SettingRow>
+
+      <PushVoiceSettings
+        update={(partial) => void updateSettings(partial, setError)}
+        setError={setError}
+      />
 
       <SettingRow
         label={tx('测试', 'Test')}

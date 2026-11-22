@@ -115,6 +115,7 @@ import {
   type SetCoordinatorPayload,
   type SetRolePayload,
   type SetNotifyPayload,
+  type NotifyTestPayload,
   type NotifyTestResponse,
   type CommandEnvelope,
   type CreateSessionPayload,
@@ -1032,9 +1033,18 @@ function registerCommandHandlers(deps: IpcLayerDeps): void {
   );
 
   // ADR-048:设置页"发一条测试通知",在用户面前这台机器上弹 (link 里是本地命令)
+  // ADR-057:payload { voice: true } 时让模型用当前选的语气写一条示例再弹
   handleCommand(
     COMMAND_CHANNELS.NOTIFY_TEST,
-    (): NotifyTestResponse => ({ shown: deps.doneNotifier?.showTest() ?? false }),
+    async (
+      _e,
+      envelope: CommandEnvelope<NotifyTestPayload | undefined>,
+    ): Promise<NotifyTestResponse> => {
+      if (envelope?.payload?.voice === true && deps.doneNotifier) {
+        return deps.doneNotifier.showVoiceTest();
+      }
+      return { shown: deps.doneNotifier?.showTest() ?? false };
+    },
   );
 
   // STM-3:清除手动重命名标记

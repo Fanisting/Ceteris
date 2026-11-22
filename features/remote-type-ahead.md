@@ -19,7 +19,7 @@ If the link drops before you press Enter, your text is still there after the rec
 
 This also works with Claude Code's fullscreen mode (`"tui": "fullscreen"`) and when the footer shows no shortcut hint: Ceteris recognises the input box itself.
 
-Selecting text in a Link window happens on your computer. A plain drag selects at once, even when the agent tracks the mouse; copy with Ctrl+C, the right-click menu or the copy on select setting. The wheel still scrolls the agent. Hold Alt to click or drag inside the agent as before.
+Selecting text in a Link window happens on your computer. A plain drag selects at once, even when the agent tracks the mouse; copy with Ctrl+C, the right-click menu or the copy on select setting. The wheel still scrolls the agent. Wheel steps that come while the previous one is still on its way go out together, so a fast scroll costs one round trip per batch instead of one per step. Hold Alt to click or drag inside the agent as before.
 
 Shell tabs (including a tab where the agent has exited), full-screen programs such as vim, and tabs on your own computer send each key as before.
 

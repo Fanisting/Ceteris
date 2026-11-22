@@ -146,6 +146,7 @@ import {
   pastedLineCount,
   type TypeAheadWrite,
 } from '@shared/type-ahead';
+import { isWheelReport, WheelBatch } from '@shared/wheel-batch';
 import { detectAgent } from '@shared/next-prompt';
 import { ColonTracker, findColonCommand } from '@shared/colon-commands';
 import type {
@@ -1822,6 +1823,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
 
     // Remote windows only: on a local terminal the echo is already instant.
     let echo: LocalEcho | null = null;
+    // Remote windows only: wheel steps of a program that tracks the mouse travel in batches,
+    // one write on its way at a time (wheel-batch.ts). Locally each step is instant anyway.
+    let wheelBatch: WheelBatch | null = null;
     const outputDecoder = new TextDecoder();
 
     // ADR-051 输出流控:每段写进 xterm 的 live 输出,解析完后 ack 给 main
@@ -1874,6 +1878,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         // goes to the program as before.
         term.options.mouseEventsRequireAlt = true;
         echo = attachLocalEcho(term);
+        wheelBatch = new WheelBatch(sendQueuedAwait);
         typeAhead = new TypeAhead(loadTypeAhead(session.id));
         typeAheadView = attachTypeAheadView(term, () => !typeAhead!.isLive && promptReady());
         showTypeAhead();
@@ -2231,6 +2236,10 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         });
         return;
       }
+      if (wheelBatch && isWheelReport(data)) {
+        wheelBatch.push(data);
+        return;
+      }
       if (typeAheadTakes()) {
         setSuggestion(null);
         routeTypeAhead(typeAhead!.feed(data, resolveColonCommand));
@@ -2359,6 +2368,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       resizeObserver.disconnect();
       cleanupMaxState();
       echo?.dispose();
+      wheelBatch?.close();
       typeAheadView?.dispose();
       typeAheadRef.current = null;
       cleanupOutput();

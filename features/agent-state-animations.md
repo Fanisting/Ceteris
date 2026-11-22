@@ -8,4 +8,6 @@ When Claude Code or Codex waits at an approval prompt, the tab bottom and the si
 
 Plain shells keep the simple rule: they only show whether there is output.
 
+The tab you are looking at has a solid triangle on its top edge, pointing down. The bottom edge stays free for the wave and the approval bar, so a running tab you have open shows both.
+
 Related: [ADR-021](../docs/软件定义书.md).

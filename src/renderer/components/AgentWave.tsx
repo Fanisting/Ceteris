@@ -6,7 +6,8 @@
  *   - waiting:a long slow swell that breathes (hooks, the API starting up)
  *   - tool:a nearly flat line with a pulse travelling along it
  *   - unknown (plain shell, Codex):the steady wave of earlier versions
- *   When the tab stops running the wave flattens, then fades.
+ *   When the tab stops running the wave flattens, then fades. The selected tab is marked by a
+ *   triangle above it (material.css), so the wave and the selection never share the bottom edge.
  *
  * @关键设计:
  * - Drawn as an SVG path from requestAnimationFrame, because the shapes morph into each other
@@ -25,8 +26,6 @@ import type { AgentWork } from '@shared/types';
 
 interface AgentWaveProps {
   running: boolean;
-  /** Selected tabs show their underline again at once when they stop, so no fade there. */
-  selected: boolean;
   work: AgentWork | null;
   pace: number | null;
 }
@@ -64,10 +63,13 @@ function targetShape(running: boolean, work: AgentWork | null, pace: number | nu
 }
 
 function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
-export function AgentWave({ running, selected, work, pace }: AgentWaveProps): JSX.Element {
+export function AgentWave({ running, work, pace }: AgentWaveProps): JSX.Element {
   const svgRef = useRef<SVGSVGElement>(null);
   const pathRef = useRef<SVGPathElement>(null);
   // Live values the frame loop eases toward the target; kept across renders.
@@ -107,7 +109,7 @@ export function AgentWave({ running, selected, work, pace }: AgentWaveProps): JS
       svg.setAttribute('width', String(width));
       path.setAttribute('d', d);
       const visible = s.amp > 0.15 || s.pulse > 0.15;
-      svg.classList.toggle('visible', visible && !(selected && !running));
+      svg.classList.toggle('visible', visible);
       // Keep going while running, or until the flattened line has faded.
       return running || visible;
     };
@@ -132,10 +134,10 @@ export function AgentWave({ running, selected, work, pace }: AgentWaveProps): JS
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;
     };
-  }, [running, selected, work, pace]);
+  }, [running, work, pace]);
 
   return (
-    <svg ref={svgRef} className={`tab-wave${selected && !running ? ' instant' : ''}`} height={HEIGHT} aria-hidden="true">
+    <svg ref={svgRef} className="tab-wave" height={HEIGHT} aria-hidden="true">
       <path ref={pathRef} />
     </svg>
   );

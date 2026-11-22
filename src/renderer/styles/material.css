@@ -664,15 +664,16 @@ button:focus-visible,
   color: var(--md-on-surface-variant, #f0f);
 }
 
-/* 活动指示条:贴底 3px,上方圆角。不用 border-bottom,切换时标签不会抖动 */
+/* 选中指示:标签顶边正中一个实心倒三角。底边留给运行中的波浪线和等批准的呼吸条,
+   所以运行中的标签被选中时两者同时可见,不再互相顶替。绝对定位,切换时标签不会抖动 */
 .tab.selected::after {
   content: '';
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 0;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
+  top: 0;
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 7px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
   background-color: var(--md-primary, #f0f);
 }
 
@@ -1912,21 +1913,12 @@ select.settings-input option {
   transition: opacity 100ms ease;
 }
 
-/* The selected tab gets its underline back at once, so its wave must not fade on top. */
-.tab-wave.instant {
-  transition: none;
-}
-
 .tab-wave path {
   fill: none;
   stroke: var(--md-primary, #f0f);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.tab.running.selected::after {
-  content: none;
 }
 
 .tab-agent-dot {
@@ -1947,13 +1939,13 @@ select.settings-input option {
   animation: agent-ping 900ms ease-out 2;
 }
 
-.tab.agent-blocked .tab-agent-dot,
-.tab.agent-blocked.selected::after {
+/* The approval bar sits on the bottom edge, selected or not; selection is the triangle on top. */
+.tab.agent-blocked .tab-agent-dot {
   background-color: var(--color-warning, #f0f);
   animation: agent-breathe 1.4s ease-in-out infinite;
 }
 
-.tab.agent-blocked:not(.selected)::after {
+.tab.agent-blocked::before {
   content: '';
   position: absolute;
   left: 10px;
@@ -1999,7 +1991,7 @@ select.settings-input option {
 @media (prefers-reduced-motion: reduce) {
   .tab-agent-dot,
   .tab-agent-dot::after,
-  .tab.agent-blocked::after,
+  .tab.agent-blocked::before,
   .session-state-dot.agent-blocked,
   .session-state-dot.agent-unseen::after {
     animation: none !important;

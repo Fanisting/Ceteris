@@ -889,10 +889,10 @@ export function getXtermTheme(themeId: ThemeId | undefined): ITheme {
  * 避免无差别加深破坏深色主题里故意调淡的颜色(如 prompt hint、git diff
  * context 行等)。
  */
-function isLightTheme(themeId: ThemeId | undefined): boolean {
+export function isLightTheme(themeId: ThemeId | undefined): boolean {
   return getXtermTheme(themeId).extendedAnsi === LIGHT_EXTENDED_ANSI;
 }
-const LIGHT_THEME_MIN_CONTRAST = 4.5;
+export const LIGHT_THEME_MIN_CONTRAST = 4.5;
 const SSH_STARTUP_DA_FILTER_MS = 5000;
 
 /** Lines from the end of the buffer used to guess the next prompt. */

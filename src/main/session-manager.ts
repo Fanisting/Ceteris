@@ -65,7 +65,14 @@ import type {
   SessionOutputPayload,
   SessionStateChangedPayload,
 } from '@shared/protocol';
-import type { AgentWork, ChoicePrompt, SessionInfo, Template, Settings } from '@shared/types';
+import type {
+  AgentWork,
+  ChoicePrompt,
+  ScreenRun,
+  SessionInfo,
+  Template,
+  Settings,
+} from '@shared/types';
 import type { AnswerChoicePayload, AnswerChoiceResponse } from '@shared/protocol';
 import type { WindowManager } from './window-manager';
 import type { PathManager } from './path-manager';
@@ -87,6 +94,8 @@ type HeadlessTerminal = InstanceType<typeof HeadlessTerminal>;
 import xtermSerialize from '@xterm/addon-serialize';
 const { SerializeAddon } = xtermSerialize;
 type SerializeAddon = InstanceType<typeof SerializeAddon>;
+import type { IBufferLine } from '@xterm/headless';
+import { lineRuns } from './screen-runs';
 import { Osc1337Parser } from './osc1337-parser';
 import {
   DEFAULT_FLOW_CONTROL,
@@ -2453,6 +2462,29 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * ADR-035: readChoice plus the prompt's rows as drawn, from its top rule to its footer, as
+   * styled runs. The choice panel shows those rows instead of rebuilding the prompt, so the
+   * tool header, the command or diff, previews and the agent's marks all come through.
+   *
+   * @returns screen[k] is row prompt.region.from + k of the screen text the prompt was read
+   *   from; both are empty or null exactly when readChoice would return null
+   */
+  readChoiceView(sessionId: string): { prompt: ChoicePrompt | null; screen: ScreenRun[][] } {
+    const managed = this.sessions.get(sessionId);
+    if (!managed?.headlessTerm || managed.info.agentPhase !== 'blocked') {
+      return { prompt: null, screen: [] };
+    }
+    const lines = this.getHeadlessTailLines(managed, AGENT_PHASE_SCREEN_ROWS);
+    const prompt = readChoicePrompt(lines.map((l) => l.translateToString(true)).join('\n'));
+    if (!prompt) return { prompt: null, screen: [] };
+    const cols = managed.headlessTerm.cols;
+    const screen = lines
+      .slice(prompt.region.from, prompt.region.to + 1)
+      .map((line) => lineRuns(line, cols));
+    return { prompt, screen };
+  }
+
+  /**
    * ADR-035: answers the prompt the agent stopped at, for the choice panel in a toast in
    * another tab or window. Re-reads the screen first and after every stage: a stale panel
    * must never type into whatever the agent is doing by now.
@@ -2586,19 +2618,25 @@ export class SessionManager extends EventEmitter {
   }
 
   private getHeadlessTail(managed: ManagedSession, maxRows: number): string {
-    if (!managed.headlessTerm) return '';
+    return this.getHeadlessTailLines(managed, maxRows)
+      .map((line) => line.translateToString(true)) // trim trailing whitespace
+      .join('\n');
+  }
+
+  /** The buffer rows behind getHeadlessTail, oldest first, for callers that need styles. */
+  private getHeadlessTailLines(managed: ManagedSession, maxRows: number): IBufferLine[] {
+    if (!managed.headlessTerm) return [];
     const buf = managed.headlessTerm.buffer.active;
     // buf.length 是 scrollback + viewport 总行数
     const total = buf.length;
-    const lines: string[] = [];
+    const lines: IBufferLine[] = [];
     for (let y = total - 1; y >= 0 && lines.length < maxRows; y--) {
       const line = buf.getLine(y);
       if (!line) continue;
-      const text = line.translateToString(true); // trim trailing whitespace
-      if (lines.length === 0 && text === '') continue; // 跳过末尾空行
-      lines.push(text);
+      if (lines.length === 0 && line.translateToString(true) === '') continue; // 跳过末尾空行
+      lines.push(line);
     }
-    return lines.reverse().join('\n');
+    return lines.reverse();
   }
 
   /**

@@ -1378,13 +1378,11 @@ select.settings-input option {
   background-color: color-mix(in srgb, var(--md-on-surface, #f0f) 8%, transparent);
 }
 
-/* ADR-035:选择面板里带指针的那项用主题主色描边 */
-.toast-choice-option.pointed {
-  border-color: var(--md-primary, #f0f);
-}
-
-.toast-choice-step.current {
-  border-color: var(--md-primary, #f0f);
+/* ADR-035:选择面板里鼠标指着、或正在打字回答的那项用主题主色 */
+.toast-choice-hit:hover:not(:disabled),
+.toast-choice-hit.editing {
+  background-color: color-mix(in srgb, var(--md-primary, #f0f) 22%, transparent);
+  outline-color: var(--md-primary, #f0f);
 }
 
 .toast-choice-send,

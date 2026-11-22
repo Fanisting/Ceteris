@@ -12,7 +12,7 @@ The notice goes away by itself when the agent carries on, when you look at the t
 
 **Go to tab** takes you to the tab, the same way a click in the sidebar does. If another window holds the tab, that window comes to the front.
 
-**Options** opens the question inside the notice. Click a choice and Ceteris answers it in the tab. Ceteris reads the screen again first and sends nothing if the question has changed. Choices that need typing, such as "Type something" or "Chat about this", take you to the tab instead. Multi select questions and questions spread over several pages work too.
+**Options** opens the question inside the notice. The notice widens to the tab page, leaving 16 px on each side, and shows the question exactly as Claude Code draws it in the tab: the tool header, the command or the diff, the preview box beside the choices, its colours and marks. Click any row of a choice and Ceteris answers it in the tab. Ceteris reads the screen again first and sends nothing if the question has changed. "Type something" and "Chat about this" open a text field under the question. Multi select questions and questions spread over several pages work too.
 
 Notices now use your theme's own surface: dark on dark themes, light on light ones.
 

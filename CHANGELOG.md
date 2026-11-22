@@ -10,6 +10,10 @@
 
 - **新建页认得更多 agent。** 除了原来的七个,新建页还能认出 Pi、Oh My Pi (omp)、Qwen Code、Amp、Crush、Kimi CLI、Goose、Droid、Kiro CLI、Cline、Auggie、Kilo Code、CodeBuddy、Qoder CLI 和 Letta Code。和以前一样,本机文件夹只显示装了的;装好一个新的,点 Agents 旁边的刷新按钮就会出现。每个都有版本状态点,omp 和 Kiro CLI 还能一键升级。
 
+### 修复
+
+- **远程窗口里的 Claude Code 打字不卡了,选字也跟手。** 经 Ceteris Link 打开的 Claude Code 标签,开着全屏模式(`"tui": "fullscreen"`)或页脚没有 `? for shortcuts` 时(比如手动模式),本机先打字的功能一直没起作用,每个键都要到另一台电脑再回来才显示。现在认得出 Claude Code 的输入框,打的字留在本机,Enter 一次发出。全屏 Claude Code 会接管鼠标,拖动选字要等另一台电脑重画;现在远程窗口里直接拖动就在本机选中,滚轮照旧滚动对话,按住 Alt 点击或拖动交给 Claude Code。
+
 ## [0.4.6] (2026-11-19)
 
 ### 新增

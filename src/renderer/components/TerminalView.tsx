@@ -1854,6 +1854,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       )
       .then((link) => {
         if (!link || disposed) return;
+        // A program that tracks the mouse (Claude Code fullscreen turns on any-motion 1003)
+        // gets every move and drag over the Link, and draws its own selection only after the
+        // Host answers, so selecting lagged. Here a plain drag selects locally at once, hover
+        // moves stay local, the wheel still reaches the program, and Alt+click or Alt+drag
+        // goes to the program as before.
+        term.options.mouseEventsRequireAlt = true;
         echo = attachLocalEcho(term);
         typeAhead = new TypeAhead(loadTypeAhead(session.id));
         typeAheadView = attachTypeAheadView(
@@ -1892,15 +1898,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       const buffer = term.buffer.active;
       const at = typeAheadView?.inputCell();
       if (!at) return false;
-      const fromInput: string[] = [];
-      for (let y = at.y; y < term.rows; y++) {
-        fromInput.push(buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? '');
+      const viewport: string[] = [];
+      for (let y = 0; y < term.rows; y++) {
+        viewport.push(buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? '');
       }
       const screen: string[] = [];
       for (let y = Math.max(0, buffer.length - COLON_SCREEN_LINES); y < buffer.length; y++) {
         screen.push(buffer.getLine(y)?.translateToString(true) ?? '');
       }
-      return agentPromptReady(fromInput.join('\n'), screen.join('\n'));
+      return agentPromptReady(viewport, at.y, screen.join('\n'), buffer.type === 'alternate');
     };
     /**
      * True when this key belongs to the type ahead: a live message runs or the agent's input

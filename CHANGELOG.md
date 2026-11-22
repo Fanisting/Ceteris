@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **新建页认得更多 agent。** 除了原来的七个,新建页还能认出 Pi、Oh My Pi (omp)、Qwen Code、Amp、Crush、Kimi CLI、Goose、Droid、Kiro CLI、Cline、Auggie、Kilo Code、CodeBuddy、Qoder CLI 和 Letta Code。和以前一样,本机文件夹只显示装了的;装好一个新的,点 Agents 旁边的刷新按钮就会出现。每个都有版本状态点,omp 和 Kiro CLI 还能一键升级。
+
 ## [0.4.6] (2026-11-19)
 
 ### 新增

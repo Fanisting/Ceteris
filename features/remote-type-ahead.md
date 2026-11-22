@@ -9,7 +9,7 @@ While you type:
 - Shift+Enter adds a line.
 - Backspace, Ctrl+U and Ctrl+W edit your text; Ctrl+C clears it.
 - Paste, dropped files and the next prompt suggestion join your text in order.
-- A paste of more than 3 lines goes to the agent at once as one block, after anything you typed before it. The agent shows it folded, as "[Pasted text #1 +N lines]", and you go on typing your question. A small "Sending N lines" pill with a loading animation sits in the corner until the other computer has it.
+- A paste of more than 3 lines goes to the agent at once as one block, after anything you typed before it. The agent shows it folded, as "[Pasted text #1 +N lines]", and you go on typing your question. A small "Sending N lines" pill with a loading animation sits in the corner until the agent has drawn the paste.
 - `/`, `!` or `#` at the start, or `@` anywhere, opens the agent's own menu, so the rest of that message goes key by key as before.
 - Arrow keys, Tab and Home or End first send your text, then act in the agent.
 - Esc reaches the agent at once and your text stays. Press Esc twice to clear your text.

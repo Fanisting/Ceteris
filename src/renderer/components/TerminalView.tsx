@@ -148,6 +148,7 @@ import {
 } from '@shared/type-ahead';
 import { isWheelReport, WheelBatch } from '@shared/wheel-batch';
 import { detectAgent } from '@shared/next-prompt';
+import { PasteLanding } from '@shared/paste-landing';
 import { ColonTracker, findColonCommand } from '@shared/colon-commands';
 import type {
   LinkConnectionStatePayload,
@@ -1855,11 +1856,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     acker.setHidden(document.hidden);
     const onVisibility = (): void => acker.setHidden(document.hidden);
     document.addEventListener('visibilitychange', onVisibility);
+    // Remote windows: the long paste pill stays until the agent has drawn the paste, not
+    // only until the Host accepted it (paste-landing.ts). Fed once output is on screen.
+    const pasteLanding = new PasteLanding();
     const writeLive = (bytes: Uint8Array): void => {
       if (bytes.length > 0) markOutput();
       const parsed = acker.received(bytes.length);
       term.write(bytes, () => {
         parsed?.();
+        pasteLanding.output(Date.now());
         echo?.noteOutput(outputDecoder.decode(bytes, { stream: true }));
       });
     };
@@ -1901,11 +1906,22 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
             // raw \r inside the lines would submit the agent's prompt halfway through.
             const data = payload !== text ? payload : asTyped(text);
             pastesInFlight++;
+            // A wait for an earlier paste must not hide the pill of this one.
+            pasteLanding.reset();
             setPasteSending(lines);
             void sendQueuedAwait(data).then((sent) => {
               pastesInFlight--;
-              // After a remount the counter starts over, so clear on every finish at zero.
-              if (pastesInFlight === 0) setPasteSending(null);
+              if (pastesInFlight === 0) {
+                // Accepted: keep the pill until the agent has drawn the paste. Failed, or
+                // this closure is gone after a remount (its counter started over): clear now.
+                if (sent && !disposed) {
+                  pasteLanding.accepted(Date.now());
+                  checkPasteLanded();
+                } else {
+                  pasteLanding.reset();
+                  setPasteSending(null);
+                }
+              }
               if (sent || disposed) return;
               // sendInput toasts when the Host refuses; a dropped link toasts here.
               if (Date.now() - lastInputRejectToastAtRef.current < 5000) return;
@@ -2335,6 +2351,17 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       return sent;
     };
     let pastesInFlight = 0;
+    let pasteCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Hides the long paste pill once pasteLanding says the paste is on screen. */
+    const checkPasteLanded = (): void => {
+      if (pasteCheckTimer !== null) clearTimeout(pasteCheckTimer);
+      pasteCheckTimer = null;
+      if (disposed) return;
+      const wait = pasteLanding.wait(Date.now());
+      if (wait === null) return;
+      if (wait === 0) setPasteSending(null);
+      else pasteCheckTimer = setTimeout(checkPasteLanded, wait);
+    };
 
     /** Multi-line text goes as a paste when the program asked for that, so a newline cannot submit. */
     const asTyped = (text: string): string =>
@@ -2381,6 +2408,11 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       document.removeEventListener('visibilitychange', onVisibility);
       cleanupResync();
       rounds.dispose();
+      if (pasteCheckTimer !== null) {
+        // The wait dies with this closure, so its pill goes too.
+        clearTimeout(pasteCheckTimer);
+        setPasteSending(null);
+      }
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();

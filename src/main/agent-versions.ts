@@ -13,6 +13,8 @@
  *   升级按钮。这样不会出现"用 npm 升级一个 bun 装的 CLI,结果多装一份"的问题。
  * - PATH 上有多份时,把其余几份报给 renderer,tooltip 提示用户。
  * - 版本检测跑 `<命令> --version`;最新版查 npm registry 或 PyPI 的 JSON 接口。
+ *   只查装了的 agent 的最新版:表里 20 多个 agent,大多数用户只装两三个,
+ *   没装的不必每 6 小时各发一次请求。
  *   失败时降级为 'installed' / 'missing',绝不抛给 renderer。
  * - 结果带缓存:已装版本 10 分钟,最新版 6 小时。升级结束后 invalidate。
  * - 副作用 (PATH 扫描 / exec / fetch / 读文件) 都从构造参数注入,单测不碰真环境。
@@ -77,6 +79,62 @@ export const AGENT_UPDATE_SPECS: readonly AgentUpdateSpec[] = [
     command: 'aider',
     registry: { kind: 'pypi', name: 'aider-chat' },
     selfUpdate: { command: 'aider', args: ['--upgrade'] },
+  },
+  // 以下 15 个是 2026-11 补充的 (软件定义书 1.50)。包名 2026-11-22 在 npm / PyPI 上核对过;
+  // selfUpdate 只给本机 --help 里确认过有 update 子命令的 (omp 18.22、kiro-cli 2.3)。
+  // 其余没有 selfUpdate:不是包管理器装的就不给升级按钮,不猜命令。
+  {
+    templateId: 'pi',
+    command: 'pi',
+    registry: { kind: 'npm', name: '@mariozechner/pi-coding-agent' },
+  },
+  {
+    templateId: 'omp',
+    command: 'omp',
+    registry: { kind: 'npm', name: '@oh-my-pi/pi-coding-agent' },
+    // 官方安装脚本装成独立 exe (Windows 在 %LOCALAPPDATA%\omp),认不出包管理器时走它
+    selfUpdate: { command: 'omp', args: ['update'] },
+  },
+  {
+    templateId: 'qwen-code',
+    command: 'qwen',
+    registry: { kind: 'npm', name: '@qwen-code/qwen-code' },
+  },
+  // npm 上的版本号形如 0.0.1795334436-g660843,parseVersion 取前三段照样能比
+  { templateId: 'amp', command: 'amp', registry: { kind: 'npm', name: '@sourcegraph/amp' } },
+  { templateId: 'crush', command: 'crush', registry: { kind: 'npm', name: '@charmland/crush' } },
+  { templateId: 'kimi', command: 'kimi', registry: { kind: 'pypi', name: 'kimi-cli' } },
+  // 没有公开 registry。注意数据库迁移工具 pressly/goose 也叫 goose,装了它的人会看到
+  // Goose 按钮;点开只是在 shell 里跑 goose,不会造成损害,所以不额外区分
+  { templateId: 'goose', command: 'goose' },
+  { templateId: 'droid', command: 'droid', registry: { kind: 'npm', name: '@factory/cli' } },
+  {
+    templateId: 'kiro',
+    command: 'kiro-cli',
+    selfUpdate: { command: 'kiro-cli', args: ['update'] },
+  },
+  { templateId: 'cline', command: 'cline', registry: { kind: 'npm', name: 'cline' } },
+  {
+    templateId: 'auggie',
+    command: 'auggie',
+    registry: { kind: 'npm', name: '@augmentcode/auggie' },
+  },
+  { templateId: 'kilo', command: 'kilo', registry: { kind: 'npm', name: '@kilocode/cli' } },
+  {
+    templateId: 'codebuddy',
+    command: 'codebuddy',
+    registry: { kind: 'npm', name: '@tencent-ai/codebuddy-code' },
+  },
+  {
+    templateId: 'qoder',
+    command: 'qodercli',
+    registry: { kind: 'npm', name: '@qoder-ai/qodercli' },
+  },
+  // PyPI 上的 Letta 服务端 (letta) 也装一个 letta 命令,同上不额外区分
+  {
+    templateId: 'letta',
+    command: 'letta',
+    registry: { kind: 'npm', name: '@letta-ai/letta-code' },
   },
 ];
 
@@ -323,7 +381,9 @@ export class AgentVersionChecker {
   }
 
   private async checkOne(spec: AgentUpdateSpec): Promise<AgentVersionInfo> {
-    const [inst, latest] = await Promise.all([this.getInstalled(spec), this.getLatest(spec)]);
+    const inst = await this.getInstalled(spec);
+    // 没装的 agent 不查 registry (见文件头)
+    const latest = inst.path !== null ? await this.getLatest(spec) : null;
     const info: AgentVersionInfo = {
       templateId: spec.templateId,
       status: agentStatus(inst.path !== null, inst.version, latest),
@@ -380,11 +440,17 @@ export function findOnPath(command: string, env: Record<string, string | undefin
   const pathVar = env.PATH ?? env.Path ?? '';
   const pathExt = env.PATHEXT ?? env.PathExt;
   const names = pathExt
-    ? pathExt.split(';').filter(Boolean).map((ext) => command + ext.toLowerCase())
+    ? pathExt
+        .split(';')
+        .filter(Boolean)
+        .map((ext) => command + ext.toLowerCase())
     : [command];
   const seen = new Set<string>();
   const hits: string[] = [];
-  for (const dir of pathVar.split(delimiter).map((d) => d.trim()).filter(Boolean)) {
+  for (const dir of pathVar
+    .split(delimiter)
+    .map((d) => d.trim())
+    .filter(Boolean)) {
     const key = dir.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

@@ -12,7 +12,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Resize split panes](split-pane-resize.md)                            | Drag the line between split terminals; double-click resets it                                              | 0.4.5   |
 | [Reopen tabs at launch](reopen-tabs-at-launch.md)                     | Tabs and agent conversations come back after a quit, update or crash                                       | 0.4.3   |
 | [Tab shelf](tab-shelf.md)                                             | Idle tabs move to a shelf and come back with their conversation                                            | 0.4.3   |
-| [Launch templates](launch-templates.md)                               | Start Shell, Claude Code, Codex and more, or your own command                                              | 0.1.0   |
+| [Launch templates](launch-templates.md)                               | Start Shell or one of 22 agents (only installed ones show), or your own command                            | 0.1.0   |
 | [Terminal search and paste guard](terminal-search-and-paste-guard.md) | Ctrl+F search, multi-line paste confirmation, folder drop                                                  | 0.1.0   |
 | [Ghost tab quick launch](ghost-tab-quick-launch.md)                   | A dashed tab with one-click agent icons                                                                    | 0.4.1   |
 | [One folder list with tags](folder-list-and-tags.md)                  | A single folder list with coloured tag filters                                                             | 0.3.0   |

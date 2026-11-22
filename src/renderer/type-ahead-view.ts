@@ -51,7 +51,9 @@ export function attachTypeAheadView(
   overlay.append(body, composing, mark);
   screen?.appendChild(overlay);
 
-  const anchor = trackInputAnchor(term);
+  // Claude Code's fullscreen mode lives in the alternate screen; the armed() check decides
+  // whether the cell is its input box.
+  const anchor = trackInputAnchor(term, { alternate: true });
   let text = '';
   let composition: string | null = null;
 

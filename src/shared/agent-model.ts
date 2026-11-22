@@ -219,6 +219,33 @@ export function inputLineReads(screen: string, text: string): boolean {
   return rows.some((row) => /^[❯›][ \u00a0]/.test(row) && row.slice(2).trimEnd() === text);
 }
 
+/**
+ * Whether the relaunched agent has drawn its input box below the line that started it, read
+ * from the end of the screen (ADR-038 / ADR-054: the switching loader stays until then).
+ *
+ * The input row is the same as for inputLineReads: the prompt glyph at column 0 and a space,
+ * with any text after it (Claude Code and Codex show a dim placeholder in an empty box).
+ * Only rows below the last row holding the start of `typedLine` count, so the old agent's
+ * box left above the shell prompt never passes, and neither does a shell prompt that uses
+ * the same glyph (that row holds the typed line itself). When the typed row is no longer on
+ * screen (the agent cleared it, or drew on the alternate screen), every row counts.
+ *
+ * @param typedLine the command line typed into the shell, e.g. "claude --resume <id> ..."
+ */
+export function agentInputAfter(screen: string, typedLine: string): boolean {
+  const rows = screen.split('\n');
+  // The start is enough: a long line wraps onto more rows in a narrow terminal
+  const head = typedLine.slice(0, 24);
+  let from = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (head && rows[i]!.includes(head)) {
+      from = i + 1;
+      break;
+    }
+  }
+  return rows.slice(from).some((row) => /^[❯›][ \u00a0]/.test(row));
+}
+
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
 /**

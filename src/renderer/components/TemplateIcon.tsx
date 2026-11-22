@@ -33,6 +33,36 @@ function builtinTemplateIcon(id: string): IconName | null {
       return 'templateCursor';
     case 'aider':
       return 'templateAider';
+    case 'pi':
+      return 'templatePi';
+    case 'omp':
+      return 'templateOmp';
+    case 'qwen-code':
+      return 'templateQwen';
+    case 'amp':
+      return 'templateAmp';
+    case 'crush':
+      return 'templateCrush';
+    case 'kimi':
+      return 'templateKimi';
+    case 'goose':
+      return 'templateGoose';
+    case 'droid':
+      return 'templateDroid';
+    case 'kiro':
+      return 'templateKiro';
+    case 'cline':
+      return 'templateCline';
+    case 'auggie':
+      return 'templateAuggie';
+    case 'kilo':
+      return 'templateKilo';
+    case 'codebuddy':
+      return 'templateCodeBuddy';
+    case 'qoder':
+      return 'templateQoder';
+    case 'letta':
+      return 'templateLetta';
     default:
       return null;
   }

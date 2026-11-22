@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  agentInputAfter,
   effortLevel,
   exitResumeId,
   folderDefaultFor,
@@ -254,5 +255,39 @@ describe('labels and colour steps', () => {
       'top',
       'mid',
     ]);
+  });
+});
+
+describe('agentInputAfter', () => {
+  const line = 'claude --resume 7ad8b104-47e5-4db9-a802-25da7c8ee1c0 --model sonnet';
+
+  it('finds the new input box below the typed line, placeholder and all', () => {
+    expect(agentInputAfter(`PS C:\\p> ${line}\n Claude Code\n❯\u00a0Try "fix lint"`, line)).toBe(
+      true,
+    );
+    expect(agentInputAfter(`PS C:\\p> codex resume x\n› Ask Codex`, 'codex resume x')).toBe(true);
+  });
+
+  it('ignores the old agent box above the typed line', () => {
+    expect(agentInputAfter(`❯\u00a0/exit\nResume with\nPS C:\\p> ${line}\n Resuming`, line)).toBe(
+      false,
+    );
+  });
+
+  it('does not take a shell prompt with the same glyph for the agent box', () => {
+    expect(agentInputAfter(`❯ ${line}`, line)).toBe(false);
+  });
+
+  it('counts every row once the typed line is off screen (cleared or alternate screen)', () => {
+    expect(agentInputAfter('│ conversation\n❯\u00a0', line)).toBe(true);
+    expect(agentInputAfter('│ conversation', line)).toBe(false);
+  });
+
+  it('finds the typed line by its start when a narrow terminal wraps it', () => {
+    const wrapped = `PS C:\\p> ${line.slice(0, 30)}\n${line.slice(30)}\n❯\u00a0`;
+    expect(agentInputAfter(`❯\u00a0old\n${wrapped}`, line)).toBe(true);
+    expect(
+      agentInputAfter(`❯\u00a0old\nPS C:\\p> ${line.slice(0, 30)}\n${line.slice(30)}`, line),
+    ).toBe(false);
   });
 });

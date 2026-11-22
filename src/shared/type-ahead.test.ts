@@ -3,7 +3,13 @@
  * @purpose One test per rule of TypeAhead (ADR-047).
  */
 import { describe, expect, it } from 'vitest';
-import { TypeAhead, agentPromptReady, type TypeAheadWrite } from './type-ahead';
+import {
+  TypeAhead,
+  agentPromptReady,
+  isLongPaste,
+  pastedLineCount,
+  type TypeAheadWrite,
+} from './type-ahead';
 
 function typeAll(
   ta: TypeAhead,
@@ -224,22 +230,72 @@ const CLAUDE_INPUT = [
   '❯',
   '────────────────────────────────────────',
   '  ⏵⏵ auto mode on (shift+tab to cycle)',
-].join('\n');
+];
+
+const RULE = '─'.repeat(100);
+/** Claude Code 2.1.322 with "tui": "fullscreen", manual mode, recorded in a 100x30 terminal. */
+const FULLSCREEN = [
+  ' ▐▛███▛█   Claude Code v2.1.322',
+  '',
+  '✶ Bloviating… ',
+  '',
+  RULE,
+  '❯ next q',
+  RULE,
+  '',
+  '  ⏸ manual mode on',
+];
+const FULLSCREEN_INPUT = 5;
+
+/** Calls agentPromptReady the way the renderer does: the rows, the cursor row, the screen. */
+const ready = (rows: string[], inputRow: number, alternate = false): boolean =>
+  agentPromptReady(rows, inputRow, rows.join('\n'), alternate);
 
 describe('agentPromptReady', () => {
   it('Claude Code idle or working: footer under the input row', () => {
-    expect(agentPromptReady(CLAUDE_INPUT.split('\n').slice(1).join('\n'), CLAUDE_INPUT)).toBe(true);
-    const working = `✻ Cogitating… (5s · ↓ 24 tokens)\n${CLAUDE_INPUT}`;
-    expect(agentPromptReady(CLAUDE_INPUT.split('\n').slice(1).join('\n'), working)).toBe(true);
+    expect(ready(CLAUDE_INPUT, 1)).toBe(true);
+    const working = ['✻ Cogitating… (5s · ↓ 24 tokens)', ...CLAUDE_INPUT];
+    expect(ready(working, 2)).toBe(true);
+  });
+
+  it('Claude Code with no footer hint: the input box alone is enough', () => {
+    expect(ready(FULLSCREEN, FULLSCREEN_INPUT)).toBe(true);
+    expect(ready(FULLSCREEN, FULLSCREEN_INPUT, true)).toBe(true);
+  });
+
+  it('Claude Code multi-line input: the cursor on a continuation row', () => {
+    const rows = [RULE, '❯ first line', '  second line', '  third', RULE, '  ⏸ manual mode on'];
+    expect(ready(rows, 2)).toBe(true);
+    expect(ready(rows, 3)).toBe(true);
+  });
+
+  it('Claude Code input with a blank line in it', () => {
+    const rows = [RULE, '❯ first paragraph', '', '  second paragraph', RULE];
+    expect(ready(rows, 1, true)).toBe(true);
+    expect(ready(rows, 3, true)).toBe(true);
+  });
+
+  it('alternate screen: a footer phrase in an editor file does not hold its keys', () => {
+    const vim = ['notes on the agent', 'about 40% context left', '? for shortcuts', '~', '~'];
+    expect(ready(vim, 0, true)).toBe(false);
+  });
+
+  it('fzf style "> query" between rules is not a Claude input box', () => {
+    expect(ready([RULE, '> query', RULE, '  12/300'], 1, true)).toBe(false);
   });
 
   it('Codex: placeholder and footer from the input row down', () => {
-    expect(agentPromptReady('› Ask Codex to do anything\n  ? for shortcuts', '')).toBe(true);
+    expect(ready(['› Ask Codex to do anything', '  ? for shortcuts'], 0)).toBe(true);
   });
 
-  it('a shell after /exit: the old footer is above the cursor row', () => {
-    const screen = `${CLAUDE_INPUT}\nPS C:/work> `;
-    expect(agentPromptReady('PS C:/work> ', screen)).toBe(false);
+  it('a shell after /exit: the old footer and box are above the cursor row', () => {
+    expect(ready([...CLAUDE_INPUT, 'PS C:/work> '], 4)).toBe(false);
+    expect(ready([...FULLSCREEN, '❯ '], FULLSCREEN.length)).toBe(false);
+  });
+
+  it('a shell prompt starting with ❯ is not a Claude input box', () => {
+    expect(ready(['~/projects/example on main', '❯ ', ''], 1)).toBe(false);
+    expect(ready([RULE, '❯ ', ''], 1)).toBe(false);
   });
 
   it('an approval prompt is never prompt text', () => {
@@ -248,11 +304,49 @@ describe('agentPromptReady', () => {
       '│ ❯ 1. Yes                                     │',
       '│   2. No, and tell Claude what to do (esc)    │',
       '  ? for shortcuts',
-    ].join('\n');
-    expect(agentPromptReady('│ ❯ 1. Yes │\n  ? for shortcuts', approval)).toBe(false);
+    ];
+    expect(ready(approval, 1)).toBe(false);
+    const boxed = [RULE, '❯ ', RULE, ...approval];
+    expect(ready(boxed, 1)).toBe(false);
   });
 
   it('a plain shell is not an agent', () => {
-    expect(agentPromptReady('PS C:/> ', 'PS C:/> ')).toBe(false);
+    expect(ready(['PS C:/> '], 0)).toBe(false);
+  });
+});
+
+describe('long paste', () => {
+  it('more than 3 lines is long; trailing empty lines do not count', () => {
+    expect(isLongPaste('a\nb\nc')).toBe(false);
+    expect(isLongPaste('a\nb\nc\n\n\n')).toBe(false);
+    expect(isLongPaste('a\r\nb\r\nc\r\nd')).toBe(true);
+    expect(pastedLineCount('a\rb\n\nc\n')).toBe(4);
+    expect(pastedLineCount('')).toBe(0);
+  });
+
+  it('held text goes out before the paste, and a later / is plain text', () => {
+    const ta = new TypeAhead();
+    typeAll(ta, ['f', 'i', 'x', ' ']);
+    expect(ta.beforeImmediatePaste()).toEqual([{ kind: 'text', text: 'fix ' }]);
+    expect(ta.text).toBe('');
+    expect(ta.feed('/')).toEqual([]);
+    expect(ta.text).toBe('/');
+  });
+
+  it('nothing held: no write, and the message no longer starts empty', () => {
+    const ta = new TypeAhead();
+    expect(ta.beforeImmediatePaste()).toEqual([]);
+    expect(ta.feed('!')).toEqual([]);
+    expect(ta.feed('\r')).toEqual([{ kind: 'submit', text: '!' }]);
+  });
+});
+
+describe('long paste after Esc', () => {
+  it('Esc, paste, Esc: the second Esc reaches the agent', () => {
+    const ta = new TypeAhead();
+    typeAll(ta, ['h', 'i']);
+    expect(ta.feed('\x1b')).toEqual([key('\x1b')]);
+    ta.beforeImmediatePaste();
+    expect(ta.feed('\x1b')).toEqual([key('\x1b')]);
   });
 });

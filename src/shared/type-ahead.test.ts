@@ -3,7 +3,13 @@
  * @purpose One test per rule of TypeAhead (ADR-047).
  */
 import { describe, expect, it } from 'vitest';
-import { TypeAhead, agentPromptReady, type TypeAheadWrite } from './type-ahead';
+import {
+  TypeAhead,
+  agentPromptReady,
+  isLongPaste,
+  pastedLineCount,
+  type TypeAheadWrite,
+} from './type-ahead';
 
 function typeAll(
   ta: TypeAhead,
@@ -306,5 +312,41 @@ describe('agentPromptReady', () => {
 
   it('a plain shell is not an agent', () => {
     expect(ready(['PS C:/> '], 0)).toBe(false);
+  });
+});
+
+describe('long paste', () => {
+  it('more than 3 lines is long; trailing empty lines do not count', () => {
+    expect(isLongPaste('a\nb\nc')).toBe(false);
+    expect(isLongPaste('a\nb\nc\n\n\n')).toBe(false);
+    expect(isLongPaste('a\r\nb\r\nc\r\nd')).toBe(true);
+    expect(pastedLineCount('a\rb\n\nc\n')).toBe(4);
+    expect(pastedLineCount('')).toBe(0);
+  });
+
+  it('held text goes out before the paste, and a later / is plain text', () => {
+    const ta = new TypeAhead();
+    typeAll(ta, ['f', 'i', 'x', ' ']);
+    expect(ta.beforeImmediatePaste()).toEqual([{ kind: 'text', text: 'fix ' }]);
+    expect(ta.text).toBe('');
+    expect(ta.feed('/')).toEqual([]);
+    expect(ta.text).toBe('/');
+  });
+
+  it('nothing held: no write, and the message no longer starts empty', () => {
+    const ta = new TypeAhead();
+    expect(ta.beforeImmediatePaste()).toEqual([]);
+    expect(ta.feed('!')).toEqual([]);
+    expect(ta.feed('\r')).toEqual([{ kind: 'submit', text: '!' }]);
+  });
+});
+
+describe('long paste after Esc', () => {
+  it('Esc, paste, Esc: the second Esc reaches the agent', () => {
+    const ta = new TypeAhead();
+    typeAll(ta, ['h', 'i']);
+    expect(ta.feed('\x1b')).toEqual([key('\x1b')]);
+    ta.beforeImmediatePaste();
+    expect(ta.feed('\x1b')).toEqual([key('\x1b')]);
   });
 });

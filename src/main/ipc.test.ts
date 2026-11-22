@@ -18,7 +18,7 @@
  * 不在这里覆盖:大部分 handler 走 manager 内部逻辑,manager 自己有完整单测;
  * ipc.ts 是薄编排层,只测那些"编排本身就能错"的命令。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COMMAND_CHANNELS } from '@shared/protocol';
 import type { CommandEnvelope, CreateSessionPayload } from '@shared/protocol';
 import type { SessionInfo } from '@shared/types';
@@ -269,6 +269,13 @@ async function freshIpc(): Promise<typeof IpcModule> {
   // 重新 mock 在 resetModules 后仍然生效(vi.mock 由 vi.hoisted 提到模块顶部)
   return (await import('./ipc')) as typeof IpcModule;
 }
+
+// The first import of ipc.ts transforms its whole import graph, about 5 s on a busy machine.
+// Paid once here with a generous limit, so the first test does not hit the 5 s test timeout;
+// later imports after vi.resetModules reuse the transform cache.
+beforeAll(async () => {
+  await import('./ipc');
+}, 60_000);
 
 beforeEach(() => {
   handlers.clear();

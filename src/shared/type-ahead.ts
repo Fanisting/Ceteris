@@ -20,6 +20,8 @@
  *   clears it instead of reaching the agent.
  * - Replies the terminal sends for the program (focus reports, DA) and mouse reports are not
  *   keys and always pass through untouched.
+ * - A paste of more than LONG_PASTE_LINES lines is not held: the held text goes first, then
+ *   the paste as one block, and the renderer shows a loader while it travels.
  * - `name:` commands (ADR-020) expand inside the buffer. A command that starts the input is
  *   typed out at once and the message goes live, so the agent's `/` menu opens as before.
  *
@@ -290,6 +292,19 @@ export class TypeAhead {
     return [];
   }
 
+  /**
+   * A long paste goes to the agent at once instead of joining the held text (isLongPaste).
+   * Returns the held text to type first, so the paste lands after it, in the order the user
+   * gave them. The agent's input is then no longer empty, so a later `/` is plain text.
+   */
+  beforeImmediatePaste(): TypeAheadWrite[] {
+    const out = this.flush();
+    this.atStart = false;
+    // Esc, paste, Esc is not Esc Esc: the second Esc must reach the agent.
+    this.afterEsc = false;
+    return out;
+  }
+
   private flush(): TypeAheadWrite[] {
     if (!this.buffered) return [];
     const text = this.buffered;
@@ -306,6 +321,25 @@ export class TypeAhead {
 
 function key(data: string): TypeAheadWrite {
   return { kind: 'key', data };
+}
+
+/** More lines than this make a paste go out at once on a remote agent tab. */
+export const LONG_PASTE_LINES = 3;
+
+/** Lines in pasted text, not counting trailing empty lines. */
+export function pastedLineCount(text: string): number {
+  const lines = text.split(/\r\n|\r|\n/);
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.length;
+}
+
+/**
+ * True when a paste on a remote agent tab skips the held text and goes to the agent at once
+ * as one block (2026-11-22, option D). Hundreds of held lines would cover the screen, and the
+ * agent folds a long paste into "[Pasted text #1 +N lines]" by itself.
+ */
+export function isLongPaste(text: string): boolean {
+  return pastedLineCount(text) > LONG_PASTE_LINES;
 }
 
 /** Keys that edit the buffer when it has text, and go to the agent when it is empty. */

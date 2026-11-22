@@ -42,6 +42,25 @@
   min-width: 0;
 }
 
+/* 远程窗口长粘贴发往 Host 时右下角的小药丸;不挡点击。药丸样式挂在 ShapeLoader 上,
+   所以 300ms 延迟内连框都不出现,快的发送不闪。 */
+.terminal-paste-sending {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.shape-loader.paste-sending-pill {
+  padding: 4px 12px 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background-color: var(--md-surface-container-high, var(--md-surface, #f0f));
+  color: var(--md-on-surface, #f0f);
+  box-shadow: var(--md-elevation-2, 0 1px 3px rgba(0, 0, 0, 0.3));
+}
+
 /* 新标签等第一行输出时盖在终端中间;不挡点击,不占布局 (占布局会改 PTY 尺寸) */
 .terminal-first-output {
   position: absolute;

@@ -19,7 +19,9 @@
  *   session flags and resume the conversation (cmd:agent:switch-model, agent-model-switch.ts).
  *   The agents' own /model is not used: Claude Code saves it as the global default.
  * - Every click answers at once: a menu opens even while the agent is busy (its items are
- *   greyed with the reason), and the line says "switching" until the agent is back.
+ *   greyed with the reason), and the line says "switching" until the agent is back. Every
+ *   window also covers the tab with a loader veil while main reports agentSwitching
+ *   (TerminalView, ADR-054), and greys these menus then.
  * - The buttons sit in the existing 34px split-view row, so no terminal is resized.
  * - For a tab started with the agent's own default, the model and effort the agent reports
  *   are read every 15 s (cmd:agent:usage, selected tab only).
@@ -441,7 +443,7 @@ export function AgentStatusLine(): JSX.Element | null {
   const busy = session.agentPhase === 'working' || session.agentPhase === 'blocked';
   const busyHint = busy
     ? tx('agent 正在忙,等它停下来再换', 'The agent is busy; change it when it waits for you')
-    : switching
+    : switching || session.agentSwitching
       ? tx('正在切换', 'A switch is running')
       : undefined;
 

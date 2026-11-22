@@ -1316,6 +1316,18 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * ADR-038 / ADR-054: mark or clear a running model switch (agent-model-switch.ts), so every
+   * window shows the loader over this tab. null clears it. No-op for an unknown session.
+   */
+  setAgentSwitching(sessionId: string, value: { model?: string; effort?: string } | null): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return;
+    const changes: Partial<SessionInfo> = { agentSwitching: value };
+    Object.assign(managed.info, changes);
+    this.emitStateChanged(managed, changes);
+  }
+
+  /**
    * 关闭并销毁 session — 用户右键"关闭"或应用退出时调。
    *
    * 与 CP-2 不同:exited 状态的 session 也由此销毁 (软件定义书 8.3 ADR-008

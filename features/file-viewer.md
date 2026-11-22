@@ -4,6 +4,8 @@ Ceteris can show a file next to your terminal, so you do not have to switch apps
 
 Turn on the file panel, then click a file in the tree. With one terminal open, the file appears on the left and the terminal stays on the right. Images and Markdown are read-only. Text, JSON, Markdown and LaTeX can be edited, see [Text file editing](text-file-editing.md).
 
+Images open fitted to the pane. Use the zoom buttons in the header, or hold Ctrl and turn the wheel (or pinch on a touchpad), to make a picture bigger or smaller. A picture larger than the pane scrolls, and you can drag it to move around. The fit button shows the whole picture again.
+
 PDFs, images and Markdown refresh by themselves when the file changes. This suits a LaTeX workflow where you change a line and compile again. See [Live PDF preview](live-pdf-preview.md).
 
 Click the file name at the top of the viewer to copy the name. For text, code and Markdown files, the copy button right after the name copies the whole contents, including edits you have not saved yet. Files too large to edit are not copied.

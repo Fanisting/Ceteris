@@ -7,7 +7,8 @@
  * @关键设计:
  * - TerminalView 始终挂载:卸载它会重建 xterm,PTY 输出和滚动位置都受影响。分屏只靠
  *   CSS (.session-stage-beside),终端宽度变化走它自己的 fit。
- * - PDF 由 PdfJsViewer(pdf.js)渲染,文件更新后换文档保持页码。图片用 <img>,
+ * - PDF 由 PdfJsViewer(pdf.js)渲染,文件更新后换文档保持页码。图片由 ImageView 显示,
+ *   打开时适应窗格,标题栏按钮和 Ctrl+滚轮缩放,放大后拖动平移。
  *   markdown 用 markdown-it,html 关闭,原始 HTML 只当文本显示,不会在应用里执行。
  *   链接都交给系统浏览器:在窗口里跟着链接走会把应用页面换掉。
  * - 显示期间 watchPdf 轮询文件,变了自动重读(见 pdf-view-store.ts)。标题栏显示
@@ -51,6 +52,7 @@ import {
 import { writeClipboardText } from '../clipboard';
 import { getTextDraft } from '../text-drafts';
 import { Icon } from './icons';
+import { ImageView, type ImageViewHandle } from './ImageView';
 import { useTranslation } from './LanguageProvider';
 import {
   Check,
@@ -149,6 +151,7 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
   const view = usePdfView(viewKey);
   const generation = view?.generation;
   const viewerRef = useRef<PdfJsViewerHandle | null>(null);
+  const imageRef = useRef<ImageViewHandle | null>(null);
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode | null>(null);
   const [, setSlidesTick] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
@@ -343,6 +346,37 @@ ${view.source.path}`;
             </button>
           </span>
         )}
+        {ready && kind === 'image' && (
+          <span className="pdf-overlay-tools">
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={t('pdf.zoomOut')}
+              aria-label={t('pdf.zoomOut')}
+              onClick={() => imageRef.current?.zoomOut()}
+            >
+              <ZoomOut size={16} />
+            </button>
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={t('pdf.zoomIn')}
+              aria-label={t('pdf.zoomIn')}
+              onClick={() => imageRef.current?.zoomIn()}
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={tx('适应窗格', 'Fit to pane')}
+              aria-label={tx('适应窗格', 'Fit to pane')}
+              onClick={() => imageRef.current?.fit()}
+            >
+              <FitWidth size={16} />
+            </button>
+          </span>
+        )}
         {ready && kind === 'pdf' && (
           <span className="pdf-overlay-tools" role="group" aria-label={tx('显示方式', 'Show as')}>
             <button
@@ -413,9 +447,12 @@ ${view.source.path}`;
             <MarkdownView text={mode?.draft ?? ready.text} />
           </>
         ) : kind === 'image' ? (
-          <div className="file-view-image">
-            <img src={ready.url ?? ''} alt={view.source.name} />
-          </div>
+          <ImageView
+            ref={imageRef}
+            key={view.source.path}
+            url={ready.url ?? ''}
+            name={view.source.name}
+          />
         ) : ready.blob ? (
           <div className="pdf-overlay-body">
             <PdfJsViewer

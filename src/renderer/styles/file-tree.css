@@ -616,6 +616,32 @@
   object-fit: contain;
 }
 
+/* Zoomed: the picture keeps the size ImageView sets and the pane scrolls. margin: auto
+ * centres a small picture; justify-content: center would cut off the left and top of a
+ * large one so they could not be scrolled to. */
+.file-view-image.zoomed {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: auto;
+}
+
+.file-view-image.zoomed img {
+  flex: none;
+  max-width: none;
+  max-height: none;
+  margin: auto;
+}
+
+.file-view-image.pannable {
+  cursor: grab;
+}
+
+.file-view-image.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
 /* Pane layout only. Typography and colors come from markdown-onepage.css.
  * The text column is OnePage's 700px reading width. */
 .file-view-markdown {

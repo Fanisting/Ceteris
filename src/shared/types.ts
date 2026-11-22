@@ -17,6 +17,7 @@ import type { ShelfEntry } from './shelf';
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 import type { ColonCommand } from './colon-commands';
+import type { PushVoiceId } from './push-voice';
 
 import type { BeamerThemeId } from './beamer-themes';
 import type { CustomThemeId } from './custom-themes';
@@ -848,6 +849,18 @@ export interface Settings {
    */
   notifications: {
     enabled: boolean;
+    /**
+     * ADR-057: done notifications written by a model in a cute voice, through the OpenRouter
+     * key connected in Settings → AI. Off by default; any failure shows the plain text.
+     */
+    ai: {
+      enabled: boolean;
+      voice: PushVoiceId;
+      /** OpenRouter model id, '' = PUSH_VOICE_DEFAULT_MODEL (GLM 5.3 Flash) */
+      model: string;
+      /** Also send the last 600 characters of the agent's screen, not only names */
+      includeAnswer: boolean;
+    };
   };
 }
 

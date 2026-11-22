@@ -46,6 +46,7 @@ import {
   isValidQuickLaunchItems,
 } from '@shared/quick-launch';
 import { isValidFolderAgentDefaults, sanitizeFolderDefaults } from '@shared/agent-model';
+import { isPushVoiceId, PUSH_VOICES } from '@shared/push-voice';
 import type { BuiltinThemeId, Settings } from '@shared/types';
 import type { DeepPartial } from '@shared/types-helpers';
 import type { JsonStore } from './persistence';
@@ -180,7 +181,11 @@ export const DEFAULT_SETTINGS: Settings = {
   // ADR-038:没有文件夹默认值 = 每个 agent 用自己的配置
   agents: { folderDefaults: [] },
   // ADR-048:总开关默认开,但每个标签的铃铛默认关,所以不点铃铛什么都不弹
-  notifications: { enabled: true },
+  notifications: {
+    enabled: true,
+    // ADR-057:AI 写的可爱通知默认关;打开后默认带上回答末尾,通知才说得出做成了什么
+    ai: { enabled: false, voice: 'mascot', model: '', includeAnswer: true },
+  },
 };
 
 const VALID_THEMES: BuiltinThemeId[] = [
@@ -751,6 +756,20 @@ export function validateSettings(s: Settings): void {
     throw new SettingsError(
       'InvalidSettings',
       `notifications.enabled=${String(s.notifications?.enabled)} 必须是 true 或 false`,
+    );
+  }
+  const ai = s.notifications.ai;
+  if (
+    typeof ai?.enabled !== 'boolean' ||
+    typeof ai.includeAnswer !== 'boolean' ||
+    !isPushVoiceId(ai.voice) ||
+    typeof ai.model !== 'string' ||
+    ai.model.length > 200
+  ) {
+    throw new SettingsError(
+      'InvalidSettings',
+      `notifications.ai 无效:enabled / includeAnswer 要是布尔值,voice 要是 ${PUSH_VOICES.map((v) => v.id).join(' / ')} 之一,model 要是 200 字以内的字符串。可能是手改了 settings.json;删掉 notifications.ai 会回到默认`,
+      { field: 'notifications.ai', got: ai },
     );
   }
   if (!['menu', 'paste'].includes(s.behavior.terminalRightClick)) {

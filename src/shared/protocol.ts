@@ -594,9 +594,19 @@ export interface SetNotifyPayload {
   notify: boolean;
 }
 
+/** ADR-057: cmd:notify:test payload. Absent = the plain ADR-048 test. */
+export interface NotifyTestPayload {
+  /** true = the model writes a sample turn in the chosen voice (settings.notifications.ai) */
+  voice?: boolean;
+}
+
 /** ADR-048: cmd:notify:test. shown = false when the system has no notification service. */
 export interface NotifyTestResponse {
   shown: boolean;
+  /** ADR-057, voice tests only: false = the model gave nothing and the plain test went out */
+  written?: boolean;
+  /** ADR-057, voice tests only: why written is false ('' otherwise) */
+  error?: string;
 }
 
 export interface SetRolePayload {

@@ -181,6 +181,38 @@ describe('validateSettings', () => {
     expect(() => validateSettings(bad)).toThrowError(/behavior\.userNameAsked/);
   });
 
+  it('notifications.ai 默认关、团子、空模型、带回答末尾 (ADR-057)', () => {
+    expect(DEFAULT_SETTINGS.notifications.ai).toEqual({
+      enabled: false,
+      voice: 'mascot',
+      model: '',
+      includeAnswer: true,
+    });
+  });
+
+  it('notifications.ai 未知语气、非布尔、超长模型 throw (ADR-057)', () => {
+    const bads: Array<Record<string, unknown>> = [
+      { voice: 'kitten' },
+      { enabled: 'yes' },
+      { includeAnswer: 1 },
+      { model: 'm'.repeat(201) },
+      { model: 3 },
+    ];
+    for (const patch of bads) {
+      const bad = structuredClone(DEFAULT_SETTINGS);
+      Object.assign(bad.notifications.ai, patch);
+      expect(() => validateSettings(bad)).toThrowError(/notifications\.ai/);
+    }
+    const good = structuredClone(DEFAULT_SETTINGS);
+    good.notifications.ai = {
+      enabled: true,
+      voice: 'stickers',
+      model: 'x/y',
+      includeAnswer: false,
+    };
+    expect(() => validateSettings(good)).not.toThrow();
+  });
+
   it('非法 `name:` 命令列表 throw', () => {
     const bad = structuredClone(DEFAULT_SETTINGS);
     bad.extensions.colonCommands.commands = [{ name: 'a b', command: '/x' }];

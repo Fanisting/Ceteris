@@ -22,8 +22,15 @@
  *   from link-client.ts, and the Host stays quiet. The caller passes a target or null.
  * - No notification while the holding window is in front, checked when it fires: the user
  *   is in that Ceteris window and its done dot shows there.
+ * - ADR-057 voice: when deps.voice is on, the title and body come from a model (see
+ *   push-voice-client.ts). The checks run before the call and again after it, since the
+ *   user may come back or start the next turn while the model writes; the plain text goes
+ *   out whenever the model gives nothing. The answer's screen end is read only when the user
+ *   allowed it (includeAnswer) and the tab is on this machine (target.screenTail).
+ * - Stickers: turns notified today on this machine, counted here so the count is right
+ *   whatever the model says. Resets at local midnight; not saved across restarts.
  *
- * @对应文档章节:软件定义书.md ADR-048, ADR-021
+ * @对应文档章节:软件定义书.md ADR-048, ADR-021, ADR-057
  *
  * @不要在这里做的事:
  * - No Electron imports: show() and the targets are injected, so the rules run in tests.
@@ -32,6 +39,7 @@
 import type { AgentPhase, SessionInfo } from '@shared/types';
 import type { SessionStateChangedPayload } from '@shared/protocol';
 import { withUserName } from '@shared/user-name';
+import { answerTail, sampleTurn, type PushExample, type PushTurn } from '@shared/push-voice';
 import { logger } from './logger';
 
 /** How long a tab must stay done before the notification shows. */
@@ -61,9 +69,23 @@ export interface DoneNotifierDeps {
   templateName(templateId: string): string | null;
   /** ADR-052:settings.behavior.userName, added to the end of the first sentence. '' = none */
   userName?: () => string;
+  /** ADR-057: AI-written text; absent = always the plain text */
+  voice?: DoneNotifierVoice;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
+}
+
+export interface DoneNotifierVoice {
+  /** settings.notifications.ai.enabled */
+  enabled(): boolean;
+  /** settings.notifications.ai.includeAnswer: send the end of the screen */
+  includeAnswer(): boolean;
+  /**
+   * Writes the notification for one turn in the chosen voice.
+   * @returns the text, or null with a reason; must not throw
+   */
+  write(turn: PushTurn, zh: boolean): Promise<{ note: PushExample | null; error: string }>;
 }
 
 /** Where a tab lives, as far as notifying goes. */
@@ -74,6 +96,8 @@ export interface NotifyTarget {
   focus(): void;
   /** When Enter was last pressed in the tab, in ms (0 = never). Absent when unknown. */
   lastEnterAt?: () => number;
+  /** The end of the tab's screen; absent when the screen is on another machine. */
+  screenTail?: () => string;
 }
 
 interface TabWatch {
@@ -91,6 +115,9 @@ export class DoneNotifier {
   private readonly now: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (timer: unknown) => void;
+  /** Stickers given today: local date key and count */
+  private stickerDay = '';
+  private stickers = 0;
 
   constructor(private readonly deps: DoneNotifierDeps) {
     this.now = deps.now ?? Date.now;
@@ -156,6 +183,23 @@ export class DoneNotifier {
     });
   }
 
+  /**
+   * Settings, Notifications, voice "Try it": a made-up turn written by the model in the
+   * chosen voice and shown as a real notification. Ignores the switches, like showTest.
+   * @returns shown = false when the system has no notification service; written = false
+   *   when the model gave nothing and the plain test text went out, with the reason in error
+   */
+  async showVoiceTest(): Promise<{ shown: boolean; written: boolean; error: string }> {
+    const voice = this.deps.voice;
+    if (!voice) return { shown: this.showTest(), written: false, error: 'voice not set up' };
+    const zh = this.deps.chinese();
+    const turn = sampleTurn(this.deps.userName?.() ?? '', zh, this.peekSticker() + 1);
+    const { note, error } = await voice.write(turn, zh);
+    if (!note) return { shown: this.showTest(), written: false, error };
+    const shown = this.deps.show({ key: 'test', ...note, onClick: () => undefined });
+    return { shown, written: true, error: '' };
+  }
+
   private fire(tab: TabWatch, target: NotifyTarget, worked: number): void {
     const { info } = tab;
     if (tab.phase !== 'done' || !info.notifyOnDone || !this.deps.enabled()) return;
@@ -170,20 +214,71 @@ export class DoneNotifier {
     const zh = this.deps.chinese();
     const agent = this.deps.templateName(info.templateId) ?? 'Agent';
     const folder = folderName(info.currentCwd || info.originalCwd);
-    const shown = this.deps.show({
-      key: info.id,
+    const userName = this.deps.userName?.() ?? '';
+    const plain: PushExample = {
       title: info.displayName || agent,
       body:
         withUserName(
           zh
             ? `${agent} 回答完了${folder ? ` · ${folder}` : ''}。`
             : `${agent} finished${folder ? ` in ${folder}` : ''}.`,
-          this.deps.userName?.() ?? '',
+          userName,
           zh,
         ) + (zh ? '点这里打开这个标签。' : ' Click to open the tab.'),
-      onClick: () => target.focus(),
+    };
+    const sticker = this.nextSticker();
+    const voice = this.deps.voice;
+    if (!voice?.enabled()) {
+      this.show(tab, target, plain, 'plain');
+      return;
+    }
+    const turn: PushTurn = {
+      agent,
+      tab: info.displayName ?? '',
+      folder,
+      userName,
+      minutes: worked / 60_000,
+      sticker,
+      answer: voice.includeAnswer() && target.screenTail ? answerTail(target.screenTail()) : '',
+    };
+    void voice.write(turn, zh).then(({ note, error }) => {
+      // The user may have come back, or started the next turn, while the model wrote
+      if (this.tabs.get(info.id) !== tab || !this.shouldShow(tab, target)) return;
+      if (!note) logger.warn('DoneNotifier', `voice fell back sid=${info.id}: ${error}`);
+      this.show(tab, target, note ?? plain, note ? 'voice' : 'plain');
     });
-    logger.info('DoneNotifier', `turn done sid=${info.id} shown=${shown}`);
+  }
+
+  /** The switches, the phase and the window in front: all must allow a notification. */
+  private shouldShow(tab: TabWatch, target: NotifyTarget): boolean {
+    return (
+      tab.phase === 'done' &&
+      !!tab.info.notifyOnDone &&
+      this.deps.enabled() &&
+      !target.holderInFront()
+    );
+  }
+
+  private show(tab: TabWatch, target: NotifyTarget, text: PushExample, kind: string): void {
+    const shown = this.deps.show({ key: tab.info.id, ...text, onClick: () => target.focus() });
+    logger.info('DoneNotifier', `turn done sid=${tab.info.id} shown=${shown} text=${kind}`);
+  }
+
+  /** Counts this turn's sticker and returns its number (1 = first today). */
+  private nextSticker(): number {
+    this.stickers = this.peekSticker() + 1;
+    return this.stickers;
+  }
+
+  /** Stickers given so far today, reset at local midnight. */
+  private peekSticker(): number {
+    const d = new Date(this.now());
+    const day = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    if (day !== this.stickerDay) {
+      this.stickerDay = day;
+      this.stickers = 0;
+    }
+    return this.stickers;
   }
 
   private cancel(tab: TabWatch): void {

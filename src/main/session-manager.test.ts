@@ -3323,6 +3323,42 @@ describe('SessionManager — agent tab titles (ADR-029)', () => {
     expect(mgr.get(id)!.displayName).toBe('Something else');
   });
 
+  it("gives the tab back to the agent's latest title when the model title is released", async () => {
+    const { mgr, settings, id, pty } = await startClaude();
+    settings.get().ai.tabTitles.enabled = true;
+    mgr.setAiTitle(id, 'Idle timer');
+    pty.emitData('\x1b]0;✳ Fix login\x07');
+    expect(mgr.get(id)!.displayName).toBe('Idle timer');
+    mgr.releaseAiTitle(id);
+    expect(mgr.get(id)!.displayName).toBe('Fix login');
+    pty.emitData('\x1b]0;✳ Add tests\x07');
+    expect(mgr.get(id)!.displayName).toBe('Add tests');
+  });
+
+  it('keeps a name the user chose when the model title is released', async () => {
+    const { mgr, id, pty } = await startClaude();
+    pty.emitData('\x1b]0;✳ Fix login\x07');
+    mgr.setAiTitle(id, 'Idle timer');
+    mgr.renameSession(id, 'mine');
+    mgr.releaseAiTitle(id);
+    expect(mgr.get(id)!.displayName).toBe('mine');
+  });
+
+  it('keeps the screen at Enter as the prompt, but not at an approval prompt', async () => {
+    const { mgr, id, pty } = await startClaude();
+    const enter = (): void => void mgr.sendInput(id, Buffer.from('\r').toString('base64'));
+    const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 400));
+    pty.emitData('> explain the cache layer\r\n');
+    await settle();
+    enter();
+    expect(mgr.getPromptScreen(id)).toContain('explain the cache layer');
+    pty.emitData('│ Do you want to proceed?\r\n│ ❯ 1. Yes\r\n│   2. No\r\n');
+    await settle();
+    expect(mgr.get(id)!.agentPhase).toBe('blocked');
+    enter();
+    expect(mgr.getPromptScreen(id)).not.toContain('Do you want to proceed');
+  });
+
   it('never puts a model title over a name the user chose', async () => {
     const { mgr, id } = await startClaude();
     mgr.renameSession(id, 'mine');

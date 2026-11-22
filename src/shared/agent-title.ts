@@ -12,6 +12,9 @@
  *   is shortened here: spinner glyphs dropped, cut to the length the user chose.
  * - The model may answer KEEP, which leaves the current title; that keeps a title stable
  *   while the task stays the same.
+ * - The model gets the user's last prompt apart from the screen. After a long turn the end
+ *   of the screen is mostly tool output, and a model that saw only that named tabs after
+ *   it ("PowerShell error logging" for a tab about something else).
  *
  * @对应文档章节:软件定义书.md ADR-029
  *
@@ -123,6 +126,8 @@ export const AGENT_TITLE_MAX_MAX_CHARS = 60;
 export const AGENT_TITLE_MAX_GUIDE_CHARS = 2000;
 /** How much of the end of the screen the model sees, in characters. */
 export const AGENT_TITLE_MAX_SCREEN_CHARS = 4000;
+/** How much of the screen at the user's last Enter the model sees, in characters. */
+export const AGENT_TITLE_MAX_PROMPT_CHARS = 2000;
 
 /** The reply that means "the task has not changed, keep the title". */
 const KEEP = /^keep\.?$/i;
@@ -160,23 +165,37 @@ export function agentTitleSystem(guide: string, maxChars: number): string {
   const rules = guide.trim().slice(0, AGENT_TITLE_MAX_GUIDE_CHARS) || AGENT_TITLE_DEFAULT_GUIDE;
   return [
     'You name terminal tabs in which a coding agent (Claude Code, Codex, Gemini, OpenCode and others) works for a user.',
-    'You get the end of the tab screen: the user prompt and the agent reply.',
+    'You get the screen at the moment the user sent their last prompt, the title the agent set itself, and the end of the tab screen now.',
     `Write a tab title of at most ${maxChars} characters that says what the user is working on.`,
+    "Name the task the user asked for. The user's prompt is the best evidence, then the agent's own title.",
+    'Tool output, shell commands, logs, errors and warnings on the screen show how the agent works, not the task. Do not name the tab after them unless the user asked about them.',
     `The user's rules for titles: ${rules}`,
     'If the current title still fits the task, answer exactly KEEP.',
     'Answer with the title alone on one line.',
   ].join('\n');
 }
 
-/** The user message: the current title, the agent's own title, then the screen. */
+/**
+ * The user message: the current title, the agent's own title, the screen at the user's
+ * last prompt, then the end of the screen now.
+ */
 export function agentTitleUser(input: {
   screen: string;
+  /** The screen when the user last pressed Enter in the tab; '' when unknown */
+  promptScreen?: string;
   currentTitle: string;
   agentTitle: string | null;
 }): string {
   const lines = [`Current title: ${input.currentTitle || '(none)'}`];
   if (input.agentTitle) lines.push(`Title the agent set itself: ${input.agentTitle}`);
-  lines.push('Screen:', input.screen.slice(-AGENT_TITLE_MAX_SCREEN_CHARS));
+  const prompt = input.promptScreen?.trim();
+  if (prompt) {
+    lines.push(
+      'Screen when the user sent their last prompt:',
+      prompt.slice(-AGENT_TITLE_MAX_PROMPT_CHARS),
+    );
+  }
+  lines.push('Screen now:', input.screen.slice(-AGENT_TITLE_MAX_SCREEN_CHARS));
   return lines.join('\n');
 }
 

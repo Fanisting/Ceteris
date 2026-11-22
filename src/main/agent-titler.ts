@@ -15,7 +15,12 @@
  * - One request per tab at a time. A turn that finishes during a request asks once more
  *   after it, so the title follows the latest turn without piling up requests.
  * - The model sees the current title and answers KEEP while the task is the same.
+ * - The model also sees the screen from the user's last Enter, which holds their prompt;
+ *   the end of the screen alone is mostly tool output after a long turn.
  * - A tab the user renamed by hand is never touched (manuallyRenamed, M1-C).
+ * - When a request fails, or titles are off or disconnected by the next finished turn, the
+ *   tab goes back to the agent's own titles (releaseAiTitle). Otherwise one model title
+ *   would block Claude Code's titles for good while the model no longer answers.
  *
  * @对应文档章节:软件定义书.md ADR-029, ADR-021, ADR-025
  *
@@ -38,6 +43,8 @@ export interface AgentTitlerHost {
   /** SessionManager 'sessionDestroyed' */
   onSessionDestroyed(fn: (sessionId: string) => void): void;
   getScreenTail(sessionId: string, rows: number): string;
+  /** The screen when the user last pressed Enter outside an approval prompt; '' if never */
+  getPromptScreen(sessionId: string): string;
   /** When the user last pressed Enter in the tab, in ms; 0 if never */
   getLastEnterAt(sessionId: string): number;
   /** The tab's name now, '' for an unknown tab */
@@ -45,6 +52,8 @@ export interface AgentTitlerHost {
   isManuallyRenamed(sessionId: string): boolean;
   getAgentOscTitle(sessionId: string): string | null;
   setAiTitle(sessionId: string, title: string): void;
+  /** Lets the agent's own titles name the tab again; shows the latest one now */
+  releaseAiTitle(sessionId: string): void;
   /** Settings, AI Assistant, Tab titles; null while titles are off or nothing is connected */
   titleSettings(): { guide: string; maxChars: number } | null;
   /** Asks the model; resolves null for KEEP */
@@ -73,16 +82,20 @@ export class AgentTitler {
   }
 
   /** A tab changed. Public for tests. */
-  onChange(sessionId: string, info: Pick<SessionInfo, 'templateId' | 'state' | 'agentPhase'>): void {
+  onChange(
+    sessionId: string,
+    info: Pick<SessionInfo, 'templateId' | 'state' | 'agentPhase'>,
+  ): void {
     let tab = this.tabs.get(sessionId);
     if (!tab) {
       tab = { lastPhase: null, lastState: null, titledEnterAt: 0, inFlight: false, again: false };
       this.tabs.set(sessionId, tab);
     }
     const phase = info.agentPhase ?? null;
-    const finishedTurn = phase !== null || tab.lastPhase !== null
-      ? tab.lastPhase === 'working' && phase === 'done'
-      : this.quietAfterEnter(sessionId, tab, info);
+    const finishedTurn =
+      phase !== null || tab.lastPhase !== null
+        ? tab.lastPhase === 'working' && phase === 'done'
+        : this.quietAfterEnter(sessionId, tab, info);
     tab.lastPhase = phase;
     tab.lastState = info.state;
     if (!finishedTurn) return;
@@ -108,14 +121,19 @@ export class AgentTitler {
   }
 
   private async retitle(sessionId: string, tab: TabTitleState): Promise<void> {
+    if (this.host.isManuallyRenamed(sessionId)) return;
     const settings = this.host.titleSettings();
-    if (!settings || this.host.isManuallyRenamed(sessionId)) return;
+    if (!settings) {
+      this.host.releaseAiTitle(sessionId);
+      return;
+    }
     tab.inFlight = true;
     try {
       const screen = this.host.getScreenTail(sessionId, TITLE_SCREEN_ROWS);
       if (!screen.trim()) return;
       const title = await this.host.suggest({
         screen,
+        promptScreen: this.host.getPromptScreen(sessionId),
         currentTitle: this.host.currentTitle(sessionId),
         agentTitle: this.host.getAgentOscTitle(sessionId),
         guide: settings.guide,
@@ -127,7 +145,8 @@ export class AgentTitler {
         logger.info('AgentTitler', `title sid=${sessionId} → "${title}"`);
       }
     } catch (err) {
-      logger.warn('AgentTitler', `title request failed sid=${sessionId}`, err);
+      logger.warn('AgentTitler', `title request failed sid=${sessionId}, agent titles back`, err);
+      if (this.tabs.has(sessionId)) this.host.releaseAiTitle(sessionId);
     } finally {
       tab.inFlight = false;
       if (tab.again && this.tabs.has(sessionId)) {

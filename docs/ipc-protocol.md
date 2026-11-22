@@ -6,7 +6,10 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.9 · 最后更新:2026-11-18
+文档版本:1.10 · 最后更新:2026-11-22
+
+> **v1.10 变更**(松手即调整终端尺寸):
+> - 新增事件 `evt:window:resized`(仅目标窗口,无 payload):拖动窗口边缘松手时发一次(Electron `resized`,Windows 和 macOS;Linux 不发)。终端收到后立即调整 PTY 尺寸,不再等 150 ms 防抖,见 known-issues KI-001
 
 > **v1.9 变更**(Link 连接测试,软件定义书 ADR-055):
 > - 新增 `cmd:link:test`(设置页测试一台已保存的 Host;Link 下只在本机执行),见 5.12
@@ -294,6 +297,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:window:list-updated` | 全部 |
 | `evt:window:focus-requested` | 仅目标窗口 |
 | `evt:window:max-state-changed` | **(M1-A)** 仅目标窗口;通知 maximize/unmaximize 状态变化 |
+| `evt:window:resized` | **(v1.10)** 仅目标窗口;拖动窗口边缘松手时一次,无 payload;终端据此立即调整 PTY 尺寸 |
 | `evt:session:created` | 全部 |
 | `evt:session:state-changed` | 全部(单事件涵盖 state / currentCwd / displayName / exitCode 等子集变化) |
 | `evt:session:output` | 仅 owner |

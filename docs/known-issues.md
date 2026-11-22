@@ -52,6 +52,8 @@ WT (Windows Terminal)、VS Code Terminal、Alacritty (Windows 版)、所有用 C
 
 trade-off:拖拽期间 xterm 网格不跟随容器实时变化 (松手 150ms 后才一次性 fit),换数据流稳定性。
 
+2026-11-22 补:开发者反映调整窗口大小后 Claude Code 的文字过一会儿才排好。实测 Claude Code 在 PTY 尺寸变化后 140 到 275 ms 才重画,再加 150 ms 防抖。拖动窗口边缘时,主进程在松手那一刻收到 Electron 的 `resized`,转成 `evt:window:resized`;终端收到后立即调整尺寸,不等防抖。仍然整个拖拽只调整一次,上面的稳定性不变。Linux 不发这个事件,侧栏和分屏的拖动也不经过窗口边缘,这些照旧靠 150 ms 防抖。
+
 ### 用户解法
 
 如果偶尔仍然观察到屏幕乱:

@@ -16,6 +16,8 @@ No notification appears while you are in the Ceteris window where you last looke
 
 ## Settings
 
+To have an AI write them in a cute voice instead, see [Cute notifications written by AI](cute-notifications.md).
+
 Settings → Notifications has the master switch (on by default) and **Send a test notification**, which shows one notification right away so you can check that the system allows Ceteris to notify. If nothing appears, look at the system's notification settings and Do Not Disturb.
 
 ## Remote tabs

@@ -65,6 +65,21 @@ const NO_TAB_CONTROL_TEMPLATE_IDS: ReadonlySet<string> = new Set([
   'github-copilot',
   'cursor',
   'aider',
+  'pi',
+  'omp',
+  'qwen-code',
+  'amp',
+  'crush',
+  'kimi',
+  'goose',
+  'droid',
+  'kiro',
+  'cline',
+  'auggie',
+  'kilo',
+  'codebuddy',
+  'qoder',
+  'letta',
 ]);
 
 /** Whether a coordinator started from this template can use the tab control plugin. */

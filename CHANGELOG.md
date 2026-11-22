@@ -8,6 +8,8 @@
 
 - **换模型时有加载动画。** 在终端下面那一行点模型或 effort 后,标签蒙上一层半透明的底,中间是形状加载器和“正在切换到 Opus 5.5…”,看不到 agent 退出又重启的过程;新 agent 的输入框回来后蒙层消失,再弹出结果提示。同一个标签在别的窗口里也一样。
 
+- **新建页认得更多 agent。** 除了原来的七个,新建页还能认出 Pi、Oh My Pi (omp)、Qwen Code、Amp、Crush、Kimi CLI、Goose、Droid、Kiro CLI、Cline、Auggie、Kilo Code、CodeBuddy、Qoder CLI 和 Letta Code。和以前一样,本机文件夹只显示装了的;装好一个新的,点 Agents 旁边的刷新按钮就会出现。每个都有版本状态点,omp 和 Kiro CLI 还能一键升级。
+
 ## [0.4.6] (2026-11-19)
 
 ### 新增

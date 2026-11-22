@@ -96,6 +96,22 @@ const SYMBOLS = [
   ['AutoAwesome', 'auto_awesome', 'default'],
   ['Atr', 'atr', 'default'],
   ['DeployedCode', 'deployed_code', 'default'],
+  // 更多内置 agent 模板 (ADR-034 补充,软件定义书 1.50)
+  ['FunctionSymbol', 'function', 'default'],
+  ['Extension', 'extension', 'default'],
+  ['Cloud', 'cloud', 'default'],
+  ['Bolt', 'bolt', 'default'],
+  ['Favorite', 'favorite', 'default'],
+  ['DarkMode', 'dark_mode', 'default'],
+  ['FlutterDash', 'flutter_dash', 'default'],
+  ['SmartToy', 'smart_toy', 'default'],
+  ['Checklist', 'checklist', 'default'],
+  ['DataObject', 'data_object', 'default'],
+  ['Hub', 'hub', 'default'],
+  ['Scale', 'scale', 'default'],
+  ['Handshake', 'handshake', 'default'],
+  ['IntegrationInstructions', 'integration_instructions', 'default'],
+  ['Memory', 'memory', 'default'],
 
   // 文件树
   ['AccountTree', 'account_tree', 'default'],

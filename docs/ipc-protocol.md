@@ -2527,12 +2527,12 @@ interface TabControlRequest {
 | `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
 | `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
 | `rename` | `tab`、`name` | `TabSummary` |
-| `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者,也不要求扩展打开 |
+| `open-file` | `path`(绝对,或相对目标标签的当前目录)或 `paths`(数组,最多 20 个,ADR-058)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind, files }`(ADR-033);`path`、`name`、`kind` 是显示出来的第一个文件,`files` 按请求顺序列出全部;任何一个文件不行就整个拒绝,什么都不显示;只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者,也不要求扩展打开 |
 | `agent-session` | `agent`(`'claude-code'` 或 `'codex'`)、`sessionId`(UUID) | `{ tab, agent, sessionId }`(ADR-036);只记到调用方自己的标签上,收纳盒恢复时用它续聊。插件的 SessionStart 钩子每次启动 / resume / `/clear` 都调一次。**任何活着的标签都能调** |
 
 `tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
 
-`open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path }`)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
+`open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path, more? }`,`more` 是同一次请求的其余文件,只进查看器标题栏的文件列表,不读取,ADR-058)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
 
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 和 `agent-session` 只检查令牌对应的标签存在且未退出(ADR-033、ADR-036,`TAB_CONTROL_ANY_TAB_OPS`)。
 

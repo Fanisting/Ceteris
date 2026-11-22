@@ -23,6 +23,10 @@
  *   buttons, and the zoom buttons hide because the page always fits. The choice is kept per
  *   view key and path in slidesChoices for the life of the window, so switching sessions and
  *   coming back keeps it, while another file starts in Scroll.
+ * - A click on the file name copies the name. Text and Markdown files get a copy button right
+ *   after the name that copies the contents: the unsaved draft if there is one, otherwise the
+ *   file (readTextForCopy). Files too large to edit are not copied. A short note after the
+ *   button says what happened; it goes through clipboard.ts, never navigator.clipboard.
  *
  * @对应文档章节: 软件定义书.md 14.6, ADR-028
  *
@@ -44,13 +48,26 @@ import {
   watchPdf,
   type ReadyPdfView,
 } from '../pdf-view-store';
+import { writeClipboardText } from '../clipboard';
 import { getTextDraft } from '../text-drafts';
 import { Icon } from './icons';
 import { useTranslation } from './LanguageProvider';
-import { ChevronRight, FitWidth, Sync, ZoomIn, ZoomOut } from './material-symbols';
+import {
+  Check,
+  ChevronRight,
+  ContentCopy,
+  FitWidth,
+  Sync,
+  ZoomIn,
+  ZoomOut,
+} from './material-symbols';
 import { PdfJsViewer, type PdfJsViewerHandle } from './PdfJsViewer';
 import { ShapeLoader } from './ShapeLoader';
-import { draftKeyOf, TextFileView } from './TextFileView';
+import { draftKeyOf, readTextForCopy, TextFileView, type TextForCopy } from './TextFileView';
+
+/** What the last header copy did; shown as a short note after the copy button. */
+type CopyNotice = 'name' | 'content' | 'too-large' | 'failed';
+const COPY_NOTICE_MS = 1500;
 
 /**
  * How a Markdown file is shown. Tied to a path, so opening another file starts in preview.
@@ -135,7 +152,15 @@ export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode | null>(null);
   const [, setSlidesTick] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
+  // seq makes a second click restart the timer even when the notice text is the same.
+  const [copyNotice, setCopyNotice] = useState<{ notice: CopyNotice; seq: number } | null>(null);
   const source = view?.source;
+
+  useEffect(() => {
+    if (!copyNotice) return undefined;
+    const timer = window.setTimeout(() => setCopyNotice(null), COPY_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [copyNotice]);
 
   // A new file or a reload from scratch must not show the previous file's page numbers.
   useEffect(() => {
@@ -188,11 +213,78 @@ ${view.source.path}`;
     if (draft === null) void refreshPdf(viewKey, { fresh: false });
   };
 
+  const notify = (notice: CopyNotice): void =>
+    setCopyNotice((prev) => ({ notice, seq: (prev?.seq ?? 0) + 1 }));
+
+  const copyName = async (): Promise<void> => {
+    notify((await writeClipboardText(view.source.name)) ? 'name' : 'failed');
+  };
+
+  // Only text kinds have contents worth copying; PDFs and pictures get no button.
+  const canCopyContent = ready !== null && (kind === 'text' || kind === 'markdown');
+  const copyContent = async (): Promise<void> => {
+    const viewSource = view.source;
+    // Markdown is already in memory for the preview. An unsaved draft still wins, so the
+    // user copies what the editor shows.
+    const markdownText = ready?.text ?? null;
+    const result: TextForCopy =
+      markdownText !== null && !getTextDraft(await draftKeyOf(viewSource))
+        ? { ok: true, text: markdownText }
+        : await readTextForCopy(viewSource);
+    if (!result.ok) {
+      notify(result.reason === 'too-large' ? 'too-large' : 'failed');
+      return;
+    }
+    notify((await writeClipboardText(result.text)) ? 'content' : 'failed');
+  };
+
+  const noticeText: Record<CopyNotice, string> = {
+    name: tx('已复制文件名', 'Name copied'),
+    content: tx('已复制内容', 'Contents copied'),
+    'too-large': tx('文件太大,无法复制', 'Too large to copy'),
+    failed: tx('复制失败', 'Copy failed'),
+  };
+  const copyLabel = tx('复制内容', 'Copy contents');
+
   return (
     <section className="pdf-overlay" aria-label={view.source.name}>
       <header className="pdf-overlay-header" title={view.source.path}>
-        <span className="pdf-overlay-name">{view.source.name}</span>
+        <button
+          type="button"
+          className="pdf-overlay-name"
+          title={tx(
+            `点击复制文件名\n${view.source.path}`,
+            `Click to copy the name\n${view.source.path}`,
+          )}
+          onClick={() => void copyName()}
+        >
+          {view.source.name}
+        </button>
+        {canCopyContent && (
+          <button
+            type="button"
+            className="pdf-overlay-tool"
+            title={copyLabel}
+            aria-label={copyLabel}
+            onClick={() => void copyContent()}
+          >
+            {copyNotice?.notice === 'content' ? <Check size={16} /> : <ContentCopy size={16} />}
+          </button>
+        )}
+        {copyNotice && (
+          <span
+            className={`pdf-overlay-badge${
+              copyNotice.notice === 'too-large' || copyNotice.notice === 'failed'
+                ? ' pdf-overlay-badge-warn'
+                : ''
+            }`}
+            aria-live="polite"
+          >
+            {noticeText[copyNotice.notice]}
+          </span>
+        )}
         {ready && <RefreshBadge viewKey={viewKey} view={ready} />}
+        <span className="pdf-overlay-spacer" />
         {ready && kind === 'pdf' && slides && (
           <span className="pdf-overlay-tools">
             <button

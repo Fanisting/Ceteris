@@ -292,12 +292,34 @@
   font-size: 12px;
 }
 
+/* The name is a button: a click copies it. It shrinks to its text so the copy button sits
+   right after it; .pdf-overlay-spacer takes the free width instead. The negative margin
+   keeps the text where it was before the button got its hover padding. */
 .pdf-overlay-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  height: 22px;
+  margin-left: -6px;
+  padding: 0 6px;
   overflow: hidden;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.pdf-overlay-name:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+}
+
+.pdf-overlay-spacer {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .pdf-overlay-close {
@@ -550,6 +572,10 @@
   color: var(--color-text-muted, #f0f);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.pdf-overlay-badge-warn {
+  color: var(--color-warning, #f0f);
 }
 
 .pdf-overlay-badge-error {

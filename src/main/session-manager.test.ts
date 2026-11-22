@@ -248,7 +248,6 @@ function makeStubSettingsManager(
     extensions: {
       claudeMathImages: false,
       terminalMath: false,
-      tabControl: false,
       tabControlGuideSeen: false,
       setupSeen: false,
       colonCommands: { enabled: false, commands: [] },

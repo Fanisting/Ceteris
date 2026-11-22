@@ -13,7 +13,6 @@ const fresh: CoordinatorTourInput = {
   rowSeen: false,
   workerSeen: false,
   controlSupported: true,
-  enabled: false,
   pluginInstalled: false,
   startSeen: false,
   hasFintuner: false,
@@ -36,11 +35,11 @@ describe('coordinatorTourStep', () => {
     expect(coordinatorTourStep({ ...fresh, hasCoordinator: true, rowSeen: true })).toBe('worker');
   });
 
-  it('skips the setting and plugin steps that are already done', () => {
+  it('goes from the workers straight to the plugin, with no setting to turn on', () => {
     const made = { ...fresh, hasCoordinator: true, rowSeen: true, workerSeen: true };
-    expect(coordinatorTourStep(made)).toBe('enable');
-    expect(coordinatorTourStep({ ...made, enabled: true, pluginInstalled: null })).toBe('plugin');
-    expect(coordinatorTourStep({ ...made, enabled: true, pluginInstalled: true })).toBe('start');
+    expect(coordinatorTourStep(made)).toBe('plugin');
+    expect(coordinatorTourStep({ ...made, pluginInstalled: null })).toBe('plugin');
+    expect(coordinatorTourStep({ ...made, pluginInstalled: true })).toBe('start');
   });
 
   it('makes a Fintuner like the Coordinator: open an agent, right-click it, pick the role', () => {
@@ -49,7 +48,6 @@ describe('coordinatorTourStep', () => {
       hasCoordinator: true,
       rowSeen: true,
       workerSeen: true,
-      enabled: true,
       pluginInstalled: true,
       startSeen: true,
     };

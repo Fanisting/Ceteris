@@ -2519,7 +2519,7 @@ interface TabControlRequest {
 }
 ```
 
-**回复**(一行 JSON):`{ ok: true, result }` 或 `{ ok: false, code, message }`。`code` 取值:`bad-request`、`disabled`、`unknown-token`、`not-coordinator`、`not-found`、`ambiguous`、`self`、`failed`。
+**回复**(一行 JSON):`{ ok: true, result }` 或 `{ ok: false, code, message }`。`code` 取值:`bad-request`、`unknown-token`、`not-coordinator`、`not-found`、`ambiguous`、`self`、`failed`。
 
 | op | args | result |
 |---|---|---|
@@ -2531,7 +2531,7 @@ interface TabControlRequest {
 | `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
 | `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
 | `rename` | `tab`、`name` | `TabSummary` |
-| `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者,也不要求扩展打开 |
+| `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者 |
 | `agent-session` | `agent`(`'claude-code'` 或 `'codex'`)、`sessionId`(UUID) | `{ tab, agent, sessionId }`(ADR-036);只记到调用方自己的标签上,收纳盒恢复时用它续聊。插件的 SessionStart 钩子每次启动 / resume / `/clear` 都调一次。**任何活着的标签都能调** |
 
 `tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。

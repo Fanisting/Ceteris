@@ -3284,7 +3284,6 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
   const { tx } = useTranslation();
   const state = useAppState();
   const enabled = state.settings.extensions?.claudeMathImages ?? false;
-  const tabControl = state.settings.extensions?.tabControl ?? false;
   const terminalMath = state.settings.extensions?.terminalMath ?? false;
   const colon = state.settings.extensions?.colonCommands;
   const typer = useTypeIntoNewTerminal();
@@ -3540,25 +3539,6 @@ function ExtensionsPanel({ setError }: { setError: (msg: string | null) => void 
             </span>
           )}
         </div>
-      </SettingRow>
-
-      <SettingRow
-        label={tx('协调者控制标签页', 'Coordinator tab control')}
-        hint={tx(
-          '让标记为协调者的标签里的 Claude Code 管理同一文件夹的其他标签:列出、新开、关闭、改名、输入、读取屏幕、等待完成。只有协调者标签可以用,其他标签一律拒绝。打开或关闭立即生效。需要上面的插件;右键标签,勾选"协调者"。',
-          'Lets Claude Code in a tab marked as coordinator manage the other tabs of its folder: list, open, close, rename, type into, read the screen, and wait for them to finish. Only coordinator tabs may use it; every other tab is refused. Takes effect at once. Needs the plugin above; right-click a tab and tick Coordinator.',
-        )}
-      >
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={tabControl}
-            onChange={(e) =>
-              void updateSettings({ extensions: { tabControl: e.target.checked } }, setError)
-            }
-          />
-          <span>{tx('启用', 'Enable')}</span>
-        </label>
       </SettingRow>
 
       <SettingRow

@@ -15,7 +15,7 @@
     {
       "name": "ceteris-tabs",
       "source": "./extensions/ceteris-tabs",
-      "description": "Coordinator tabs in Ceteris control the other tabs of their folder (Settings, Extensions, Coordinator tab control)",
+      "description": "Coordinator tabs in Ceteris control the other tabs of their folder (right-click a tab, Role, Coordinator)",
       "category": "productivity",
       "tags": ["ceteris", "terminal", "tabs", "multi-agent"]
     }

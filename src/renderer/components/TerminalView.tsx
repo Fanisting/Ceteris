@@ -2144,6 +2144,23 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       },
     );
 
+    // The user let go of the window edge: the drag is over, which is what the 150 ms debounce
+    // waits to be sure of, so resize now. Claude Code then redraws about 150 to 300 ms sooner
+    // than after the debounce. Linux never sends this; the debounce still covers it, and
+    // sidebar or split drags inside the window.
+    const cleanupWindowResized = window.api.on<undefined>(EVENT_CHANNELS.WINDOW_RESIZED, () => {
+      if (disposed) return;
+      if (resizeTimer !== null) {
+        clearTimeout(resizeTimer);
+        resizeTimer = null;
+      }
+      // One frame so the layout has the final size before fit measures it.
+      requestAnimationFrame(() => {
+        if (disposed) return;
+        performResize();
+      });
+    });
+
     // 用户键盘输入 → 发回 PTY。
     //
     // TYP-1 / IPC-4:main 现在返回 { accepted, reason }。accepted=false 时
@@ -2362,6 +2379,7 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();
+      cleanupWindowResized();
       echo?.dispose();
       typeAheadView?.dispose();
       typeAheadRef.current = null;

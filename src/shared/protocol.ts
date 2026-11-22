@@ -360,6 +360,12 @@ export const EVENT_CHANNELS = {
   WINDOW_FOCUS_REQUESTED: 'evt:window:focus-requested',
   /** M1-A:本窗口的 maximize / unmaximize 状态变化(供 renderer 切按钮图标 + 圆角) */
   WINDOW_MAX_STATE_CHANGED: 'evt:window:max-state-changed',
+  /**
+   * Once, when the user lets go of a window edge after dragging it (Electron `resized`; Windows
+   * and macOS only). Terminals resize their PTY at once instead of waiting out the 150 ms
+   * debounce. No payload.
+   */
+  WINDOW_RESIZED: 'evt:window:resized',
 
   // Session
   SESSION_CREATED: 'evt:session:created',

@@ -193,6 +193,29 @@ describe('WindowManager', () => {
     });
   });
 
+  describe('resized', () => {
+    it('tells the renderer once when the user lets go of a window edge', () => {
+      mgr.createWindow();
+      const win = MockBrowserWindow.instances[0]!;
+      win.emit('resized');
+      expect(win.webContents.send).toHaveBeenCalledWith(
+        'evt:window:resized',
+        expect.objectContaining({ payload: undefined }),
+      );
+    });
+
+    it('sends nothing to a destroyed window', () => {
+      mgr.createWindow();
+      const win = MockBrowserWindow.instances[0]!;
+      win.destroyed = true;
+      win.emit('resized');
+      expect(win.webContents.send).not.toHaveBeenCalledWith(
+        'evt:window:resized',
+        expect.anything(),
+      );
+    });
+  });
+
   describe('will-navigate', () => {
     function navigate(url: string): { prevented: boolean } {
       mgr.createWindow();

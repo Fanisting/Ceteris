@@ -1756,7 +1756,7 @@ interface AgentSwitchModelResponse {
   reason?: 'session-not-found' | 'not-agent' | 'exited' | 'busy' | 'cannot-restart' | 'exit-timeout' | 'input-not-clear';
 }
 ```
-先清空输入框里的草稿(Ctrl-K、Ctrl-U 各按多次),敲 `/exit`,屏幕上输入行正好是 `/exit` 才按回车;否则删掉敲进去的 `/exit`,返回 `input-not-clear`,什么都不发送。然后在同一个标签里等到 shell 钩子的提示符报告(OSC 1337),再敲模板命令加 `--resume <id>` / `resume <id>` 和新的启动参数。成功后标签的 `agentModel` / `agentEffort`(以及 Claude Code 新开时的 `agentLaunchId`)走 `evt:session:state-changed`。整个过程几秒,resolve 时新命令已经敲进去。`busy`:agent 正在干活、在等批准,或这个标签的切换还没完;`cannot-restart`:SSH 标签,或模板在 agent 退出后不保留 shell;`exit-timeout`:20 秒内 agent 没退出,之后什么都没敲。
+先清空输入框里的草稿(Ctrl-K、Ctrl-U 各按多次),敲 `/exit`,屏幕上输入行正好是 `/exit` 才按回车;否则删掉敲进去的 `/exit`,返回 `input-not-clear`,什么都不发送。然后在同一个标签里等到 shell 钩子的提示符报告(OSC 1337),再敲模板命令加 `--resume <id>` / `resume <id>` 和新的启动参数。成功后标签的 `agentModel` / `agentEffort`(以及 Claude Code 新开时的 `agentLaunchId`)走 `evt:session:state-changed`。开始动手前(各项检查通过后)给 session 设 `agentSwitching: { model?, effort? }`,结束时设回 `null`,都走 `evt:session:state-changed`,每个窗口据此在标签上盖加载器蒙层(ADR-054 第 8 点)。敲完新命令后继续等:新 agent 的输入框(行首 `❯` 或 `›`)出现在敲进去的那一行下面,且屏幕 600ms 没变(屏幕一直在变时 3 秒);agent 停在提问上(`agentPhase` 为 `blocked`)、shell 提示符回来、标签关掉或 60 秒到了也结束等待。整个过程几秒,resolve 时 agent 已经回来,等待的结局只写日志,不改返回值。`busy`:agent 正在干活、在等批准,或这个标签的切换还没完;`cannot-restart`:SSH 标签,或模板在 agent 退出后不保留 shell;`exit-timeout`:20 秒内 agent 没退出,之后什么都没敲。
 
 **Errors**:`InvalidPayload`(model / effort 含字母、数字、`. _ - [ ]` 以外的字符)。
 

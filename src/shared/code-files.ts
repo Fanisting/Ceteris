@@ -37,7 +37,26 @@ export type CodeLanguage =
   | 'toml'
   | 'shell'
   | 'powershell'
-  | 'properties';
+  | 'properties'
+  | 'javascript'
+  | 'typescript'
+  | 'html'
+  | 'xml'
+  | 'css'
+  | 'scss'
+  | 'less'
+  | 'c'
+  | 'java'
+  | 'csharp'
+  | 'kotlin'
+  | 'scala'
+  | 'dart'
+  | 'go'
+  | 'rust'
+  | 'swift'
+  | 'ruby'
+  | 'lua'
+  | 'perl';
 
 /** A command-line linter Ceteris knows how to run and read. */
 export type LinterId = 'ruff' | 'lintr' | 'sqlfluff';
@@ -86,6 +105,45 @@ const CODE_FILES: Record<string, CodeFileInfo> = {
   f: code('fortran'),
   f90: code('fortran'),
   cpp: code('cpp'),
+  // General programming languages (ADR-058): agents write these too, and their files open
+  // beside the tab on their own. Highlight only; ruff, lintr and sqlfluff stay the only linters.
+  js: code('javascript'),
+  mjs: code('javascript'),
+  cjs: code('javascript'),
+  jsx: code('javascript'),
+  ts: code('typescript'),
+  mts: code('typescript'),
+  cts: code('typescript'),
+  tsx: code('typescript'),
+  html: code('html'),
+  htm: code('html'),
+  vue: code('html'),
+  svelte: code('html'),
+  xml: code('xml'),
+  css: code('css'),
+  scss: code('scss'),
+  less: code('less'),
+  c: code('c'),
+  h: code('c'),
+  cc: code('cpp'),
+  cxx: code('cpp'),
+  hpp: code('cpp'),
+  hh: code('cpp'),
+  java: code('java'),
+  cs: code('csharp'),
+  kt: code('kotlin'),
+  kts: code('kotlin'),
+  scala: code('scala'),
+  dart: code('dart'),
+  go: code('go'),
+  rs: code('rust'),
+  swift: code('swift'),
+  rb: code('ruby'),
+  lua: code('lua'),
+  pl: code('perl'),
+  pm: code('perl'),
+  php: code(null),
+  typ: { language: null, linter: null, wrap: true, lineNumbers: true },
   // Configuration and scripts.
   yaml: code('yaml'),
   yml: code('yaml'),
@@ -94,6 +152,11 @@ const CODE_FILES: Record<string, CodeFileInfo> = {
   cfg: code('properties'),
   sh: code('shell'),
   ps1: code('powershell'),
+  bash: code('shell'),
+  zsh: code('shell'),
+  psm1: code('powershell'),
+  bat: code(null),
+  cmd: code(null),
   // Data as text: wide rows scroll instead of wrapping, so columns stay in line.
   csv: code(null),
   tsv: code(null),

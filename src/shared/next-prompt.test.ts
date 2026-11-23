@@ -3,6 +3,7 @@ import {
   cleanSuggestion,
   detectAgent,
   formatModelPrice,
+  isFocusReport,
   nextPromptSystem,
   parseModelList,
   promptFromHistoryLine,
@@ -58,8 +59,16 @@ describe('cleanSuggestion', () => {
 describe('frequent prompts', () => {
   it('counts repeats regardless of case and spacing, keeps the latest spelling, and drops one offs', () => {
     const history = [
-      'commit and push', 'Commit  and push', 'run the tests', 'commit and PUSH',
-      'run the tests', 'run the tests', 'run the tests', 'fix the bug once', 'deploy', 'deploy',
+      'commit and push',
+      'Commit  and push',
+      'run the tests',
+      'commit and PUSH',
+      'run the tests',
+      'run the tests',
+      'run the tests',
+      'fix the bug once',
+      'deploy',
+      'deploy',
     ];
     expect(topFrequentPrompts(history)).toEqual([
       { text: 'run the tests', count: 4 },
@@ -69,8 +78,12 @@ describe('frequent prompts', () => {
 
   it('ignores pastes, multi line and long messages, and commands that leave the session', () => {
     const noise = [
-      '[Pasted text #1 +20 lines]', 'look at [Image #1]', 'line one\nline two', 'x'.repeat(101),
-      '/exit', '/model opus',
+      '[Pasted text #1 +20 lines]',
+      'look at [Image #1]',
+      'line one\nline two',
+      'x'.repeat(101),
+      '/exit',
+      '/model opus',
     ];
     expect(topFrequentPrompts(noise.flatMap((n) => [n, n, n]))).toEqual([]);
   });
@@ -83,7 +96,9 @@ describe('frequent prompts', () => {
 
   it('adds the habits to the system message only when there are some', () => {
     expect(nextPromptSystem([])).not.toContain('often');
-    expect(nextPromptSystem([{ text: 'commit and push', count: 5 }])).toContain('- commit and push (5 times)');
+    expect(nextPromptSystem([{ text: 'commit and push', count: 5 }])).toContain(
+      '- commit and push (5 times)',
+    );
   });
 });
 
@@ -93,7 +108,11 @@ describe('model list', () => {
       data: [
         { id: 'local-model' },
         { id: 'b/pricey', name: 'Pricey', pricing: { prompt: '0.000001', completion: '0.000002' } },
-        { id: 'a/cheap', name: 'Cheap', pricing: { prompt: '0.00000005', completion: '0.00000008' } },
+        {
+          id: 'a/cheap',
+          name: 'Cheap',
+          pricing: { prompt: '0.00000005', completion: '0.00000008' },
+        },
         { name: 'no id' },
         { id: 'img/only', architecture: { output_modalities: ['image'] } },
       ],
@@ -101,5 +120,20 @@ describe('model list', () => {
     expect(models.map((m) => m.id)).toEqual(['a/cheap', 'b/pricey', 'local-model']);
     expect(models.map(formatModelPrice)).toEqual(['$0.050 / $0.080', '$1.00 / $2.00', '']);
     expect(models[2]?.name).toBe('local-model');
+  });
+});
+
+describe('isFocusReport', () => {
+  it('matches focus in, focus out and runs of them', () => {
+    expect(isFocusReport('\x1b[O')).toBe(true);
+    expect(isFocusReport('\x1b[I')).toBe(true);
+    expect(isFocusReport('\x1b[O\x1b[I')).toBe(true);
+  });
+
+  it('does not match typing, empty data or a report mixed with keys', () => {
+    expect(isFocusReport('')).toBe(false);
+    expect(isFocusReport('a')).toBe(false);
+    expect(isFocusReport('\x1b[A')).toBe(false);
+    expect(isFocusReport('\x1b[Ox')).toBe(false);
   });
 });

@@ -21,6 +21,7 @@ import type {
   AppSnapshot,
   Bookmark,
   ChoicePrompt,
+  ScreenRun,
   PathTree,
   SessionInfo,
   Settings,
@@ -360,6 +361,12 @@ export const EVENT_CHANNELS = {
   WINDOW_FOCUS_REQUESTED: 'evt:window:focus-requested',
   /** M1-A:本窗口的 maximize / unmaximize 状态变化(供 renderer 切按钮图标 + 圆角) */
   WINDOW_MAX_STATE_CHANGED: 'evt:window:max-state-changed',
+  /**
+   * Once, when the user lets go of a window edge after dragging it (Electron `resized`; Windows
+   * and macOS only). Terminals resize their PTY at once instead of waiting out the 150 ms
+   * debounce. No payload.
+   */
+  WINDOW_RESIZED: 'evt:window:resized',
 
   // Session
   SESSION_CREATED: 'evt:session:created',
@@ -594,9 +601,19 @@ export interface SetNotifyPayload {
   notify: boolean;
 }
 
+/** ADR-057: cmd:notify:test payload. Absent = the plain ADR-048 test. */
+export interface NotifyTestPayload {
+  /** true = the model writes a sample turn in the chosen voice (settings.notifications.ai) */
+  voice?: boolean;
+}
+
 /** ADR-048: cmd:notify:test. shown = false when the system has no notification service. */
 export interface NotifyTestResponse {
   shown: boolean;
+  /** ADR-057, voice tests only: false = the model gave nothing and the plain test went out */
+  written?: boolean;
+  /** ADR-057, voice tests only: why written is false ('' otherwise) */
+  error?: string;
 }
 
 export interface SetRolePayload {
@@ -737,6 +754,11 @@ export interface ReadChoicePayload {
 export interface ReadChoiceResponse {
   /** null:agent 没停在提示上,或者屏幕上的行读不出问题和选项 */
   prompt: ChoicePrompt | null;
+  /**
+   * 提示整块在屏幕上的样子(从顶部横线到页脚,带颜色),面板照原样画出来。
+   * screen[k] 是 prompt.region.from + k 那一行;prompt 为 null 时是空数组。
+   */
+  screen: ScreenRun[][];
 }
 
 /**
@@ -1646,13 +1668,19 @@ export interface LinkListBindCandidatesResponse {
 /** evt:link:status-changed 的 payload,与 cmd:link:get-status 同构。 */
 export type LinkStatusChangedPayload = LinkStatusResponse;
 
-/** evt:file-view:open-requested(ADR-033):在 sessionId 的终端旁显示 path 这个本地文件。 */
+/**
+ * evt:file-view:open-requested(ADR-033):在 sessionId 的终端旁显示 path 这个本地文件。
+ * ADR-059:agent 一次打开多个文件时,more 里是其余的文件,按请求顺序排在查看器标题栏里,
+ * 不加载,点到才读。旧版窗口不认识 more,只显示第一个文件。
+ */
 export interface FileViewOpenRequestedPayload {
   sessionId: string;
   /** 文件名,查看器据此判断类型 */
   name: string;
   /** 绝对路径 */
   path: string;
+  /** 同一次请求的其余文件(ADR-059),只进标题栏的文件列表 */
+  more?: Array<{ name: string; path: string }>;
 }
 
 /**

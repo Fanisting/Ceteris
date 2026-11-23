@@ -6,7 +6,10 @@
 > 这份文档定义所有消息的 schema、语义、错误码、时序约束。
 > 实现代码必须严格遵循,不允许"自由发挥"。
 
-文档版本:1.9 · 最后更新:2026-11-18
+文档版本:1.10 · 最后更新:2026-11-22
+
+> **v1.10 变更**(松手即调整终端尺寸):
+> - 新增事件 `evt:window:resized`(仅目标窗口,无 payload):拖动窗口边缘松手时发一次(Electron `resized`,Windows 和 macOS;Linux 不发)。终端收到后立即调整 PTY 尺寸,不再等 150 ms 防抖,见 known-issues KI-001
 
 > **v1.9 变更**(Link 连接测试,软件定义书 ADR-055):
 > - 新增 `cmd:link:test`(设置页测试一台已保存的 Host;Link 下只在本机执行),见 5.12
@@ -294,6 +297,7 @@ function sendTo<P>(windowId: string, channel: string, payload: P) {
 | `evt:window:list-updated` | 全部 |
 | `evt:window:focus-requested` | 仅目标窗口 |
 | `evt:window:max-state-changed` | **(M1-A)** 仅目标窗口;通知 maximize/unmaximize 状态变化 |
+| `evt:window:resized` | **(v1.10)** 仅目标窗口;拖动窗口边缘松手时一次,无 payload;终端据此立即调整 PTY 尺寸 |
 | `evt:session:created` | 全部 |
 | `evt:session:state-changed` | 全部(单事件涵盖 state / currentCwd / displayName / exitCode 等子集变化) |
 | `evt:session:output` | 仅 owner |
@@ -676,6 +680,13 @@ interface ReadChoicePayload {
 // Response
 interface ReadChoiceResponse {
   prompt: ChoicePrompt | null;   // null:agent 不在 blocked,或屏幕上的行读不出提示
+  screen: ScreenRun[][];         // 提示整块在屏幕上的样子,screen[k] 是 region.from + k 那一行;prompt 为 null 时为空
+}
+interface ScreenRun {             // 一段样式相同的字(2026-11-22 加,面板照原样画提示)
+  text: string;
+  fg?: number | string;          // 数字是 256 色表下标(0-15 取终端主题),字符串是 #rrggbb;缺省是主题默认色
+  bg?: number | string;
+  bold?: true; dim?: true; italic?: true; underline?: true; inverse?: true;
 }
 interface ChoicePrompt {
   question: string;              // 选项上面那一行,去掉框线;读不到就是空串
@@ -685,6 +696,7 @@ interface ChoicePrompt {
   steps: Array<{ label: string; done: boolean }>;  // 分页提问的页签,不含最后的提交页;单页为空
   reviewing: boolean;            // 提交页:"Ready to submit your answers?"
   review: string[];              // 提交页上已选的答案行
+  region: { from: number; to: number };  // 提示占的行:顶上的横线(或框顶)到页脚,两端都含
 }
 interface ChoiceOption {
   index: number;                 // 选项前印的数字,从 1 起
@@ -695,6 +707,7 @@ interface ChoiceOption {
   input: 'none' | 'type' | 'chat';  // 直接选 / 打字回答(Type something)/ 离开提示后留言(Chat about this)
   checked: boolean | null;       // 多选的勾;单选为 null
   chosen: boolean;               // 分页提问退回某页时,先前选的那项
+  rows: { from: number; to: number };  // 这项占的屏幕行,含说明行;面板把这几行做成一个按钮
 }
 ```
 
@@ -1788,10 +1801,15 @@ interface SetNotifyPayload { sessionId: string; notify: boolean } // 回复 void
 
 #### `cmd:notify:test`
 ```typescript
-// payload: undefined
-interface NotifyTestResponse { shown: boolean } // false = 系统没有可用的通知服务
+// payload: undefined | NotifyTestPayload
+interface NotifyTestPayload { voice?: boolean } // ADR-057
+interface NotifyTestResponse {
+  shown: boolean;    // false = 系统没有可用的通知服务
+  written?: boolean; // 只在 voice 时有:false = 模型没写出来,弹的是普通测试通知
+  error?: string;    // written 为 false 的原因,例如 "no OpenRouter key connected"
+}
 ```
-在用户面前这台机器上弹一条测试通知,不看总开关和铃铛。列在 `LINK_LOCAL_ONLY_CHANNELS`,远程窗口里也在本机弹。
+在用户面前这台机器上弹一条测试通知,不看总开关和铃铛。payload 是 `{ voice: true }` 时(ADR-057,设置页“用这个语气发一条真的试试”),先让模型按 `settings.notifications.ai` 选的语气,为一轮假想的“修好登录测试”写标题和正文,再弹出来;模型没写出来就弹普通测试通知,并在 `error` 里说原因。列在 `LINK_LOCAL_ONLY_CHANNELS`,远程窗口里也在本机弹。
 
 点通知时 main 给持有标签的窗口发 `evt:window:focus-requested`,`reason: 'notification-click'`,带 `selectSessionId`。
 
@@ -2515,7 +2533,7 @@ interface TabControlRequest {
 }
 ```
 
-**回复**(一行 JSON):`{ ok: true, result }` 或 `{ ok: false, code, message }`。`code` 取值:`bad-request`、`disabled`、`unknown-token`、`not-coordinator`、`not-found`、`ambiguous`、`self`、`failed`。
+**回复**(一行 JSON):`{ ok: true, result }` 或 `{ ok: false, code, message }`。`code` 取值:`bad-request`、`unknown-token`、`not-coordinator`、`not-found`、`ambiguous`、`self`、`failed`。
 
 | op | args | result |
 |---|---|---|
@@ -2527,12 +2545,14 @@ interface TabControlRequest {
 | `input` | `tab`、`text?`、`keys?`(见 `TAB_CONTROL_KEYS`)、`submit?`(有文本时默认 true) | `{ tab, typed, keys, submitted }`;不能是调用方自己 |
 | `read` | `tab`、`lines?`(默认 80,最多 2000) | `{ tab: TabSummary, screen }` |
 | `rename` | `tab`、`name` | `TabSummary` |
-| `open-file` | `path`(绝对,或相对目标标签的当前目录)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind }`(ADR-033);只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者,也不要求扩展打开 |
+| `open-file` | `path`(绝对,或相对目标标签的当前目录)或 `paths`(数组,最多 20 个,ADR-059)、`tab?`(默认调用方自己) | `{ tab: TabSummary, path, name, kind, files }`(ADR-033);`path`、`name`、`kind` 是显示出来的第一个文件,`files` 按请求顺序列出全部;任何一个文件不行就整个拒绝,什么都不显示;只接受查看器认识的类型(`fileViewKind`:md、txt、json、tex、pdf、图片),文件必须已存在;SSH 文件夹拒绝。**任何活着的标签都能调**,不要求协调者 |
 | `agent-session` | `agent`(`'claude-code'` 或 `'codex'`)、`sessionId`(UUID) | `{ tab, agent, sessionId }`(ADR-036);只记到调用方自己的标签上,收纳盒恢复时用它续聊。插件的 SessionStart 钩子每次启动 / resume / `/clear` 都调一次。**任何活着的标签都能调** |
 
 `tab` 可以是完整 id、4 位以上的唯一 id 前缀,或唯一的标签名。
 
-`open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path }`)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
+`open-file` 通过后,main 广播 `evt:file-view:open-requested`(payload `FileViewOpenRequestedPayload`:`{ sessionId, name, path, more? }`,`more` 是同一次请求的其余文件,只进查看器标题栏的文件列表,不读取,ADR-059)给所有窗口;每个窗口在自己的 pdf-view-store 里以 `sessionId` 为 key 调 `openPdf`,和在文件树里点击这个文件完全一样。显示着那个标签的窗口立刻看到文件;别的窗口只记一个视图,用户切过去时才显示。main 不读文件内容,只 `stat` 一次确认是普通文件。
+
+ceteris-tabs 插件 0.4.0 的 PostToolUse 钩子(`hooks/open-written.mjs`,ADR-058)在 Claude Code 写完文件或编出 PDF 后也发这一条 `open-file`,`path` 为绝对路径,不带 `tab`;回复被忽略。
 
 **授权**:每次请求都检查扩展已开、令牌对应的标签存在、未退出、`coordinator === true`。顺序与拒绝码见 `TabControlService.authorize`。例外:`open-file` 和 `agent-session` 只检查令牌对应的标签存在且未退出(ADR-033、ADR-036,`TAB_CONTROL_ANY_TAB_OPS`)。
 

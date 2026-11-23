@@ -32,23 +32,23 @@ describe('extensionSetupCommand', () => {
   });
 
   it('gives only the Codex instruction when nothing for Claude Code is selected', () => {
-    const line = extensionSetupCommand('git-bash', DIR, sel('codex-math', 'coordinator'));
+    const line = extensionSetupCommand('git-bash', DIR, sel('codex-math'));
     expect(line).toMatch(/^mkdir -p ~\/\.codex/);
     expect(line).not.toContain('claude plugin');
   });
 
   it('is null when no selected item needs a terminal', () => {
-    expect(extensionSetupCommand('pwsh', DIR, sel('codex-tabs', 'coordinator'))).toBeNull();
-    expect(extensionSetupNeedsTerminal(sel('codex-tabs', 'coordinator'))).toBe(false);
+    expect(extensionSetupCommand('pwsh', DIR, sel('codex-tabs'))).toBeNull();
+    expect(extensionSetupNeedsTerminal(sel('codex-tabs'))).toBe(false);
     expect(extensionSetupNeedsTerminal(sel('claude-math'))).toBe(true);
   });
 });
 
 describe('extensionSetupSettings', () => {
   it('flips exactly the switches of the selected items', () => {
-    expect(extensionSetupSettings(sel('claude-math', 'coordinator'))).toEqual({
+    expect(extensionSetupSettings(sel('claude-math', 'codex-math'))).toEqual({
       claudeMathImages: true,
-      tabControl: true,
+      terminalMath: true,
     });
     expect(extensionSetupSettings(sel('claude-tabs', 'codex-tabs'))).toEqual({});
   });

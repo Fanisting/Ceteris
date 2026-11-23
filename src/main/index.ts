@@ -40,6 +40,7 @@ import { SettingsManager, DEFAULT_SETTINGS } from './settings-manager';
 import { TemplatesManager } from './templates-manager';
 import { JsonStore } from './persistence';
 import { NextPromptUsageTracker, type NextPromptUsageFile } from './next-prompt-usage';
+import { writePushVoice } from './push-voice-client';
 import { TemplateUsageTracker } from './template-usage';
 import type { TemplateUsageFile } from '@shared/template-usage';
 import { SecretStore, type SecretsFile } from './secret-store';
@@ -420,7 +421,6 @@ function bootstrap(): void {
   );
   tabControl = new TabControlServer(
     {
-      enabled: () => settingsManager.get().extensions?.tabControl === true,
       list: () => sessionManager.list(),
       get: (sessionId) => sessionManager.get(sessionId),
       templates: () => templatesManager.list(),
@@ -497,11 +497,13 @@ function bootstrap(): void {
     onSessionDestroyed: (fn) =>
       void sessionManager.on('sessionDestroyed', (p: { sessionId: string }) => fn(p.sessionId)),
     getScreenTail: (sessionId, rows) => sessionManager.getScreenTail(sessionId, rows),
+    getPromptScreen: (sessionId) => sessionManager.getPromptScreen(sessionId),
     getLastEnterAt: (sessionId) => sessionManager.getLastEnterAt(sessionId),
     currentTitle: (sessionId) => sessionManager.get(sessionId)?.displayName ?? '',
     isManuallyRenamed: (sessionId) => sessionManager.isManuallyRenamed(sessionId),
     getAgentOscTitle: (sessionId) => sessionManager.getAgentOscTitle(sessionId),
     setAiTitle: (sessionId, title) => sessionManager.setAiTitle(sessionId, title),
+    releaseAiTitle: (sessionId) => sessionManager.releaseAiTitle(sessionId),
     titleSettings: () => {
       const { tabTitles, nextPrompt } = settingsManager.get().ai;
       return tabTitles.enabled && nextPromptConfigured(nextPrompt) ? tabTitles : null;
@@ -773,6 +775,21 @@ function bootstrap(): void {
           resolveLocale(settingsManager.get().appearance.language, app.getLocale()) === 'zh-CN',
         templateName: (id) => templatesManager.get(id)?.name ?? null,
         userName: () => settingsManager.get().behavior.userName,
+        // ADR-057:可爱语气,走 next prompt 连上的 OpenRouter key;没连 key 时 write 返回 null 回退原文
+        voice: {
+          enabled: () => settingsManager.get().notifications.ai?.enabled === true,
+          includeAnswer: () => settingsManager.get().notifications.ai?.includeAnswer !== false,
+          write: (turn, zh) => {
+            const ai = settingsManager.get().notifications.ai;
+            return writePushVoice({
+              apiKey: secretStore.getNextPromptKey(),
+              model: ai?.model ?? '',
+              voice: ai?.voice ?? 'mascot',
+              zh,
+              turn,
+            });
+          },
+        },
       });
       const localHolders = new TabHolders();
       const isFront = (win: BrowserWindow | null): boolean =>
@@ -815,6 +832,8 @@ function bootstrap(): void {
         },
         focus: () => focusTabWindow(sessionId),
         lastEnterAt: () => sessionManager.getLastEnterAt(sessionId),
+        // ADR-057:只在用户允许时由 DoneNotifier 读取;40 行足够盖住回答末尾 600 字
+        screenTail: () => sessionManager.getScreenTail(sessionId, 40),
       });
       sessionManager.on('sessionOwnerChanged', (e: SessionOwnerChangedPayload) =>
         localHolders.note(e.sessionId, e.newOwnerWindowId),

@@ -1,7 +1,7 @@
 {
   "name": "ceteris-tabs",
-  "version": "0.3.0",
-  "description": "Lets Claude Code in any Ceteris tab show a file beside the tab and come back from the Ceteris shelf with its conversation, and in a coordinator tab open, close, rename, type into, read and wait for the other tabs of its folder.",
+  "version": "0.4.0",
+  "description": "Lets Claude Code in any Ceteris tab show the files it writes and the PDFs it builds beside the tab and come back from the Ceteris shelf with its conversation, and in a coordinator tab open, close, rename, type into, read and wait for the other tabs of its folder.",
   "author": {
     "name": "Fanisting",
     "url": "https://github.com/Fanisting"

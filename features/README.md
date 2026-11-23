@@ -63,6 +63,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Skills panel](agent-skills-panel.md)                                     | See the skills of the agent in this tab, open a SKILL.md with one click        | 0.4.6   |
 | [Choice notice](agent-choice-notice.md)                                   | A notice points to the tab waiting for your decision, and answers it           | 0.4.3   |
 | [Done notifications](done-notifications.md)                               | A system notification when a belled agent tab finishes; click to go back       | 0.4.4   |
+| [Cute notifications written by AI](cute-notifications.md)                 | Done notifications in one of five cute voices, with examples to pick from      | next    |
 | [Main agent](main-agent.md)                                               | Pick the agent you use most once; quick launch, guides and setup start from it | 0.4.4   |
 | [Your name](user-name.md)                                                 | Asked once; notices end with your name and the new tab page greets you         | 0.4.5   |
 | [name: commands](name-commands.md)                                        | Type compact: and get /compact in Claude Code or Codex                         | 0.4.3   |
@@ -70,6 +71,7 @@ The Version column shows the first release that contains the feature. "Next" mea
 | [Coordinator tour](coordinator-tour.md)                                   | An animated guide to roles and tab control                                     | 0.4.1   |
 | [Tab control plugin](tab-control-plugin.md)                               | A Coordinator opens, reads and drives other tabs                               | 0.4.1   |
 | [Open file tool](open-file-tool.md)                                       | Your agent shows you a file beside its tab; Codex since 0.4.3                  | 0.4.2   |
+| [Auto open written files](auto-open-written-files.md)                     | Files Claude Code writes and PDFs it builds open beside its tab                | Next    |
 
 ## Appearance
 

@@ -1,7 +1,8 @@
 /**
  * @file src/renderer/type-ahead-view.ts
  * @purpose Draws the type ahead text of a remote agent tab (ADR-047) where the agent's input
- *   cursor is, with a small "sends on Enter" mark, and keeps it there while the agent redraws.
+ *   cursor is, and keeps it there while the agent redraws. No mark beside it: the developer
+ *   found the "sends on Enter" pill noisy and removed it (2026-11-22).
  *
  * @关键设计:
  * - A DOM overlay above xterm, like local-echo.ts: the terminal buffer stays exactly what the
@@ -27,15 +28,10 @@ export interface TypeAheadView {
 
 /**
  * @param term the terminal, already opened
- * @param label the mark after the text, already translated
  * @param armed true when keys would be held now. Asked when an IME composition starts and on
  *   every draw, so the text hides while an approval prompt or a menu covers the agent's input.
  */
-export function attachTypeAheadView(
-  term: Terminal,
-  label: string,
-  armed: () => boolean,
-): TypeAheadView {
+export function attachTypeAheadView(term: Terminal, armed: () => boolean): TypeAheadView {
   const screen = term.element?.querySelector<HTMLElement>('.xterm-screen') ?? null;
   const textarea =
     term.element?.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea') ?? null;
@@ -45,10 +41,7 @@ export function attachTypeAheadView(
   const body = document.createElement('span');
   const composing = document.createElement('span');
   composing.className = 'type-ahead-composing';
-  const mark = document.createElement('span');
-  mark.className = 'type-ahead-mark';
-  mark.textContent = label;
-  overlay.append(body, composing, mark);
+  overlay.append(body, composing);
   screen?.appendChild(overlay);
 
   // Claude Code's fullscreen mode lives in the alternate screen; the armed() check decides

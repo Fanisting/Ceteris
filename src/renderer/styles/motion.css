@@ -142,9 +142,8 @@
 
 /* ── 5. 标签栏 ───────────────────────────────────────────────────── */
 
-/* 活动指示条从中间展开。标签宽度不一,而且运行中的标签用波浪线代替指示条,
-   所以不做跨标签滑动,每个标签的指示条在自己身上长出来。
-   运行结束时波浪线消失、指示条出现,同样走这段动画。 */
+/* 选中的倒三角从标签顶边落下。标签宽度不一,所以不做跨标签滑动,
+   每个标签的三角在自己身上出现。 */
 .tab.selected::after {
   animation: md-indicator-in var(--md-duration-medium1, 250ms)
     var(--md-easing-emphasized-decelerate, ease-out) backwards;
@@ -153,7 +152,7 @@
 @keyframes md-indicator-in {
   from {
     opacity: 0;
-    transform: scaleX(0.3);
+    transform: translateY(-100%);
   }
 }
 

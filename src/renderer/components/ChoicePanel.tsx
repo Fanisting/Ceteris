@@ -1,19 +1,24 @@
 /**
  * @file src/renderer/components/ChoicePanel.tsx
  * @purpose The expanded part of the "waiting for your decision" toast (ADR-035): the prompt
- *   an agent stopped at, read off its tab's screen, answered from here. Covers every shape
- *   Claude Code draws: approval boxes, single and multi-select AskUserQuestion, its "Type
- *   something" field, "Chat about this", the pages of a several-question prompt and the
- *   review page that submits them.
+ *   an agent stopped at, shown as the agent drew it on its tab's screen, answered from here.
+ *   Covers every shape Claude Code draws: approval boxes with their command or diff, single
+ *   and multi-select AskUserQuestion with descriptions and previews, its "Type something"
+ *   field, "Chat about this", the pages of a several-question prompt and their review page.
  *
  * @关键设计:
- * - Main owns the screen. The panel only shows what cmd:session:read-choice returns and asks
- *   cmd:session:answer-choice to act; main re-reads the screen before every keystroke, so
- *   a panel that went stale cannot type into whatever the agent does next.
- * - After each action the panel polls read-choice until the screen changes, because one
+ * - Main owns the screen. The panel shows the rows cmd:session:read-choice returns (styled
+ *   runs from the prompt's top rule to its footer) and asks cmd:session:answer-choice to
+ *   act; main re-reads the screen before every keystroke, so a panel that went stale cannot
+ *   type into whatever the agent does next.
+ * - A copy, not a rebuild (2026-11-22): the rows keep the agent's colours, marks and
+ *   layout, mapped through the current terminal theme. Each option's rows are one button.
+ * - The expanded toast spans the tab page minus 16px on each side, so a prompt drawn for
+ *   the tab's width fits; the font shrinks only when the rows are still wider than that.
+ * - After each action the panel polls read-choice until the rows change, because one
  *   prompt can have several pages: answering page one shows page two in the same toast.
  *   When the prompt is gone the agent is working again, and the bridge closes the toast.
- * - Text answers open a one-line field under their option. "Type something" needs text;
+ * - Text answers open a one-line field under the copy. "Type something" needs text;
  *   "Chat about this" (and an approval's "No, and tell Claude") may go without, which just
  *   leaves the prompt, as pressing Enter there would.
  *
@@ -22,7 +27,16 @@
  * - Do not send keys from here. All typing goes through main's answer-choice, which knows
  *   the pointer position and checks the screen between stages.
  */
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
+import type { ITheme } from '@xterm/xterm';
 import {
   COMMAND_CHANNELS,
   type AnswerChoicePayload,
@@ -31,8 +45,10 @@ import {
   type ReadChoicePayload,
   type ReadChoiceResponse,
 } from '@shared/protocol';
-import type { ChoiceOption, ChoicePrompt } from '@shared/types';
+import type { ChoiceOption, ScreenRun } from '@shared/types';
 import { useTranslation } from './LanguageProvider';
+import { useAppState } from '../store';
+import { LIGHT_THEME_MIN_CONTRAST, getXtermTheme, isLightTheme } from './TerminalView';
 
 /** How often the panel re-reads the prompt after an action, and for how long at most. */
 const SETTLE_POLL_MS = 200;
@@ -41,16 +57,169 @@ const SETTLE_TIMEOUT_MS = 3000;
 /** The placeholder label of AskUserQuestion's text field before anything is typed there. */
 const TYPE_PLACEHOLDER = /^(?:Type something\.?|Other)$/;
 
-function readChoice(sessionId: string): Promise<ChoicePrompt | null> {
-  return window.api
-    .invoke<ReadChoicePayload, ReadChoiceResponse>(COMMAND_CHANNELS.SESSION_READ_CHOICE, {
-      sessionId,
-    })
-    .then((res) => res.prompt);
+/** Gap between the expanded toast and each side of the tab page. */
+const PAGE_GAP_PX = 16;
+/** The copy never gets smaller than this, however wide the agent drew it; it scrolls instead. */
+const MIN_FONT_PX = 9;
+
+/** The 16 theme colours in ANSI order. */
+const ANSI_KEYS = [
+  'black',
+  'red',
+  'green',
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+  'brightBlack',
+  'brightRed',
+  'brightGreen',
+  'brightYellow',
+  'brightBlue',
+  'brightMagenta',
+  'brightCyan',
+  'brightWhite',
+] as const;
+
+/** xterm's own colour for palette index 16-255: a 6x6x6 cube, then 24 greys. */
+function cubeColour(i: number): string {
+  const hex = (v: number): string => v.toString(16).padStart(2, '0');
+  if (i >= 232) {
+    const g = 8 + (i - 232) * 10;
+    return '#' + hex(g) + hex(g) + hex(g);
+  }
+  const n = i - 16;
+  const step = (v: number): number => (v === 0 ? 0 : 55 + v * 40);
+  return '#' + hex(step(Math.floor(n / 36))) + hex(step(Math.floor(n / 6) % 6)) + hex(step(n % 6));
+}
+
+/** A run's colour as CSS, through the theme the tab itself uses. */
+function cssColour(c: number | string | undefined, theme: ITheme): string | undefined {
+  if (c === undefined || typeof c === 'string') return c;
+  if (c < 16) return theme[ANSI_KEYS[c]!];
+  return theme.extendedAnsi?.[c - 16] ?? cubeColour(c);
+}
+
+function rgbOf(c: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(c);
+  if (!m) return null;
+  const n = parseInt(m[1]!, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function luminance([r, g, b]: [number, number, number]): number {
+  const lin = (v: number): number => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The tab's minimumContrastRatio, done by hand: on light themes the terminal darkens text
+ * that is too faint for its background (Claude Code paints its question #ffffff, meant
+ * for a dark terminal). Darkens in 10% steps as xterm does; returns `fg` when it is fine.
+ */
+function withContrast(fg: string, bg: string, min: number): string {
+  let c = rgbOf(fg);
+  const b = rgbOf(bg);
+  if (!c || !b || min <= 1) return fg;
+  while (contrast(c, b) < min && c.some((v) => v > 0)) {
+    c = c.map((v) => v - Math.max(1, Math.ceil(v * 0.1))).map((v) => Math.max(0, v)) as [
+      number,
+      number,
+      number,
+    ];
+  }
+  return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+function runStyle(run: ScreenRun, theme: ITheme, minContrast: number): CSSProperties | undefined {
+  let fg = cssColour(run.fg, theme);
+  let bg = cssColour(run.bg, theme);
+  if (run.inverse) [fg, bg] = [bg ?? theme.background, fg ?? theme.foreground];
+  if (fg && minContrast > 1) fg = withContrast(fg, bg ?? theme.background ?? '', minContrast);
+  if (!fg && !bg && !run.bold && !run.dim && !run.italic && !run.underline) return undefined;
+  return {
+    color: fg,
+    backgroundColor: bg,
+    fontWeight: run.bold ? 700 : undefined,
+    opacity: run.dim ? 0.55 : undefined,
+    fontStyle: run.italic ? 'italic' : undefined,
+    textDecoration: run.underline ? 'underline' : undefined,
+  };
+}
+
+/** One row of the agent's screen. A blank row keeps its height. */
+function ScreenRow({
+  runs,
+  theme,
+  minContrast,
+}: {
+  runs: ScreenRun[];
+  theme: ITheme;
+  minContrast: number;
+}): JSX.Element {
+  return (
+    <div className="toast-choice-row">
+      {runs.length === 0
+        ? ' '
+        : runs.map((r, i) => (
+            <span key={i} style={runStyle(r, theme, minContrast)}>
+              {r.text}
+            </span>
+          ))}
+    </div>
+  );
+}
+
+function readChoice(sessionId: string): Promise<ReadChoiceResponse> {
+  return window.api.invoke<ReadChoicePayload, ReadChoiceResponse>(
+    COMMAND_CHANNELS.SESSION_READ_CHOICE,
+    { sessionId },
+  );
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Widens the toast holding `el` to the tab page minus PAGE_GAP_PX a side, and keeps it so
+ * while the window resizes. The toast goes back to its own width when the panel closes.
+ */
+function useTabPageWidth(el: HTMLElement | null): void {
+  useLayoutEffect(() => {
+    const toast = el?.closest<HTMLElement>('.toast');
+    if (!toast) return undefined;
+    const page = document.querySelector<HTMLElement>('.main-pane');
+    const fit = (): void => {
+      const r = page?.getBoundingClientRect() ?? {
+        width: window.innerWidth,
+        right: window.innerWidth,
+      };
+      toast.style.setProperty('--choice-width', `${Math.max(0, r.width - 2 * PAGE_GAP_PX)}px`);
+      // The toast stack is pinned 16px from the window edge; the tab page may end short of
+      // it, so shift the toast left by that much to keep both gaps equal.
+      toast.style.setProperty('--choice-shift', `${Math.max(0, window.innerWidth - r.right)}px`);
+    };
+    fit();
+    toast.classList.add('choice-wide');
+    const ro = new ResizeObserver(fit);
+    ro.observe(page ?? document.body);
+    return () => {
+      ro.disconnect();
+      toast.classList.remove('choice-wide');
+      toast.style.removeProperty('--choice-width');
+      toast.style.removeProperty('--choice-shift');
+    };
+  }, [el]);
 }
 
 export function ChoicePanel({
@@ -62,8 +231,16 @@ export function ChoicePanel({
   onGo: () => void;
 }): JSX.Element {
   const { tx } = useTranslation();
-  /** undefined while the first read is on its way */
-  const [prompt, setPrompt] = useState<ChoicePrompt | null | undefined>(undefined);
+  const appearance = useAppState().settings.appearance;
+  const theme = getXtermTheme(appearance?.theme);
+  const minContrast = isLightTheme(appearance?.theme) ? LIGHT_THEME_MIN_CONTRAST : 1;
+  const fontSize = appearance?.terminalFontSize ?? 13;
+  const fontFamily =
+    appearance?.terminalFontFamily ??
+    '"Cascadia Mono", "JetBrains Mono", Consolas, "LXGW WenKai Mono", monospace';
+  /** undefined while the first read is on its way, null when it failed */
+  const [view, setView] = useState<ReadChoiceResponse | null | undefined>(undefined);
+  const prompt = view === undefined ? undefined : (view?.prompt ?? null);
   const [busy, setBusy] = useState(false);
   /** A line under the options; errors also offer the tab. */
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
@@ -71,21 +248,43 @@ export function ChoicePanel({
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const alive = useRef(true);
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const screenRef = useRef<HTMLDivElement | null>(null);
+  const [screenFontSize, setScreenFontSize] = useState(fontSize);
+
+  useTabPageWidth(root);
 
   useEffect(() => {
     alive.current = true;
     readChoice(sessionId)
-      .then((p) => {
-        if (alive.current) setPrompt(p);
+      .then((v) => {
+        if (alive.current) setView(v);
       })
       .catch((err) => {
         console.warn('[ChoicePanel] read-choice failed', err);
-        if (alive.current) setPrompt(null);
+        if (alive.current) setView(null);
       });
     return () => {
       alive.current = false;
     };
   }, [sessionId]);
+
+  // Fit the copy: measure at the terminal's font size and shrink in proportion when the
+  // rows are wider than the toast. Then show the bottom, where the options are.
+  useLayoutEffect(() => {
+    const el = screenRef.current;
+    if (!el) return;
+    el.style.fontSize = `${fontSize}px`;
+    // Only the text scales, not the padding; keep 2% spare for glyph rounding.
+    const cs = getComputedStyle(el);
+    const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const room = el.clientWidth - pad;
+    const need = el.scrollWidth - pad;
+    const size = need > room ? Math.max(MIN_FONT_PX, (fontSize * room * 0.98) / need) : fontSize;
+    el.style.fontSize = `${size}px`;
+    setScreenFontSize(size);
+    el.scrollTop = el.scrollHeight;
+  }, [view, fontSize, root]);
 
   const reasonText = useCallback(
     (reason: AnswerChoiceReason | undefined): string => {
@@ -105,12 +304,12 @@ export function ChoicePanel({
 
   /**
    * Sends one action, then re-reads until the screen shows its effect. The next page of a
-   * paged prompt, a ticked box, or null once the agent is working again.
+   * paged prompt, a ticked box, or no prompt once the agent is working again.
    */
   const act = useCallback(
     async (action: AnswerChoicePayload): Promise<void> => {
       if (busy) return;
-      const before = JSON.stringify(prompt ?? null);
+      const before = JSON.stringify(view?.screen ?? null);
       setBusy(true);
       setNote(null);
       try {
@@ -126,15 +325,15 @@ export function ChoicePanel({
         setEditing(null);
         setDraft('');
         const until = Date.now() + SETTLE_TIMEOUT_MS;
-        let next: ChoicePrompt | null = prompt ?? null;
+        let next: ReadChoiceResponse | null = view ?? null;
         while (alive.current && Date.now() < until) {
           await sleep(SETTLE_POLL_MS);
           next = await readChoice(sessionId);
-          if (JSON.stringify(next) !== before) break;
+          if (JSON.stringify(next.prompt ? next.screen : null) !== before) break;
         }
         if (!alive.current) return;
-        setPrompt(next);
-        if (!next) setNote({ text: tx('已发送', 'Sent'), error: false });
+        setView(next);
+        if (!next?.prompt) setNote({ text: tx('已发送', 'Sent'), error: false });
       } catch (err) {
         console.warn('[ChoicePanel] answer-choice failed', err);
         if (alive.current) setNote({ text: reasonText(undefined), error: true });
@@ -142,7 +341,7 @@ export function ChoicePanel({
         if (alive.current) setBusy(false);
       }
     },
-    [busy, prompt, reasonText, sessionId, tx],
+    [busy, view, reasonText, sessionId, tx],
   );
 
   const onOption = (o: ChoiceOption): void => {
@@ -166,13 +365,17 @@ export function ChoicePanel({
   };
 
   if (prompt === undefined) {
-    return <span className="toast-choice-empty">{tx('读取中…', 'Reading…')}</span>;
+    return (
+      <div ref={setRoot} className="toast-choice-empty">
+        {tx('读取中…', 'Reading…')}
+      </div>
+    );
   }
   if (!prompt) {
     return (
-      <span className="toast-choice-empty">
+      <div ref={setRoot} className="toast-choice-empty">
         {note?.text ?? tx('读不出选项,去标签里看看', 'Could not read the options, open the tab')}
-      </span>
+      </div>
     );
   }
 
@@ -182,93 +385,79 @@ export function ChoicePanel({
     return null;
   };
 
-  return (
-    <>
-      {prompt.steps.length > 0 && (
-        <div className="toast-choice-steps">
-          {prompt.steps.map((s) => (
-            <span key={s.label} className={'toast-choice-step' + (s.done ? ' done' : '')}>
-              {s.done ? '✓ ' : ''}
-              {s.label}
-            </span>
-          ))}
-          <span className={'toast-choice-step' + (prompt.reviewing ? ' current' : '')}>
-            {tx('提交', 'Submit')}
-          </span>
-        </div>
-      )}
-      {prompt.question && <div className="toast-choice-question">{prompt.question}</div>}
-      {prompt.reviewing && prompt.review.length > 0 && (
-        <div className="toast-choice-review">
-          {prompt.review.map((line, i) => (
-            <div
-              key={i}
-              className={
-                'toast-choice-review-line' +
-                (line.startsWith('→') ? ' answer' : '') +
-                (line.startsWith('⚠') ? ' warn' : '')
-              }
-            >
-              {line.replace(/^●\s*/, '')}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="toast-choice-list">
-        {prompt.options.map((o) => (
-          <div key={o.index} className="toast-choice-item">
-            <button
-              type="button"
-              className={
-                'toast-choice-option' +
-                (o.pointed ? ' pointed' : '') +
-                (o.chosen || o.checked === true ? ' chosen' : '')
-              }
-              disabled={busy}
-              aria-pressed={o.checked ?? undefined}
-              onClick={() => onOption(o)}
-            >
-              <span className="toast-choice-index">{o.index}.</span>
-              {o.checked !== null && (
-                <span className="toast-choice-box" aria-hidden="true">
-                  {o.checked ? '☑' : '☐'}
-                </span>
-              )}
-              <span className="toast-choice-label">{o.label}</span>
-              {o.chosen && <span className="toast-choice-mark"> ✓</span>}
-              {optionNote(o) && <span className="toast-choice-note">{optionNote(o)}</span>}
-              {o.description && o.description !== o.label && (
-                <span className="toast-choice-desc">{o.description}</span>
-              )}
-            </button>
-            {editing === o.index && (
-              <form className="toast-choice-input" onSubmit={(e) => onSubmitText(e, o)}>
-                <input
-                  // The field opens because the user clicked for it; focus belongs there.
-                  autoFocus
-                  value={draft}
-                  disabled={busy}
-                  placeholder={
-                    o.input === 'type'
-                      ? tx('你的回答', 'Your answer')
-                      : tx('想对 agent 说的话(可空)', 'Message to the agent (optional)')
-                  }
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      e.stopPropagation();
-                      setEditing(null);
-                    }
-                  }}
-                />
-                <button type="submit" className="toast-choice-send" disabled={busy}>
-                  {tx('发送', 'Send')}
-                </button>
-              </form>
-            )}
-          </div>
+  const offset = prompt.region.from;
+  const rows = view?.screen ?? [];
+  const field = editing !== null ? prompt.options.find((o) => o.index === editing) : undefined;
+
+  // Rows top to bottom; an option's rows (its label and description) are one button, so a
+  // click anywhere on them answers with that option.
+  const blocks: JSX.Element[] = [];
+  for (let k = 0; k < rows.length; ) {
+    const o = prompt.options.find((opt) => opt.rows.from - offset === k);
+    if (!o) {
+      blocks.push(<ScreenRow key={k} runs={rows[k]!} theme={theme} minContrast={minContrast} />);
+      k++;
+      continue;
+    }
+    const last = Math.min(o.rows.to - offset, rows.length - 1);
+    blocks.push(
+      <button
+        key={k}
+        type="button"
+        className={'toast-choice-hit' + (editing === o.index ? ' editing' : '')}
+        disabled={busy}
+        aria-label={o.label}
+        aria-pressed={o.checked ?? undefined}
+        title={optionNote(o) ?? undefined}
+        onClick={() => onOption(o)}
+      >
+        {rows.slice(k, last + 1).map((runs, j) => (
+          <ScreenRow key={j} runs={runs} theme={theme} minContrast={minContrast} />
         ))}
+      </button>,
+    );
+    k = last + 1;
+  }
+
+  return (
+    <div ref={setRoot} className="toast-choice">
+      <div
+        ref={screenRef}
+        className="toast-choice-screen"
+        style={{
+          fontFamily,
+          fontSize: screenFontSize,
+          color: theme.foreground,
+          backgroundColor: theme.background,
+        }}
+      >
+        {blocks}
       </div>
+      {field && (
+        <form className="toast-choice-input" onSubmit={(e) => onSubmitText(e, field)}>
+          <input
+            // The field opens because the user clicked for it; focus belongs there.
+            autoFocus
+            value={draft}
+            disabled={busy}
+            placeholder={
+              field.input === 'type'
+                ? tx('你的回答', 'Your answer')
+                : tx('想对 agent 说的话(可空)', 'Message to the agent (optional)')
+            }
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setEditing(null);
+              }
+            }}
+          />
+          <button type="submit" className="toast-choice-send" disabled={busy}>
+            {tx('发送', 'Send')}
+          </button>
+        </form>
+      )}
       {prompt.multiSelect && !prompt.reviewing && (
         <button
           type="button"
@@ -292,6 +481,6 @@ export function ChoicePanel({
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }

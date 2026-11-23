@@ -36,6 +36,7 @@ import type {
   ChoiceOption,
   ChoicePrompt,
   ChoiceStep,
+  ScreenRows,
   SessionState,
 } from './types';
 
@@ -199,6 +200,14 @@ const CHOICE_READ_ROWS = 40;
 const OPTION_ROW = /^\s*[│|]?\s*([❯›>])?\s*(\d+)\.\s+(.*?)\s*[│|]?\s*$/;
 /** Multi-select's own "Submit" row: no number, so only the pointer and the word. */
 const SUBMIT_ROW = /^\s*([❯›>])?\s+Submit\s*$/;
+/**
+ * "Chat about this" without a number: Claude Code draws it so when options have previews
+ * (seen in 2.1.322 on 2026-11-22). The down arrow reaches it after the last option, and
+ * the option above keeps its ❯ while the pointer sits here.
+ */
+const CHAT_ROW = /^\s*([❯›>])?\s+Chat about this\s*$/;
+/** The preview box Claude Code draws to the right of the options, cut off their labels. */
+const PREVIEW_COLUMN = /\s{2,}[│┌└├].*$/;
 /** A multi-select option's box at the start of its label. */
 const CHECKBOX = /^\[([✔✓xX ])\]\s*/;
 /** The mark Claude Code puts after the answer already given, when the user steps back. */
@@ -209,10 +218,22 @@ const REVIEW_TITLE = /^\s*Review your answers\s*$/;
 const REVIEW_QUESTION = /^\s*Ready to submit your answers\?\s*$/;
 /** Rows that end an option's description: rules, box bottoms, the footer. */
 const ENDS_DESCRIPTION = /^\s*[│|]?\s*(?:[─━╌═╭╮╰╯]|.*\bEsc to cancel\b|.*\bEnter to select\b)/;
-/** A description row: indented under its option, inside the box edges if any. */
-const DESCRIPTION_ROW = /^\s*[│|]?\s{3,}(\S.*?)\s*[│|]?\s*$/;
+/**
+ * A description row: indented under its option, inside the box edges if any. A row of the
+ * preview box (it starts with a box edge far to the right) is not one.
+ */
+const DESCRIPTION_ROW = /^\s*[│|]?\s{3,}(?![│┌└├┐┘])(\S.*?)\s*[│|]?\s*$/;
 /** Rows that cannot be the question: blank, box borders, rules, chips, the tab strip. */
 const NOT_A_QUESTION = /^\s*[│|]?\s*(?:[─━╭╮╰╯┃═←]|☐|☑|☒|$)/;
+/**
+ * The top edge of a prompt: the rule Claude Code draws above an approval or AskUserQuestion,
+ * or the top of an older approval box. The dashed rules around a diff (╌) do not count.
+ */
+const PROMPT_TOP = /^\s*(?:╭[─━]|[─━]{8,})/;
+/** Rows that still belong to the prompt after its last option: the footer, a box bottom. */
+const PROMPT_TAIL = /^\s*╰|\bEsc to cancel\b|\bEnter to select\b/;
+/** Rows after the last option searched for the footer. */
+const PROMPT_TAIL_ROWS = 4;
 /**
  * Options that open a text field in place: typing replaces the label, Enter sends it.
  * Exported for main, which clears text typed there earlier before typing the new answer.
@@ -254,13 +275,22 @@ function readSteps(row: string): ChoiceStep[] {
  * @returns null when the rows do not read as a prompt
  */
 export function readChoicePrompt(screen: string): ChoicePrompt | null {
-  const rows = screenTail(screen, CHOICE_READ_ROWS).split('\n');
+  // The rules read the last non-empty rows; `lineOf` maps them back to rows of `screen`,
+  // because the choice panel mirrors those rows with their colours (ChoicePrompt.region).
+  const all = screen.split('\n');
+  const lineOf = all
+    .map((row, i) => (row.trim() === '' ? -1 : i))
+    .filter((i) => i >= 0)
+    .slice(-CHOICE_READ_ROWS);
+  const rows = lineOf.map((i) => all[i]!);
   let options: ChoiceOption[] = [];
   let first = -1;
   let pos = 0;
   let submitRowPos = -1;
   let submitRowPointed = false;
   let last: ChoiceOption | null = null;
+  /** The unnumbered "Chat about this" row, which gets the next number here. */
+  let chatRow: ChoiceOption | null = null;
   rows.forEach((row, i) => {
     const submit = SUBMIT_ROW.exec(row);
     if (submit && options.length > 0) {
@@ -270,11 +300,35 @@ export function readChoicePrompt(screen: string): ChoicePrompt | null {
       last = null;
       return;
     }
+    const chat = CHAT_ROW.exec(row);
+    if (chat && options.length > 0 && !chatRow) {
+      chatRow = {
+        index: options.length + 1,
+        label: 'Chat about this',
+        description: '',
+        pos,
+        pointed: chat[1] !== undefined,
+        input: 'chat',
+        checked: null,
+        chosen: false,
+        rows: { from: lineOf[i]!, to: lineOf[i]! },
+      };
+      options.push(chatRow);
+      pos++;
+      last = null;
+      return;
+    }
     const m = OPTION_ROW.exec(row);
     if (!m) {
       if (last && ENDS_DESCRIPTION.test(row)) last = null;
       const d = last ? DESCRIPTION_ROW.exec(row) : null;
-      if (last && d) last.description = last.description ? last.description + ' ' + d[1] : d[1]!;
+      if (last && d) {
+        last.description = last.description ? last.description + ' ' + d[1] : d[1]!;
+        last.rows.to = lineOf[i]!;
+      } else {
+        // Descriptions sit right under their option; anything else in between ends them.
+        last = null;
+      }
       return;
     }
     const index = parseInt(m[2]!, 10);
@@ -284,10 +338,11 @@ export function readChoicePrompt(screen: string): ChoicePrompt | null {
       pos = 0;
       submitRowPos = -1;
       submitRowPointed = false;
+      chatRow = null;
     } else if (index !== options.length + 1) {
       return;
     }
-    let label = m[3]!.trim();
+    let label = m[3]!.trim().replace(PREVIEW_COLUMN, '');
     let checked: boolean | null = null;
     const box = CHECKBOX.exec(label);
     if (box) {
@@ -305,6 +360,7 @@ export function readChoicePrompt(screen: string): ChoicePrompt | null {
       input: optionInput(label),
       checked,
       chosen,
+      rows: { from: lineOf[i]!, to: lineOf[i]! },
     };
     options.push(last);
     pos++;
@@ -312,9 +368,14 @@ export function readChoicePrompt(screen: string): ChoicePrompt | null {
   if (options.length === 0) return null;
   // Once text is typed into AskUserQuestion's field, its row shows that text instead of
   // "Type something", so the label no longer says what it is. The field is always the row
-  // just above "Chat about this".
+  // just above "Chat about this". A prompt with previews has no such field.
   const chatAt = options.findIndex((o) => /^Chat about this/.test(o.label));
-  if (chatAt > 0 && options[chatAt - 1]!.input === 'none') options[chatAt - 1]!.input = 'type';
+  if (chatAt > 0 && !chatRow && options[chatAt - 1]!.input === 'none') {
+    options[chatAt - 1]!.input = 'type';
+  }
+  // With previews the option above keeps its ❯ while the pointer is on the chat row.
+  const pointedChat = (chatRow as ChoiceOption | null)?.pointed === true;
+  if (pointedChat) for (const o of options) o.pointed = o === chatRow;
   const pointedOption = options.find((o) => o.pointed);
   const pointer = pointedOption ? pointedOption.pos : submitRowPointed ? submitRowPos : -1;
   if (pointer < 0) return null;
@@ -348,7 +409,45 @@ export function readChoicePrompt(screen: string): ChoicePrompt | null {
     steps,
     reviewing,
     review,
+    region: promptRegion(rows, lineOf, first, options),
   };
+}
+
+/**
+ * The rows the whole prompt takes, as rows of the screen: from its top rule (or box top)
+ * down to its footer, so the panel can show the tool's header, the command or diff and any
+ * preview exactly as drawn. Without a top rule it starts at the tab strip or the question.
+ *
+ * @param rows the non-empty rows the prompt was read from
+ * @param lineOf for each of `rows`, its row in the screen text
+ * @param first the index in `rows` of option 1
+ */
+function promptRegion(
+  rows: string[],
+  lineOf: number[],
+  first: number,
+  options: ChoiceOption[],
+): ScreenRows {
+  let top = -1;
+  for (let i = first - 1; i >= 0 && top < 0; i--) if (PROMPT_TOP.test(rows[i]!)) top = i;
+  if (top < 0) {
+    // The question is the nearest row up that can be one; a tab strip may sit above it.
+    top = first;
+    for (let i = first - 1; i >= 0; i--) {
+      if (STEP_STRIP.test(rows[i]!)) {
+        top = i;
+        break;
+      }
+      if (top === first && !NOT_A_QUESTION.test(rows[i]!)) top = i;
+      else if (top !== first) break;
+    }
+  }
+  let to = options[options.length - 1]!.rows.to;
+  const lastAt = lineOf.indexOf(to);
+  for (let i = lastAt + 1; i < rows.length && i <= lastAt + PROMPT_TAIL_ROWS; i++) {
+    if (PROMPT_TAIL.test(rows[i]!)) to = lineOf[i]!;
+  }
+  return { from: lineOf[top]!, to };
 }
 
 /** Arrow keys that move the pointer between two positions; no Enter. */

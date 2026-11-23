@@ -17,6 +17,7 @@ import type { ShelfEntry } from './shelf';
 import type { QuickLaunchItem } from './quick-launch';
 import type { TagColors } from './path-tags';
 import type { ColonCommand } from './colon-commands';
+import type { PushVoiceId } from './push-voice';
 
 import type { BeamerThemeId } from './beamer-themes';
 import type { CustomThemeId } from './custom-themes';
@@ -136,6 +137,30 @@ export interface ChoiceOption {
   checked: boolean | null;
   /** A paged prompt the user stepped back into: this was the answer given before. */
   chosen: boolean;
+  /** Its rows in the screen text read, the description rows included. */
+  rows: ScreenRows;
+}
+
+/** A run of rows of the screen text a prompt was read from: 0-based, both ends included. */
+export interface ScreenRows {
+  from: number;
+  to: number;
+}
+
+/**
+ * One stretch of a screen row with a single look, for the choice panel's copy of the prompt
+ * (ADR-035). Colours: a number is an index into the 256-colour palette (0-15 come from the
+ * terminal theme), a string is "#rrggbb", absent is the theme's default.
+ */
+export interface ScreenRun {
+  text: string;
+  fg?: number | string;
+  bg?: number | string;
+  bold?: true;
+  dim?: true;
+  italic?: true;
+  underline?: true;
+  inverse?: true;
 }
 
 /** One page of a paged AskUserQuestion, from its tab strip. */
@@ -163,6 +188,11 @@ export interface ChoicePrompt {
   reviewing: boolean;
   /** That page's lines ("● Which colour?", "→ Red", "⚠ You have not answered all questions"). */
   review: string[];
+  /**
+   * The rows the whole prompt takes in the screen text read, from its top rule to its
+   * footer. The choice panel shows them as drawn, colours and all.
+   */
+  region: ScreenRows;
 }
 
 /**
@@ -731,12 +761,6 @@ export interface Settings {
      */
     terminalMath: boolean;
     /**
-     * Coordinator tab control (ADR-024): Claude Code in a coordinator tab may list, open,
-     * close, type into and read the other tabs of its folder through the ceteris-tabs
-     * plugin (extensions/ceteris-tabs). Checked on every request, so it applies at once.
-     */
-    tabControl: boolean;
-    /**
      * Whether the user closed the coordinator guide with Got it (ADR-024). Default false, and
      * older settings files get false too, so everyone sees the guide once after the update:
      * on the next launch, and again the first time they tick Coordinator until they close it.
@@ -848,6 +872,18 @@ export interface Settings {
    */
   notifications: {
     enabled: boolean;
+    /**
+     * ADR-057: done notifications written by a model in a cute voice, through the OpenRouter
+     * key connected in Settings → AI. Off by default; any failure shows the plain text.
+     */
+    ai: {
+      enabled: boolean;
+      voice: PushVoiceId;
+      /** OpenRouter model id, '' = PUSH_VOICE_DEFAULT_MODEL (GLM 5.3 Flash) */
+      model: string;
+      /** Also send the last 600 characters of the agent's screen, not only names */
+      includeAnswer: boolean;
+    };
   };
 }
 

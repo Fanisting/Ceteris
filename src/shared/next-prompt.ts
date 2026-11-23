@@ -142,7 +142,9 @@ export function addNextPromptUsage(
   const cost = count(u['cost']);
   const before = total.daily?.[day] ?? { calls: 0, costUsd: 0 };
   // A day saved before models were kept has no split; its earlier calls stay unattributed.
-  const models = before.models ?? (before.calls > 0 ? { [UNKNOWN_MODEL]: { calls: before.calls, costUsd: before.costUsd } } : {});
+  const models =
+    before.models ??
+    (before.calls > 0 ? { [UNKNOWN_MODEL]: { calls: before.calls, costUsd: before.costUsd } } : {});
   const m = models[model] ?? { calls: 0, costUsd: 0 };
   const daily = {
     ...total.daily,
@@ -219,7 +221,8 @@ const FREQUENT_PROMPT_MAX_CHARS = 100;
  * Agent commands that leave, switch or configure the session. Frequent, but never the
  * next message after the agent stops, so they would only push real habits off the list.
  */
-const SESSION_COMMANDS = /^\/(exit|quit|resume|model|login|logout|config|status|help|theme|settings)\b/i;
+const SESSION_COMMANDS =
+  /^\/(exit|quit|resume|model|login|logout|config|status|help|theme|settings)\b/i;
 
 /**
  * The messages a developer repeats, most frequent first. Case and spacing are ignored when
@@ -376,6 +379,17 @@ export function detectAgent(templateId: string, screen: string): AgentKind | nul
   if (templateId === 'codex' || CODEX_SCREEN.test(screen)) return 'codex';
   return CLAUDE_SCREEN.test(screen) ? 'claude' : null;
   return null;
+}
+
+/**
+ * True when a chunk from xterm onData is only focus reports (ESC [ I, ESC [ O), not typing.
+ * Claude Code turns on focus reporting (DECSET 1004), so pressing the suggestion chip blurs
+ * the terminal and xterm sends ESC [ O. Treating that as typing hid the chip between
+ * mousedown and click, and the click never landed.
+ */
+export function isFocusReport(data: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /^(?:\x1b\[[IO])+$/.test(data);
 }
 
 /** Turn a model reply into text fit to type, or null when there is nothing to offer. */

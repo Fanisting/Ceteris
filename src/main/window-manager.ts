@@ -303,6 +303,18 @@ export class WindowManager implements IWindowManager {
     };
     win.on('maximize', sendMaxState);
     win.on('unmaximize', sendMaxState);
+    // Electron emits `resized` once when an edge drag ends (Windows and macOS; Linux never).
+    // Terminals wait 150 ms after the last size change before resizing the PTY, because a
+    // resize during the drag garbles ConPTY output (known-issues KI-001). The end of the drag
+    // is the moment they were waiting for, so tell them and skip the wait.
+    win.on('resized', () => {
+      if (win.isDestroyed()) return;
+      win.webContents.send('evt:window:resized', {
+        eventId: randomUUID(),
+        timestamp: Date.now(),
+        payload: undefined,
+      });
+    });
     // ready-to-show 后也发一次,renderer 初始就知道状态
     win.once('ready-to-show', () => {
       sendMaxState();

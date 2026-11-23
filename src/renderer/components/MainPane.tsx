@@ -1426,7 +1426,6 @@ function Tab({ session, myWindowId, selected }: TabProps): JSX.Element {
     >
       <AgentWave
         running={waving}
-        selected={selected}
         work={session.agentWork ?? null}
         pace={session.agentPace ?? null}
       />

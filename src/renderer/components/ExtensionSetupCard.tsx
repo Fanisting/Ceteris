@@ -42,7 +42,7 @@ import { useTypeIntoNewTerminal } from './type-into-terminal';
 
 interface Item {
   id: ExtensionSetupItemId;
-  group: 'claude' | 'codex' | 'ceteris';
+  group: 'claude' | 'codex';
   title: [string, string];
   detail: [string, string];
 }
@@ -84,21 +84,11 @@ const ITEMS: Item[] = [
       'LaTeX in the terminal is drawn with KaTeX; one line in ~/.codex/AGENTS.md tells Codex how to write it',
     ],
   },
-  {
-    id: 'coordinator',
-    group: 'ceteris',
-    title: ['协调者控制标签页', 'Coordinator tab control'],
-    detail: [
-      '标记为协调者的标签里的 Claude Code 或 Codex 可以新开、输入、读取同文件夹的其他标签',
-      'Claude Code or Codex in a tab marked Coordinator can open, type into and read the other tabs of its folder',
-    ],
-  },
 ];
 
 const GROUPS: { id: Item['group']; title: [string, string] }[] = [
   { id: 'claude', title: ['Claude Code', 'Claude Code'] },
   { id: 'codex', title: ['Codex', 'Codex'] },
-  { id: 'ceteris', title: ['Ceteris', 'Ceteris'] },
 ];
 
 export function ExtensionSetupCard(): JSX.Element | null {

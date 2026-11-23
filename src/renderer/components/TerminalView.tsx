@@ -146,8 +146,11 @@ import {
   pastedLineCount,
   type TypeAheadWrite,
 } from '@shared/type-ahead';
+import { isWheelReport, WheelBatch } from '@shared/wheel-batch';
 import { detectAgent } from '@shared/next-prompt';
+import { PasteLanding } from '@shared/paste-landing';
 import { ColonTracker, findColonCommand } from '@shared/colon-commands';
+import { isFocusReport } from '@shared/next-prompt';
 import type {
   LinkConnectionStatePayload,
   SuggestNextPromptPayload,
@@ -886,10 +889,10 @@ export function getXtermTheme(themeId: ThemeId | undefined): ITheme {
  * 避免无差别加深破坏深色主题里故意调淡的颜色(如 prompt hint、git diff
  * context 行等)。
  */
-function isLightTheme(themeId: ThemeId | undefined): boolean {
+export function isLightTheme(themeId: ThemeId | undefined): boolean {
   return getXtermTheme(themeId).extendedAnsi === LIGHT_EXTENDED_ANSI;
 }
-const LIGHT_THEME_MIN_CONTRAST = 4.5;
+export const LIGHT_THEME_MIN_CONTRAST = 4.5;
 const SSH_STARTUP_DA_FILTER_MS = 5000;
 
 /** Lines from the end of the buffer used to guess the next prompt. */
@@ -1822,6 +1825,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
 
     // Remote windows only: on a local terminal the echo is already instant.
     let echo: LocalEcho | null = null;
+    // Remote windows only: wheel steps of a program that tracks the mouse travel in batches,
+    // one write on its way at a time (wheel-batch.ts). Locally each step is instant anyway.
+    let wheelBatch: WheelBatch | null = null;
     const outputDecoder = new TextDecoder();
 
     // ADR-051 输出流控:每段写进 xterm 的 live 输出,解析完后 ack 给 main
@@ -1851,11 +1857,15 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     acker.setHidden(document.hidden);
     const onVisibility = (): void => acker.setHidden(document.hidden);
     document.addEventListener('visibilitychange', onVisibility);
+    // Remote windows: the long paste pill stays until the agent has drawn the paste, not
+    // only until the Host accepted it (paste-landing.ts). Fed once output is on screen.
+    const pasteLanding = new PasteLanding();
     const writeLive = (bytes: Uint8Array): void => {
       if (bytes.length > 0) markOutput();
       const parsed = acker.received(bytes.length);
       term.write(bytes, () => {
         parsed?.();
+        pasteLanding.output(Date.now());
         echo?.noteOutput(outputDecoder.decode(bytes, { stream: true }));
       });
     };
@@ -1874,12 +1884,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         // goes to the program as before.
         term.options.mouseEventsRequireAlt = true;
         echo = attachLocalEcho(term);
+        wheelBatch = new WheelBatch(sendQueuedAwait);
         typeAhead = new TypeAhead(loadTypeAhead(session.id));
-        typeAheadView = attachTypeAheadView(
-          term,
-          tx('按 Enter 发送', 'sends on Enter'),
-          () => !typeAhead!.isLive && promptReady(),
-        );
+        typeAheadView = attachTypeAheadView(term, () => !typeAhead!.isLive && promptReady());
         showTypeAhead();
         typeAheadRef.current = {
           take(text) {
@@ -1900,11 +1907,22 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
             // raw \r inside the lines would submit the agent's prompt halfway through.
             const data = payload !== text ? payload : asTyped(text);
             pastesInFlight++;
+            // A wait for an earlier paste must not hide the pill of this one.
+            pasteLanding.reset();
             setPasteSending(lines);
             void sendQueuedAwait(data).then((sent) => {
               pastesInFlight--;
-              // After a remount the counter starts over, so clear on every finish at zero.
-              if (pastesInFlight === 0) setPasteSending(null);
+              if (pastesInFlight === 0) {
+                // Accepted: keep the pill until the agent has drawn the paste. Failed, or
+                // this closure is gone after a remount (its counter started over): clear now.
+                if (sent && !disposed) {
+                  pasteLanding.accepted(Date.now());
+                  checkPasteLanded();
+                } else {
+                  pasteLanding.reset();
+                  setPasteSending(null);
+                }
+              }
               if (sent || disposed) return;
               // sendInput toasts when the Host refuses; a dropped link toasts here.
               if (Date.now() - lastInputRejectToastAtRef.current < 5000) return;
@@ -2144,6 +2162,23 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       },
     );
 
+    // The user let go of the window edge: the drag is over, which is what the 150 ms debounce
+    // waits to be sure of, so resize now. Claude Code then redraws about 150 to 300 ms sooner
+    // than after the debounce. Linux never sends this; the debounce still covers it, and
+    // sidebar or split drags inside the window.
+    const cleanupWindowResized = window.api.on<undefined>(EVENT_CHANNELS.WINDOW_RESIZED, () => {
+      if (disposed) return;
+      if (resizeTimer !== null) {
+        clearTimeout(resizeTimer);
+        resizeTimer = null;
+      }
+      // One frame so the layout has the final size before fit measures it.
+      requestAnimationFrame(() => {
+        if (disposed) return;
+        performResize();
+      });
+    });
+
     // 用户键盘输入 → 发回 PTY。
     //
     // TYP-1 / IPC-4:main 现在返回 { accepted, reason }。accepted=false 时
@@ -2235,8 +2270,12 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
         });
         return;
       }
+      if (wheelBatch && isWheelReport(data)) {
+        wheelBatch.push(data);
+        return;
+      }
       if (typeAheadTakes()) {
-        setSuggestion(null);
+        if (!isFocusReport(data)) setSuggestion(null);
         routeTypeAhead(typeAhead!.feed(data, resolveColonCommand));
         return;
       }
@@ -2251,7 +2290,8 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
     const sendInput = (data: string): Promise<boolean> => {
       const toSend = colonTracker.feed(data, resolveColonCommand);
       const base64 = encodeStringToBase64(toSend);
-      setSuggestion(null);
+      // A focus report is the terminal talking, not the user typing; see isFocusReport.
+      if (!isFocusReport(toSend)) setSuggestion(null);
       const echoId = echo?.noteInput(toSend) ?? null;
       return window.api
         .invoke<{ sessionId: string; data: string }, SendInputResponse>(
@@ -2313,6 +2353,17 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       return sent;
     };
     let pastesInFlight = 0;
+    let pasteCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Hides the long paste pill once pasteLanding says the paste is on screen. */
+    const checkPasteLanded = (): void => {
+      if (pasteCheckTimer !== null) clearTimeout(pasteCheckTimer);
+      pasteCheckTimer = null;
+      if (disposed) return;
+      const wait = pasteLanding.wait(Date.now());
+      if (wait === null) return;
+      if (wait === 0) setPasteSending(null);
+      else pasteCheckTimer = setTimeout(checkPasteLanded, wait);
+    };
 
     /** Multi-line text goes as a paste when the program asked for that, so a newline cannot submit. */
     const asTyped = (text: string): string =>
@@ -2359,10 +2410,17 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       document.removeEventListener('visibilitychange', onVisibility);
       cleanupResync();
       rounds.dispose();
+      if (pasteCheckTimer !== null) {
+        // The wait dies with this closure, so its pill goes too.
+        clearTimeout(pasteCheckTimer);
+        setPasteSending(null);
+      }
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       cleanupMaxState();
+      cleanupWindowResized();
       echo?.dispose();
+      wheelBatch?.close();
       typeAheadView?.dispose();
       typeAheadRef.current = null;
       cleanupOutput();
@@ -2743,7 +2801,9 @@ export function TerminalView({ session }: TerminalViewProps): JSX.Element {
       {/* Floats over the terminal. Taking layout space would resize the PTY and make the
           agent redraw every time a suggestion appears. */}
       {suggestion && (
-        <div className="next-prompt-chip">
+        // preventDefault on mousedown keeps focus in xterm, so pressing the chip sends no
+        // focus out report to the agent and the agent does not redraw under the click.
+        <div className="next-prompt-chip" onMouseDown={(e) => e.preventDefault()}>
           <button
             type="button"
             className="next-prompt-accept"

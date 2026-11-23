@@ -3626,126 +3626,78 @@ select.settings-input option {
   cursor: auto;
 }
 
-/* 选择面板:问题一行,选项一列按钮,带指针的那项描边用强调色。颜色一律继承 toast 的:
-   Material 皮肤把 toast 画在反色面上,普通文字变量在那上面看不见 */
-.toast-choice-question {
-  margin-bottom: 4px;
-  opacity: 0.75;
-  white-space: pre-wrap;
-  word-break: break-word;
+/* 选择面板:展开后宽度是标签页宽减去两边各 16px(ChoicePanel 量好写进 --choice-width)。
+   里面照原样画 agent 屏幕上的提示行,颜色走终端主题;每个选项的几行是一个按钮。
+   面板外的文字颜色一律继承 toast 的:Material 皮肤把 toast 画在反色面上 */
+.toast.choice-wide {
+  width: var(--choice-width, 420px);
+  max-width: none;
+  margin-right: var(--choice-shift, 0);
+  flex-wrap: wrap;
 }
 
-.toast-choice-list {
+/* 宽面板里消息、按钮、关闭留在第一行,提示的副本另起一行占满整个宽度 */
+.toast.choice-wide .toast-body {
+  display: contents;
+}
+
+.toast.choice-wide .toast-message {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.toast.choice-wide .toast-detail {
+  order: 10;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.toast-choice {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
-.toast-choice-option {
+.toast-choice-screen {
+  max-height: 60vh;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  line-height: 1.25;
+}
+
+.toast-choice-row {
+  white-space: pre;
+}
+
+.toast-choice-hit {
   display: block;
   width: 100%;
-  text-align: left;
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
-  border-radius: 6px;
+  min-width: max-content;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
   background: transparent;
   color: inherit;
   font: inherit;
+  text-align: left;
   cursor: pointer;
-  white-space: normal;
-  word-break: break-word;
 }
 
-.toast-choice-option:hover:not(:disabled) {
-  background-color: color-mix(in srgb, currentcolor 12%, transparent);
+.toast-choice-hit:hover:not(:disabled),
+.toast-choice-hit.editing {
+  background-color: color-mix(in srgb, var(--color-accent-special, #f0f) 22%, transparent);
+  outline: 1px solid var(--color-accent-special, #f0f);
 }
 
-.toast-choice-option:disabled {
+.toast-choice-hit:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-.toast-choice-option.pointed {
-  border-color: var(--color-accent-special, #f0f);
-}
-
-.toast-choice-option .toast-choice-index {
-  opacity: 0.7;
-  margin-right: 6px;
-}
-
-.toast-choice-option .toast-choice-note {
-  opacity: 0.7;
-  margin-left: 6px;
-}
-
 .toast-choice-empty {
   opacity: 0.75;
-}
-
-/* 分页提问的页签:答过的打勾,提交页在最后 */
-.toast-choice-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-
-.toast-choice-step {
-  padding: 1px 8px;
-  border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
-  border-radius: 999px;
-  font-size: 11px;
-  opacity: 0.75;
-}
-
-.toast-choice-step.done {
-  opacity: 1;
-}
-
-.toast-choice-step.current {
-  opacity: 1;
-  border-color: var(--color-accent-special, #f0f);
-}
-
-/* 提交页:已选的答案 */
-.toast-choice-review {
-  margin-bottom: 6px;
-}
-
-.toast-choice-review-line {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.toast-choice-review-line.answer {
-  padding-left: 12px;
-  opacity: 0.8;
-}
-
-.toast-choice-review-line.warn {
-  color: var(--color-warning, #f0f);
-}
-
-.toast-choice-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.toast-choice-option.chosen {
-  border-color: color-mix(in srgb, currentcolor 55%, transparent);
-}
-
-.toast-choice-box {
-  margin-right: 6px;
-}
-
-.toast-choice-desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-  opacity: 0.7;
 }
 
 /* 打字回答 / 留言的输入行 */

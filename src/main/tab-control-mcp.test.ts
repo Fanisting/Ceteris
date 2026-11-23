@@ -41,9 +41,8 @@ afterEach(async () => {
 
 async function start(sessions: SessionInfo[]) {
   const writes: string[] = [];
-  const shown: { sessionId: string; path: string }[] = [];
+  const shown: { sessionId: string; path: string; more?: unknown[] | undefined }[] = [];
   const host: TabControlHost = {
-    enabled: () => true,
     list: () => sessions,
     get: (id) => sessions.find((s) => s.id === id) ?? null,
     templates: () => [] as Template[],
@@ -59,7 +58,7 @@ async function start(sessions: SessionInfo[]) {
     screenTail: () => '',
     bracketedPaste: () => false,
     isFile: async (path) => path.endsWith('answer.md'),
-    showFile: ({ sessionId, path }) => shown.push({ sessionId, path }),
+    showFile: ({ sessionId, path, more }) => shown.push({ sessionId, path, more }),
     setAgentSession: () => {},
   };
   server = new TabControlServer(host, 'node');
@@ -107,6 +106,22 @@ describe('ceteris-tabs MCP server', () => {
     expect(shown).toHaveLength(1);
     expect(shown[0]!.sessionId).toBe('boss');
     expect(shown[0]!.path.endsWith('answer.md')).toBe(true);
+  });
+
+  it('opens several files in one call and names the ones left in the header (ADR-059)', async () => {
+    const { server: s, shown } = await start([session('boss')]);
+    const reply = await handleMessage(s.envFor('boss'), {
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'tools/call',
+      params: { name: 'open_file', arguments: { paths: ['answer.md', 'notes/answer.md'] } },
+    });
+    expect(reply.result.isError).toBeUndefined();
+    const text: string = reply.result.content[0].text;
+    expect(text).toContain('Also listed in the viewer header');
+    expect(text).toContain('notes');
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.more).toHaveLength(1);
   });
 
   it('reports a refusal from Ceteris as a tool error', async () => {

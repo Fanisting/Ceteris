@@ -3,6 +3,7 @@ import { suggestAgentTitle } from './agent-title-client';
 
 const request = {
   screen: '> fix login',
+  promptScreen: '',
   currentTitle: '',
   agentTitle: null,
   guide: 'tiny',
@@ -26,6 +27,17 @@ describe('suggestAgentTitle (ADR-029)', () => {
     expect(url).toContain('openrouter.ai');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer k');
     expect(String(init.body)).toContain('tiny');
+  });
+
+  it('throws on an empty reply, so the titler hands the tab back to the agent', async () => {
+    const fetchImpl = vi.fn(async () => reply('  '));
+    await expect(
+      suggestAgentTitle(
+        { apiKey: 'k', baseURL: '', model: '' },
+        request,
+        fetchImpl as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow(/empty reply/);
   });
 
   it('never sends the OpenRouter key to a custom address', async () => {

@@ -3,21 +3,24 @@ import { AgentTitler, type AgentTitlerHost } from './agent-titler';
 
 function makeHost(overrides: Partial<AgentTitlerHost> = {}) {
   const titles: string[] = [];
+  const released: string[] = [];
   let enterAt = 0;
   const host: AgentTitlerHost = {
     onSessionChanged: () => undefined,
     onSessionDestroyed: () => undefined,
     getScreenTail: () => '> fix the login bug\nDone.',
+    getPromptScreen: () => '> fix the login bug',
     getLastEnterAt: () => enterAt,
     currentTitle: () => 'Claude Code',
     isManuallyRenamed: () => false,
     getAgentOscTitle: () => null,
     setAiTitle: (_id, title) => titles.push(title),
+    releaseAiTitle: (id) => released.push(id),
     titleSettings: () => ({ guide: '', maxChars: 24 }),
     suggest: vi.fn(async () => 'Fix login'),
     ...overrides,
   };
-  return { host, titles, setEnter: (t: number) => (enterAt = t) };
+  return { host, titles, released, setEnter: (t: number) => (enterAt = t) };
 }
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -78,5 +81,38 @@ describe('AgentTitler (ADR-029)', () => {
     release('A');
     await flush();
     expect(suggest).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the screen from the user's last Enter with the request", async () => {
+    const { host } = makeHost();
+    const t = new AgentTitler(host);
+    t.onChange('s', { templateId: 'codex', state: 'active', agentPhase: 'working' });
+    t.onChange('s', { templateId: 'codex', state: 'idle', agentPhase: 'done' });
+    await flush();
+    expect(host.suggest).toHaveBeenCalledWith(
+      expect.objectContaining({ promptScreen: '> fix the login bug' }),
+    );
+  });
+
+  it('hands the tab back to the agent titles when a request fails', async () => {
+    const suggest = vi.fn(async () => {
+      throw new Error('402 no credit');
+    });
+    const { host, titles, released } = makeHost({ suggest });
+    const t = new AgentTitler(host);
+    t.onChange('s', { templateId: 'codex', state: 'active', agentPhase: 'working' });
+    t.onChange('s', { templateId: 'codex', state: 'idle', agentPhase: 'done' });
+    await flush();
+    expect(titles).toEqual([]);
+    expect(released).toEqual(['s']);
+  });
+
+  it('hands the tab back when titles were turned off or disconnected', async () => {
+    const { host, released } = makeHost({ titleSettings: () => null });
+    const t = new AgentTitler(host);
+    t.onChange('s', { templateId: 'codex', state: 'active', agentPhase: 'working' });
+    t.onChange('s', { templateId: 'codex', state: 'idle', agentPhase: 'done' });
+    await flush();
+    expect(released).toEqual(['s']);
   });
 });

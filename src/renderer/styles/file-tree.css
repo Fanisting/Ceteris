@@ -292,12 +292,117 @@
   font-size: 12px;
 }
 
+/* The name is a button: a click copies it. It shrinks to its text so the copy button sits
+   right after it; .pdf-overlay-spacer takes the free width instead. The negative margin
+   keeps the text where it was before the button got its hover padding. */
 .pdf-overlay-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  height: 22px;
+  margin-left: -6px;
+  padding: 0 6px;
   overflow: hidden;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.pdf-overlay-name:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+}
+
+.pdf-overlay-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* ADR-059: open files as pills in the viewer header; the current one filled like the
+   Preview / Edit switch. The x shows on hover and on the current pill only. */
+.file-pills {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  border-radius: var(--block-radius, 8px);
+  color: var(--color-text-muted, #f0f);
+}
+
+.file-pill:hover {
+  background-color: var(--color-bg-elevated, #f0f);
+  color: var(--color-text-primary, #f0f);
+}
+
+.file-pill.current {
+  flex-shrink: 1;
+  min-width: 48px;
+  background-color: var(--md-secondary-container, #f0f);
+  color: var(--md-on-secondary-container, #f0f);
+}
+
+.file-pill-name {
+  min-width: 0;
+  max-width: 160px;
+  height: 100%;
+  padding: 0 2px 0 8px;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.file-pill-remove {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 3px;
+  padding: 0;
+  border: none;
+  border-radius: var(--block-radius, 8px);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.file-pill:hover .file-pill-remove,
+.file-pill.current .file-pill-remove {
+  visibility: visible;
+}
+
+.file-pill-remove:hover {
+  background-color: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.file-pill-more {
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 4px 0 8px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .pdf-overlay-close {
@@ -552,6 +657,10 @@
   white-space: nowrap;
 }
 
+.pdf-overlay-badge-warn {
+  color: var(--color-warning, #f0f);
+}
+
 .pdf-overlay-badge-error {
   color: var(--color-warning, #f0f);
   cursor: pointer;
@@ -588,6 +697,32 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* Zoomed: the picture keeps the size ImageView sets and the pane scrolls. margin: auto
+ * centres a small picture; justify-content: center would cut off the left and top of a
+ * large one so they could not be scrolled to. */
+.file-view-image.zoomed {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: auto;
+}
+
+.file-view-image.zoomed img {
+  flex: none;
+  max-width: none;
+  max-height: none;
+  margin: auto;
+}
+
+.file-view-image.pannable {
+  cursor: grab;
+}
+
+.file-view-image.dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 /* Pane layout only. Typography and colors come from markdown-onepage.css.

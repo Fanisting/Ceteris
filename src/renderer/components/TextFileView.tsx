@@ -145,6 +145,34 @@ async function loadFile(source: PdfSource): Promise<Loaded> {
   };
 }
 
+/** Result of reading a text file for the header's copy button. */
+export type TextForCopy =
+  | { ok: true; text: string }
+  | { ok: false; reason: 'too-large' | 'unreadable' };
+
+/**
+ * The text the copy button in PdfOverlay's header puts on the clipboard: the unsaved draft
+ * when there is one, so the user copies what they see, otherwise the file decoded the same
+ * way the editor decodes it.
+ *
+ * @returns too-large for files shown in pages (over TEXT_EDIT_MAX_BYTES): putting many MB on
+ *   the clipboard by accident can freeze the app that pastes it. unreadable when the read
+ *   failed (file gone, no permission, the file changed mid-read, Link dropped).
+ * @sideeffects reads the file again; never throws.
+ */
+export async function readTextForCopy(source: PdfSource): Promise<TextForCopy> {
+  try {
+    const draft = getTextDraft(await draftKeyOf(source));
+    if (draft) return { ok: true, text: draft.value };
+    const loaded = await loadFile(source);
+    if (loaded.mode === 'edit') return { ok: true, text: loaded.decoded.text };
+    return { ok: false, reason: loaded.mode === 'pages' ? 'too-large' : 'unreadable' };
+  } catch (err) {
+    console.warn('[TextFileView] read for copy failed', source.path, err);
+    return { ok: false, reason: 'unreadable' };
+  }
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

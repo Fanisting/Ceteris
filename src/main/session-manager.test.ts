@@ -248,7 +248,6 @@ function makeStubSettingsManager(
     extensions: {
       claudeMathImages: false,
       terminalMath: false,
-      tabControl: false,
       tabControlGuideSeen: false,
       setupSeen: false,
       colonCommands: { enabled: false, commands: [] },
@@ -263,7 +262,10 @@ function makeStubSettingsManager(
       savedHosts: [],
     },
     agents: { folderDefaults },
-    notifications: { enabled: true },
+    notifications: {
+      enabled: true,
+      ai: { enabled: false, voice: 'mascot', model: '', includeAnswer: true },
+    },
   };
   return {
     get: (): Settings => settings,
@@ -1277,11 +1279,29 @@ describe('SessionManager — 状态机 (active / idle / exited)', () => {
         rows: 24,
       });
       expect(mgr.readChoice(info.id)).toBeNull();
+      expect(mgr.readChoiceView(info.id)).toEqual({ prompt: null, screen: [] });
       expect(await run(mgr, { sessionId: info.id, index: 2 })).toEqual({
         sent: false,
         reason: 'no-prompt',
       });
       expect(FakePty.instances[0]!.written).toEqual([]);
+    });
+
+    it('hands the panel the prompt rows as drawn, colours included', async () => {
+      const { mgr, fp, id } = await atPrompt();
+      const rows = choice(0);
+      rows[0] = '\x1b[1mWhich colour?\x1b[0m';
+      rows[1] = '\x1b[38;2;177;185;249m❯ 1. Red\x1b[0m';
+      draw(fp, ['Earlier output', ...rows]);
+      await vi.advanceTimersByTimeAsync(400);
+      const view = mgr.readChoiceView(id);
+      expect(view.prompt?.region).toEqual({ from: 1, to: 7 });
+      expect(view.screen).toHaveLength(7);
+      expect(view.screen[0]).toEqual([{ text: 'Which colour?', bold: true }]);
+      expect(view.screen[1]).toEqual([{ text: '❯ 1. Red', fg: '#b1b9f9' }]);
+      expect(view.screen[6]).toEqual([
+        { text: 'Enter to select · ↑/↓ to navigate · Esc to cancel' },
+      ]);
     });
 
     it('moves the pointer, waits for it to arrive, then presses Enter', async () => {
@@ -3321,6 +3341,42 @@ describe('SessionManager — agent tab titles (ADR-029)', () => {
     settings.get().ai.tabTitles.enabled = false;
     pty.emitData('\x1b]0;✳ Something else\x07');
     expect(mgr.get(id)!.displayName).toBe('Something else');
+  });
+
+  it("gives the tab back to the agent's latest title when the model title is released", async () => {
+    const { mgr, settings, id, pty } = await startClaude();
+    settings.get().ai.tabTitles.enabled = true;
+    mgr.setAiTitle(id, 'Idle timer');
+    pty.emitData('\x1b]0;✳ Fix login\x07');
+    expect(mgr.get(id)!.displayName).toBe('Idle timer');
+    mgr.releaseAiTitle(id);
+    expect(mgr.get(id)!.displayName).toBe('Fix login');
+    pty.emitData('\x1b]0;✳ Add tests\x07');
+    expect(mgr.get(id)!.displayName).toBe('Add tests');
+  });
+
+  it('keeps a name the user chose when the model title is released', async () => {
+    const { mgr, id, pty } = await startClaude();
+    pty.emitData('\x1b]0;✳ Fix login\x07');
+    mgr.setAiTitle(id, 'Idle timer');
+    mgr.renameSession(id, 'mine');
+    mgr.releaseAiTitle(id);
+    expect(mgr.get(id)!.displayName).toBe('mine');
+  });
+
+  it('keeps the screen at Enter as the prompt, but not at an approval prompt', async () => {
+    const { mgr, id, pty } = await startClaude();
+    const enter = (): void => void mgr.sendInput(id, Buffer.from('\r').toString('base64'));
+    const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 400));
+    pty.emitData('> explain the cache layer\r\n');
+    await settle();
+    enter();
+    expect(mgr.getPromptScreen(id)).toContain('explain the cache layer');
+    pty.emitData('│ Do you want to proceed?\r\n│ ❯ 1. Yes\r\n│   2. No\r\n');
+    await settle();
+    expect(mgr.get(id)!.agentPhase).toBe('blocked');
+    enter();
+    expect(mgr.getPromptScreen(id)).not.toContain('Do you want to proceed');
   });
 
   it('never puts a model title over a name the user chose', async () => {

@@ -7,7 +7,8 @@
  * @关键设计:
  * - TerminalView 始终挂载:卸载它会重建 xterm,PTY 输出和滚动位置都受影响。分屏只靠
  *   CSS (.session-stage-beside),终端宽度变化走它自己的 fit。
- * - PDF 由 PdfJsViewer(pdf.js)渲染,文件更新后换文档保持页码。图片用 <img>,
+ * - PDF 由 PdfJsViewer(pdf.js)渲染,文件更新后换文档保持页码。图片由 ImageView 显示,
+ *   打开时适应窗格,标题栏按钮和 Ctrl+滚轮缩放,放大后拖动平移。
  *   markdown 用 markdown-it,html 关闭,原始 HTML 只当文本显示,不会在应用里执行。
  *   链接都交给系统浏览器:在窗口里跟着链接走会把应用页面换掉。
  * - 显示期间 watchPdf 轮询文件,变了自动重读(见 pdf-view-store.ts)。标题栏显示
@@ -23,8 +24,15 @@
  *   buttons, and the zoom buttons hide because the page always fits. The choice is kept per
  *   view key and path in slidesChoices for the life of the window, so switching sessions and
  *   coming back keeps it, while another file starts in Scroll.
+ * - A click on the file name copies the name. Text and Markdown files get a copy button right
+ *   after the name that copies the contents: the unsaved draft if there is one, otherwise the
+ *   file (readTextForCopy). Files too large to edit are not copied. A short note after the
+ *   button says what happened; it goes through clipboard.ts, never navigator.clipboard.
+ * - ADR-059: with two or more files opened beside the tab (open_file with several paths, or
+ *   several file tree clicks) the name turns into FilePills, one pill per file. The current
+ *   pill still copies the name; the others switch to their file.
  *
- * @对应文档章节: 软件定义书.md 14.6, ADR-028
+ * @对应文档章节: 软件定义书.md 14.6, ADR-028, ADR-059
  *
  * @不要在这里做的事:
  * - 不要给 PDF 和图片加编辑或批注。文本编辑见 TextFileView
@@ -40,17 +48,33 @@ import {
   closePdf,
   markPdfShown,
   refreshPdf,
+  usePdfFileList,
   usePdfView,
   watchPdf,
   type ReadyPdfView,
 } from '../pdf-view-store';
+import { writeClipboardText } from '../clipboard';
+import { FilePills } from './FilePills';
 import { getTextDraft } from '../text-drafts';
 import { Icon } from './icons';
+import { ImageView, type ImageViewHandle } from './ImageView';
 import { useTranslation } from './LanguageProvider';
-import { ChevronRight, FitWidth, Sync, ZoomIn, ZoomOut } from './material-symbols';
+import {
+  Check,
+  ChevronRight,
+  ContentCopy,
+  FitWidth,
+  Sync,
+  ZoomIn,
+  ZoomOut,
+} from './material-symbols';
 import { PdfJsViewer, type PdfJsViewerHandle } from './PdfJsViewer';
 import { ShapeLoader } from './ShapeLoader';
-import { draftKeyOf, TextFileView } from './TextFileView';
+import { draftKeyOf, readTextForCopy, TextFileView, type TextForCopy } from './TextFileView';
+
+/** What the last header copy did; shown as a short note after the copy button. */
+type CopyNotice = 'name' | 'content' | 'too-large' | 'failed';
+const COPY_NOTICE_MS = 1500;
 
 /**
  * How a Markdown file is shown. Tied to a path, so opening another file starts in preview.
@@ -130,12 +154,22 @@ function RefreshBadge({
 export function PdfOverlay({ viewKey }: { viewKey: string }): JSX.Element | null {
   const { t, tx } = useTranslation();
   const view = usePdfView(viewKey);
+  const fileCount = usePdfFileList(viewKey).length;
   const generation = view?.generation;
   const viewerRef = useRef<PdfJsViewerHandle | null>(null);
+  const imageRef = useRef<ImageViewHandle | null>(null);
   const [markdownMode, setMarkdownMode] = useState<MarkdownMode | null>(null);
   const [, setSlidesTick] = useState(0);
   const [pageInfo, setPageInfo] = useState<{ page: number; total: number } | null>(null);
+  // seq makes a second click restart the timer even when the notice text is the same.
+  const [copyNotice, setCopyNotice] = useState<{ notice: CopyNotice; seq: number } | null>(null);
   const source = view?.source;
+
+  useEffect(() => {
+    if (!copyNotice) return undefined;
+    const timer = window.setTimeout(() => setCopyNotice(null), COPY_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [copyNotice]);
 
   // A new file or a reload from scratch must not show the previous file's page numbers.
   useEffect(() => {
@@ -188,11 +222,82 @@ ${view.source.path}`;
     if (draft === null) void refreshPdf(viewKey, { fresh: false });
   };
 
+  const notify = (notice: CopyNotice): void =>
+    setCopyNotice((prev) => ({ notice, seq: (prev?.seq ?? 0) + 1 }));
+
+  const copyName = async (): Promise<void> => {
+    notify((await writeClipboardText(view.source.name)) ? 'name' : 'failed');
+  };
+
+  // Only text kinds have contents worth copying; PDFs and pictures get no button.
+  const canCopyContent = ready !== null && (kind === 'text' || kind === 'markdown');
+  const copyContent = async (): Promise<void> => {
+    const viewSource = view.source;
+    // Markdown is already in memory for the preview. An unsaved draft still wins, so the
+    // user copies what the editor shows.
+    const markdownText = ready?.text ?? null;
+    const result: TextForCopy =
+      markdownText !== null && !getTextDraft(await draftKeyOf(viewSource))
+        ? { ok: true, text: markdownText }
+        : await readTextForCopy(viewSource);
+    if (!result.ok) {
+      notify(result.reason === 'too-large' ? 'too-large' : 'failed');
+      return;
+    }
+    notify((await writeClipboardText(result.text)) ? 'content' : 'failed');
+  };
+
+  const noticeText: Record<CopyNotice, string> = {
+    name: tx('已复制文件名', 'Name copied'),
+    content: tx('已复制内容', 'Contents copied'),
+    'too-large': tx('文件太大,无法复制', 'Too large to copy'),
+    failed: tx('复制失败', 'Copy failed'),
+  };
+  const copyLabel = tx('复制内容', 'Copy contents');
+
   return (
     <section className="pdf-overlay" aria-label={view.source.name}>
       <header className="pdf-overlay-header" title={view.source.path}>
-        <span className="pdf-overlay-name">{view.source.name}</span>
+        {fileCount > 1 ? (
+          <FilePills viewKey={viewKey} shown={view.source} onCopyName={() => void copyName()} />
+        ) : (
+          <button
+            type="button"
+            className="pdf-overlay-name"
+            title={tx(
+              `点击复制文件名\n${view.source.path}`,
+              `Click to copy the name\n${view.source.path}`,
+            )}
+            onClick={() => void copyName()}
+          >
+            {view.source.name}
+          </button>
+        )}
+        {canCopyContent && (
+          <button
+            type="button"
+            className="pdf-overlay-tool"
+            title={copyLabel}
+            aria-label={copyLabel}
+            onClick={() => void copyContent()}
+          >
+            {copyNotice?.notice === 'content' ? <Check size={16} /> : <ContentCopy size={16} />}
+          </button>
+        )}
+        {copyNotice && (
+          <span
+            className={`pdf-overlay-badge${
+              copyNotice.notice === 'too-large' || copyNotice.notice === 'failed'
+                ? ' pdf-overlay-badge-warn'
+                : ''
+            }`}
+            aria-live="polite"
+          >
+            {noticeText[copyNotice.notice]}
+          </span>
+        )}
         {ready && <RefreshBadge viewKey={viewKey} view={ready} />}
+        <span className="pdf-overlay-spacer" />
         {ready && kind === 'pdf' && slides && (
           <span className="pdf-overlay-tools">
             <button
@@ -246,6 +351,37 @@ ${view.source.path}`;
               title={t('pdf.fitWidth')}
               aria-label={t('pdf.fitWidth')}
               onClick={() => viewerRef.current?.fitWidth()}
+            >
+              <FitWidth size={16} />
+            </button>
+          </span>
+        )}
+        {ready && kind === 'image' && (
+          <span className="pdf-overlay-tools">
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={t('pdf.zoomOut')}
+              aria-label={t('pdf.zoomOut')}
+              onClick={() => imageRef.current?.zoomOut()}
+            >
+              <ZoomOut size={16} />
+            </button>
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={t('pdf.zoomIn')}
+              aria-label={t('pdf.zoomIn')}
+              onClick={() => imageRef.current?.zoomIn()}
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              type="button"
+              className="pdf-overlay-tool"
+              title={tx('适应窗格', 'Fit to pane')}
+              aria-label={tx('适应窗格', 'Fit to pane')}
+              onClick={() => imageRef.current?.fit()}
             >
               <FitWidth size={16} />
             </button>
@@ -321,9 +457,12 @@ ${view.source.path}`;
             <MarkdownView text={mode?.draft ?? ready.text} />
           </>
         ) : kind === 'image' ? (
-          <div className="file-view-image">
-            <img src={ready.url ?? ''} alt={view.source.name} />
-          </div>
+          <ImageView
+            ref={imageRef}
+            key={view.source.path}
+            url={ready.url ?? ''}
+            name={view.source.name}
+          />
         ) : ready.blob ? (
           <div className="pdf-overlay-body">
             <PdfJsViewer

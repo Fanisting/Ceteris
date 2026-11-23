@@ -107,19 +107,19 @@ Ceteris 给你:
 
 ### 安装
 
-从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.7)下载适合你系统的文件:
+从[最新版本](https://github.com/Fanisting/ceteris/releases/latest)(v0.4.8)下载适合你系统的文件:
 
 | 系统 | 下载 |
 |---|---|
-| Windows 10/11(x64) | [Ceteris-Setup-0.4.7-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-Setup-0.4.7-x64.exe) |
-| macOS,Apple 芯片 | [Ceteris-0.4.7-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-arm64.dmg) |
-| macOS,Intel 芯片 | [Ceteris-0.4.7-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-x64.dmg) |
-| Linux(x64),任意发行版 | [Ceteris-0.4.7-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-x86_64.AppImage) |
-| Ubuntu 或 Debian(x64) | [Ceteris-0.4.7-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-amd64.deb) |
+| Windows 10/11(x64) | [Ceteris-Setup-0.4.8-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-Setup-0.4.8-x64.exe) |
+| macOS,Apple 芯片 | [Ceteris-0.4.8-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-arm64.dmg) |
+| macOS,Intel 芯片 | [Ceteris-0.4.8-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-x64.dmg) |
+| Linux(x64),任意发行版 | [Ceteris-0.4.8-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-x86_64.AppImage) |
+| Ubuntu 或 Debian(x64) | [Ceteris-0.4.8-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-amd64.deb) |
 
 - **Windows**:运行安装程序,然后从开始菜单或桌面启动。安装程序还没有代码签名,SmartScreen 可能拦截:点**更多信息**,再点**仍要运行**。
 - **macOS**:打开 `.dmg`,把 Ceteris 拖进"应用程序"。应用还没有签名,第一次打开时请右键点它,选**打开**。
-- **Linux**:运行 `chmod +x Ceteris-0.4.7-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.7-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
+- **Linux**:运行 `chmod +x Ceteris-0.4.8-x86_64.AppImage` 后直接启动,或用 `sudo apt install ./Ceteris-0.4.8-amd64.deb` 安装 `.deb`。详见 [Linux 安装指南](docs/Linux安装指南-20260517.md)。
 
 Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 issue](https://github.com/Fanisting/ceteris/issues)。
 
@@ -179,23 +179,24 @@ Windows 测试得最多。macOS 和 Linux 版本比较新,遇到问题请[提 is
 - ✅ **拖文件夹到终端区**:直接在该路径开新 session
 - ✅ **多行粘贴防护**:粘贴含换行时弹确认,防止误粘脚本被立即执行
 - ✅ **终端搜索**(Ctrl+F)显示命中数
-- ✅ **文件面板**:浏览当前文件夹(本地,或 SSH 会话经 SFTP),在终端旁打开 PDF、图片和 markdown,文件一变就自动刷新
+- ✅ **文件面板**:浏览当前文件夹(本地,或 SSH 会话经 SFTP),在终端旁打开 PDF、图片和 markdown,文件一变就自动刷新;图片可以缩放拖动,点文件名复制名字
 - ✅ **编辑 txt、json、md 和 tex**:直接修改保存,未保存的内容在断线重连后仍在;超过 2 MB 的文件分段只读,秒开;Markdown 用 OnePage 阅读样式;文件树里可以新建文件
 - ✅ **看得见 agent 在做什么**:标签上的波浪随 agent 的阶段变化,AI 给每个 agent 标签起简短标题,agent 在你看别处时跑完会冒出一小簇庆祝粒子
 - ✅ **“运行中”和“等你处理”筛选**:放在标签栏最前面;协调者标签切到任何文件夹都在,还能管理同一文件夹的其他标签
-- ✅ **给我看文件**:让你的 Claude Code 在 Ceteris 里打开它的答案,文件出现在标签旁的文件面板,不需要协调者
+- ✅ **给我看文件**:让你的 Claude Code 在 Ceteris 里打开它的答案,文件出现在标签旁的文件面板,不需要协调者;一次可以打开好几个,在标题栏切换
+- ✅ **[自动打开写好的文件](features/auto-open-written-files.md)**:Claude Code 写的文件和编出的 PDF 自动在它的标签旁打开
 - ✅ **更新 agent 时完整重载**:关掉该 agent 的标签、更新、再带着对话重新打开
 - ✅ **[换模型和 effort](features/agent-model-effort.md)**:给文件夹设默认模型,或在正在运行的 Claude Code、Codex 标签里换,对话接着进行;切换时标签上有加载动画
 - ✅ **[等你决定时弹消息](features/agent-choice-notice.md)**:agent 在你没看的标签里等你选择时,消息指到那个标签,也能直接在消息里选
 - ✅ **[收纳盒](features/tab-shelf.md)**:闲置标签收起来省内存,点一下带着对话回来
 - ✅ **[启动时恢复标签](features/reopen-tabs-at-launch.md)**:退出、更新或崩溃后,标签和 agent 对话都回来
-- ✅ **[代码和数据文件](features/code-files.md)**:R、Python、Stata、SQL 等高亮显示、可编辑,保存后 lint
+- ✅ **[代码和数据文件](features/code-files.md)**:R、Python、Stata、SQL、JavaScript、TypeScript、Go、Rust 等高亮显示、可编辑,保存后 lint
 - ✅ **[在文件资源管理器中打开和删除](features/file-tree-open-in-explorer.md)**:在文件树里右键,删除的文件进回收站
 - ✅ **[扩展一次装好](features/extension-setup.md)**:第一次启动一张清单装好 agent 扩展,Codex 也能把文件摆在标签旁边
 - ✅ **[名称: 命令](features/name-commands.md)**:在 Claude Code 或 Codex 里敲 `compact:` 得到 `/compact`
 - ✅ **[主 agent](features/main-agent.md)**:选一次最常用的 agent,快速启动、指南和设置都从它开始
 - ✅ **[回到上一个会话](features/back-to-last-session.md)**:“运行中”左边的小块在最近两个会话之间切换
-- ✅ **[回答完弹通知](features/done-notifications.md)**:点亮标签的铃铛,agent 回答完时弹系统通知
+- ✅ **[回答完弹通知](features/done-notifications.md)**:点亮标签的铃铛,agent 回答完时弹系统通知;[可以让 AI 用可爱的语气写](features/cute-notifications.md)
 - ✅ **[大量输出时终端照样跟手](features/output-flow-control.md)**:程序刷屏时打字和 Ctrl+C 照样立即响应
 - ✅ **[远程 agent 标签先在本机打字](features/remote-type-ahead.md)**:经 Ceteris Link 时在本机打好一段,Enter 一次发出;支持 Claude Code 全屏模式,长粘贴带加载动画一次发出,拖动在本机选字
 - ✅ **[更顺的 Ceteris Link](features/ceteris-link.md)**:重连不刷新窗口,连接变慢时有提示

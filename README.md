@@ -109,19 +109,19 @@ Ceteris gives you:
 
 ### Install
 
-Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.7):
+Download the file for your system from the [latest release](https://github.com/Fanisting/ceteris/releases/latest) (v0.4.8):
 
 | System | Download |
 |---|---|
-| Windows 10/11 (x64) | [Ceteris-Setup-0.4.7-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-Setup-0.4.7-x64.exe) |
-| macOS, Apple Silicon | [Ceteris-0.4.7-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-arm64.dmg) |
-| macOS, Intel | [Ceteris-0.4.7-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-x64.dmg) |
-| Linux (x64), any distribution | [Ceteris-0.4.7-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-x86_64.AppImage) |
-| Ubuntu or Debian (x64) | [Ceteris-0.4.7-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.7/Ceteris-0.4.7-amd64.deb) |
+| Windows 10/11 (x64) | [Ceteris-Setup-0.4.8-x64.exe](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-Setup-0.4.8-x64.exe) |
+| macOS, Apple Silicon | [Ceteris-0.4.8-arm64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-arm64.dmg) |
+| macOS, Intel | [Ceteris-0.4.8-x64.dmg](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-x64.dmg) |
+| Linux (x64), any distribution | [Ceteris-0.4.8-x86_64.AppImage](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-x86_64.AppImage) |
+| Ubuntu or Debian (x64) | [Ceteris-0.4.8-amd64.deb](https://github.com/Fanisting/ceteris/releases/download/v0.4.8/Ceteris-0.4.8-amd64.deb) |
 
 - **Windows**: run the installer, then launch Ceteris from the Start Menu or your desktop. The installer is not code signed yet, so SmartScreen may warn: choose **More info**, then **Run anyway**.
 - **macOS**: open the `.dmg` and drag Ceteris into Applications. The app is not signed yet, so the first time, right-click it and choose **Open**.
-- **Linux**: run `chmod +x Ceteris-0.4.7-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.7-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
+- **Linux**: run `chmod +x Ceteris-0.4.8-x86_64.AppImage` and start it, or install the `.deb` with `sudo apt install ./Ceteris-0.4.8-amd64.deb`. See the [Linux install guide](docs/Linux安装指南-20260517.md).
 
 Windows gets the most testing. The macOS and Linux builds are newer, so please [open an issue](https://github.com/Fanisting/ceteris/issues) if something breaks.
 
@@ -181,23 +181,24 @@ Every feature has its own page with what it does and where to find it: see the [
 - ✅ **Drop folder onto terminal area** to spawn a new session in that path
 - ✅ **Multi-line paste guard** (confirm prompt prevents accidentally executing pasted scripts)
 - ✅ **Terminal search** (Ctrl+F) with match count
-- ✅ **File panel**: browse the current folder (local, or over SFTP for SSH sessions) and open PDFs, images and markdown beside the terminal; they refresh when the file changes
+- ✅ **File panel**: browse the current folder (local, or over SFTP for SSH sessions) and open PDFs, images and markdown beside the terminal; they refresh when the file changes, images zoom and pan, and a click on the file name copies it
 - ✅ **Edit txt, json, md and tex** in place, with unsaved drafts kept across reconnects; files over 2 MB open as fast read-only pages; markdown reads in the OnePage style; create new files from the file tree
 - ✅ **See what agents are doing**: the tab wave changes with the agent's phase, short AI titles name each agent tab, and a small burst marks an agent that finished while you looked elsewhere
 - ✅ **Running and Needs you filters** at the front of the tab bar, plus coordinator tabs that stay in view across folders and can manage the other tabs in their folder
-- ✅ **Show me a file**: ask your Claude Code to open its answer in Ceteris and it appears in the file panel beside the tab, no coordinator needed
+- ✅ **Show me a file**: ask your Claude Code to open its answer in Ceteris and it appears in the file panel beside the tab, no coordinator needed; open several at once and switch between them in the header
+- ✅ **[Auto open written files](features/auto-open-written-files.md)**: files Claude Code writes and PDFs it builds open beside its tab by themselves
 - ✅ **Full reload on agent update**: close an agent's tabs, update it, and reopen them with their conversations
 - ✅ **[Model and effort](features/agent-model-effort.md)**: set a default per folder, or switch a running Claude Code or Codex tab and keep the conversation; a loader covers the tab while it switches
 - ✅ **[Choice notice](features/agent-choice-notice.md)**: when an agent waits for your decision in a tab you are not looking at, a notice points to it and can answer it
 - ✅ **[Tab shelf](features/tab-shelf.md)**: idle tabs are put away to free memory and come back with their conversation
 - ✅ **[Reopen tabs at launch](features/reopen-tabs-at-launch.md)**: tabs and agent conversations come back after a quit, update or crash
-- ✅ **[Code and data files](features/code-files.md)**: R, Python, Stata, SQL and more open highlighted and editable, with lint after save
+- ✅ **[Code and data files](features/code-files.md)**: R, Python, Stata, SQL, JavaScript, TypeScript, Go, Rust and more open highlighted and editable, with lint after save
 - ✅ **[Open in File Explorer and delete](features/file-tree-open-in-explorer.md)** from the file tree; deleted items go to the Recycle Bin
 - ✅ **[Extension setup card](features/extension-setup.md)**: one checklist on first start sets up the agent extensions, and Codex can now open files beside its tab too
 - ✅ **[name: commands](features/name-commands.md)**: type `compact:` and get `/compact` in Claude Code or Codex
 - ✅ **[Main agent](features/main-agent.md)**: pick the agent you use most once; quick launch, guides and setup start from it
 - ✅ **[Back to the last session](features/back-to-last-session.md)**: a chip left of Running switches between your last two sessions
-- ✅ **[Done notifications](features/done-notifications.md)**: ring a tab's bell and get a system notification when its agent finishes
+- ✅ **[Done notifications](features/done-notifications.md)**: ring a tab's bell and get a system notification when its agent finishes; [AI can write it in a cute voice](features/cute-notifications.md)
 - ✅ **[Responsive terminals under heavy output](features/output-flow-control.md)**: typing and Ctrl+C stay quick while a program floods output
 - ✅ **[Type ahead on remote agent tabs](features/remote-type-ahead.md)**: over Ceteris Link, type a prompt locally and Enter sends it in one message; works with Claude Code fullscreen, long pastes go at once with a loader, and dragging selects text locally
 - ✅ **[Smoother Ceteris Link](features/ceteris-link.md)**: reconnects keep the window as it was, and a slow link shows a badge

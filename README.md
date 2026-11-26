@@ -1,5 +1,7 @@
 # Ceteris
 
+**🗂️ Designed for running many agent tabs at once:** see which tab is working, which is done, and which is waiting for you.
+
 > Your terminal sessions shouldn't die just because you closed the window.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

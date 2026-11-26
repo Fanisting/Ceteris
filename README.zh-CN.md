@@ -1,5 +1,7 @@
 # Ceteris
 
+**🗂️ 为同时管理多个 agent 标签页而设计:** 一眼看出哪个在干活、哪个干完了、哪个在等你。
+
 > 你的终端会话不应该因为关掉窗口就死掉。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
